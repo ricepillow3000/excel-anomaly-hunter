@@ -38,6 +38,12 @@ The hard part is not finding the anomaly. It is deciding whether the anomaly is 
 
    Engine first, because every other piece only displays what the engine finds.
 
+7. **Limits come from a suggest-then-edit `limits.csv`.**
+   - On the first run with no limits file, the engine writes a suggested `limits.csv` (from each column's median and typical spread) and stops.
+   - The analyst edits it in Excel and runs again.
+   - Columns: `column, baseline_low, baseline_high, weird_low, weird_high`. A blank means no limit on that side, so a column can have a lower bound, an upper bound or both.
+   - The suggestions are only a draft. The analyst's numbers always win.
+
 ## Ideas added 2026-10-01 (second round)
 
 - **Detection methods:**
