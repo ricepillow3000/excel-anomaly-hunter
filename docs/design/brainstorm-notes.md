@@ -13,6 +13,12 @@ The hard part is not finding the anomaly. It is deciding whether the anomaly is 
 1. **Form factor:** an Excel add-in with a side panel (Office.js).
 2. **Brain:** hybrid. Detection runs locally. Claude triages only the flagged rows: useful-weird vs broken-weird, a one-sentence reason, a suggested action. It reads and proposes and never edits cells on its own. AI can be switched off.
 3. **Limits:** the analyst sets hard numbers per column. Each column has a baseline range (outside it = noted) and a weird range (outside it = flagged).
+4. **Auto-approve applies only to safe actions.** When nobody responds, these may go ahead automatically because they don't touch the data:
+   - highlighting a cell,
+   - adding a note or tag,
+   - copying a row to an "Anomalies" sheet.
+
+   Anything that changes, moves, sorts, fills or deletes original data always waits for a human to approve it. Every automatic action is logged and can be undone. A highlight must restore the analyst's original cell formatting when it is undone.
 
 ## Ideas added 2026-10-01 (second round)
 
@@ -34,7 +40,6 @@ The hard part is not finding the anomaly. It is deciding whether the anomaly is 
 
 ## Open conflicts to resolve
 
-- The sketch says an action is approved automatically if the user does nothing. Decision 2 says agents never act on their own.
 - pandas, scikit-learn, PyOD and openpyxl are Python. An Office.js panel runs JavaScript. A Python engine has to run somewhere.
 - openpyxl edits saved files, not the workbook that is open in Excel.
 - Power BI shows data; the Python engine is what detects. How the two connect is undecided.
