@@ -20,6 +20,14 @@ The hard part is not finding the anomaly. It is deciding whether the anomaly is 
 
    Anything that changes, moves, sorts, fills or deletes original data always waits for a human to approve it. Every automatic action is logged and can be undone. A highlight must restore the analyst's original cell formatting when it is undone.
 
+5. **Engine runs as a local Python server.** A small server on the analyst's machine does all detection with pandas, scikit-learn and PyOD.
+   - The Office.js panel sends it the sheet's data and gets back scores and triage results. The panel draws the dashboard and applies highlights live.
+   - The same engine also has a no-Excel mode: CSV files in, a report `.xlsx` formatted with openpyxl out.
+   - A one-click launcher should keep the "start the engine" step small.
+   - Rejected options:
+     - Pyodide / xlwings Lite: PyOD 3.6.6 requires numba, which does not run there.
+     - `=PY()`: runs in Microsoft's cloud, cannot install PyOD, and has no custom panel.
+
 ## Ideas added 2026-10-01 (second round)
 
 - **Detection methods:**
@@ -40,7 +48,6 @@ The hard part is not finding the anomaly. It is deciding whether the anomaly is 
 
 ## Open conflicts to resolve
 
-- pandas, scikit-learn, PyOD and openpyxl are Python. An Office.js panel runs JavaScript. A Python engine has to run somewhere.
 - openpyxl edits saved files, not the workbook that is open in Excel.
 - Power BI shows data; the Python engine is what detects. How the two connect is undecided.
 - Derivatives only make sense for ordered data, such as a time or sequence column.
