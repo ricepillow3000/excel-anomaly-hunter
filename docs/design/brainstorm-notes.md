@@ -44,6 +44,13 @@ The hard part is not finding the anomaly. It is deciding whether the anomaly is 
    - Columns: `column, baseline_low, baseline_high, weird_low, weird_high`. A blank means no limit on that side, so a column can have a lower bound, an upper bound or both.
    - The suggestions are only a draft. The analyst's numbers always win.
 
+8. **Detectors combine by vote, with a hard-limit override.**
+   - Each detector says yes or no.
+   - Severity is the number of detectors that agree: 1 = Low, 2 = Medium, 3+ = High.
+   - Breaking a weird limit is always at least Medium.
+   - Within a severity level, rows are sorted by how far past the line they are.
+   - Explanations list the detectors that fired.
+
 ## Ideas added 2026-10-01 (second round)
 
 - **Detection methods:**
