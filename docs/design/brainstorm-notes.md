@@ -28,6 +28,16 @@ The hard part is not finding the anomaly. It is deciding whether the anomaly is 
      - Pyodide / xlwings Lite: PyOD 3.6.6 requires numba, which does not run there.
      - `=PY()`: runs in Microsoft's cloud, cannot install PyOD, and has no custom panel.
 
+6. **Build order.** The project splits into six pieces, each with its own spec, plan and build cycle:
+   1. Engine plus the openpyxl report. Built first.
+   2. Local server.
+   3. Side panel dashboard.
+   4. Claude triage.
+   5. Route Monitor.
+   6. Power BI export.
+
+   Engine first, because every other piece only displays what the engine finds.
+
 ## Ideas added 2026-10-01 (second round)
 
 - **Detection methods:**
