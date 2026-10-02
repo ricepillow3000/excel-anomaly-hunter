@@ -1,0 +1,15 @@
+{
+  "version": "0.1",
+  "connections": [
+    {
+      "details": {
+        "protocol": "web",
+        "address": {
+          "url": "http://127.0.0.1:5055/latest-scan"
+        }
+      },
+      "options": {},
+      "mode": "Import"
+    }
+  ]
+}
