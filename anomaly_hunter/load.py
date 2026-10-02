@@ -100,6 +100,22 @@ def load_inputs(paths):
     return df, column_types, errors_log, warnings
 
 
+def _dedupe_columns(columns):
+    """Rename repeats as Name, Name.1, Name.2 — same convention pandas'
+    own read_csv/read_excel already apply automatically. A real spreadsheet's
+    header row can repeat a name (or be blank) more than once; df[name] for a
+    duplicated label returns a DataFrame instead of a Series, breaking any
+    .str/.isna()-style Series-only call downstream.
+    """
+    seen = {}
+    deduped = []
+    for name in columns:
+        count = seen.get(name, 0)
+        seen[name] = count + 1
+        deduped.append(name if count == 0 else f"{name}.{count}")
+    return deduped
+
+
 def load_from_records(columns, rows):
     """Build a DataFrame from in-memory columns/rows (e.g. the Office.js
     panel's active-sheet data) and classify it exactly like the file path —
@@ -109,7 +125,7 @@ def load_from_records(columns, rows):
     Returns (df, column_types, errors_log) — no `source_file` column and no
     warnings, since there's exactly one in-memory source.
     """
-    columns = list(columns)
+    columns = _dedupe_columns([str(c) for c in columns])
     str_rows = [["" if v is None else str(v) for v in row] for row in rows]
     df = pd.DataFrame(str_rows, columns=columns)
     column_types, errors_log = _classify_and_coerce(df, columns)

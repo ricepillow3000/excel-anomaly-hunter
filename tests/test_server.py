@@ -52,6 +52,19 @@ def test_scan_flags_planted_outlier():
     assert last["bucket"] == "Irregularities"
 
 
+def test_scan_handles_duplicate_and_blank_column_headers():
+    # Regression: a real user's spreadsheet had repeated/blank header cells.
+    # load_from_records built the DataFrame with duplicate column labels, so
+    # df[name] returned a DataFrame instead of a Series and any Series-only
+    # call (.str, .isna() chains) crashed with "'DataFrame' object has no
+    # attribute 'str'". Found against a real user's own file, not synthetic data.
+    columns = ["Notes", "Amount", "Notes", ""]
+    rows = [["a", 10, "x", ""], ["b", 11, "y", ""], ["c", 9, "z", ""]]
+    resp = client().post("/scan", json={"columns": columns, "rows": rows, "limits": None, "order_by": None})
+    assert resp.status_code == 200
+    assert len(resp.get_json()["rows"]) == len(rows)
+
+
 def test_scan_flags_duplicate_row_via_in_memory_path():
     # Regression: hygiene.duplicates() used to assume a source_file column,
     # which load_from_records (the server's in-memory path) never adds —
