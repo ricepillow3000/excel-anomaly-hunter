@@ -5,6 +5,8 @@ meant to be reachable over the network. Also serves the built task pane
 (panel/dist) at this same origin, so starting this one process is the whole
 "on" switch for the add-in — no separate npm/node dev server at runtime.
 """
+import subprocess
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -162,12 +164,28 @@ def _parse_records_request(payload):
     return (columns, rows), None
 
 
-def main():
+def _find_certs():
     cert, key = DEV_CERTS_DIR / "localhost.crt", DEV_CERTS_DIR / "localhost.key"
-    ssl_context = (str(cert), str(key)) if cert.exists() and key.exists() else None
+    return (str(cert), str(key)) if cert.exists() and key.exists() else None
+
+
+def main():
+    ssl_context = _find_certs()
     if ssl_context is None:
-        print(f"No dev HTTPS certs at {DEV_CERTS_DIR} — run `npx office-addin-dev-certs install` once, "
-              "then restart. Office Add-ins require HTTPS even for a local server.")
+        print("No dev HTTPS certs found — installing them once via office-addin-dev-certs...")
+        try:
+            subprocess.run(["npx", "office-addin-dev-certs", "install"], check=True, shell=True)
+        except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+            # The panel is hardcoded to https://127.0.0.1:5055 — serving plain HTTP here
+            # would start a server nothing can actually talk to. Refuse loudly instead.
+            sys.exit(
+                f"Could not install HTTPS dev certs ({exc}). Office Add-ins require HTTPS "
+                "even locally. Run `npx office-addin-dev-certs install` yourself, then retry."
+            )
+        ssl_context = _find_certs()
+        if ssl_context is None:
+            sys.exit(f"Install reported success but no certs found at {DEV_CERTS_DIR}. Can't start.")
+
     create_app().run(host="127.0.0.1", port=PORT, ssl_context=ssl_context)
 
 
