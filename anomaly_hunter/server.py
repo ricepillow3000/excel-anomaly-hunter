@@ -1,9 +1,12 @@
 """Local HTTP server wrapping the engine for the Office.js side panel.
 
 Binds 127.0.0.1 only — this runs on the analyst's own machine and is never
-meant to be reachable over the network.
+meant to be reachable over the network. Also serves the built task pane
+(panel/dist) at this same origin, so starting this one process is the whole
+"on" switch for the add-in — no separate npm/node dev server at runtime.
 """
 from collections import Counter
+from pathlib import Path
 
 import anthropic
 from flask import Flask, jsonify, request
@@ -15,10 +18,12 @@ from anomaly_hunter.load import load_from_records
 from anomaly_hunter.pipeline import score
 
 PORT = 5055
+PANEL_DIST = Path(__file__).resolve().parent.parent / "panel" / "dist"
+DEV_CERTS_DIR = Path.home() / ".office-addin-dev-certs"
 
 
 def create_app():
-    app = Flask(__name__)
+    app = Flask(__name__, static_folder=str(PANEL_DIST), static_url_path="")
     app.config["last_scan"] = None  # per-app cache for GET /latest-scan (Power BI export)
 
     @app.after_request
@@ -158,7 +163,12 @@ def _parse_records_request(payload):
 
 
 def main():
-    create_app().run(host="127.0.0.1", port=PORT)
+    cert, key = DEV_CERTS_DIR / "localhost.crt", DEV_CERTS_DIR / "localhost.key"
+    ssl_context = (str(cert), str(key)) if cert.exists() and key.exists() else None
+    if ssl_context is None:
+        print(f"No dev HTTPS certs at {DEV_CERTS_DIR} — run `npx office-addin-dev-certs install` once, "
+              "then restart. Office Add-ins require HTTPS even for a local server.")
+    create_app().run(host="127.0.0.1", port=PORT, ssl_context=ssl_context)
 
 
 if __name__ == "__main__":

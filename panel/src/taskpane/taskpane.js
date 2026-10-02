@@ -1,6 +1,6 @@
 /* global console, document, Excel, Office, fetch, module */
 
-const SERVER = "http://127.0.0.1:5055";
+const SERVER = "https://127.0.0.1:5055"; // same origin Flask now serves this panel from
 const SETTINGS_KEY = "anomalyHunterLimits";
 const SEVERITY_COLOR = { High: "#FFC7CE", Medium: "#FFEB9C", Low: "#FFFFCC", Noted: "#FFF8DC" };
 

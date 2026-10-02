@@ -79,3 +79,13 @@ Flask's own test client (`app.test_client()`), no real socket needed:
 ## Packaging
 
 Add `flask` to `anomaly_hunter`'s runtime dependencies. Console script `anomaly-hunter-server = anomaly_hunter.server:main`, binds `127.0.0.1:5055` by default (port is arbitrary but fixed, so the panel has one thing to try first).
+
+## Local distribution update (2026-10-01)
+
+The user wanted "one button, on/off" with nothing to install beyond the repo itself — not yet a public deployment (see the Power BI sub-project's note on that separate, larger decision). Resolved by collapsing the dev-server + API split into one process:
+
+- `create_app()` also serves `panel/dist` (the production webpack build) as static files at the same origin as the API, via Flask's `static_folder`/`static_url_path=""`.
+- `main()` runs over HTTPS using the same dev certs `office-addin-dev-certs` already installed (`~/.office-addin-dev-certs/localhost.{crt,key}`) — Office Add-ins require HTTPS even for a local source, dev or not.
+- `panel/webpack.config.js`'s `urlProd` now points at `https://127.0.0.1:5055/` instead of the generator's placeholder, so `npm run build`'s manifest and the panel's own `SERVER` constant agree on one origin.
+- `start-anomaly-hunter.bat` at the repo root is the literal one-button on/off: double-click to start, close the window to stop. No npm/node needed at runtime — only this one Python process.
+- The one remaining manual step for any new machine or after `npm stop` removes the dev-sideload registration: Excel → Insert → My Add-ins → Upload My Add-in → `panel/dist/manifest.xml`. This is the real end-user sideload path (not the `office-addin-debugging` dev shortcut), which is also the honest test of what an actual recruiter/user would do — no tool here can click through it, so it's unverified until a human does it once.
