@@ -43,7 +43,7 @@ def classify_column(series):
     numeric = pd.to_numeric(non_blank, errors="coerce")
     if numeric.notna().mean() >= 0.9:
         return "number"
-    dated = pd.to_datetime(non_blank, errors="coerce")
+    dated = pd.to_datetime(non_blank, errors="coerce", format="mixed")
     if dated.notna().mean() >= 0.9:
         return "date"
     return "text"

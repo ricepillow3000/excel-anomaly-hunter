@@ -1,4 +1,4 @@
-/* global console, document, Excel, Office, fetch, module */
+/* global console, document, Excel, Office, fetch, module, setTimeout, clearTimeout */
 
 const SERVER = "https://127.0.0.1:5055"; // same origin Flask now serves this panel from
 const SETTINGS_KEY = "anomalyHunterLimits";
@@ -50,7 +50,7 @@ async function checkHealth() {
     document.getElementById("run-triage").disabled = !aiAvailable;
     document.getElementById("server-down").style.display = "none";
     document.getElementById("main-ui").style.display = "block";
-  } catch (e) {
+  } catch {
     document.getElementById("main-ui").style.display = "none";
     document.getElementById("server-down").style.display = "block";
   }
@@ -126,7 +126,7 @@ async function scanAndRender(columns, rows, limits, startRow, startCol) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ columns, rows, limits, order_by: null }),
     });
-  } catch (e) {
+  } catch {
     document.getElementById("main-ui").style.display = "none";
     document.getElementById("server-down").style.display = "block";
     return;
