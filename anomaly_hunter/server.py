@@ -33,6 +33,12 @@ def create_app():
         # Localhost-only server, analyst's own data in their own browser tab —
         # a permissive CORS header here doesn't expose anything to anyone else.
         response.headers["Access-Control-Allow-Origin"] = "*"
+        # The panel's own JS/HTML changes across rebuilds (npm run build), but
+        # filenames don't (no content hash) — without this, a browser that
+        # already cached an older taskpane.js silently keeps running it after
+        # an update, which is exactly how a real duplicate-row bug stayed
+        # invisible through a server-side fix during testing.
+        response.headers["Cache-Control"] = "no-store"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
         response.headers["Access-Control-Allow-Headers"] = "Content-Type"
         return response

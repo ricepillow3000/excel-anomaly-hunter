@@ -52,6 +52,19 @@ def test_scan_flags_planted_outlier():
     assert last["bucket"] == "Irregularities"
 
 
+def test_scan_flags_duplicate_row_via_in_memory_path():
+    # Regression: hygiene.duplicates() used to assume a source_file column,
+    # which load_from_records (the server's in-memory path) never adds —
+    # caught live via a real Excel click-through, not by any prior test here.
+    columns, rows = make_clean_payload(n=40)
+    rows.append(list(rows[4]))  # exact duplicate of row index 4
+    resp = client().post("/scan", json={"columns": columns, "rows": rows, "limits": None, "order_by": None})
+    assert resp.status_code == 200
+    last = resp.get_json()["rows"][-1]
+    assert last["bucket"] == "Duplicates"
+    assert "Duplicate of row" in last["reason"]
+
+
 def test_scan_rejects_malformed_body():
     resp = client().post("/scan", json={"columns": ["a", "b"], "rows": [[1]]})
     assert resp.status_code == 400

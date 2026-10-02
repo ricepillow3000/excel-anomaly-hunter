@@ -2,7 +2,12 @@
 
 
 def duplicates(df):
-    """A row identical to an earlier row in every column except source_file."""
+    """A row identical to an earlier row in every column except source_file.
+
+    source_file only exists on the CLI's file-loaded path (load_inputs); the
+    server's in-memory path (load_from_records) never adds it, by design.
+    """
+    has_source = "source_file" in df.columns
     compare_cols = [c for c in df.columns if c != "source_file"]
     n = len(df)
     is_dup = [False] * n
@@ -13,7 +18,10 @@ def duplicates(df):
         if key in seen:
             first = seen[key]
             is_dup[i] = True
-            reasons[i].append(f"Duplicate of row {first + 2} ({df.iloc[first]['source_file']})")
+            if has_source:
+                reasons[i].append(f"Duplicate of row {first + 2} ({df.iloc[first]['source_file']})")
+            else:
+                reasons[i].append(f"Duplicate of row {first + 2}")
         else:
             seen[key] = i
     return is_dup, reasons
