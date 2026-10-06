@@ -1,6 +1,55 @@
-import numpy as np
+import ipaddress
+import ssl
+import threading
 
-from anomaly_hunter.server import create_app
+import numpy as np
+import pytest
+from cryptography import x509
+from cryptography.x509 import DNSName, IPAddress
+from cryptography.x509.verification import PolicyBuilder, Store, VerificationError
+from werkzeug.serving import make_server
+
+from anomaly_hunter.server import _already_running, create_app, make_cert
+
+
+def test_cert_chain_only_vouches_for_localhost(tmp_path):
+    assert make_cert(tmp_path) is True  # new -> installer must trust ca.pem
+    assert make_cert(tmp_path) is False  # still valid -> no new trust prompt
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["ca.pem", "cert.pem", "key.pem"]  # CA key never saved
+    ca = x509.load_pem_x509_certificate((tmp_path / "ca.pem").read_bytes())
+    leaf = x509.load_pem_x509_certificate((tmp_path / "cert.pem").read_bytes())
+    verifier = lambda name: PolicyBuilder().store(Store([ca])).build_server_verifier(name).verify(leaf, [])
+    verifier(DNSName("localhost"))
+    verifier(IPAddress(ipaddress.ip_address("127.0.0.1")))
+    with pytest.raises(VerificationError):
+        verifier(DNSName("example.com"))
+    nc = ca.extensions.get_extension_for_class(x509.NameConstraints)
+    assert nc.critical and len(nc.value.permitted_subtrees) == 2  # CA can't vouch for any other site
+
+    (tmp_path / "cert.pem").write_text("garbage")  # corrupt -> self-heals instead of blocking install
+    assert make_cert(tmp_path) is True
+    assert make_cert(tmp_path / "x", days=30) is True and make_cert(tmp_path / "x") is True  # < 60 days -> renew
+
+
+def test_already_running_trusts_only_our_engine(tmp_path):
+    make_cert(tmp_path)
+    ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    ctx.load_cert_chain(tmp_path / "cert.pem", tmp_path / "key.pem")
+    srv = make_server("127.0.0.1", 0, create_app(), ssl_context=ctx)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        assert _already_running(tmp_path, srv.server_port)  # real TLS handshake against our CA
+        make_cert(tmp_path / "other")
+        assert not _already_running(tmp_path / "other", srv.server_port)  # different CA = not us
+    finally:
+        srv.shutdown()
+
+
+def test_other_websites_cannot_drive_engine():
+    c = client()
+    assert c.get("/health", headers={"Origin": "https://evil.example"}).status_code == 403
+    assert c.get("/health", headers={"Host": "evil.example:5055"}).status_code == 403  # DNS rebinding
+    assert c.get("/health", headers={"Origin": "https://127.0.0.1:5055"}).status_code == 200
 
 
 def make_clean_payload(n=40, seed=0):
