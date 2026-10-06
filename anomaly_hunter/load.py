@@ -1,132 +1,76 @@
-"""Load CSV/Excel inputs, concatenate, and classify columns."""
+"""Files or panel rows -> DataFrame. Classify columns number/date/text, coerce in place."""
 from pathlib import Path
 
 import pandas as pd
 
 
 class LoadError(Exception):
-    def __init__(self, filename, reason):
-        super().__init__(f"Could not read {filename}: {reason}")
-        self.filename = filename
+    pass
 
 
-def _is_blank(series):
-    return series.isna() | (series.astype(str).str.strip() == "")
+def numbers(column_types):
+    return [c for c, t in column_types.items() if t == "number"]
 
 
-def _read_one(path):
-    path = Path(path)
-    try:
-        # keep_default_na=False: pandas otherwise silently turns tokens like "N/A"
-        # into a real NaN before we ever see the text, which is exactly the case
-        # the spec's type-error example names — we need the literal text.
-        if path.suffix.lower() == ".csv":
-            df = pd.read_csv(path, dtype=str, keep_default_na=False, na_values=[])
-        elif path.suffix.lower() in (".xlsx", ".xlsm"):
-            df = pd.read_excel(path, sheet_name=0, dtype=str, keep_default_na=False, na_values=[])
-        else:
-            raise LoadError(path.name, f"unsupported extension {path.suffix}")
-    except LoadError:
-        raise
-    except Exception as exc:
-        raise LoadError(path.name, str(exc)) from exc
-    df["source_file"] = path.name
-    return df
+def _blank(s):
+    return s.isna() | (s.astype(str).str.strip() == "")
 
 
-def classify_column(series):
-    """Return "number", "date", or "text" for one column of string values."""
-    blank = _is_blank(series)
-    non_blank = series[~blank]
-    if len(non_blank) == 0:
+def _kind(s):
+    """number / date / text: 90% of non-blank cells must parse."""
+    s = s[~_blank(s)]
+    if not len(s):
         return "text"
-    numeric = pd.to_numeric(non_blank, errors="coerce")
-    if numeric.notna().mean() >= 0.9:
+    if pd.to_numeric(s, errors="coerce").notna().mean() >= 0.9:
         return "number"
-    dated = pd.to_datetime(non_blank, errors="coerce", format="mixed")
-    if dated.notna().mean() >= 0.9:
+    if pd.to_datetime(s, errors="coerce", format="mixed").notna().mean() >= 0.9:
         return "date"
     return "text"
 
 
-def _classify_and_coerce(df, data_columns):
-    """Classify each data column and coerce number/date columns in place.
+def _coerce(df, cols):
+    """-> (types, errors_log). errors_log = (row, col, raw) for text stuck in a number column."""
+    types, errors = {c: _kind(df[c]) for c in cols}, []
+    for c, t in types.items():
+        if t == "number":
+            num = pd.to_numeric(df[c], errors="coerce")
+            errors += [(i, c, df.at[i, c]) for i in df.index[num.isna() & ~_blank(df[c])]]
+            df[c] = num
+        elif t == "date":
+            df[c] = pd.to_datetime(df[c], errors="coerce")
+    return types, errors
 
-    Returns (column_types, errors_log) — errors_log is a list of
-    (row_index, column, raw_value) for cells that failed to parse in a
-    number column, which the hygiene type-error check reads.
-    """
-    column_types = {c: classify_column(df[c]) for c in data_columns}
-    errors_log = []
-    for col, kind in column_types.items():
-        if kind == "number":
-            blank = _is_blank(df[col])
-            numeric = pd.to_numeric(df[col], errors="coerce")
-            failed = (~blank) & numeric.isna()
-            for idx in df.index[failed]:
-                errors_log.append((idx, col, df.at[idx, col]))
-            df[col] = numeric
-        elif kind == "date":
-            df[col] = pd.to_datetime(df[col], errors="coerce")
-    return column_types, errors_log
+
+def _read(p):
+    p = Path(p)
+    # keep_default_na=False: keep literal "N/A" text so type-error check sees it
+    kw = {"dtype": str, "keep_default_na": False, "na_values": []}
+    try:
+        if p.suffix.lower() == ".csv":
+            df = pd.read_csv(p, **kw)
+        elif p.suffix.lower() in (".xlsx", ".xlsm"):
+            df = pd.read_excel(p, sheet_name=0, **kw)
+        else:
+            raise ValueError(f"unsupported extension {p.suffix}")
+    except Exception as e:
+        raise LoadError(f"Could not read {p.name}: {e}") from e
+    return df.assign(source_file=p.name)
 
 
 def load_inputs(paths):
-    """Read, concatenate, and classify the given CSV/XLSX files.
-
-    Returns (df, column_types, errors_log, warnings). `df` has number/date
-    columns coerced (failed cells become NaN) plus a `source_file` column.
-    `warnings` names files missing columns the union picked up from others.
-    """
-    frames = [_read_one(p) for p in paths]
-    all_columns = []
-    for f in frames:
-        for c in f.columns:
-            if c not in all_columns:
-                all_columns.append(c)
-
-    warnings = []
-    for f, p in zip(frames, paths):
-        missing = [c for c in all_columns if c not in f.columns and c != "source_file"]
-        if missing:
-            warnings.append(f"{Path(p).name} is missing columns: {', '.join(missing)}")
-
+    """Read + stack files (union of columns). -> (df, types, errors_log, warnings)."""
+    frames = [_read(p) for p in paths]
     df = pd.concat(frames, ignore_index=True, sort=False)
-    df = df.reindex(columns=all_columns)
-
-    data_columns = [c for c in all_columns if c != "source_file"]
-    column_types, errors_log = _classify_and_coerce(df, data_columns)
-
-    return df, column_types, errors_log, warnings
-
-
-def _dedupe_columns(columns):
-    """Rename repeats as Name, Name.1, Name.2 — same convention pandas'
-    own read_csv/read_excel already apply automatically. A real spreadsheet's
-    header row can repeat a name (or be blank) more than once; df[name] for a
-    duplicated label returns a DataFrame instead of a Series, breaking any
-    .str/.isna()-style Series-only call downstream.
-    """
-    seen = {}
-    deduped = []
-    for name in columns:
-        count = seen.get(name, 0)
-        seen[name] = count + 1
-        deduped.append(name if count == 0 else f"{name}.{count}")
-    return deduped
+    warnings = [f"{Path(p).name} is missing columns: {', '.join(m)}"
+                for f, p in zip(frames, paths) if (m := [c for c in df.columns if c not in f.columns])]
+    return df, *_coerce(df, [c for c in df.columns if c != "source_file"]), warnings
 
 
 def load_from_records(columns, rows):
-    """Build a DataFrame from in-memory columns/rows (e.g. the Office.js
-    panel's active-sheet data) and classify it exactly like the file path —
-    everything is stringified first so "N/A"-style text in a number column
-    is still caught by the same type-error logic as the CSV/XLSX path.
-
-    Returns (df, column_types, errors_log) — no `source_file` column and no
-    warnings, since there's exactly one in-memory source.
-    """
-    columns = _dedupe_columns([str(c) for c in columns])
-    str_rows = [["" if v is None else str(v) for v in row] for row in rows]
-    df = pd.DataFrame(str_rows, columns=columns)
-    column_types, errors_log = _classify_and_coerce(df, columns)
-    return df, column_types, errors_log
+    """Panel rows -> (df, types, errors_log). Stringify first so it matches the file path."""
+    cols, seen = [], {}
+    for c in map(str, columns):  # dedupe headers pandas-style (Name, Name.1): dup label breaks df[c]
+        seen[c] = seen.get(c, -1) + 1
+        cols.append(f"{c}.{seen[c]}" if seen[c] else c)
+    df = pd.DataFrame([["" if v is None else str(v) for v in r] for r in rows], columns=cols)
+    return df, *_coerce(df, cols)

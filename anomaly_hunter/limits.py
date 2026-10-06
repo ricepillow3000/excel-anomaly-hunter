@@ -1,78 +1,34 @@
-"""Read an analyst-edited limits.csv, or suggest one when none exists."""
-from pathlib import Path
-
+"""limits.csv: read analyst's, or suggest one. Baseline = median +/- 3 spread, weird = +/- 6."""
 import pandas as pd
 
 from anomaly_hunter.detectors import spread
 
-LIMITS_COLUMNS = ["column", "baseline_low", "baseline_high", "weird_low", "weird_high"]
+COLS = ["column", "baseline_low", "baseline_high", "weird_low", "weird_high"]
 
 
-def _sig_round(value, sig=3):
-    if value == 0:
-        return 0.0
-    from math import floor, log10
-    digits = sig - int(floor(log10(abs(value)))) - 1
-    return round(value, digits)
-
-
-def _blank_to_none(value):
-    if value is None or (isinstance(value, float) and pd.isna(value)):
-        return None
-    if isinstance(value, str) and value.strip() == "":
-        return None
-    return float(value)
+def _num(v):
+    return None if pd.isna(v) or not str(v).strip() else float(v)
 
 
 def read_limits(path, number_columns):
-    """Returns (limits: {column: (b_low, b_high, w_low, w_high)}, warnings: [str])."""
-    table = pd.read_csv(path, dtype=str)
-    limits = {}
-    warnings = []
-    for _, row in table.iterrows():
-        col = row["column"]
-        if col not in number_columns:
-            warnings.append(f"limits.csv names column '{col}', not found in the data — skipped")
-            continue
-        limits[col] = (
-            _blank_to_none(row.get("baseline_low")),
-            _blank_to_none(row.get("baseline_high")),
-            _blank_to_none(row.get("weird_low")),
-            _blank_to_none(row.get("weird_high")),
-        )
-    return limits, warnings
+    """-> ({col: (b_lo, b_hi, w_lo, w_hi)}, warnings). Blank cell = no limit."""
+    t = pd.read_csv(path, dtype=str).reindex(columns=COLS)
+    ok = t["column"].isin(number_columns)
+    warnings = [f"limits.csv names column '{c}', not found in the data - skipped" for c in t["column"][~ok]]
+    return {r[0]: tuple(map(_num, r[1:])) for r in t[ok].itertuples(index=False)}, warnings
 
 
 def suggest_limits_dict(df, number_columns):
-    """{column: (baseline_low, baseline_high, weird_low, weird_high)}, 3-sig-fig suggestions.
-
-    baseline = median +/- 3*spread, weird = median +/- 6*spread. A column with
-    no valid values is omitted.
-    """
-    suggestions = {}
-    for col in number_columns:
-        values = df[col].to_numpy(dtype=float)
-        valid = values[~pd.isna(values)]
-        if len(valid) == 0:
-            continue
-        med = float(pd.Series(valid).median())
-        sd = spread(valid)
-        suggestions[col] = (
-            _sig_round(med - 3 * sd),
-            _sig_round(med + 3 * sd),
-            _sig_round(med - 6 * sd),
-            _sig_round(med + 6 * sd),
-        )
-    return suggestions
+    """{col: (b_lo, b_hi, w_lo, w_hi)} at 3 sig figs. All-blank column skipped."""
+    out = {}
+    for c in number_columns:
+        x = df[c].dropna()
+        if len(x):
+            med, sd = float(x.median()), spread(x)
+            out[c] = tuple(float(f"{med + k * sd:.3g}") for k in (-3, 3, -6, 6))
+    return out
 
 
 def suggest_limits(df, number_columns, out_path):
-    """Write a suggested limits.csv from suggest_limits_dict's values."""
-    suggestions = suggest_limits_dict(df, number_columns)
-    rows = [
-        {"column": col, "baseline_low": b[0], "baseline_high": b[1], "weird_low": b[2], "weird_high": b[3]}
-        for col, b in suggestions.items()
-    ]
-    out = pd.DataFrame(rows, columns=LIMITS_COLUMNS)
-    out.to_csv(out_path, index=False)
-    return Path(out_path)
+    rows = [(c, *b) for c, b in suggest_limits_dict(df, number_columns).items()]
+    pd.DataFrame(rows, columns=COLS).to_csv(out_path, index=False)

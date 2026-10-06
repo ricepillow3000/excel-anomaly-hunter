@@ -1,78 +1,47 @@
-"""Write report.xlsx: Data, Anomalies, and Summary sheets."""
+"""report.xlsx: Data (every row, colored), Anomalies (flagged, worst first), Summary."""
 from collections import Counter
 
 from openpyxl import Workbook
 from openpyxl.comments import Comment
 from openpyxl.styles import PatternFill
 
-FILL = {
-    "Noted": PatternFill("solid", fgColor="FFFFF2CC"),
-    "Low": PatternFill("solid", fgColor="FFFFF2A8"),
-    "Medium": PatternFill("solid", fgColor="FFFFCC80"),
-    "High": PatternFill("solid", fgColor="FFFF8A80"),
-}
-SEVERITY_RANK = {"High": 3, "Medium": 2, "Low": 1}
+from anomaly_hunter.detectors import K
+
+FILL = {s: PatternFill("solid", fgColor=c) for s, c in
+        {"Noted": "FFFFF2CC", "Low": "FFFFF2A8", "Medium": "FFFFCC80", "High": "FFFF8A80"}.items()}
+RANK = {"High": 3, "Medium": 2, "Low": 1}
 
 
-def _row_values(df, i):
-    return list(df.iloc[i].astype(object).where(df.iloc[i].notna(), None))
-
-
-def write_report(df, combined, out_path, detector_status, limits_path, k, warnings):
+def write_report(df, rows, status, out_path, limits_path, warnings):
     wb = Workbook()
-    data_ws = wb.active
-    data_ws.title = "Data"
+    data = wb.active
+    data.title = "Data"
+    head = [*df.columns, "Severity", "Bucket", "Reason"]
+    data.append(head)
+    vals = df.astype(object).where(df.notna(), None).values.tolist()
+    for v, r in zip(vals, rows):
+        data.append(v + [r["severity"] or "", r["bucket"] or "", r["reason"]])
+        if r["severity"]:
+            for cell in data[data.max_row]:
+                cell.fill = FILL[r["severity"]]
+            # ponytail: one note on Reason cell, not one per triggering cell
+            data.cell(data.max_row, len(head)).comment = Comment(r["reason"], "Anomaly Hunter")
 
-    columns = list(df.columns) + ["Severity", "Bucket", "Reason"]
-    data_ws.append(columns)
-    for i in range(len(df)):
-        c = combined[i]
-        data_ws.append(_row_values(df, i) + [c["severity"] or "", c["bucket"] or "", c["reason"]])
-        if c["severity"] in FILL:
-            for cell in data_ws[data_ws.max_row]:
-                cell.fill = FILL[c["severity"]]
-            if c["reason"]:
-                # ponytail: one note on the Reason cell, not one per triggering data
-                # cell — the spec asks for per-cell notes; this is the simpler version.
-                data_ws.cell(row=data_ws.max_row, column=len(columns)).comment = Comment(
-                    c["reason"], "Anomaly Hunter"
-                )
+    bad = wb.create_sheet("Anomalies")
+    bad.append(head + ["Row"])
+    order = sorted((i for i, r in enumerate(rows) if r["severity"] in RANK),
+                   key=lambda i: (-RANK[rows[i]["severity"]], -rows[i]["magnitude"]))
+    for i in order:
+        bad.append(vals[i] + [rows[i]["severity"], rows[i]["bucket"], rows[i]["reason"], i + 2])
 
-    anomalies_ws = wb.create_sheet("Anomalies")
-    anomalies_ws.append(columns + ["Row", "source_file"])
-    ordered = sorted(
-        (i for i, c in enumerate(combined) if c["severity"] in SEVERITY_RANK),
-        key=lambda i: (-SEVERITY_RANK[combined[i]["severity"]], -combined[i]["magnitude"]),
-    )
-    for i in ordered:
-        c = combined[i]
-        anomalies_ws.append(
-            _row_values(df, i) + [c["severity"], c["bucket"], c["reason"], i + 2, df.iloc[i]["source_file"]]
-        )
-
-    summary_ws = wb.create_sheet("Summary")
-    severity_counts = Counter(c["severity"] for c in combined if c["severity"])
-    bucket_counts = Counter(c["bucket"] for c in combined if c["bucket"])
-
-    summary_ws.append(["Counts by severity"])
-    for sev in ("High", "Medium", "Low", "Noted"):
-        summary_ws.append([sev, severity_counts.get(sev, 0)])
-    summary_ws.append([])
-    summary_ws.append(["Counts by bucket"])
-    for bucket in ("Duplicates", "Irregularities", "Behavioral"):
-        summary_ws.append([bucket, bucket_counts.get(bucket, 0)])
-    summary_ws.append([])
-    summary_ws.append(["Detectors"])
-    for name, status in detector_status.items():
-        note = "ran" if status.get("ran", True) else f"sat out: {status.get('sit_out_reason')}"
-        summary_ws.append([name, note])
-    summary_ws.append([])
-    summary_ws.append(["Limits file", str(limits_path)])
-    summary_ws.append(["K", k])
+    sev, bkt = Counter(r["severity"] for r in rows), Counter(r["bucket"] for r in rows)
+    lines = [["Counts by severity"], *([k, sev[k]] for k in ("High", "Medium", "Low", "Noted")),
+             [], ["Counts by bucket"], *([k, bkt[k]] for k in ("Duplicates", "Irregularities", "Behavioral")),
+             [], ["Detectors"], *status.items(),
+             [], ["Limits file", str(limits_path)], ["K", K]]
     if warnings:
-        summary_ws.append([])
-        summary_ws.append(["Warnings"])
-        for w in warnings:
-            summary_ws.append([w])
-
+        lines += [[], ["Warnings"], *([w] for w in warnings)]
+    summary = wb.create_sheet("Summary")
+    for line in lines:
+        summary.append(line)
     wb.save(out_path)

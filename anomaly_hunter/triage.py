@@ -1,12 +1,5 @@
-"""Claude triage: classify already-flagged rows as useful-weird vs broken-weird.
-
-Reads ANTHROPIC_API_KEY from the environment per the project's own decision —
-the key never reaches the browser/panel or gets saved into the workbook (see
-docs/design/brainstorm-notes.md decision 2 and the open question it resolves).
-Read-and-propose only: Claude never edits cells directly. Only two action
-kinds are allowed to auto-apply (add_note, copy_to_anomalies_sheet) per
-decision 4 — anything else comes back as text for a human to act on by hand.
-"""
+"""Claude triage of flagged rows: useful-weird vs broken-weird.
+Key stays server-side (never panel, never workbook). Claude only proposes; 2 safe actions may auto-apply."""
 import os
 from typing import Literal
 
@@ -28,60 +21,32 @@ class TriageBatch(BaseModel):
     results: list[RowTriage]
 
 
-_client = None
-
-
-def _get_client():
-    global _client
-    if _client is None:
-        _client = anthropic.Anthropic()
-    return _client
-
-
 def api_key_configured():
     return bool(os.environ.get("ANTHROPIC_API_KEY"))
 
 
 def _build_prompt(columns, flagged):
-    lines = []
-    for row in flagged:
-        values = dict(zip(columns, row.get("values", [])))
-        lines.append(
-            f"- row_index {row.get('row_index')}: values={values}, "
-            f"severity={row.get('severity')}, bucket={row.get('bucket')}, "
-            f"engine_reason={row.get('reason')}"
-        )
-    rows_text = "\n".join(lines)
+    rows = "\n".join(
+        f"- row_index {r.get('row_index')}: values={dict(zip(columns, r.get('values', [])))}, "
+        f"severity={r.get('severity')}, bucket={r.get('bucket')}, engine_reason={r.get('reason')}"
+        for r in flagged)
     return (
-        "You are triaging rows a statistical anomaly-detection engine already flagged "
-        "in a spreadsheet. For each row, decide: is it USEFUL-WEIRD (a real signal worth "
-        "a human's attention — a fraud spike, a record sale, a genuine rare event) or "
-        "BROKEN-WEIRD (a data-quality problem — a typo, an import error, a duplicate, a "
-        "unit mismatch)? Give a one-sentence reason. Don't claim certainty you don't have.\n\n"
-        "You may suggest exactly two safe_action values that this tool is allowed to apply "
-        "automatically, because neither touches the analyst's original data: 'add_note' "
-        "(write an explanatory note, no value changes) or 'copy_to_anomalies_sheet' (copy "
-        "the row to a separate sheet, original left untouched). For anything else — "
-        "deleting, editing a value, moving rows — use safe_action='none' and put the idea "
-        "only in suggested_action_detail; a human must do it by hand.\n\n"
-        f"Rows:\n{rows_text}"
-    )
+        "A statistical anomaly engine flagged these spreadsheet rows. For each row decide: "
+        "USEFUL-WEIRD (real signal worth a human's attention - fraud spike, record sale, rare real event) or "
+        "BROKEN-WEIRD (data-quality problem - typo, import error, duplicate, unit mismatch). "
+        "Give a one-sentence reason. Don't claim certainty you don't have.\n\n"
+        "Only two safe_action values may auto-apply, because neither touches original data: "
+        "'add_note' (write an explanatory note) or 'copy_to_anomalies_sheet' (copy row to a separate sheet). "
+        "For anything else - delete, edit a value, move rows - use safe_action='none' and put the idea "
+        "in suggested_action_detail; a human does it by hand.\n\n"
+        f"Rows:\n{rows}")
 
 
 def triage_rows(columns, flagged):
-    """flagged: [{row_index, values, severity, bucket, reason}, ...].
-
-    Returns a list of dicts matching RowTriage, one per input row (same
-    row_index values). Raises the anthropic SDK's typed exceptions on
-    failure — callers translate those to HTTP responses.
-    """
+    """-> [RowTriage dict] per flagged row. Raises anthropic typed errors; server maps them to HTTP."""
     if not flagged:
         return []
-    client = _get_client()
-    response = client.messages.parse(
-        model=MODEL,
-        max_tokens=4096,
-        messages=[{"role": "user", "content": _build_prompt(columns, flagged)}],
-        output_format=TriageBatch,
-    )
-    return [r.model_dump() for r in response.parsed_output.results]
+    resp = anthropic.Anthropic().messages.parse(
+        model=MODEL, max_tokens=4096, output_format=TriageBatch,
+        messages=[{"role": "user", "content": _build_prompt(columns, flagged)}])
+    return [r.model_dump() for r in resp.parsed_output.results]

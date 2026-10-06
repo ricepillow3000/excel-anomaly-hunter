@@ -1,0 +1,63 @@
+html, body { width: 100%; height: 100%; margin: 0; padding: 0; }
+body { font-family: Segoe UI, -apple-system, Arial, sans-serif; color: #242424; background: #faf9f8; }
+code { background: #f3f2f1; padding: 1px 4px; border-radius: 3px; }
+header { padding: 16px 16px 4px; }
+header h1 { margin: 0; font-size: 20px; }
+h2 { font-size: 14px; margin: 0 0 8px; }
+.sheet-name { margin: 2px 0 0; color: #605e5c; font-size: 12px; }
+.hint { font-size: 12px; color: #605e5c; margin: 0 0 10px; }
+
+.scan-btn, .secondary-btn { display: block; width: 100%; padding: 10px; border: none; border-radius: 4px; font-size: 14px; cursor: pointer; }
+.scan-btn { background: #0f6cbd; color: white; margin: 12px 0; }
+.scan-btn:hover { background: #0a5a9e; }
+.secondary-btn { background: white; color: #242424; border: 1px solid #d1d1d1; }
+.secondary-btn:hover { background: #f3f2f1; }
+.secondary-btn:disabled { color: #a19f9d; cursor: default; }
+
+#main-ui { padding: 0 16px; }
+#main-ui .panel { padding: 0 0 16px; }
+#server-down { padding: 16px; }
+#server-down p { margin: 4px 0; }
+#error-state { color: #d13438; }
+#watch-status { margin: 4px 0 10px; }
+
+.health { display: flex; align-items: center; gap: 16px; padding: 8px 0 16px; }
+/* ponytail: conic-gradient ring, no chart lib */
+.health-ring { width: 84px; height: 84px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-weight: 600; font-size: 16px; background: conic-gradient(var(--ring-color, #107c10) calc(var(--pct, 100) * 1%), #e1dfdd 0); }
+.health-ring span { background: #faf9f8; width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+.health-label { font-weight: 600; font-size: 15px; }
+.health-detail { color: #605e5c; font-size: 12px; margin-top: 2px; }
+
+.stat-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.stat { flex: 1; text-align: center; background: white; border: 1px solid #e1dfdd; border-radius: 4px; padding: 8px 4px; }
+.stat-num { font-size: 20px; font-weight: 600; }
+.stat-label { font-size: 11px; color: #605e5c; }
+.bucket-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+.bucket-chip { font-size: 11px; padding: 3px 8px; border-radius: 12px; background: #f3f2f1; color: #605e5c; }
+.actions-row { display: flex; gap: 8px; margin-bottom: 16px; }
+.actions-row .secondary-btn, .ai-row .secondary-btn { padding: 6px 10px; font-size: 12px; }
+
+.ai-row { background: #f0f6fc; border: 1px solid #c7e0f4; border-radius: 4px; padding: 8px 10px; margin-bottom: 16px; }
+.ai-row label { display: block; font-size: 11px; color: #3b3a39; margin-bottom: 6px; }
+.ai-block { margin-top: 6px; padding-top: 6px; border-top: 1px dashed #d1d1d1; font-size: 11px; }
+.ai-block .verdict { font-weight: 600; }
+.ai-block .verdict.useful-weird { color: #107c10; }
+.ai-block .verdict.broken-weird { color: #c19c00; }
+.ai-block .action-detail { color: #605e5c; font-style: italic; margin-top: 2px; }
+.approve-btn { margin-top: 4px; padding: 3px 8px; font-size: 11px; border: 1px solid #0f6cbd; color: #0f6cbd; background: white; border-radius: 3px; cursor: pointer; }
+.approve-btn:disabled { border-color: #a19f9d; color: #a19f9d; cursor: default; }
+
+.limits-row { display: grid; grid-template-columns: 1fr repeat(4, 60px); gap: 4px; align-items: center; margin-bottom: 6px; font-size: 11px; }
+.limits-row input { width: 100%; box-sizing: border-box; font-size: 11px; padding: 3px; border: 1px solid #d1d1d1; border-radius: 3px; }
+.limits-head { font-size: 10px; color: #605e5c; text-transform: uppercase; }
+
+.flagged-list { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
+.flagged-list li { display: flex; flex-direction: column; padding: 8px 10px; border-left: 3px solid #d13438; border-radius: 2px; margin-bottom: 4px; font-size: 12px; }
+.flagged-list li.sev-high { background: #fdf2f2; border-left-color: #d13438; }
+.flagged-list li.sev-medium { background: #fff8f0; border-left-color: #d29200; }
+.flagged-list li.sev-low { background: #fffdf0; border-left-color: #c19c00; }
+.flagged-list li.sev-noted { background: #fdfbee; border-left-color: #c9c190; }
+.flagged-list li.feed-resolved { background: #f3f2f1; border-left-color: #a19f9d; color: #605e5c; }
+.flagged-list .row-head { display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 2px; }
+.flagged-list .reason { color: #3b3a39; }
+.flagged-list .more { text-align: center; color: #605e5c; font-size: 11px; }

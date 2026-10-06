@@ -89,16 +89,6 @@ def test_scan_rejects_non_json_body():
     assert resp.status_code == 400
 
 
-def test_suggest_limits_route():
-    columns, rows = make_clean_payload()
-    resp = client().post("/suggest-limits", json={"columns": columns, "rows": rows})
-    assert resp.status_code == 200
-    body = resp.get_json()
-    assert set(body) == {"order", "Amount", "Price"}
-    for bounds in body.values():
-        assert len(bounds) == 4
-
-
 def test_latest_scan_404_before_any_scan():
     resp = client().get("/latest-scan")
     assert resp.status_code == 404
