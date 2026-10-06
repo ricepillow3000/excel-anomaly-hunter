@@ -147,12 +147,11 @@ def make_cert(folder=HOME, days=5 * 365):
                  (_ku(digital_signature=1), True), (x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]), False))
     folder.mkdir(parents=True, exist_ok=True)
     pem = serialization.Encoding.PEM
-    files = {"key.pem": key.private_bytes(pem, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()),
-             "ca.pem": ca.public_bytes(pem), "cert.pem": leaf.public_bytes(pem)}  # cert.pem last = "done" marker
-    for name, data in files.items():
-        (folder / (name + ".tmp")).write_bytes(data)
-    for name in files:
-        os.replace(folder / (name + ".tmp"), folder / name)
+    (folder / "cert.pem").unlink(missing_ok=True)  # cert.pem = "done" marker: crash mid-write -> regenerated next run
+    (folder / "key.pem").write_bytes(key.private_bytes(pem, serialization.PrivateFormat.PKCS8,
+                                                       serialization.NoEncryption()))
+    (folder / "ca.pem").write_bytes(ca.public_bytes(pem))
+    (folder / "cert.pem").write_bytes(leaf.public_bytes(pem))
     return True
 
 
