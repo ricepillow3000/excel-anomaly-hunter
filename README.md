@@ -2,9 +2,11 @@
 Excel add-in that flags abnormal rows and tells useful-weird from broken-weird. Never deletes data.
 
 **Install (Windows, desktop Excel, Python 3.14):** download, close Excel, double-click `install.bat`.
-Click **Yes** once when Windows asks to trust the local certificate (it covers only 127.0.0.1). Done: the
-**Anomaly Hunter** button sits on Excel's Home tab in every workbook, and the engine starts hidden at each logon.
-Re-run to repair. `install.bat /u` uninstalls. This is a per-user developer install (sideload), not a store add-in.
+Click **Yes** once when Windows asks to trust the local certificate (it covers only 127.0.0.1).
+Then once in Excel: **Home > Add-ins > More Add-ins > SHARED FOLDER > Anomaly Hunter > Add**. Done: the
+**Anomaly Hunter** button is on the Home tab in every workbook (survives restarts), scanned workbooks reopen with
+the panel open, and the engine starts hidden at each logon. Re-run to repair; `install.bat /u` uninstalls.
+Windows-only per-user install (trusted shared-folder catalog), not a store add-in.
 
 AI triage: set `ANTHROPIC_API_KEY` before installing. No-Excel mode: `anomaly-hunter scan data.csv`.
 
