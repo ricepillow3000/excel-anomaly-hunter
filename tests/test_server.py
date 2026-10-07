@@ -66,6 +66,18 @@ def client():
     return create_app().test_client()
 
 
+def test_ribbon_icons_are_cacheable_but_panel_code_is_not():
+    # Office drops ribbon icons served with no-store/no-cache, so icons must be
+    # cacheable while the panel's HTML/JS and API stay no-store (stale-JS guard).
+    c = client()
+    icon = c.get("/assets/icon-32.png")
+    assert icon.status_code == 200
+    assert "no-store" not in icon.headers["Cache-Control"]
+    assert "no-cache" not in icon.headers["Cache-Control"]
+    assert c.get("/taskpane.html").headers["Cache-Control"] == "no-store"
+    assert c.get("/health").headers["Cache-Control"] == "no-store"
+
+
 def test_health():
     resp = client().get("/health")
     assert resp.status_code == 200

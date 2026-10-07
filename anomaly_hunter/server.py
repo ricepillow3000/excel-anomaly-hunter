@@ -69,7 +69,10 @@ def create_app():
 
     @app.after_request
     def no_cache(resp):
-        resp.headers["Cache-Control"] = "no-store"  # panel files have no content hash; stale JS hid a bug once
+        # panel files have no content hash; stale JS hid a bug once. Icons are the
+        # exception: Office drops ribbon icons served with no-store/no-cache.
+        cacheable = request.path.startswith("/assets/")
+        resp.headers["Cache-Control"] = "public, max-age=86400" if cacheable else "no-store"
         return resp
 
     @app.get("/health")
