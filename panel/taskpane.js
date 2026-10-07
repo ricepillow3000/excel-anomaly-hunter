@@ -124,6 +124,9 @@ async function scanAndRender(s, limits) {
   lastRows = body.rows;
   await applyHighlights(body.rows, s);
   renderResults(body, s.startRow);
+  // a scanned workbook reopens with this pane already open (Office autoopen; manifest TaskpaneId)
+  Office.context.document.settings.set("Office.AutoShowTaskpaneWithDocument", true);
+  Office.context.document.settings.saveAsync();
 }
 
 function showError(msg) {
