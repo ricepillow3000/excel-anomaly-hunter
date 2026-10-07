@@ -113,10 +113,16 @@ def _fix_prompt(columns, rows, i, start_row, start_col, reason, intent, formulas
         "Rules: each change is one cell (A1 style, e.g. D7) and the exact text to enter in it - an Excel formula "
         "(English function names, comma separators, start with =) or a plain value. Prefer a formula when the value "
         "should follow the data. A formula must never refer to the cell it is written into (circular reference): to put "
-        "the median of column D into D7, write =MEDIAN(D2:D6,D8:D45), not =MEDIAN(D2:D45). Change only what the request needs; never overwrite the "
+        "the median of column D into D7, write =MEDIAN(D2:D6,D8:D45), not =MEDIAN(D2:D45). Write only inside the data range. Change only what the request needs; never overwrite the "
         "header row unless asked. If the request can't be done by writing cells (delete/sort/move rows, VBA), "
         "return no changes and explain the manual steps. 'explanation' = 1-3 plain-English sentences for a "
         "non-expert. Don't claim certainty you don't have.")
+
+
+def _in_table(cell, start_row, start_col, n_rows, n_cols):
+    """Is an A1 cell in the header row or a data row of the table? (a prompt-injected cell can't steer writes elsewhere)"""
+    col, row = re.fullmatch(r"([A-Z]+)(\d+)", cell).groups()
+    return start_col < column_index_from_string(col) <= start_col + n_cols and start_row < int(row) <= start_row + 1 + n_rows
 
 
 def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent, formulas=None):
@@ -134,9 +140,11 @@ def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent, 
     changes = [c for c in changes if CELL.fullmatch(c["cell"])][:MAX_CHANGES]
     loops = [c["cell"] for c in changes if refers_to_itself(c["cell"], c["new"])]
     outside = [c["cell"] for c in changes if c["new"].lstrip()[:1] in "=+-@" and OUTSIDE.search(c["new"])]
-    note = "".join(f" (Left out {', '.join(cells)}: the formula {why}.)" for cells, why in (
-        (loops, "referred to its own cell, which Excel can't calculate"), (outside, "reached outside this workbook")) if cells)
-    drop = set(loops + outside)
+    away = [c["cell"] for c in changes if not _in_table(c["cell"], start_row, start_col, len(rows), len(columns))]
+    note = "".join(f" (Left out {', '.join(cells)}: {why}.)" for cells, why in (
+        (loops, "the formula referred to its own cell, which Excel can't calculate"), (outside, "the formula reached outside this workbook"),
+        (away, "outside the table")) if cells)
+    drop = set(loops + outside + away)
     return {"explanation": fix.explanation + note, "changes": [c for c in changes if c["cell"] not in drop]}
 
 

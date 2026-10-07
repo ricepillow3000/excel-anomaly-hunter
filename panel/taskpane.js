@@ -947,8 +947,9 @@ function renderResults(body, startRow, switchTo = true) {
   $("health-pct").textContent = `${h.healthPct}%`;
   $("health-label").textContent = h.healthLabel;
   $("health-detail").textContent = h.healthDetail;
-  $("bucket-row").innerHTML = ["Duplicates", "Irregularities", "Behavioral"]
-    .map((b) => `<span class="bucket-chip">${b}: ${h.bucketCounts[b] || 0}</span>`).join("");
+  // the engine's "Behavioral" bucket is the Route Monitor's "Anomalies" department: one name on screen
+  $("bucket-row").innerHTML = [["Duplicates", "Duplicates"], ["Irregularities", "Irregularities"], ["Behavioral", "Anomalies"]]
+    .map(([b, name]) => `<span class="bucket-chip">${name}: ${h.bucketCounts[b] || 0}</span>`).join("");
 
   const flagged = flaggedRows(body.rows);
   const shown = flagged.slice(0, CAP);

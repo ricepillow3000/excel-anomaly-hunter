@@ -14,6 +14,7 @@ def summary_rows(df):
     cols = [c for c in df.columns if c != "source_file"]
     count = (~df[cols].apply(_blank)).sum(axis=1).to_numpy()
     nums = [c for c in cols if df[c].dtype.kind in "fi"]
+    unlabelled = df[[c for c in cols if c not in nums]].apply(_blank).all(axis=1).to_numpy()  # no text/date filled in
     rows_with = lambda key: df.index.isin(df.attrs.get(key, ()))  # set by load, before coercion
     sparse = count < np.median(count)  # a totals row leaves the label/date/text cells empty
     # "Total" + sparse; "Average"/"Mean" only if half empty ("Average" can be a rating in a normal row)
@@ -27,7 +28,7 @@ def summary_rows(df):
             continue
         above = run[i] - run[start]
         have = ~np.isnan(x[i]) & (above != 0)
-        if i - start >= 2 and sparse[i] and have.any() and (np.abs(x[i][have] - above[have]) <= 0.005 * np.abs(above[have])).all():
+        if i - start >= 2 and sparse[i] and unlabelled[i] and have.any() and (np.abs(x[i][have] - above[have]) <= 0.005 * np.abs(above[have])).all():
             mask[i], start = True, i + 1
     return mask
 

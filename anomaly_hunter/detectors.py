@@ -54,7 +54,8 @@ def column_stats(x):
     """What likely_value needs about a column, computed once: sorted |non-zero values|, their log median, signs."""
     x = x[~np.isnan(x)]
     mags = np.sort(np.abs(x[x != 0]))
-    return {"n": len(x), "nonneg": int((x >= 0).sum()), "mags": mags, "logmed": np.median(np.log10(mags)) if len(mags) else 0.0}
+    return {"n": len(x), "nonneg": int((x >= 0).sum()), "mags": mags, "logmed": np.median(np.log10(mags)) if len(mags) else 0.0,
+            "whole": bool((x == np.round(x)).all())}
 
 
 def likely_value(v, st, lo, hi):
@@ -72,7 +73,7 @@ def likely_value(v, st, lo, hi):
         far = m * BEYOND <= (mags[1] if mags[0] == m else mags[0])
     flip = v < 0 and st["nonneg"] >= 0.95 * (st["n"] - 1)  # sign flip only where negatives are rare (v itself is one)
     for c in ([v / 10 ** k] if 1 <= abs(k) <= 3 and far else []) + ([-v] if flip else []):
-        if lo <= c <= hi:
+        if lo <= c <= hi and (c == round(c) or not st["whole"]):  # 999 in a 1-5 count column is not "likely 0.999"
             return float(f"{c:.10g}")
     return None
 
@@ -114,11 +115,12 @@ def sequence_detector(df, column_types, order_by=None):
     r, order = _result(n), df[by]
     idx = order.sort_values(kind="mergesort").index.to_numpy()
 
-    def hit(pos, mag, what, tail=""):
+    def hit(pos, mag, what):
         i = idx[pos]
         r["votes"][i] = True
         r["magnitude"][i] = max(r["magnitude"][i], mag)
-        r["reasons"][i].append(f"{what} near {order.iloc[i]}{tail}")
+        if (why := f"{what} near {order.iloc[i]}") not in r["reasons"][i]:
+            r["reasons"][i].append(why)
 
     for col in numbers(column_types):
         s = pd.Series(df[col].to_numpy(dtype=float)[idx])
@@ -134,7 +136,7 @@ def sequence_detector(df, column_types, order_by=None):
                 # blame biggest trend gap in last 4 rows, not the diff's own row
                 w = trend[max(0, p - 3):p + 1]
                 b = p if np.isnan(w).all() else max(0, p - 3) + int(np.nanargmax(np.abs(w)))
-                hit(b, mag[p], f"{col} jumped sharply", f" ({k}-order change)")
+                hit(b, mag[p], f"{col} jumped sharply")  # 1st/2nd/3rd differences see the same jump: one reason
     return r
 
 
