@@ -547,6 +547,7 @@ async function askFix() { // L5: engine + Claude only; the sheet is touched late
 // Web research: how Excel pros fix this kind of issue. Sends the issue, not the sheet; shows a reference, writes nothing.
 async function researchFix() {
   if (!fix || $("fix-research").disabled) return; // disabled while busy or without an API key
+  if (!lastRows[fix.i]?.severity) return void ($("fix-status").textContent = "This row is no longer flagged - nothing to research.");
   const f = fix, btn = $("fix-research");
   const dept = issuesOf(lastRows[f.i].reason, lastScan.columns, lastScan.calc?.[f.i])[0]?.dept || "Anomalies";
   btn.disabled = true;
@@ -555,7 +556,8 @@ async function researchFix() {
   monitor.source(f.i, "web", "pending", "searching…");
   try {
     const formula = dept === "Formulas" ? (lastScan.calc?.[f.i] || []).find((v) => String(v).startsWith("=")) || "" : "";
-    const out = await post("/research", { department: DEPTS[dept], reason: lastRows[f.i].reason, columns: lastScan.columns, formula }, 300);
+    const out = await post("/research", { // trimmed to what the engine accepts
+      department: DEPTS[dept], reason: lastRows[f.i].reason.slice(0, 2000), columns: lastScan.columns.slice(0, 200), formula: String(formula).slice(0, 1000) }, 300);
     if (fix !== f) return; // user moved on meanwhile
     $("web-technique").textContent = out.technique + (out.partial ? " (The search ran long - this answer may be incomplete.)" : "");
     $("web-formula").textContent = out.formula;

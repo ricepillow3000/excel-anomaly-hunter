@@ -2,6 +2,7 @@
 Key stays server-side (never panel, never workbook). Claude only proposes; 2 safe actions may auto-apply."""
 import os
 import re
+import urllib.parse
 from typing import Literal
 
 import anthropic
@@ -143,7 +144,7 @@ def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent, 
 
 EXCEL_PROS = ["support.microsoft.com", "learn.microsoft.com", "exceljet.net", "contextures.com", "ablebits.com",
               "myonlinetraininghub.com", "chandoo.org", "excelguru.ca", "exceloffthegrid.com", "excel-easy.com"]
-_researched = {}  # (department, reason without values) -> answer: a repeat click costs nothing
+_researched = {}  # (department, reason without values, columns, formula) -> answer: a repeat click costs nothing
 
 
 class Research(BaseModel):
@@ -164,14 +165,16 @@ def _research_prompt(department, reason, columns, formula):
 
 
 def _host_ok(url):  # no backslashes: a browser reads https://evil.com\.exceljet.net as evil.com
-    host = (url.split("//", 1)[-1].split("/", 1)[0]).lower()
-    return url.startswith("https://") and "\\" not in url and any(host == d or host.endswith("." + d) for d in EXCEL_PROS)
+    p = urllib.parse.urlsplit(url)
+    host = p.hostname or ""  # netloc must be the bare host: no user@, no :port
+    return p.scheme == "https" and "\\" not in url and p.netloc.lower() == host and any(host == d or host.endswith("." + d) for d in EXCEL_PROS)
 
 
 def research(department, reason, columns, formula=""):
     """-> {technique, formula, steps, sources: [{url, title}], partial}. Display only: no cell changes, ever."""
-    reason = re.sub(r"-?\d[\d.,]*", "#", re.sub(r'"[^"]*"', '"…"', reason))  # the issue, not the sheet's values
-    key = (department, reason)
+    # the issue, not the sheet's values: quoted text and standalone numbers go ("#DIV/0!" and "Q1 Sales" stay)
+    reason = re.sub(r"(?<![\w#/])-?\d[\d.,]*", "#", re.sub(r'"[^"]*"', '"…"', reason))
+    key = (department, reason, tuple(columns), formula)  # the formula it suggests is adapted to these columns
     if key in _researched:
         return _researched[key]
     tool = {"type": "web_search_20260209", "name": "web_search", "max_uses": 3, "allowed_domains": EXCEL_PROS}

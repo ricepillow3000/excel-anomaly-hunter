@@ -139,3 +139,24 @@ def test_research_needs_a_key(monkeypatch):
     monkeypatch.setattr(triage, "api_key_configured", lambda: False)
     r = post(BODY)
     assert r.status_code == 503 and "ANTHROPIC_API_KEY" in r.get_json()["error"]
+
+
+def test_only_a_bare_vetted_https_host_counts_as_a_source():
+    assert triage._host_ok("https://exceljet.net/x") and triage._host_ok("https://www.ablebits.com/office-addins-blog/")
+    for bad in ("https://evil.com?.exceljet.net", "https://evil.com#.exceljet.net", "https://evil.com\\.exceljet.net/",
+                "https://exceljet.net@evil.com/", "https://evil.com/@exceljet.net", "https://exceljet.net:8443/",
+                "http://exceljet.net/", "https://evilexceljet.net/", "javascript:alert(1)//exceljet.net"):
+        assert not triage._host_ok(bad), bad
+
+
+def test_masking_keeps_error_codes_and_headers_but_drops_values(api):
+    post({**BODY, "department": "Formula bugs", "reason": "Excel error #DIV/0! in Q1 Sales; Units weird limit is 0; this is -5.5"})
+    prompt = api["sent"][0]["messages"][0]["content"]
+    assert "Excel error #DIV/0! in Q1 Sales; Units weird limit is #; this is #" in prompt and "5.5" not in prompt
+
+
+def test_cached_answer_is_per_sheet_columns_and_formula(api):
+    post(BODY)
+    post({**BODY, "columns": ["Other", "Headers"]})  # same issue, other sheet: its own formula
+    post({**BODY, "formula": "=B2/C2"})
+    assert len(api["sent"]) == 3
