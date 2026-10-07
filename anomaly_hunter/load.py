@@ -37,7 +37,9 @@ def _dates(s):
     once for the column - a 13/01 anywhere (and no 01/13) means 01/02 is the 1st of February, not January 2nd."""
     parts = s.astype(str).str.extract(r"^\s*(\d{1,2})[/.-](\d{1,2})[/.-]\d{2,4}").astype(float)
     dayfirst = bool((parts[0] > 12).any() and not (parts[1] > 12).any())
-    d = pd.to_datetime(s, errors="coerce", format="mixed", dayfirst=dayfirst)
+    dmy = parts[0].notna()  # only those cells: dayfirst would also flip ISO dates (2024-01-05 -> May 1)
+    d = pd.to_datetime(s.where(~dmy), errors="coerce", format="mixed").fillna(
+        pd.to_datetime(s.where(dmy), errors="coerce", format="mixed", dayfirst=dayfirst))
     return d.where(d.dt.year.between(1900, 2200))
 
 

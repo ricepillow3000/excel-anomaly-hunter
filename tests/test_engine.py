@@ -524,3 +524,11 @@ def test_two_product_clusters_do_not_flood():
     rows = [[f"r{i}", 500 + i % 11 if i % 10 < 3 else 100 + i % 7] for i in range(200)]
     _, out = _scan(["Row", "Price"], rows)
     assert sum(r["severity"] in ("Medium", "High") for r in out) <= 2
+
+
+def test_one_day_first_date_does_not_flip_the_iso_dates_around_it():
+    from anomaly_hunter.load import load_from_records
+    rows = [[f"2024-01-0{d}", d] for d in range(1, 7)] + [["25/12/2024", 7], ["2024-02-03 00:00:00", 8]]
+    df, types, _ = load_from_records(["When", "Amt"], rows)
+    assert types["When"] == "date"
+    assert [d.strftime("%Y-%m-%d") for d in df["When"]] == [f"2024-01-0{d}" for d in range(1, 7)] + ["2024-12-25", "2024-02-03"]
