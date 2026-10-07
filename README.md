@@ -8,10 +8,10 @@ Then once in Excel: **Home > Add-ins > More Add-ins > SHARED FOLDER > Anomaly Hu
 the panel open, and the engine starts hidden at each logon. Re-run to repair; `install.bat /u` uninstalls.
 Windows-only per-user install (trusted shared-folder catalog), not a store add-in.
 
-**Fix a flagged row:** after a scan, click a highlighted row (in the sheet or in the pane's list). The pane shows
-why it was flagged and asks what you want, in plain English ("replace the -5 with the median of Units"), or leave it
-blank for a recommended fix. Claude proposes exact cell formulas, you see old -> new, and nothing changes until you
-click **Apply** (one-click **Undo** after).
+**Fix a flagged row:** after a scan, click a highlighted row (in the sheet or in the pane's list). A **recommended
+fix** shows up at once (no AI needed): e.g. a number past its limits -> the median of the rest of its column. Want
+something else? Type it in plain English ("replace the -5 with the average Units for East") and **Ask AI** writes the
+Excel formula. Either way you see old -> new, nothing changes until you click **Apply**, and **Undo** puts it back.
 
 AI triage + fixes: set `ANTHROPIC_API_KEY` before installing. No-Excel mode: `anomaly-hunter scan data.csv`.
 
