@@ -87,8 +87,41 @@
 
       <section id="error-state" class="panel" style="display: none"><p id="error-text"></p></section>
 
-      <section class="panel">
+      <section class="panel" id="route-monitor">
         <h2>Route Monitor</h2>
+        <figure class="rm">
+          <svg viewBox="0 0 300 202" role="img" aria-labelledby="rm-title rm-desc">
+          <title id="rm-title">Route Monitor</title><desc id="rm-desc">No scan yet.</desc>
+          <defs><marker id="rm-arrow" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L6 3L0 6z" /></marker></defs>
+          <path class="rm-street" d="M8 72H292M150 8V148" />
+          <g class="rm-bldg" id="rm-Duplicates"><rect x="8" y="8" width="134" height="56" rx="2" /><rect class="rm-band" x="8" y="8" width="134" height="3" />
+            <text class="rm-name" x="16" y="26">Duplicates</text><text class="rm-count" x="16" y="52">–</text>
+            <rect class="rm-bar" x="56" y="46" width="0" height="4" /><circle class="rm-resident" cx="132" cy="22" r="3" /></g>
+          <g class="rm-bldg" id="rm-Irregularities"><rect x="158" y="8" width="134" height="56" rx="2" /><rect class="rm-band" x="158" y="8" width="134" height="3" />
+            <text class="rm-name" x="166" y="26">Irregularities</text><text class="rm-count" x="166" y="52">–</text>
+            <rect class="rm-bar" x="206" y="46" width="0" height="4" /><circle class="rm-resident" cx="282" cy="22" r="3" /></g>
+          <g class="rm-bldg" id="rm-Anomalies"><rect x="8" y="80" width="134" height="56" rx="2" /><rect class="rm-band" x="8" y="80" width="134" height="3" />
+            <text class="rm-name" x="16" y="98">Anomalies</text><text class="rm-count" x="16" y="124">–</text>
+            <rect class="rm-bar" x="56" y="118" width="0" height="4" /><circle class="rm-resident" cx="132" cy="94" r="3" /></g>
+          <g class="rm-bldg" id="rm-Formulas"><rect x="158" y="80" width="134" height="56" rx="2" /><rect class="rm-band" x="158" y="80" width="134" height="3" />
+            <text class="rm-name" x="166" y="98">Formula bugs</text><text class="rm-count" x="166" y="124">–</text>
+            <rect class="rm-bar" x="206" y="118" width="0" height="4" /><circle class="rm-resident" cx="282" cy="94" r="3" /></g>
+          <rect class="rm-plaza" x="142" y="64" width="16" height="16" rx="2" />
+          <text class="rm-head" x="292" y="158" text-anchor="end">LIBRARY OF SOURCES</text>
+          <g class="rm-shelf" id="rm-src-engine"><rect x="8" y="164" width="92" height="34" rx="2" />
+            <text class="rm-name" x="15" y="178">Engine checks</text><text class="rm-note" x="15" y="191">–</text></g>
+          <g class="rm-shelf" id="rm-src-ai"><rect x="104" y="164" width="92" height="34" rx="2" />
+            <text class="rm-name" x="111" y="178">Claude AI</text><text class="rm-note" x="111" y="191">–</text></g>
+          <g class="rm-shelf" id="rm-src-web"><rect x="200" y="164" width="92" height="34" rx="2" />
+            <text class="rm-name" x="207" y="178">Excel pros</text><text class="rm-note" x="207" y="191">–</text></g>
+          <path class="rm-route" id="rm-route-engine" d="" marker-end="url(#rm-arrow)" />
+          <path class="rm-route" id="rm-route-ai" d="" marker-end="url(#rm-arrow)" />
+          <path class="rm-route" id="rm-route-web" d="" marker-end="url(#rm-arrow)" />
+          <g id="rm-case"><circle class="rm-halo" cx="150" cy="72" r="10" /><circle class="rm-dot" cx="150" cy="72" r="5" /></g>
+          </svg>
+          <figcaption id="rm-caption">Scan to see where each issue goes.</figcaption>
+        </figure>
+        <ol id="rm-trace" class="rm-trace" aria-live="polite"></ol>
         <label class="hint"><input type="checkbox" id="watch-toggle" /> Watch this sheet for changes</label>
         <p class="hint" id="watch-status"></p>
         <ul id="watch-feed" class="flagged-list"></ul>

@@ -1,6 +1,6 @@
 // Panel pure-logic check, no Office/fetch. Run: node panel/selfcheck.js
 const assert = require("node:assert");
-const { flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade } = require("./taskpane.js");
+const { briefOf, routePath, issuesOf, districtCounts, flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade } = require("./taskpane.js");
 
 const clean = computeHealthSummary({
   rows: [{ severity: null }, { severity: null }, { severity: "Noted" }],
@@ -107,5 +107,24 @@ assert.deepEqual(rec.changes, [{ cell: "A2", new: "Sales" }], "fix only the colu
 
 // L2: flagged rows worst first, clean rows out, data-row index kept
 assert.deepEqual(flaggedRows([{ severity: null, magnitude: 0 }, { severity: "Low", magnitude: 2 }, { severity: "High", magnitude: 9 }]).map((r) => r.i), [2, 1]);
+
+// L6: each issue in the engine's own wording goes to exactly one department, worst-to-fix first
+const R = 'Flagged by 3 of 4: Units weird limit is 105; this is 9999 (likely 99.99); Duplicate of row 7; Excel error #DIV/0! in Ratio; ' +
+  'Dept "sales" looks like "Sales" (same word, different capitals/spaces); Text "12O" in number column Qty; Blank cell in column Qty, which is otherwise filled; ' +
+  "Unusual combination of values, mainly Price; Does not belong to any group of similar rows; Units jumped sharply near 2026-01-26 00:00:00 (1-order change); " +
+  "Units is unusual relative to its local trend near 2026-01-26 00:00:00";
+assert.deepEqual(issuesOf(R, ["Units", "Qty"], null).map((x) => x.dept),
+  ["Formulas", "Duplicates", "Irregularities", "Irregularities", "Irregularities", "Irregularities", "Anomalies", "Anomalies", "Anomalies", "Anomalies"]);
+assert.equal(issuesOf(R, ["Units"], null).find((x) => x.dept === "Irregularities").text, "Units weird limit is 105; this is 9999 (likely 99.99)", "limit clause kept whole");
+assert.equal(issuesOf("Flagged by 1 of 4: Variance weird limit is 0; this is -5", ["Variance"], ["=B2-C2"])[0].dept, "Formulas", "odd value in a formula cell");
+assert.deepEqual(issuesOf("", [], null), []);
+const dc = districtCounts([{ severity: "High", reason: "Flagged by 2 of 4: A weird limit is 1; this is 9; Duplicate of row 2" }, { severity: "Noted", reason: "A baseline limit is 1; this is 2" },
+  { severity: null, reason: "" }], ["A"], null);
+assert.deepEqual([dc.counts, dc.flagged], [{ Formulas: 0, Duplicates: 1, Irregularities: 1, Anomalies: 0 }, 1], "Noted rows aren't counted");
+assert.equal(briefOf(issuesOf(R, ["Units"], null)), "Excel error #DIV/0! in Ratio (+9 more)");
+assert.equal(briefOf(issuesOf("Units jumped sharply near 2026-01-26 00:00:00 (1-order change); Units jumped sharply near 2026-01-26 00:00:00 (2-order change)", [], null)),
+  "Units jumped sharply near 2026-01-26", "repeats collapse, timestamps trimmed");
+assert.equal(routePath("Irregularities", "engine"), "M225 64V72H150V150H54V161", "top row goes via the middle street");
+assert.equal(routePath("Anomalies", "web"), "M75 136V150H246V161", "bottom row goes straight down");
 
 console.log("panel self-check passed");

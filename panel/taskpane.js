@@ -5,8 +5,9 @@ const COLOR = { High: "#FFC7CE", Medium: "#FFEB9C", Low: "#FFFFCC", Noted: "#FFF
 const CAP = 25; // ponytail: list cap so big sheets don't flood the pane
 const PANELS = ["empty-state", "limits-editor", "results", "fix-view", "error-state"];
 
-// ==== How the pane is wired: five layers in a line, like a circuit ====
+// ==== How the pane is wired: five layers in a line, like a circuit, plus a monitor watching them ====
 //   L1 Scan -> L2 Flag -> L3 Highlight -> L4 Suggest (click a row: fix, Apply, Undo) -> L5 Ask AI
+//   L6 Route Monitor: each layer reports to it; it draws where every issue goes and which sources answered.
 // Each button enters at one layer; a layer only works on what the layer before handed it.
 // Everything that reads or writes the sheet goes through `circuit`: one action at a time, in click
 // order - a scan, an auto-rescan, an Apply and an Undo can never interleave.
@@ -79,6 +80,7 @@ async function checkHealth() {
     if (!r.ok) throw new Error();
     aiAvailable = !!(await r.json()).ai_available;
     $("ai-toggle").disabled = $("run-triage").disabled = $("fix-ask").disabled = !aiAvailable;
+    monitor.ready(aiAvailable);
     serverUp(true);
   } catch {
     serverUp(false);
@@ -180,6 +182,7 @@ async function scanAndRender(s, limits) {
   triaged = {};
   undos = {};
   renderResults(body, s.startRow); // L2 Flag
+  monitor.scanned(body.rows, s, "Scan"); // L6
   await applyHighlights(body.rows, s); // L3 Highlight
   await watchSelection(s.sheet); // L4 Suggest: clicks on the scanned sheet now open fixes
   // a scanned workbook reopens with this pane already open (Office autoopen; manifest TaskpaneId)
@@ -253,6 +256,8 @@ async function rescan() { // L1-L3 again on the WATCHED sheet (not whichever she
     lastRows = body.rows;
     triaged = {}; // verdicts were for the old values
     renderResults(body, s.startRow, false); // L2: list refreshed in place - an open fix view stays open
+    const news = diffs.filter((d) => d.kind === "new").length;
+    monitor.scanned(body.rows, s, `Auto-rescan: ${news} new, ${diffs.length - news} resolved`); // L6
     await applyHighlights(body.rows, s); // L3
     renderWatchFeed(diffs, s.startRow);
   } catch (e) {
@@ -487,6 +492,7 @@ async function openFix(i, selectInSheet) {
   const r = lastRows[i];
   if (!r || !r.severity) return; // list item left over from before a Route Monitor rescan
   const f = (fix = { i, changes: [], sheet }); // the fix remembers its sheet: Apply/Undo write there, whatever happens later
+  monitor.investigate(i); // L6
   $("fix-title").textContent = `Fix row ${startRow + i + 2} - ${r.severity}`;
   $("fix-values").textContent = columns.map((c, j) => `${c}: ${rows[i][j]}`).join(" · ");
   const t = triaged[i];
@@ -516,6 +522,7 @@ async function askFix() { // L5: engine + Claude only; the sheet is touched late
   btn.disabled = true;
   btn.textContent = "Thinking… (up to a minute)";
   $("fix-status").textContent = "";
+  monitor.source("ai", "pending", "thinking…");
   try {
     const { columns, rows, startRow, startCol } = lastScan;
     const out = await post("/fix", { // outside the circuit, so it may take its time
@@ -523,8 +530,10 @@ async function askFix() { // L5: engine + Claude only; the sheet is touched late
       reason: lastRows[f.i].reason, intent: $("fix-intent").value, formulas: lastScan.calc?.[f.i],
     }, 300);
     if (fix === f) await showFix(f, "AI suggestion", out); // else: user moved to another row meanwhile
+    if (fix === f) monitor.source("ai", "on", "answered", `Claude: ${out.explanation}`);
   } catch (e) {
     if (fix === f) $("fix-status").textContent = "Could not get a fix: " + e.message;
+    if (fix === f) monitor.source("ai", "failed", "failed");
   } finally {
     btn.disabled = !aiAvailable;
     btn.textContent = "Ask AI";
@@ -699,6 +708,126 @@ async function undoFix(f) {
   }
 }
 
+// ---- L6 Route Monitor: a district of four departments and a library of sources. Draws only - never
+// touches the sheet, never calls the engine. Nothing moves unless a layer reported something real. ----
+
+const DEPTS = { Formulas: "Formula bugs", Duplicates: "Duplicates", Irregularities: "Irregularities", Anomalies: "Anomalies" }; // fix order
+// geometry of the drawing in taskpane.html (viewBox 300x202): where a case stops, where each route leaves, shelf centers
+const CORNER = { Duplicates: [142, 64], Irregularities: [158, 64], Anomalies: [142, 80], Formulas: [158, 80] };
+const DOOR = { Duplicates: [75, 64], Irregularities: [225, 64], Anomalies: [75, 136], Formulas: [225, 136] };
+const SHELF_X = { engine: 54, ai: 150, web: 246 };
+// Pure: a route from a department's door down the streets to a source shelf (top row goes via the middle street)
+const routePath = (dept, src) => {
+  const [x, y] = DOOR[dept];
+  return `M${x} ${y}` + (y < 72 ? "V72H150" : "") + `V150H${SHELF_X[src]}V161`;
+};
+
+// Pure: a row's engine reason -> its issues, each sent to one department, worst-to-fix first
+// (a broken formula or a double entry explains what follows it). calc = the row's formulas.
+function issuesOf(reason, columns, calc) {
+  const order = Object.keys(DEPTS);
+  const parts = String(reason || "").replace(/^Flagged by \d+ of \d+: /, "").split("; ").filter(Boolean);
+  // "Units weird limit is 0; this is -5" is ONE issue: glue "this is ..." back onto the clause before it
+  const clauses = parts.reduce((a, p) => (/^this is /.test(p) && a.length ? (a[a.length - 1] += "; " + p) : a.push(p), a), []);
+  return clauses.map((text) => {
+    const j = columns.indexOf((/^(.+?) weird limit/.exec(text) || [])[1]);
+    const dept = /^Excel error #/.test(text) || (j >= 0 && String(calc?.[j]).startsWith("=")) ? "Formulas"
+      : /^Duplicate of row/.test(text) ? "Duplicates"
+      : /weird limit|^Blank cell|looks like "|^Text ".*" in number column/.test(text) ? "Irregularities" : "Anomalies";
+    return { dept, text };
+  }).sort((a, b) => order.indexOf(a.dept) - order.indexOf(b.dept));
+}
+
+// Pure: one short line for the trace - first issue, timestamps trimmed, the rest counted
+function briefOf(issues) {
+  const texts = [...new Set(issues.map((x) => x.text.replace(/ 00:00:00/g, "").replace(/ \(\d-order change\)/, "")))];
+  const first = texts[0] || "flagged";
+  return (first.length > 90 ? first.slice(0, 89) + "…" : first) + (texts.length > 1 ? ` (+${texts.length - 1} more)` : "");
+}
+
+// Pure: issues per department over the flagged rows (Noted rows aren't flagged)
+function districtCounts(rows, columns, calc) {
+  const counts = { Formulas: 0, Duplicates: 0, Irregularities: 0, Anomalies: 0 };
+  let flagged = 0;
+  rows.forEach((r, i) => {
+    if (!r.severity || r.severity === "Noted") return;
+    flagged++;
+    issuesOf(r.reason, columns, calc?.[i]).forEach((x) => counts[x.dept]++);
+  });
+  return { counts, flagged };
+}
+
+const monitor = {
+  scanned(rows, s, how) { // L1-L3 finished: counts per department, the case waits on the plaza
+    const { counts, flagged } = districtCounts(rows, s.columns, s.calc);
+    const total = Object.values(counts).reduce((a, b) => a + b, 0), most = Math.max(1, ...Object.values(counts));
+    for (const d in DEPTS) {
+      const g = $(`rm-${d}`);
+      g.classList.toggle("has-issues", counts[d] > 0);
+      g.querySelector(".rm-count").textContent = counts[d];
+      g.querySelector(".rm-bar").setAttribute("width", (76 * counts[d]) / most);
+    }
+    this.home();
+    this.caption(`${total} issue${total === 1 ? "" : "s"} in ${flagged} flagged row${flagged === 1 ? "" : "s"}. Click one to follow it.`);
+    this.log(`${how}: ` + (total ? Object.keys(DEPTS).filter((d) => counts[d]).map((d) => `${DEPTS[d]} ${counts[d]}`).join(", ") : "nothing flagged"));
+  },
+  investigate(i) { // L4 opened a row: its case travels to the department that should fix it first
+    const r = lastRows[i], issues = issuesOf(r.reason, lastScan.columns, lastScan.calc?.[i]);
+    const dept = issues[0]?.dept || "Anomalies", [x, y] = CORNER[dept], row = lastScan.startRow + i + 2;
+    this.home();
+    $(`rm-${dept}`).classList.add("is-target");
+    $("rm-case").style.transform = `translate(${x - 150}px, ${y - 72}px)`;
+    for (const src in SHELF_X) $(`rm-route-${src}`).setAttribute("d", routePath(dept, src));
+    const checks = /^Flagged by (\d+) of (\d+)/.exec(r.reason);
+    this.source("engine", "on", checks ? `${checks[1]} of ${checks[2]} checks` : "hygiene check");
+    const also = issues.slice(1).map((x) => DEPTS[x.dept]).filter((d, k, a) => d !== DEPTS[dept] && a.indexOf(d) === k);
+    this.caption(`Row ${row} → ${DEPTS[dept]}${also.length ? ` (also ${also.join(", ")})` : ""}`);
+    this.log(`Row ${row} → ${DEPTS[dept]}: ${briefOf(issues)}`);
+  },
+  source(src, state, note, line) { // a source was asked (pending), answered (on) or failed - routes only for real answers
+    const route = $(`rm-route-${src}`), shelf = $(`rm-src-${src}`);
+    route.classList.toggle("is-on", state === "on" || state === "pending");
+    route.classList.toggle("is-pending", state === "pending");
+    shelf.classList.toggle("is-on", state === "on");
+    $("rm-case").classList.toggle("is-busy", state === "pending");
+    shelf.querySelector(".rm-note").textContent = note;
+    if (line) this.log(line);
+  },
+  ready(ai) { // which shelves can answer at all
+    for (const src of ["ai", "web"]) {
+      $(`rm-src-${src}`).classList.toggle("is-off", !ai);
+      $(`rm-src-${src}`).querySelector(".rm-note").textContent = ai ? (src === "web" ? "web · on request" : "on request") : "needs API key";
+    }
+    $("rm-src-engine").querySelector(".rm-note").textContent = "always on";
+  },
+  home() { // case back on the plaza, nothing targeted, no routes, shelves back to idle
+    this.ready(aiAvailable);
+    $("rm-case").style.transform = "";
+    $("rm-case").classList.remove("is-busy");
+    document.querySelectorAll(".rm-bldg.is-target, .rm-shelf.is-on").forEach((g) => g.classList.remove("is-target", "is-on"));
+    document.querySelectorAll(".rm-route").forEach((p) => p.classList.remove("is-on", "is-pending"));
+  },
+  caption(text) {
+    $("rm-caption").textContent = text;
+    $("rm-desc").textContent = text; // the picture's accessible description says the same
+  },
+  log(text, links = []) { // newest last, five lines kept; links only https
+    const li = document.createElement("li"), t = document.createElement("time");
+    t.textContent = new Date().toTimeString().slice(0, 8);
+    li.append(t, text);
+    links.filter((l) => /^https:\/\//.test(l.url)).forEach((l, k) => {
+      const a = document.createElement("a");
+      a.href = l.url;
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.textContent = l.title || new URL(l.url).hostname;
+      li.append(k ? " · " : " ", a);
+    });
+    $("rm-trace").append(li);
+    while ($("rm-trace").children.length > 5) $("rm-trace").firstChild.remove();
+  },
+};
+
 // ---- L2 Flag: the dashboard and the list of flagged rows ----
 
 function renderResults(body, startRow, switchTo = true) {
@@ -760,4 +889,4 @@ function esc(s) {
   return d.innerHTML;
 }
 
-if (typeof module !== "undefined") module.exports = { flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade };
+if (typeof module !== "undefined") module.exports = { briefOf, routePath, issuesOf, districtCounts, flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade };

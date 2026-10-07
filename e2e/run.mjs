@@ -34,7 +34,27 @@ const cell = (a) => page.evaluate((a) => __cell("Sales", a), a);
 const scanned = async () => { await page.click("#scan"); await page.click("#save-limits"); await page.waitForSelector("#results", { state: "visible" }); };
 const recShown = () => page.waitForFunction(() => document.querySelector("#fix-result").style.display === "block" && document.querySelector("#fix-label").textContent === "Recommended fix");
 
-if (mode === "layers") {
+if (mode === "monitor") {
+  const shot = async (name) => (await page.$("#route-monitor")).screenshot({ path: DIR + `rm-${name}.png` });
+  await shot("0-idle");
+  await scanned();
+  await shot("1-scanned");
+  await page.click("#flagged-list li[data-row-index] >> text=Row 11");
+  await recShown();
+  await shot("2-investigate-row11");
+  await page.fill("#fix-intent", "slow please, average for East");
+  await page.click("#fix-ask");
+  await page.waitForTimeout(700);
+  await shot("3-ai-pending");
+  await page.waitForFunction(() => document.querySelector("#fix-label").textContent === "AI suggestion", null, { timeout: 15000 });
+  await shot("4-ai-answered");
+  await page.click("#fix-back");
+  await page.click("#flagged-list li[data-row-index] >> text=Row 22");
+  await recShown();
+  await shot("5-investigate-row22");
+  await page.setViewportSize({ width: 280, height: 900 });
+  await shot("6-narrow-280");
+} else if (mode === "layers") {
   // 1) Clear highlights must restore the ORIGINAL fills even after several scans
   await page.evaluate(() => { __fill("Sales", "A5", "#C6EFCE"); __fill("Sales", "B5", "#C6EFCE"); });
   await scanned(); // first scan + limits

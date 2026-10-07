@@ -157,3 +157,7 @@ def test_engine_reason_wording_the_panel_reads():
     assert "Blank cell in column Units, which" in reasons
     assert 'Text "12O" in number column Units' in reasons
     assert "Duplicate of row 7" in reasons
+    # the Route Monitor glues "<col> weird limit is X; this is Y" back together (panel/taskpane.js issuesOf)
+    rows = [[k, 10 + k % 3] for k in range(40)] + [[99, 500]]
+    res = c.post("/scan", json={"columns": cols, "rows": rows, "limits": {"Units": [9, 13, 0, 20]}}).get_json()["rows"]
+    assert "Units weird limit is 20; this is 500" in res[-1]["reason"]
