@@ -55,7 +55,7 @@ def column_stats(x):
     x = x[~np.isnan(x)]
     mags = np.sort(np.abs(x[x != 0]))
     return {"n": len(x), "nonneg": int((x >= 0).sum()), "mags": mags, "logmed": np.median(np.log10(mags)) if len(mags) else 0.0,
-            "whole": bool((x == np.round(x)).all())}
+            "whole": bool((x == np.round(x)).mean() >= 0.95)}
 
 
 def likely_value(v, st, lo, hi):
@@ -124,6 +124,8 @@ def sequence_detector(df, column_types, order_by=None):
 
     for col in numbers(column_types):
         s = pd.Series(df[col].to_numpy(dtype=float)[idx])
+        if (s >= 0).mean() >= 0.95 and (s == 0).mean() >= 0.05:  # weekend / closed-day zeros are not spikes
+            s = s.where(s != 0)
         trend = (s - s.rolling(7, center=True, min_periods=1).median()).to_numpy()
         votes, mag = robust_vote(trend)
         for p in np.where(votes)[0]:

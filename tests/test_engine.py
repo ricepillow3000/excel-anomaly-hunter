@@ -550,3 +550,53 @@ def test_clustering_ignores_last_bit_rounding_between_equal_distances():
     from anomaly_hunter.load import load_from_records
     df, types, _ = load_from_records(["c0", "c1"], [[x, y] for x, y in zip(a, b)])
     assert np.array_equal(clustering_detector(df, types)["votes"], _clustering_on_every_row(df, types))
+
+
+# ---- final functional re-attack (council decisions) ----
+
+def test_a_real_category_named_error_or_unknown_is_not_a_placeholder():
+    rows = [[f"n{i}", "Error" if i % 10 == 0 else "OK", "Unknown" if i % 5 == 0 else "High", "-" if i % 3 == 0 else "J"] for i in range(100)]
+    _, out = _scan(["Name", "Status", "Priority", "Initial"], rows)
+    assert not any("Placeholder" in r["reason"] for r in out)
+    rows = [[f"n{i}", ["Cash", "Card"][i % 2]] for i in range(100)]
+    for i in range(4):
+        rows[i][1], rows[50 + i][1] = "ERROR", "UNKNOWN"  # 4% each, like the real dirty sales data
+    _, out = _scan(["Name", "Pay"], rows)
+    assert sum("Placeholder" in r["reason"] for r in out) == 8
+
+
+def test_excel_errors_are_always_flagged_even_when_they_fill_the_column():
+    _, out = _scan(["Name", "Lookup"], [[f"n{i}", "#N/A"] for i in range(40)])
+    assert all(r["reason"] == "Excel error #N/A in Lookup" for r in out)
+
+
+def test_an_accounting_dash_in_a_number_column_is_zero():
+    rows = [[f"n{i}", "-" if i % 5 == 0 else 100 + i % 9] for i in range(60)]
+    rows[7][1] = 9999
+    types, out = _scan(["Name", "Amount"], rows)
+    assert types["Amount"] == "number" and out[7]["severity"] in ("Medium", "High")
+    assert not any(out[i]["severity"] for i in range(0, 60, 5))
+
+
+def test_weekend_zeros_get_no_trend_flags():
+    from datetime import date, timedelta
+    rows = [[(date(2024, 1, 1) + timedelta(i)).isoformat(), 0 if i % 7 in (5, 6) else 480 + (i * 13) % 41] for i in range(200)]
+    rows[100][1] = 5000
+    _, out = _scan(["Day", "Sales"], rows)
+    assert not any("local trend" in out[i]["reason"] for i in range(200) if rows[i][1] == 0)
+    assert out[100]["severity"] == "High"
+
+
+def test_a_dated_subtotal_row_is_still_a_total():
+    rows = [[f"2024-01-{1 + i:02d}", f"item{i}", 40 + i % 5, 14.0 + i % 3] for i in range(10)]
+    rows.append(["2024-01-20", "", sum(r[2] for r in rows), sum(r[3] for r in rows)])
+    rows += [[f"2024-02-{1 + i:02d}", f"item{i}", 40 + i % 5, 14.0 + i % 3] for i in range(30)]
+    _, out = _scan(["When", "Item", "Qty", "Amt"], rows)
+    assert out[10]["reason"] == "Totals/summary row - not checked"
+
+
+def test_one_decimal_does_not_bring_back_fractional_guesses():
+    rows = [[f"n{i}", 1 + i % 5] for i in range(60)]
+    rows[10][1], rows[30][1] = 2.5, 999
+    _, out = _scan(["Name", "Quantity"], rows)
+    assert out[30]["severity"] and "likely" not in out[30]["reason"]

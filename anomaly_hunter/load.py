@@ -50,7 +50,7 @@ MONEY = re.compile(r"(\()?([-+])?[$€£]?\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s*
 
 def _num(s):
     """Cells -> numbers (NaN where not a number). Plain numbers as pandas reads them, plus money/percent text."""
-    num = pd.to_numeric(s, errors="coerce")
+    num = pd.to_numeric(s.mask(s.astype(str).str.strip() == "-", 0), errors="coerce")  # "-" is how accounting format shows 0
     m = s[num.isna()].astype(str).str.strip().str.extract(f"^{MONEY.pattern}$")
     ok = m[2].notna() & (m[0].isna() == m[5].isna())  # parentheses come in pairs
     v = (m[2].str.replace(",", "") + m[3].fillna("")).astype(float)

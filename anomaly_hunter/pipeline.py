@@ -14,7 +14,8 @@ def summary_rows(df):
     cols = [c for c in df.columns if c != "source_file"]
     count = (~df[cols].apply(_blank)).sum(axis=1).to_numpy()
     nums = [c for c in cols if df[c].dtype.kind in "fi"]
-    unlabelled = df[[c for c in cols if c not in nums]].apply(_blank).all(axis=1).to_numpy()  # no text/date filled in
+    # no text filled in (a date may be: a month-end subtotal is dated)
+    unlabelled = df[[c for c in cols if c not in nums and df[c].dtype.kind != "M"]].apply(_blank).all(axis=1).to_numpy()
     rows_with = lambda key: df.index.isin(df.attrs.get(key, ()))  # set by load, before coercion
     sparse = count < np.median(count)  # a totals row leaves the label/date/text cells empty
     # "Total" + sparse; "Average"/"Mean" only if half empty ("Average" can be a rating in a normal row)
@@ -64,16 +65,18 @@ PLACEHOLDER = re.compile(r"error|unknown|n/a|null|\?|-", re.I)
 
 
 def placeholders(df, column_types, skip):
-    """ERROR / UNKNOWN / N/A / NULL / ? / - or an Excel error left in a text column. Not when it's half the column or
-    more: then it's the sheet's own convention."""
+    """ERROR / UNKNOWN / N/A / NULL / ? / - left in a text column, when that word is rare (< 8% of the column: more often
+    it's a real category, like Status "Error"). Excel errors (#N/A) always: they are a broken formula, never a category."""
     out = [[] for _ in range(len(df))]
     for col, t in column_types.items():
         if t != "text":
             continue
         v = df[col].astype(str).str.strip()
         err = v.str.match(EXCEL_ERROR)
-        hit = (v.str.fullmatch(PLACEHOLDER) | err) & ~skip
-        if hit.any() and hit.sum() < 0.5 * (~_blank(df[col]) & ~skip).sum():
+        ph, key = v.str.fullmatch(PLACEHOLDER) & ~skip, v.str.upper()
+        rare = key.map(key[ph].value_counts()).fillna(0) <= max(1, 0.08 * (~_blank(df[col]) & ~skip).sum())
+        hit = (err & ~skip) | (ph & rare)
+        if hit.any():
             for i in df.index[hit]:
                 out[i].append(f"Excel error {v[i]} in {col}" if err[i] else f'Placeholder "{v[i]}" in column {col}')
     return out
