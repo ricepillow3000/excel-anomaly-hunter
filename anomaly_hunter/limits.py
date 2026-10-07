@@ -42,6 +42,8 @@ def suggest_limits_dict(df, number_columns):
             v = [_round(med + k * sd, step, k > 0) for k in (-3, 3, -6, 6)]
             if (x >= 0).mean() >= 0.95:  # counts/prices: a negative is weird, so lows stop at 0
                 v[0], v[2] = max(v[0], 0.0), max(v[2], 0.0)
+                if (x == 0).mean() >= 0.05:  # zero is a regular value (weekends, no-sale days), not an error
+                    v[0] = v[2] = 0.0
             if len(x) >= 10 and (x > 0).all():  # all positive: >=15x below typical is weird too (sq ft 19 for 1915)
                 logs = np.log10(x)
                 low = 10 ** (logs.median() - max(6 * spread(logs), math.log10(15)))

@@ -54,7 +54,8 @@ def column_stats(x):
     """What likely_value needs about a column, computed once: sorted |non-zero values|, their log median, signs."""
     x = x[~np.isnan(x)]
     mags = np.sort(np.abs(x[x != 0]))
-    return {"n": len(x), "nonneg": int((x >= 0).sum()), "mags": mags, "logmed": np.median(np.log10(mags)) if len(mags) else 0.0}
+    return {"n": len(x), "nonneg": int((x >= 0).sum()), "mags": mags, "logmed": np.median(np.log10(mags)) if len(mags) else 0.0,
+            "whole": bool((x == np.round(x)).mean() >= 0.95)}
 
 
 def likely_value(v, st, lo, hi):
@@ -72,7 +73,7 @@ def likely_value(v, st, lo, hi):
         far = m * BEYOND <= (mags[1] if mags[0] == m else mags[0])
     flip = v < 0 and st["nonneg"] >= 0.95 * (st["n"] - 1)  # sign flip only where negatives are rare (v itself is one)
     for c in ([v / 10 ** k] if 1 <= abs(k) <= 3 and far else []) + ([-v] if flip else []):
-        if lo <= c <= hi:
+        if lo <= c <= hi and (c == round(c) or not st["whole"]):  # 999 in a 1-5 count column is not "likely 0.999"
             return float(f"{c:.10g}")
     return None
 
@@ -114,14 +115,18 @@ def sequence_detector(df, column_types, order_by=None):
     r, order = _result(n), df[by]
     idx = order.sort_values(kind="mergesort").index.to_numpy()
 
-    def hit(pos, mag, what, tail=""):
+    def hit(pos, mag, what):
         i = idx[pos]
         r["votes"][i] = True
         r["magnitude"][i] = max(r["magnitude"][i], mag)
-        r["reasons"][i].append(f"{what} near {order.iloc[i]}{tail}")
+        if (why := f"{what} near {order.iloc[i]}") not in r["reasons"][i]:
+            r["reasons"][i].append(why)
 
     for col in numbers(column_types):
         s = pd.Series(df[col].to_numpy(dtype=float)[idx])
+        v = s.dropna()
+        if len(v) and (v >= 0).mean() >= 0.95 and (v == 0).mean() >= 0.05:  # weekend / closed-day zeros are not spikes
+            s = s.where(s != 0)
         trend = (s - s.rolling(7, center=True, min_periods=1).median()).to_numpy()
         votes, mag = robust_vote(trend)
         for p in np.where(votes)[0]:
@@ -134,7 +139,7 @@ def sequence_detector(df, column_types, order_by=None):
                 # blame biggest trend gap in last 4 rows, not the diff's own row
                 w = trend[max(0, p - 3):p + 1]
                 b = p if np.isnan(w).all() else max(0, p - 3) + int(np.nanargmax(np.abs(w)))
-                hit(b, mag[p], f"{col} jumped sharply", f" ({k}-order change)")
+                hit(b, mag[p], f"{col} jumped sharply")  # 1st/2nd/3rd differences see the same jump: one reason
     return r
 
 
@@ -164,6 +169,9 @@ def isolation_detector(df, column_types):
     return {**_result(n), "votes": votes, "magnitude": mag, "reasons": reasons}
 
 
+MAX_DISTINCT = 100_000  # above this, grouping alone takes ~20s+ and GBs: it sits out and says why
+
+
 def clustering_detector(df, column_types):
     """DBSCAN noise rows. eps = robust cutoff on k-th neighbor distance."""
     n, cols = len(df), numbers(column_types)
@@ -171,9 +179,18 @@ def clustering_detector(df, column_types):
         return _result(n, why)
     x = _scaled(df, cols).to_numpy()
     ms = max(5, 2 * len(cols))
-    # kneighbors() with no X skips self; passing X would count self at distance 0
-    kth = NearestNeighbors(n_neighbors=min(ms, n - 1)).fit(x).kneighbors()[0][:, -1]
-    votes = DBSCAN(eps=max(np.median(kth) + K * spread(kth), 1e-9), min_samples=ms).fit_predict(x) == -1
+    # Same answer, once per DISTINCT row: real sheets repeat values (107 patterns in 10k sales rows) and DBSCAN on the
+    # copies grows with rows squared (200k rows: 9 GB, never finished). Each pattern weighs as many rows as share it.
+    xu, inv, cnt = np.unique(x, axis=0, return_inverse=True, return_counts=True)
+    inv = inv.ravel()
+    if len(xu) > MAX_DISTINCT:
+        return _result(n, f"too many different rows to group ({len(xu):,}; limit {MAX_DISTINCT:,})")
+    # k-th nearest OTHER row: walk each pattern's neighbours adding up rows until k = min(ms, n-1) are passed
+    dist, idx = NearestNeighbors(n_neighbors=min(ms + 1, len(xu))).fit(xu).kneighbors(xu)
+    w = cnt[idx] - (idx == np.arange(len(xu))[:, None])  # a pattern's own other copies sit at distance 0
+    kth = dist[np.arange(len(xu)), np.argmax(np.cumsum(w, axis=1) >= min(ms, n - 1), axis=1)]
+    kth = np.round(kth, 9)[inv]  # equal distances can differ in the last bit by path; a 1e-16 "spread" would shrink eps
+    votes = DBSCAN(eps=max(np.median(kth) + K * spread(kth), 1e-9), min_samples=ms).fit_predict(xu, sample_weight=cnt)[inv] == -1
     # ponytail: magnitude = kth distance in spread units, sort key only
     mag = np.where(votes, kth / (spread(kth) or 1.0), 0.0)
     return {**_result(n), "votes": votes, "magnitude": mag,

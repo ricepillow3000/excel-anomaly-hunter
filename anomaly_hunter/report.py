@@ -44,4 +44,9 @@ def write_report(df, rows, status, out_path, limits_path, warnings):
     summary = wb.create_sheet("Summary")
     for line in lines:
         summary.append(line)
+    for ws in wb:  # a scanned cell "=HYPERLINK(...)" or "=cmd|..." stays text: opening the report never runs it
+        for row in ws.iter_rows():
+            for cell in row:
+                if cell.data_type == "f":
+                    cell.data_type = "s"
     wb.save(out_path)

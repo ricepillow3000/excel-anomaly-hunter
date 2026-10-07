@@ -48,6 +48,8 @@ if (mode === "monitor") { // L6 Route Monitor + web research, with screenshots o
   const total = counts.reduce((a, b) => a + b, 0);
   ok(total > 0 && (await text("#rm-caption")).startsWith(`${total} issue`), "scan: department counts add up to the caption - " + counts);
   ok(+(await text("#rm-Irregularities .rm-count")) >= 2, "scan: both planted Units values reach Irregularities");
+  ok((await text("#bucket-row")).includes("Anomalies:") && !(await text("#bucket-row")).includes("Behavioral"), "summary bar and Route Monitor use the same names");
+  ok((await text("#sheet-name")) === "Sales", "header names the scanned sheet - " + (await text("#sheet-name")));
 
   await page.click("#flagged-list li[data-row-index] >> text=Row 11");
   await recShown();
@@ -115,8 +117,11 @@ if (mode === "monitor") { // L6 Route Monitor + web research, with screenshots o
   // 1) Clear highlights must restore the ORIGINAL fills even after several scans
   await page.evaluate(() => { __fill("Sales", "A5", "#C6EFCE"); __fill("Sales", "B5", "#C6EFCE"); });
   await scanned(); // first scan + limits
+  await page.evaluate(() => (__ranges = 0));
   await page.click("#scan"); await page.waitForSelector("#results", { state: "visible" }); // second scan
   await page.waitForFunction(() => !document.querySelector("#scan").disabled);
+  const touched = await page.evaluate(() => [__ranges, lastRows.filter((r) => r.severity).length, lastRows.length]);
+  ok(touched[0] <= 2 * touched[1] + 5, `highlights touch only flagged rows: ${touched[0]} Excel objects for ${touched[1]} flagged of ${touched[2]} rows`);
   await page.click("#clear-highlights");
   await page.waitForTimeout(300);
   const fills = await page.evaluate(() => Array.from({ length: 41 }, (_, k) => __cell("Sales", "A" + (k + 1)).fill));
@@ -221,6 +226,18 @@ if (mode === "monitor") { // L6 Route Monitor + web research, with screenshots o
   await page.evaluate(() => __drop("Second")); // the scanned sheet disappears -> the note can't be written
   await page.click(".approve-btn"); await page.waitForTimeout(600);
   ok((await text(".approve-btn")) === "Failed - retry", "failed Approve shows 'Failed - retry': " + (await text(".approve-btn")));
+  // last) a sheet too big to read at once: only the top is scanned, and the panel says exactly which rows weren't
+  await page.evaluate((rows) => __load("Big", rows, [0]), rows);
+  await page.evaluate(() => (window.MAX_CELLS = 120)); // 4 columns -> 30 sheet rows read of 41
+  await page.click("#scan"); // limits are saved in the workbook already: straight to the results
+  await page.waitForFunction(() => document.querySelector("#health-detail").textContent.includes("NOT checked"), null, { timeout: 15000 });
+  const cutMsg = "checked down to row 30 of 41. Rows below 30 were NOT checked.";
+  const deepest = await page.evaluate(() => lastScan.startRow + 1 + lastRows.length);
+  ok((await text("#health-detail")).includes(cutMsg) && (await text("#rm-trace")).includes(cutMsg) && deepest === 30 && !(await vis("error-state")),
+    "sheet over the cap: top scanned, the rest named as NOT checked - " + (await text("#health-detail")));
+  ok((await page.evaluate(() => [__cell("Big", "C11").fill, __cell("Big", "C22").fill, __cell("Big", "C35").fill])).map(Boolean).join() === "true,true,false",
+    "planted rows above the cap flagged and highlighted, nothing below it");
+  await page.evaluate(() => (window.MAX_CELLS = 0));
 } else if (mode === "layout") {
   // construction cost report: 3 title rows, header on row 4, data rows 5-44, formula column, Grand Total on row 45
   const g = [["Project: Riverside Medical Office"], ["Cost Report - Period 9"], [""],
@@ -404,6 +421,20 @@ if (mode === "monitor") { // L6 Route Monitor + web research, with screenshots o
   await page.waitForSelector("#limits-editor", { state: "visible" });
   await page.evaluate(() => __userSelect("Sales", "B22"));
   ok(await vis("limits-editor"), "clicking a flagged row never yanks you out of the limits editor");
+  const inp = page.locator("#limits-rows .limits-row[data-column] input"), was = [await inp.nth(0).inputValue(), await inp.nth(1).inputValue()];
+  const savedLimits = () => page.evaluate(() => JSON.stringify(__settings.anomalyHunterLimits));
+  const before = await savedLimits();
+  await inp.nth(0).fill("999"); await inp.nth(1).fill("1"); await page.click("#save-limits");
+  ok(await vis("limits-editor") && (await text("#limits-error")).includes("low value is above") && (await savedLimits()) === before,
+    "limits low > high: editor stays open, says why, nothing saved");
+  await inp.nth(0).fill(was[0]); await inp.nth(1).fill(was[1]);
+  await page.click("#save-limits");
+  await page.waitForSelector("#results", { state: "visible" });
+  await page.evaluate(() => { const l = __settings.anomalyHunterLimits, c = Object.keys(l)[0]; __settings.anomalyHunterLimits = { ...l, [c]: [9, 1, ...l[c].slice(2)] }; });
+  await page.click("#scan"); // a workbook saved with bad limits before they were checked
+  await page.waitForSelector("#limits-editor", { state: "visible" });
+  ok((await text("#limits-error")).includes("the low value is above the high value"), "old bad limits in a workbook: back to the editor with the reason, not a dead end");
+  await inp.nth(0).fill(was[0]); await inp.nth(1).fill(was[1]);
   await page.click("#save-limits");
   await page.waitForSelector("#results", { state: "visible" });
   await page.click("#scan"); await page.waitForSelector("#results", { state: "visible" });
@@ -419,6 +450,7 @@ if (mode === "monitor") { // L6 Route Monitor + web research, with screenshots o
   ok(await page.evaluate(() => __handlers("Sales") === 0 && __handlers("Other") === 1), "watcher moved to the newly scanned sheet");
 }
 const real = errors.filter((e) => !(mode === "oldengine" && e.startsWith("Failed to load resource: the server responded with a status of 404"))
-  && !(mode === "layers" && e.includes("ItemNotFound Second"))); // test 12 deletes that sheet on purpose
+  && !(mode === "layers" && e.includes("ItemNotFound Second")) // test 12 deletes that sheet on purpose
+  && !(mode === "ai" && e.includes("status of 400 (BAD REQUEST)"))); // the old-bad-limits check gets the engine's 400 on purpose
 ok(real.length === 0, "no page errors " + JSON.stringify(real));
 await browser.close();

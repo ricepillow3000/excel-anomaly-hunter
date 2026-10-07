@@ -7,6 +7,7 @@
     const cells = {}; const ws = { name, cells, changed: [], selected: [] };
     const cell = (r, c) => (cells[r + "," + c] ||= { v: "", f: null, nf: "General", fill: null });
     const range = (r0, c0, nr, nc) => {
+      window.__ranges = (window.__ranges || 0) + 1; // Excel objects made: highlights must only touch flagged rows
       const grid = (fn) => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => fn(cell(r0 + i, c0 + j))));
       const set = (vals, asFormula) => vals.forEach((row, i) => row.forEach((v, j) => {
         const k = cell(r0 + i, c0 + j);
@@ -20,7 +21,7 @@
         load() { return this; }, select() { ws.selected.forEach((h) => h({ address: L(c0) + (r0 + 1) + ":" + L(c0 + nc - 1) + (r0 + nr) })); },
         get values() { return grid((k) => k.v); }, set values(v) { set(v, false); },
         get formulas() { return grid((k) => k.f ?? k.v); }, set formulas(v) { set(v, true); },
-        get numberFormat() { return grid((k) => k.nf); },
+        get numberFormat() { return grid((k) => k.nf); }, set numberFormat(v) { v.forEach((row, i) => row.forEach((f, j) => (cell(r0 + i, c0 + j).nf = f))); },
         format: { fill: { load() { return this; }, get color() { return cell(r0, c0).fill; },
           set color(x) { for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) cell(r0 + i, c0 + j).fill = x; },
           clear() { this.color = null; } } },

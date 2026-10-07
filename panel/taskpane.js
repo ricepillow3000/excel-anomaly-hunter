@@ -18,7 +18,7 @@ let lastScan = null; // L1: {columns, rows, startRow, startCol, sheet, calc} the
 let lastRows = null; // L1: the engine's verdict per row
 let editorSheet = null; // L1: sheet data the limits editor rescans
 let triageRows = []; // L2: the flagged rows shown (what triage reads)
-let painted = null; // L3: {sheet, startRow, startCol, width, colors} - what Clear highlights puts back
+let painted = null; // L3: {sheet, startRow, startCol, width, colors: {row: old color}} - what Clear highlights puts back
 let picker = null; // L4: onSelectionChanged handle - clicking a highlighted row opens its fix
 let fix = null; // L4: {i, changes} for the row open in the fix view
 let undos = {}; // L4: row index -> cells to restore, while an applied fix hasn't been undone
@@ -114,16 +114,28 @@ function saveLimits(limits) {
   Office.context.document.settings.saveAsync();
 }
 
+// A scan reads at most this many cells (~250k rows x 8 columns, about a minute): Excel refuses one read over 5M cells,
+// and the engine's time and memory grow with it. Only the bottom is cut, so row numbers never shift.
+const maxCells = () => globalThis.MAX_CELLS || 2e6;
+
 async function readSheet(name) {
   return Excel.run(async (ctx) => {
     const ws = ctx.workbook.worksheets;
     const sheet = (name ? ws.getItem(name) : ws.getActiveWorksheet()).load("name");
-    const used = sheet.getUsedRange().load("values, formulas, numberFormat, rowIndex, columnIndex");
+    const used = sheet.getUsedRange().load("rowIndex, columnIndex, rowCount, columnCount");
     await ctx.sync();
-    const t = tableFromGrid(used.values, used.numberFormat, used.rowIndex, used.columnIndex, used.formulas);
-    return t && { ...t, sheet: sheet.name };
+    const n = Math.min(used.rowCount, Math.floor(maxCells() / used.columnCount));
+    const g = sheet.getRangeByIndexes(used.rowIndex, used.columnIndex, n, used.columnCount).load("values, formulas, numberFormat");
+    await ctx.sync();
+    const t = tableFromGrid(g.values, g.numberFormat, used.rowIndex, used.columnIndex, g.formulas);
+    // cut = [last sheet row read, last sheet row with data]
+    return t && { ...t, sheet: sheet.name, cut: n < used.rowCount && [used.rowIndex + n, used.rowIndex + used.rowCount] };
   });
 }
+
+// Pure: the honest line for a sheet too big to read at once
+const cutNote = ([last, total]) =>
+  `Too large to scan at once: checked down to row ${last.toLocaleString("en-US")} of ${total.toLocaleString("en-US")}. Rows below ${last.toLocaleString("en-US")} were NOT checked.`;
 
 // Pure: used-range values -> {columns, rows, startRow, startCol}, or null if there's no header + data row.
 // Header = first row that is mostly filled, so title rows above it ("Cost Report - Period 9") are skipped.
@@ -136,8 +148,12 @@ function tableFromGrid(values, formats, rowIndex, colIndex, formulas) {
   const isDate = formats ? formats[h + 1].map(isDateFormat) : [];
   const rows = values.slice(h + 1).map((r) => r.map((v, j) => (isDate[j] && typeof v === "number" ? excelDate(v) : v)));
   const calc = formulas && formulas.slice(h + 1); // each data row's formulas ("=B2-C2"), so a fix never types over one
-  const seen = {}; // name duplicate headers like the engine does ("Dept", "Dept.1"): limits and fixes are keyed by these
-  const columns = values[h].map((c) => ((c = String(c)), (seen[c] = (seen[c] ?? -1) + 1) ? `${c}.${seen[c]}` : c));
+  const columns = []; // name duplicate headers like the engine does ("Dept", "Dept.1", skipping taken names): limits and fixes are keyed by these
+  values[h].forEach((c) => {
+    let name = String(c);
+    for (let k = 1; columns.includes(name); k++) name = `${c}.${k}`;
+    columns.push(name);
+  });
   return { columns, rows, startRow: rowIndex + h, startCol: colIndex, calc };
 }
 
@@ -169,6 +185,8 @@ async function runScan() {
     }
     await scanAndRender(s, await getLimits());
   } catch (e) {
+    // limits saved before they were checked: back to the editor with the engine's reason, not a dead end
+    if (e.message.startsWith("Limits for")) return editSavedLimits().then(() => ($("limits-error").textContent = e.message));
     showError("Scan failed: " + e.message);
   } finally {
     btn.disabled = false;
@@ -183,6 +201,7 @@ async function scanAndRender(s, limits) {
   lastRows = body.rows;
   triaged = {};
   undos = {};
+  $("sheet-name").textContent = s.sheet; // the sheet these results belong to, not the one the pane opened on
   renderResults(body, s.startRow); // L2 Flag
   monitor.scanned(body.rows, s, "Scan"); // L6
   await applyHighlights(body.rows, s); // L3 Highlight
@@ -298,8 +317,12 @@ function rowItem(sheetRow, severity, reason, note = "") {
 
 // ---- Limits editor ----
 
+// Pure: a saved limit as an input value - a number or nothing (a tampered workbook can't put markup in the page)
+const asNumber = (v) => (v === null || v === "" || !Number.isFinite(Number(v)) ? "" : Number(v));
+
 function renderLimitsEditor(limits, s) {
   editorSheet = s;
+  $("limits-error").textContent = "";
   const box = $("limits-rows");
   box.innerHTML =
     '<div class="limits-row limits-head"><div>Column</div><div>Base lo</div><div>Base hi</div><div>Weird lo</div><div>Weird hi</div></div>';
@@ -307,7 +330,7 @@ function renderLimitsEditor(limits, s) {
     const row = document.createElement("div");
     row.className = "limits-row";
     row.dataset.column = col;
-    row.innerHTML = `<div>${esc(col)}</div>` + bounds.map((v) => `<input type="number" value="${v ?? ""}">`).join("");
+    row.innerHTML = `<div>${esc(col)}</div>` + bounds.map((v) => `<input type="number" value="${asNumber(v)}">`).join("");
     box.appendChild(row);
   }
   only("limits-editor");
@@ -315,9 +338,17 @@ function renderLimitsEditor(limits, s) {
 
 async function saveLimitsAndRescan() {
   const limits = {};
+  let bad = null; // [column, input]: low above high - the editor stays open and nothing is saved
   document.querySelectorAll("#limits-rows .limits-row[data-column]").forEach((row) => {
-    limits[row.dataset.column] = [...row.querySelectorAll("input")].map((i) => (i.value === "" ? null : parseFloat(i.value)));
+    const ins = [...row.querySelectorAll("input")];
+    const b = (limits[row.dataset.column] = ins.map((i) => (i.value === "" ? null : parseFloat(i.value))));
+    const k = [0, 2].find((k) => b[k] !== null && b[k + 1] !== null && b[k] > b[k + 1]);
+    if (!bad && k !== undefined) bad = [row.dataset.column, ins[k]];
   });
+  if (bad) {
+    $("limits-error").textContent = `Limits for ${bad[0]}: the low value is above the high value.`;
+    return bad[1].focus();
+  }
   saveLimits(limits);
   try {
     await scanAndRender(editorSheet, limits);
@@ -347,11 +378,14 @@ async function applyHighlights(rows, s) {
   await Excel.run(async (ctx) => {
     await unpaint(ctx);
     const sheet = ctx.workbook.worksheets.getItem(s.sheet);
-    const fills = rows.map((_, i) => sheet.getRangeByIndexes(s.startRow + 1 + i, s.startCol, 1, s.columns.length).format.fill.load("color"));
+    // only the rows we colour are touched: 100k rows with 15k flagged = 15k Excel objects, not 100k
+    const flagged = rows.flatMap((r, i) => (COLOR[r.severity] ? [i] : []));
+    const fills = flagged.map((i) => sheet.getRangeByIndexes(s.startRow + 1 + i, s.startCol, 1, s.columns.length).format.fill.load("color"));
     await ctx.sync();
-    const colors = fills.map((f) => f.color); // ponytail: one color per row; a row with mixed old fills restores only the first
-    rows.forEach((r, i) => {
-      if (COLOR[r.severity]) fills[i].color = COLOR[r.severity];
+    const colors = {}; // ponytail: one color per row; a row with mixed old fills restores only the first
+    flagged.forEach((i, k) => {
+      colors[i] = fills[k].color;
+      fills[k].color = COLOR[rows[i].severity];
     });
     await ctx.sync();
     painted = { sheet: s.sheet, startRow: s.startRow, startCol: s.startCol, width: s.columns.length, colors };
@@ -366,12 +400,13 @@ async function unpaint(ctx) {
   const sheet = ctx.workbook.worksheets.getItemOrNullObject(p.sheet).load("isNullObject");
   await ctx.sync();
   if (sheet.isNullObject) return void (painted = null); // that sheet was deleted: nothing left to restore
-  const fills = p.colors.map((_, i) => sheet.getRangeByIndexes(p.startRow + 1 + i, p.startCol, 1, p.width).format.fill.load("color"));
+  const idx = Object.keys(p.colors).map(Number);
+  const fills = idx.map((i) => sheet.getRangeByIndexes(p.startRow + 1 + i, p.startCol, 1, p.width).format.fill.load("color"));
   await ctx.sync();
   const ours = new Set(Object.values(COLOR));
-  fills.forEach((fill, i) => {
+  fills.forEach((fill, k) => {
     if (!ours.has(String(fill.color).toUpperCase())) return;
-    if (p.colors[i]) fill.color = p.colors[i];
+    if (p.colors[idx[k]]) fill.color = p.colors[idx[k]];
     else fill.clear();
   });
   await ctx.sync();
@@ -432,6 +467,10 @@ function renderTriage(t) {
   li.appendChild(block);
 }
 
+// Pure: Text format for cells that would otherwise run as a formula ("=WEBSERVICE(...)" copied from the sheet or the AI)
+const textFormats = (vals) => vals.map((v) => (typeof v === "string" && /^\s*[=+\-@]/.test(v) ? "@" : "General"));
+const writeAsIs = (range, vals) => ((range.numberFormat = [textFormats(vals)]), (range.values = [vals]));
+
 async function approve(i, action, detail) {
   const { columns, rows, startRow, startCol } = lastScan;
   await Excel.run(async (ctx) => {
@@ -445,11 +484,11 @@ async function approve(i, action, detail) {
     await ctx.sync();
     if (sheet.isNullObject) {
       sheet = wb.worksheets.add("Anomalies");
-      sheet.getRangeByIndexes(0, 0, 1, columns.length + 1).values = [[...columns, "Reason"]];
+      writeAsIs(sheet.getRangeByIndexes(0, 0, 1, columns.length + 1), [...columns, "Reason"]);
     }
     const used = sheet.getUsedRangeOrNullObject().load("rowCount");
     await ctx.sync();
-    sheet.getRangeByIndexes(used.isNullObject ? 0 : used.rowCount, 0, 1, rows[i].length + 1).values = [[...rows[i], detail]];
+    writeAsIs(sheet.getRangeByIndexes(used.isNullObject ? 0 : used.rowCount, 0, 1, rows[i].length + 1), [...rows[i], detail]);
     await ctx.sync();
   });
 }
@@ -642,7 +681,7 @@ function median(xs) {
 // calc = this row's formulas: a cell holding a formula is never overwritten - its inputs are what's wrong.
 function recommendFix(columns, rows, i, limits, reason, startRow, startCol, likely, calc) {
   const row = startRow + 2 + i;
-  const changes = [], why = [], typos = [], real = [], calcCells = [];
+  const changes = [], why = [], typos = [], real = [], calcCells = [], seen = new Set(); // seen: columns already explained
   reason = reason || "";
   columns.forEach((c, j) => {
     const v = rows[i][j], cell = `${colLetter(startCol + j)}${row}`;
@@ -651,13 +690,14 @@ function recommendFix(columns, rows, i, limits, reason, startRow, startCol, like
     const blank = !!lim && (v === "" || v === null) && reason.includes(`Blank cell in column ${c},`);
     const outside = !!lim && typeof v === "number" && ((lo != null && v < lo) || (hi != null && v > hi));
     if (!(variant || blank || outside)) return;
+    seen.add(c);
     if (calc && String(calc[j]).startsWith("=")) return void calcCells.push(cell); // never type over a formula
     if (variant) {
       changes.push({ cell, new: likely[c] });
       return void typos.push(`${c} says "${v}" where the rest of the column says "${likely[c]}" - same word, different capitals/spaces`);
     }
     const typo = likely && likely[c];
-    if (typo !== undefined && outside) { // engine spotted an obvious typo: extra/missing zeros or a flipped sign
+    if (typo != null && outside) { // engine spotted an obvious typo: extra/missing zeros or a flipped sign
       changes.push({ cell, new: String(typo) });
       return void typos.push(`${c} is ${v} - looks like a typo for ${typo} (${typoKind(v, typo)})`);
     }
@@ -665,7 +705,7 @@ function recommendFix(columns, rows, i, limits, reason, startRow, startCol, like
     if (outside && spansDecade(others)) // wide column (claims, deal sizes): a huge value can be real - don't overwrite it
       return void real.push(`${c} is ${v}, far outside its usual range - but ${c} naturally varies more than 10x, so this may be real`);
     const med = median(others);
-    if (med === null) return;
+    if (med === null) return void seen.delete(c);
     changes.push({ cell, new: String(+med.toPrecision(10)) });
     why.push(blank ? `${c} is blank` : `${c} is ${v}, outside its limits (${lo ?? "no low"} to ${hi ?? "no high"})`);
   });
@@ -680,8 +720,16 @@ function recommendFix(columns, rows, i, limits, reason, startRow, startCol, like
   }
   const dup = /Duplicate of row (\d+)/.exec(reason); // engine counts from a header in row 1
   if (dup) notes.push(`This row repeats row ${+dup[1] + startRow}. If it's a double entry, delete it: right-click the row number > Delete.`);
-  for (const [, raw, col] of reason.matchAll(/Text "([^"]*)" in number column ([^;]+)/g))
-    notes.push(`${col} holds the text "${raw}" where a number belongs - retype it as a number.`);
+  for (const [, raw, kind, col] of reason.matchAll(/Text "([^"]*)" in (number|date) column ([^;]+)/g))
+    notes.push(`${col} holds the text "${raw}" where a ${kind} belongs - retype it as a ${kind}.`);
+  for (const [, raw, col] of reason.matchAll(/Placeholder "([^"]*)" in column ([^;]+)/g))
+    notes.push(`${col} says "${raw}" - a stand-in for a missing value. Fill in the real value, or leave the cell empty.`);
+  // a limit crossed in a cell typed as text ("$1,000,000.00"): explained, never overwritten
+  for (const { text } of issuesOf(reason, columns)) { // anything the loop above didn't explain (text cells, no limits)
+    const m = /^(.+?) weird limit is (\S+); this is (\S+)/.exec(text), b = /^Blank cell in column (.+?), which/.exec(text);
+    if (m && !seen.has(m[1])) notes.push(`${m[1]} is ${m[3]}, past its limit of ${m[2]}. Check it against the source; if it's right, leave it.`);
+    if (b && !seen.has(b[1])) notes.push(`${b[1]} is blank where the rest of the column is filled - fill it in from the source.`);
+  }
   for (const [, err, col] of reason.matchAll(/Excel error (#\S+) in ([^;]+)/g))
     notes.push(`${col} shows ${err}: ${EXCEL_ERRORS[err] || "its formula failed"}. Fix the formula or its inputs ` +
       `(or wrap it in IFERROR(...)) rather than typing a number over it.`);
@@ -767,7 +815,7 @@ function issuesOf(reason, columns, calc) {
     const j = columns.indexOf((/^(.+?) weird limit/.exec(text) || [])[1]);
     const dept = /^Excel error #/.test(text) || (j >= 0 && String(calc?.[j]).startsWith("=")) ? "Formulas"
       : /^Duplicate of row/.test(text) ? "Duplicates"
-      : /weird limit|^Blank cell|looks like "|^Text ".*" in number column/.test(text) ? "Irregularities" : "Anomalies";
+      : /weird limit|^Blank cell|looks like "|^Text ".*" in (number|date) column|^Placeholder "/.test(text) ? "Irregularities" : "Anomalies";
     return { dept, text };
   }).sort((a, b) => order.indexOf(a.dept) - order.indexOf(b.dept));
 }
@@ -819,6 +867,10 @@ const monitor = {
       g.classList.toggle("has-issues", counts[d] > 0);
       g.querySelector(".rm-count").textContent = counts[d];
       g.querySelector(".rm-bar").setAttribute("width", (118 * counts[d]) / most);
+    }
+    if (s.cut) {
+      this.log(cutNote(s.cut));
+      $("health-detail").textContent += " " + cutNote(s.cut);
     }
     this.log(`${how}: ` + (total ? Object.keys(DEPTS).filter((d) => counts[d]).map((d) => `${DEPTS[d]} ${counts[d]}`).join(", ") : "nothing flagged"));
     const open = view === "fix-view" && fix && rows[fix.i]?.severity;
@@ -903,8 +955,9 @@ function renderResults(body, startRow, switchTo = true) {
   $("health-pct").textContent = `${h.healthPct}%`;
   $("health-label").textContent = h.healthLabel;
   $("health-detail").textContent = h.healthDetail;
-  $("bucket-row").innerHTML = ["Duplicates", "Irregularities", "Behavioral"]
-    .map((b) => `<span class="bucket-chip">${b}: ${h.bucketCounts[b] || 0}</span>`).join("");
+  // the engine's "Behavioral" bucket is the Route Monitor's "Anomalies" department: one name on screen
+  $("bucket-row").innerHTML = [["Duplicates", "Duplicates"], ["Irregularities", "Irregularities"], ["Behavioral", "Anomalies"]]
+    .map(([b, name]) => `<span class="bucket-chip">${name}: ${h.bucketCounts[b] || 0}</span>`).join("");
 
   const flagged = flaggedRows(body.rows);
   const shown = flagged.slice(0, CAP);
@@ -951,4 +1004,4 @@ function esc(s) {
   return d.innerHTML;
 }
 
-if (typeof module !== "undefined") module.exports = { plainOf, routePath, issuesOf, districtCounts, flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade };
+if (typeof module !== "undefined") module.exports = { textFormats, cutNote, asNumber, plainOf, routePath, issuesOf, districtCounts, flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade };

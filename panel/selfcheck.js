@@ -1,6 +1,6 @@
 // Panel pure-logic check, no Office/fetch. Run: node panel/selfcheck.js
 const assert = require("node:assert");
-const { plainOf, routePath, issuesOf, districtCounts, flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade } = require("./taskpane.js");
+const { textFormats, cutNote, asNumber, plainOf, routePath, issuesOf, districtCounts, flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade } = require("./taskpane.js");
 
 const clean = computeHealthSummary({
   rows: [{ severity: null }, { severity: null }, { severity: "Noted" }],
@@ -131,5 +131,35 @@ const many = plainOf(issuesOf(R, ["Units", "Qty", "Ratio", "Dept", "Price"], nul
 assert.deepEqual([many.length, many[0], /\(\+7 more\)$/.test(many[2])], [3, "C9 Excel error #DIV/0! in Ratio", true], "long lists are cut, the rest counted");
 assert.equal(routePath("Irregularities", "engine"), "M158 64H150V152H54V161", "route starts at the case");
 assert.equal(routePath("Anomalies", "web"), "M142 80H150V152H246V161");
+
+// Batch 1: header names never collide (same rule as the engine); the limits editor only shows numbers
+assert.deepEqual(tableFromGrid([["Dept", "Dept", "Dept.1"], ["a", "b", "c"]], null, 0, 0).columns, ["Dept", "Dept.1", "Dept.1.1"]);
+assert.deepEqual(tableFromGrid([["Name", "Name", "Name"], ["a", "b", "c"]], null, 0, 0).columns, ["Name", "Name.1", "Name.2"]);
+assert.deepEqual([asNumber(5), asNumber("2.5"), asNumber(null), asNumber(""), asNumber('1" onfocus="alert(1)'), asNumber(Infinity)], [5, 2.5, "", "", "", ""]);
+
+assert.equal(cutNote([250001, 1048576]), "Too large to scan at once: checked down to row 250,001 of 1,048,576. Rows below 250,001 were NOT checked.");
+
+// Batch 3: new engine wording reaches the right department and gets a plain-English note; text cells are never overwritten
+assert.deepEqual(issuesOf('Placeholder "ERROR" in column Pay; Text "UNKNOWN" in date column When', ["Pay", "When"], null).map((x) => x.dept), ["Irregularities", "Irregularities"]);
+const ph = recommendFix(["Pay", "Amt"], [["ERROR", 5], ["Card", 6]], 0, {}, 'Placeholder "ERROR" in column Pay', 0, 0, null, null);
+assert.ok(ph.explanation.includes('Pay says "ERROR" - a stand-in for a missing value') && !ph.changes.length);
+const tx = recommendFix(["When"], [["UNKNOWN"]], 0, {}, 'Text "UNKNOWN" in date column When', 0, 0, null, null);
+assert.ok(tx.explanation.includes("where a date belongs - retype it as a date"));
+const money = recommendFix(["Price"], [["$1,000,000.00"], ["$1,200.00"]], 0, { Price: [900, 1500, 500, 2000] },
+  "Flagged by 1 of 3: Price weird limit is 2000; this is 1000000", 0, 0, null, null);
+assert.ok(!money.changes.length && money.explanation.startsWith("Price is 1000000, past its limit of 2000."), money.explanation);
+
+// Final re-attack: copying a row to the Anomalies sheet never creates a live formula; a crafted reason can't freeze the pane
+assert.deepEqual(textFormats(["=WEBSERVICE(A1)", " +1", "@SUM(1)", "-x", 5, "2024-01-05", "ok", null]), ["@", "@", "@", "@", "General", "General", "General", "General"]);
+const evil = "Flagged by 1 of 3: " + " weird limit is a".repeat(2000) + "; this is 5";
+let t0 = Date.now();
+recommendFix(["Amt"], [[evil]], 0, {}, evil, 0, 0, null, null);
+assert.ok(Date.now() - t0 < 500, `recommendFix took ${Date.now() - t0}ms on a crafted reason`);
+
+const both = recommendFix(["Amt", "Price"], [["$1,000,000.00", 1000], ["$1,200.00", 10]], 0, { Price: [5, 20, 0, 50] },
+  "Flagged by 2 of 3: Amt weird limit is 2000; this is 1000000; Price weird limit is 50; this is 1000", 0, 0, null, null);
+assert.ok(both.explanation.includes("Amt is 1000000, past its limit of 2000") && both.changes.length === 1 && !both.explanation.includes("null"), both.explanation);
+const note = recommendFix(["Name", "Notes"], [["a", ""], ["b", "x"]], 0, {}, "Blank cell in column Notes, which is otherwise filled", 0, 0, null, null);
+assert.ok(note.explanation.startsWith("Notes is blank where the rest of the column is filled"), note.explanation);
 
 console.log("panel self-check passed");
