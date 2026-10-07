@@ -1,15 +1,17 @@
 @echo off
 rem Anomaly Hunter installer. Per user, no admin. Double-click = install or repair. "install.bat /u" = uninstall.
-rem Result: Anomaly Hunter button on Excel's Home tab in every workbook; engine starts hidden at every logon.
+rem Result: Anomaly Hunter listed in Excel's Add-ins (Shared Folder); engine starts hidden at every logon.
 setlocal
 cd /d "%~dp0"
 set "ID=a64b585c-34c7-4447-b3ae-9aa8b3294bcf"
 set "DEV=HKCU\Software\Microsoft\Office\16.0\WEF\Developer"
+set "CAT=HKCU\Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{3f9a1c2e-7b4d-4e8a-9c61-5d2e8f0b7a13}"
 set "RUN=HKCU\Software\Microsoft\Windows\CurrentVersion\Run"
 set "AH=%LOCALAPPDATA%\AnomalyHunter"
 set "CN=Anomaly Hunter local CA"
 set "PY=%~dp0.venv\Scripts\python.exe"
 set "PYW=%~dp0.venv\Scripts\pythonw.exe"
+set "P=%~dp0panel"
 
 rem Excel caches add-ins; cache can only be cleared while Excel is closed.
 tasklist /fi "imagename eq EXCEL.EXE" 2>nul | findstr /i "EXCEL.EXE" >nul && (echo Close Excel first, then run this again. & pause & exit /b 1)
@@ -32,9 +34,17 @@ if %RC%==3 (
     certutil -user -addstore Root "%AH%\ca.pem" >nul || (del "%AH%\cert.pem" & echo Certificate not trusted - click Yes on the Windows prompt. Run this again. & pause & exit /b 1)
 )
 
-echo [3/5] Adding the button to Excel (every workbook)...
+echo [3/5] Listing Anomaly Hunter in Excel (Add-ins, Shared Folder)...
+rem A trusted catalog is a real install: survives restarts, reopens with saved workbooks.
+rem (The old "developer" registry entry is debug-only - Office drops it from saved workbooks.)
+rem Catalogs must be a share path, so use this PC's own admin share: \\localhost\C$\...\panel
+reg delete "%DEV%" /v %ID% /f >nul 2>&1
 reg delete "%DEV%\%ID%" /f >nul 2>&1
-reg add "%DEV%" /v %ID% /t REG_SZ /d "%~dp0panel\manifest.xml" /f >nul
+set "UNC=\\localhost\%P:~0,1%$%P:~2%"
+if not exist "%UNC%\manifest.xml" (echo Cannot reach %UNC% - the C$ admin share is off on this PC. & pause & exit /b 1)
+reg add "%CAT%" /v Id /t REG_SZ /d "{3f9a1c2e-7b4d-4e8a-9c61-5d2e8f0b7a13}" /f >nul
+reg add "%CAT%" /v Url /t REG_SZ /d "%UNC%" /f >nul
+reg add "%CAT%" /v Flags /t REG_DWORD /d 1 /f >nul
 rd /s /q "%LOCALAPPDATA%\Microsoft\Office\16.0\Wef" 2>nul
 
 echo [4/5] Engine starts hidden at every logon...
@@ -50,9 +60,10 @@ if %N% geq 60 (echo Engine did not answer. Log: "%AH%\server.log" & pause & exit
 ping -n 2 127.0.0.1 >nul
 goto wait
 :up
-reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\excel.exe" >nul 2>&1 || (echo Installed. Excel desktop is not installed yet - the button appears once it is. & pause & exit /b 0)
-echo Installed. Excel is opening - Anomaly Hunter is on the Home tab of every workbook.
-start excel
+echo.
+echo Installed. ONE TIME in Excel: Home ^> Add-ins ^> More Add-ins ^> SHARED FOLDER ^> Anomaly Hunter ^> Add.
+echo After that: Anomaly Hunter button in every workbook, survives restarts, scanned workbooks reopen with it.
+reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\excel.exe" >nul 2>&1 && start excel
 pause
 exit /b 0
 
@@ -60,6 +71,7 @@ exit /b 0
 reg delete "%RUN%" /v AnomalyHunter /f >nul 2>&1
 reg delete "%DEV%" /v %ID% /f >nul 2>&1
 reg delete "%DEV%\%ID%" /f >nul 2>&1
+reg delete "%CAT%" /f >nul 2>&1
 certutil -user -delstore Root "%CN%" >nul 2>&1
 rd /s /q "%AH%" 2>nul
 rd /s /q "%LOCALAPPDATA%\Microsoft\Office\16.0\Wef" 2>nul
