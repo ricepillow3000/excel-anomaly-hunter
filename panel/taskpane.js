@@ -466,6 +466,10 @@ function renderTriage(t) {
   li.appendChild(block);
 }
 
+// Pure: Text format for cells that would otherwise run as a formula ("=WEBSERVICE(...)" copied from the sheet or the AI)
+const textFormats = (vals) => vals.map((v) => (typeof v === "string" && /^\s*[=+\-@]/.test(v) ? "@" : "General"));
+const writeAsIs = (range, vals) => ((range.numberFormat = [textFormats(vals)]), (range.values = [vals]));
+
 async function approve(i, action, detail) {
   const { columns, rows, startRow, startCol } = lastScan;
   await Excel.run(async (ctx) => {
@@ -479,11 +483,11 @@ async function approve(i, action, detail) {
     await ctx.sync();
     if (sheet.isNullObject) {
       sheet = wb.worksheets.add("Anomalies");
-      sheet.getRangeByIndexes(0, 0, 1, columns.length + 1).values = [[...columns, "Reason"]];
+      writeAsIs(sheet.getRangeByIndexes(0, 0, 1, columns.length + 1), [...columns, "Reason"]);
     }
     const used = sheet.getUsedRangeOrNullObject().load("rowCount");
     await ctx.sync();
-    sheet.getRangeByIndexes(used.isNullObject ? 0 : used.rowCount, 0, 1, rows[i].length + 1).values = [[...rows[i], detail]];
+    writeAsIs(sheet.getRangeByIndexes(used.isNullObject ? 0 : used.rowCount, 0, 1, rows[i].length + 1), [...rows[i], detail]);
     await ctx.sync();
   });
 }
@@ -719,9 +723,11 @@ function recommendFix(columns, rows, i, limits, reason, startRow, startCol, like
   for (const [, raw, col] of reason.matchAll(/Placeholder "([^"]*)" in column ([^;]+)/g))
     notes.push(`${col} says "${raw}" - a stand-in for a missing value. Fill in the real value, or leave the cell empty.`);
   // a limit crossed in a cell typed as text ("$1,000,000.00"): explained, never overwritten
-  for (const [, col, lim, v] of reason.matchAll(/([^;:]+?) weird limit is ([^;]+); this is ([^;(]+)/g))
-    if (!changes.length && !why.length && !typos.length && !real.length && !calcCells.length)
-      notes.push(`${col.trim()} is ${v.trim()}, past its limit of ${lim}. Check it against the source; if it's right, leave it.`);
+  if (!changes.length && !why.length && !typos.length && !real.length && !calcCells.length)
+    for (const { text } of issuesOf(reason, columns)) {
+      const m = /^(.+?) weird limit is (\S+); this is (\S+)/.exec(text);
+      if (m) notes.push(`${m[1]} is ${m[3]}, past its limit of ${m[2]}. Check it against the source; if it's right, leave it.`);
+    }
   for (const [, err, col] of reason.matchAll(/Excel error (#\S+) in ([^;]+)/g))
     notes.push(`${col} shows ${err}: ${EXCEL_ERRORS[err] || "its formula failed"}. Fix the formula or its inputs ` +
       `(or wrap it in IFERROR(...)) rather than typing a number over it.`);
@@ -996,4 +1002,4 @@ function esc(s) {
   return d.innerHTML;
 }
 
-if (typeof module !== "undefined") module.exports = { cutNote, asNumber, plainOf, routePath, issuesOf, districtCounts, flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade };
+if (typeof module !== "undefined") module.exports = { textFormats, cutNote, asNumber, plainOf, routePath, issuesOf, districtCounts, flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade };

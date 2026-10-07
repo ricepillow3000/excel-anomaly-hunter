@@ -532,3 +532,11 @@ def test_one_day_first_date_does_not_flip_the_iso_dates_around_it():
     df, types, _ = load_from_records(["When", "Amt"], rows)
     assert types["When"] == "date"
     assert [d.strftime("%Y-%m-%d") for d in df["When"]] == [f"2024-01-0{d}" for d in range(1, 7)] + ["2024-12-25", "2024-02-03"]
+
+
+
+def test_cell_text_quoted_in_a_reason_is_kept_short():
+    rows = [[f"n{i}", 50 + i % 7] for i in range(40)]
+    rows[3][1] = "x" * 5000
+    _, out = _scan(["Name", "Amt"], rows)
+    assert len(out[3]["reason"]) < 200 and out[3]["reason"].startswith('Text "xxx')

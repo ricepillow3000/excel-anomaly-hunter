@@ -39,17 +39,20 @@ def _bad(body):
     rows = body.get("rows")
     if not isinstance(rows, list) or any(not isinstance(r, list) or len(r) != len(body["columns"]) for r in rows):
         return "'rows' must be a list of lists, each as long as 'columns'"
-    finite = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
-    if not all(v is None or isinstance(v, (str, bool)) or finite(v) for r in rows for v in r):
-        return "cells must be text, numbers, true/false or blank"  # NaN/Infinity parse as JSON in Python, not in Excel
+    if not all(isinstance(c, (str, int, float)) and not isinstance(c, bool) for c in body["columns"]):
+        return "column names must be text or numbers"
+    # NaN/Infinity parse as JSON in Python, not in Excel; a 400-digit whole number is just a (flagged) value
+    if not all(v is None or isinstance(v, (str, bool, int)) or isinstance(v, float) and math.isfinite(v) for r in rows for v in r):
+        return "cells must be text, numbers, true/false or blank"
     limits = body.get("limits")
+    number = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and -1e300 < v < 1e300  # NaN fails too
     if limits is not None and not (isinstance(limits, dict) and all(
-            isinstance(b, list) and len(b) == 4 and all(v is None or finite(v) for v in b) for b in limits.values())):
+            isinstance(b, list) and len(b) == 4 and all(v is None or number(v) for v in b) for b in limits.values())):
         return "'limits' must give each column [base low, base high, weird low, weird high] as numbers or blanks"
     for col, b in (limits or {}).items():
         if any(lo is not None and hi is not None and lo > hi for lo, hi in (b[:2], b[2:])):
             return f"Limits for {col}: the low value is above the high value - fix it in Edit limits"
-    if body.get("order_by") is not None and body["order_by"] not in body["columns"]:
+    if body.get("order_by") is not None and str(body["order_by"]) not in map(str, body["columns"]):
         return "'order_by' must be one of the columns"
     return None
 
@@ -78,11 +81,11 @@ def create_app():
         body = request.get_json(silent=True)
         if err := _bad(body):
             return {"error": err}, 400
-        cols, rows, limits = body["columns"], body["rows"], body.get("limits")
+        cols, rows, limits = [str(c) for c in body["columns"]], body["rows"], body.get("limits")  # a year header 2024 is "2024"
         try:
             df, types, errors = load_from_records(cols, rows)
             suggested = suggest_limits_dict(df, numbers(types)) if limits is None else None
-            out, status = score(df, types, errors, limits or {}, body.get("order_by"))
+            out, status = score(df, types, errors, limits or {}, None if body.get("order_by") is None else str(body["order_by"]))
         except Exception:  # a bug in the engine: full detail to the log, not pandas internals to the user
             app.logger.exception("scan failed")
             return {"error": "Engine error - details in server.log"}, 500

@@ -44,10 +44,17 @@ def duplicates(df):
     return out
 
 
+def _short(t):
+    """Cell text quoted in a reason, at most 60 characters: a 32k-character cell keeps the reason readable."""
+    t = str(t)
+    return t if len(t) <= 60 else t[:57] + "..."
+
+
 def type_errors(n, errors_log, column_types):
     out = [[] for _ in range(n)]
     for i, col, raw in errors_log:
         kind = "date" if column_types[col] == "date" else "number"
+        raw = _short(raw)
         out[i].append(f"Excel error {raw} in {col}" if EXCEL_ERROR.match(str(raw).strip()) else f'Text "{raw}" in {kind} column {col}')
     return out
 
@@ -103,7 +110,7 @@ def spellings(df, column_types, skip):
             for raw, c in counts.iloc[1:].items():
                 if counts.iloc[0] >= 3 * c:
                     for i in grp.index[grp == raw]:
-                        out[i].append(f'{col} "{raw}" looks like "{counts.index[0]}" (same word, different capitals/spaces)')
+                        out[i].append(f'{col} "{_short(raw)}" looks like "{_short(counts.index[0])}" (same word, different capitals/spaces)')
                         fix[i][col] = counts.index[0]
     return out, fix
 

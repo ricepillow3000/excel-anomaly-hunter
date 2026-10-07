@@ -222,3 +222,18 @@ def test_an_engine_bug_is_logged_not_leaked(monkeypatch):
 def test_power_bi_link_uses_https():
     from pathlib import Path
     assert '"url": "https://127.0.0.1:5055/latest-scan"' in (Path(__file__).parent.parent / "powerbi/anomaly-hunter.pbids").read_text()
+
+
+
+def test_a_huge_whole_number_is_a_value_not_a_crash():
+    r = scan({"columns": ["Name", "Amt"], "rows": GOOD[:39] + [["x", int("9" * 400)]]})
+    assert r.status_code == 200 and r.get_json()["rows"][39]["severity"]
+    r = scan({"columns": ["Name", "Amt"], "rows": GOOD, "limits": {"Amt": [int("9" * 400), None, None, None]}})
+    assert r.status_code == 400
+
+
+def test_column_names_must_be_text_or_numbers_and_numeric_headers_work():
+    assert scan({"columns": [{"x": 1}, "b"], "rows": [[1, 2], [2, 1]]}).status_code == 400
+    rows = [[f"2024-01-{1 + i % 28:02d}", 50 + i % 7] for i in range(40)]
+    r = scan({"columns": [2024, "b"], "rows": rows, "order_by": 2024})  # a year as a header, used to sort
+    assert r.status_code == 200, r.get_json()

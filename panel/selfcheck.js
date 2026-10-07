@@ -1,6 +1,6 @@
 // Panel pure-logic check, no Office/fetch. Run: node panel/selfcheck.js
 const assert = require("node:assert");
-const { cutNote, asNumber, plainOf, routePath, issuesOf, districtCounts, flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade } = require("./taskpane.js");
+const { textFormats, cutNote, asNumber, plainOf, routePath, issuesOf, districtCounts, flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade } = require("./taskpane.js");
 
 const clean = computeHealthSummary({
   rows: [{ severity: null }, { severity: null }, { severity: "Noted" }],
@@ -148,5 +148,12 @@ assert.ok(tx.explanation.includes("where a date belongs - retype it as a date"))
 const money = recommendFix(["Price"], [["$1,000,000.00"], ["$1,200.00"]], 0, { Price: [900, 1500, 500, 2000] },
   "Flagged by 1 of 3: Price weird limit is 2000; this is 1000000", 0, 0, null, null);
 assert.ok(!money.changes.length && money.explanation.startsWith("Price is 1000000, past its limit of 2000."), money.explanation);
+
+// Final re-attack: copying a row to the Anomalies sheet never creates a live formula; a crafted reason can't freeze the pane
+assert.deepEqual(textFormats(["=WEBSERVICE(A1)", " +1", "@SUM(1)", "-x", 5, "2024-01-05", "ok", null]), ["@", "@", "@", "@", "General", "General", "General", "General"]);
+const evil = "Flagged by 1 of 3: " + " weird limit is a".repeat(2000) + "; this is 5";
+let t0 = Date.now();
+recommendFix(["Amt"], [[evil]], 0, {}, evil, 0, 0, null, null);
+assert.ok(Date.now() - t0 < 500, `recommendFix took ${Date.now() - t0}ms on a crafted reason`);
 
 console.log("panel self-check passed");
