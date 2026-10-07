@@ -600,3 +600,25 @@ def test_one_decimal_does_not_bring_back_fractional_guesses():
     rows[10][1], rows[30][1] = 2.5, 999
     _, out = _scan(["Name", "Quantity"], rows)
     assert out[30]["severity"] and "likely" not in out[30]["reason"]
+
+
+# ---- last regression attack ----
+
+def test_blanks_do_not_switch_the_weekend_zero_rule_off():
+    from datetime import date, timedelta
+    rows = [[(date(2024, 1, 1) + timedelta(i)).isoformat(), None if i % 11 == 0 else 0 if i % 7 in (5, 6) else 480 + (i * 13) % 41] for i in range(120)]
+    _, out = _scan(["Day", "Sales"], rows)
+    assert not any("local trend" in out[i]["reason"] for i in range(120) if rows[i][1] == 0)
+
+
+def test_a_column_of_dashes_and_comments_stays_text():
+    rows = [[f"n{i}", "call back Monday" if i == 7 else "VIP" if i == 30 else "-"] for i in range(60)]
+    types, out = _scan(["Name", "Notes"], rows)
+    assert types["Notes"] == "text" and not any(r["severity"] for r in out)
+
+
+def test_a_dated_row_on_a_sheet_without_text_is_not_hidden_as_a_total():
+    rows = [[f"2024-01-{1 + i:02d}", 1 + i % 3, 10 + i % 4] for i in range(30)]
+    rows[2] = ["2024-01-03", 3, None]  # 3 = 1 + 2 by chance
+    _, out = _scan(["When", "Qty", "Price"], rows)
+    assert "Blank cell in column Price" in out[2]["reason"]

@@ -66,6 +66,7 @@ STAT = re.compile(r"\s*(sum|mean|median|average|avg)\b", re.I)
 def _kind(s):
     """number / id / date / text: 90% of non-blank cells must parse. id = number column that's an identifier."""
     s = s[~_blank(s)]
+    s = s[s.astype(str).str.strip() != "-"]  # an accounting dash counts as 0 in a number column, but says nothing about the type
     if not len(s):
         return "text"
     num, err = _num(s), s.astype(str).str.strip().str.match(EXCEL_ERROR)

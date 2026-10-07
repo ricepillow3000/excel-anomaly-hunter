@@ -49,6 +49,7 @@ if (mode === "monitor") { // L6 Route Monitor + web research, with screenshots o
   ok(total > 0 && (await text("#rm-caption")).startsWith(`${total} issue`), "scan: department counts add up to the caption - " + counts);
   ok(+(await text("#rm-Irregularities .rm-count")) >= 2, "scan: both planted Units values reach Irregularities");
   ok((await text("#bucket-row")).includes("Anomalies:") && !(await text("#bucket-row")).includes("Behavioral"), "summary bar and Route Monitor use the same names");
+  ok((await text("#sheet-name")) === "Sales", "header names the scanned sheet - " + (await text("#sheet-name")));
 
   await page.click("#flagged-list li[data-row-index] >> text=Row 11");
   await recShown();

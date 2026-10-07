@@ -201,6 +201,7 @@ async function scanAndRender(s, limits) {
   lastRows = body.rows;
   triaged = {};
   undos = {};
+  $("sheet-name").textContent = s.sheet; // the sheet these results belong to, not the one the pane opened on
   renderResults(body, s.startRow); // L2 Flag
   monitor.scanned(body.rows, s, "Scan"); // L6
   await applyHighlights(body.rows, s); // L3 Highlight
