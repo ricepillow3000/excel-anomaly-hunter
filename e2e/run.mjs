@@ -115,8 +115,11 @@ if (mode === "monitor") { // L6 Route Monitor + web research, with screenshots o
   // 1) Clear highlights must restore the ORIGINAL fills even after several scans
   await page.evaluate(() => { __fill("Sales", "A5", "#C6EFCE"); __fill("Sales", "B5", "#C6EFCE"); });
   await scanned(); // first scan + limits
+  await page.evaluate(() => (__ranges = 0));
   await page.click("#scan"); await page.waitForSelector("#results", { state: "visible" }); // second scan
   await page.waitForFunction(() => !document.querySelector("#scan").disabled);
+  const touched = await page.evaluate(() => [__ranges, lastRows.filter((r) => r.severity).length, lastRows.length]);
+  ok(touched[0] <= 2 * touched[1] + 5, `highlights touch only flagged rows: ${touched[0]} Excel objects for ${touched[1]} flagged of ${touched[2]} rows`);
   await page.click("#clear-highlights");
   await page.waitForTimeout(300);
   const fills = await page.evaluate(() => Array.from({ length: 41 }, (_, k) => __cell("Sales", "A" + (k + 1)).fill));
@@ -221,6 +224,18 @@ if (mode === "monitor") { // L6 Route Monitor + web research, with screenshots o
   await page.evaluate(() => __drop("Second")); // the scanned sheet disappears -> the note can't be written
   await page.click(".approve-btn"); await page.waitForTimeout(600);
   ok((await text(".approve-btn")) === "Failed - retry", "failed Approve shows 'Failed - retry': " + (await text(".approve-btn")));
+  // last) a sheet too big to read at once: only the top is scanned, and the panel says exactly which rows weren't
+  await page.evaluate((rows) => __load("Big", rows, [0]), rows);
+  await page.evaluate(() => (window.MAX_CELLS = 120)); // 4 columns -> 30 sheet rows read of 41
+  await page.click("#scan"); // limits are saved in the workbook already: straight to the results
+  await page.waitForFunction(() => document.querySelector("#health-detail").textContent.includes("NOT checked"), null, { timeout: 15000 });
+  const cutMsg = "checked down to row 30 of 41. Rows below 30 were NOT checked.";
+  const deepest = await page.evaluate(() => lastScan.startRow + 1 + lastRows.length);
+  ok((await text("#health-detail")).includes(cutMsg) && (await text("#rm-trace")).includes(cutMsg) && deepest === 30 && !(await vis("error-state")),
+    "sheet over the cap: top scanned, the rest named as NOT checked - " + (await text("#health-detail")));
+  ok((await page.evaluate(() => [__cell("Big", "C11").fill, __cell("Big", "C22").fill, __cell("Big", "C35").fill])).map(Boolean).join() === "true,true,false",
+    "planted rows above the cap flagged and highlighted, nothing below it");
+  await page.evaluate(() => (window.MAX_CELLS = 0));
 } else if (mode === "layout") {
   // construction cost report: 3 title rows, header on row 4, data rows 5-44, formula column, Grand Total on row 45
   const g = [["Project: Riverside Medical Office"], ["Cost Report - Period 9"], [""],

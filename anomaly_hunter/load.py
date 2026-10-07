@@ -33,9 +33,27 @@ def _is_id(name, num):
 
 
 def _dates(s):
-    """Parse dates; years outside 1900-2200 don't count (cost code "03-100" parses as the year 100)."""
-    d = pd.to_datetime(s, errors="coerce", format="mixed")
+    """Parse dates; years outside 1900-2200 don't count (cost code "03-100" parses as the year 100). Day-first is decided
+    once for the column - a 13/01 anywhere (and no 01/13) means 01/02 is the 1st of February, not January 2nd."""
+    parts = s.astype(str).str.extract(r"^\s*(\d{1,2})[/.-](\d{1,2})[/.-]\d{2,4}").astype(float)
+    dayfirst = bool((parts[0] > 12).any() and not (parts[1] > 12).any())
+    d = pd.to_datetime(s, errors="coerce", format="mixed", dayfirst=dayfirst)
     return d.where(d.dt.year.between(1900, 2200))
+
+
+EXCEL_ERROR = re.compile(r"#(N/A|DIV/0!|REF!|VALUE!|NAME\?|NUM!|NULL!|SPILL!|CALC!)$")
+# money / percent typed as text, the WHOLE cell: "$1,234.00", "12%", "(500)" = -500. Commas must be thousands groups.
+MONEY = re.compile(r"(\()?([-+])?[$€£]?\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s*(%)?(\))?")
+
+
+def _num(s):
+    """Cells -> numbers (NaN where not a number). Plain numbers as pandas reads them, plus money/percent text."""
+    num = pd.to_numeric(s, errors="coerce")
+    m = s[num.isna()].astype(str).str.strip().str.extract(f"^{MONEY.pattern}$")
+    ok = m[2].notna() & (m[0].isna() == m[5].isna())  # parentheses come in pairs
+    v = (m[2].str.replace(",", "") + m[3].fillna("")).astype(float)
+    v = v.where(m[1] != "-", -v).where(m[0].isna(), -v) / m[4].notna().map({True: 100, False: 1})
+    return num.fillna(v.where(ok))
 
 
 # a row labelled like a summary. "Total"-words are almost never data; "Average" can be a category (a rating)
@@ -48,8 +66,9 @@ def _kind(s):
     s = s[~_blank(s)]
     if not len(s):
         return "text"
-    num = pd.to_numeric(s, errors="coerce")
-    if num.notna().mean() >= 0.9:
+    num, err = _num(s), s.astype(str).str.strip().str.match(EXCEL_ERROR)
+    # Excel errors (#DIV/0!) are broken numbers, not a sign the column is text - as long as most cells are numbers
+    if num.notna().mean() >= 0.5 and num[~err].notna().mean() >= 0.9:
         return "id" if _is_id(s.name, num.dropna()) else "number"
     if _dates(s).notna().mean() >= 0.9:
         return "date"
@@ -57,7 +76,7 @@ def _kind(s):
 
 
 def _coerce(df, cols):
-    """-> (types, errors_log). errors_log = (row, col, raw) for text stuck in a number column."""
+    """-> (types, errors_log). errors_log = (row, col, raw) for text stuck in a number or date column."""
     # remember summary labels before coercion erases them ("Total" in a date column becomes NaT)
     # just the few labelled row numbers: pandas copies attrs on every operation
     for key, rx in (("total_rows", TOTAL), ("stat_rows", STAT)):
@@ -65,7 +84,7 @@ def _coerce(df, cols):
     types, errors = {c: _kind(df[c]) for c in cols}, []
     for c, t in types.items():
         if t in ("number", "id"):
-            num = pd.to_numeric(df[c], errors="coerce")
+            num = _num(df[c])
             num = num.where(num.abs() < 1e100)  # "inf", 1e160: no real measurement - and they break the math downstream
             bad = num.isna() & ~_blank(df[c])
             if t == "number":  # text in a measurement is an error...
@@ -73,8 +92,10 @@ def _coerce(df, cols):
                 df[c] = num
             else:  # ...but an ID like "A-17" among numbers is fine: keep it as it is
                 df[c] = num.astype(object).where(~bad, df[c]) if bad.any() else num
-        elif t == "date":
-            df[c] = _dates(df[c])
+        elif t == "date":  # text in a date column is an error too, not a "blank"
+            d = _dates(df[c])
+            errors += [(i, c, df.at[i, c]) for i in df.index[d.isna() & ~_blank(df[c])]]
+            df[c] = d
     return types, errors
 
 

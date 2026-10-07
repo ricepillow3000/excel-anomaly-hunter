@@ -2,6 +2,7 @@ import csv
 
 import numpy as np
 import pandas as pd
+import pytest
 from openpyxl import load_workbook
 
 from anomaly_hunter.cli import run_scan
@@ -352,3 +353,123 @@ def test_formula_like_text_is_never_offered_as_a_spelling_fix():
     df, types, errors = load_from_records(["Note", "N"], [[v, k] for k, v in enumerate(vals)])
     rows, _ = score(df, types, errors, {}, None)
     assert not any(r.get("likely") for r in rows)
+
+
+# ---- Batch 2: clustering once per distinct row = the same answer as on every row, without the blow-up ----
+
+def _clustering_on_every_row(df, types):  # the original algorithm, kept here as the reference
+    from sklearn.cluster import DBSCAN
+    from sklearn.neighbors import NearestNeighbors
+    from anomaly_hunter.detectors import K, _scaled, numbers, spread
+    x, n = _scaled(df, numbers(types)).to_numpy(), len(df)
+    ms = max(5, 2 * len(numbers(types)))
+    kth = NearestNeighbors(n_neighbors=min(ms, n - 1)).fit(x).kneighbors()[0][:, -1]
+    return DBSCAN(eps=max(np.median(kth) + K * spread(kth), 1e-9), min_samples=ms).fit_predict(x) == -1
+
+
+@pytest.mark.parametrize("make", [
+    lambda r: [[f"r{i}", int(r.integers(1, 6)), float(r.choice([1.0, 1.5, 2.0, 3.0, 4.0, 5.0]))] for i in range(3000)],  # sales: few patterns
+    lambda r: [[f"r{i}", float(r.normal(100, 5)), float(r.normal(50, 2))] for i in range(1500)],  # all different
+    lambda r: [[f"r{i}", int(r.integers(1, 4)), 7.0] for i in range(40)] + [["x", 90, 7.0]],  # small, one odd row
+    lambda r: [[f"r{i}", 5.0, 5.0] for i in range(30)],  # every row the same
+])
+def test_clustering_on_distinct_rows_matches_every_row(make):
+    from anomaly_hunter.detectors import clustering_detector
+    from anomaly_hunter.load import load_from_records
+    df, types, _ = load_from_records(["Id", "A", "B"], make(np.random.default_rng(1)))
+    got = clustering_detector(df, types)
+    assert got["ran"] and np.array_equal(got["votes"], _clustering_on_every_row(df, types))
+
+
+def test_clustering_sits_out_with_a_reason_when_rows_are_too_varied(monkeypatch):
+    from anomaly_hunter import detectors
+    from anomaly_hunter.load import load_from_records
+    monkeypatch.setattr(detectors, "MAX_DISTINCT", 100)
+    df, types, _ = load_from_records(["Id", "A"], [[f"r{i}", float(i) * 1.37] for i in range(300)])
+    r = detectors.clustering_detector(df, types)
+    assert not r["ran"] and "too many different rows" in r["sit_out_reason"]
+
+
+# ---- Batch 3: catch what it used to miss (each failed on the old code) ----
+
+def _scan(cols, rows, limits=None):
+    from anomaly_hunter.load import load_from_records
+    from anomaly_hunter.limits import suggest_limits_dict
+    from anomaly_hunter.load import numbers
+    from anomaly_hunter.pipeline import score
+    df, types, errors = load_from_records(cols, rows)
+    lim = limits or suggest_limits_dict(df, numbers(types))
+    out, _ = score(df, types, errors, lim, None)
+    return types, out
+
+
+def test_a_few_excel_errors_do_not_switch_a_number_column_off():
+    rows = [[f"n{i}", 50 + i % 7] for i in range(40)]
+    rows[39][1] = 100000
+    for i in range(5):
+        rows[i][1] = "#DIV/0!"
+    types, out = _scan(["Name", "Amt"], rows)
+    assert types["Amt"] == "number" and out[39]["severity"] in ("Medium", "High")
+    assert all("Excel error #DIV/0! in Amt" in out[i]["reason"] for i in range(5))
+    types, _ = _scan(["Name", "Amt"], [[f"n{i}", "#N/A" if i % 3 else i] for i in range(30)])  # mostly errors: still text
+    assert types["Amt"] == "text"
+
+
+def test_error_text_is_not_also_called_blank_and_real_blanks_are_found():
+    rows = [[f"n{i}", 50 + i % 7] for i in range(60)]
+    for i in (3, 4, 5):
+        rows[i][1] = "ERROR"
+    rows[10][1] = ""
+    _, out = _scan(["Name", "Amt"], rows)
+    assert all("Blank" not in out[i]["reason"] and 'Text "ERROR"' in out[i]["reason"] for i in (3, 4, 5))
+    assert "Blank cell in column Amt" in out[10]["reason"]
+
+
+def test_a_blank_in_a_filled_text_column_is_found_but_not_in_a_half_empty_one():
+    rows = [[f"n{i}", ["Coffee", "Tea", "Cake"][i % 3], "" if i % 2 else "note"] for i in range(60)]
+    rows[9][1] = ""
+    _, out = _scan(["Name", "Item", "Note"], rows)
+    assert out[9]["reason"] == "Blank cell in column Item, which is otherwise filled"
+    assert not any("Note" in r["reason"] for r in out)
+
+
+def test_text_in_a_date_column_is_named_not_called_blank():
+    rows = [[f"n{i}", f"2024-01-{1 + i % 28:02d}", 50 + i % 7] for i in range(40)]
+    rows[7][1] = "UNKNOWN"
+    _, out = _scan(["Name", "When", "Amt"], rows)
+    assert out[7]["reason"] == 'Text "UNKNOWN" in date column When'
+
+
+def test_a_fully_blank_row_says_nothing():
+    rows = [[f"n{i}", 50 + i % 7] for i in range(30)] + [["", ""]] + [[f"m{i}", 50 + i % 7] for i in range(9)]
+    _, out = _scan(["Name", "Amt"], rows)
+    assert out[30]["reason"] == "" and out[30]["severity"] is None
+
+
+def test_money_and_percent_text_is_checked_as_numbers():
+    rows = [[f"n{i}", f"${1000 + i * 3:,}.00", f"{10 + i % 5}%", f"({100 + i * 7 % 13 * 9})" if i % 4 == 0 else str(100 + i * 7 % 13 * 9)] for i in range(40)]
+    rows[39][1] = "$1,000,000.00"
+    types, out = _scan(["Name", "Price", "Rate", "Net"], rows)
+    assert (types["Price"], types["Rate"], types["Net"]) == ("number", "number", "number")
+    assert out[39]["severity"] in ("Medium", "High") and "Price" in out[39]["reason"]
+    types, _ = _scan(["Zip", "Phone"], [[f"0{2100 + i}", f"(555) 123-{4000 + i}"] for i in range(30)])
+    assert types["Phone"] == "text"  # a phone number is not an accounting negative
+
+
+def test_placeholders_in_text_columns_are_flagged_but_a_convention_is_not():
+    rows = [[f"n{i}", ["Cash", "Card", "Online"][i % 3], ["East", "West"][i % 2]] for i in range(60)]
+    rows[5][1], rows[6][1], rows[7][2] = "ERROR", "UNKNOWN", "N/A"
+    _, out = _scan(["Name", "Pay", "Region"], rows)
+    assert out[5]["reason"] == 'Placeholder "ERROR" in column Pay' and out[7]["reason"] == 'Placeholder "N/A" in column Region'
+    assert out[5]["bucket"] == "Irregularities"
+    rows = [[f"n{i}", "-" if i % 2 else "x", "NA", "None"] for i in range(30)]  # "-" is half the column: the sheet's convention
+    _, out = _scan(["Name", "Note", "Country", "Discount"], rows)
+    assert not any(r["severity"] for r in out)
+
+
+def test_day_first_dates_are_read_the_same_way_down_the_column():
+    from anomaly_hunter.load import load_from_records
+    df, types, _ = load_from_records(["When", "Amt"], [["01/02/2024", 1], ["13/01/2024", 2], ["02/03/2024", 3]])
+    assert types["When"] == "date" and [d.strftime("%Y-%m-%d") for d in df["When"]] == ["2024-02-01", "2024-01-13", "2024-03-02"]
+    df, _, _ = load_from_records(["When", "Amt"], [["01/02/2024", 1], ["01/13/2024", 2]])  # month first stays month first
+    assert [d.strftime("%Y-%m-%d") for d in df["When"]] == ["2024-01-02", "2024-01-13"]

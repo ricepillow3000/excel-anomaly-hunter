@@ -164,6 +164,9 @@ def isolation_detector(df, column_types):
     return {**_result(n), "votes": votes, "magnitude": mag, "reasons": reasons}
 
 
+MAX_DISTINCT = 100_000  # above this, grouping alone takes ~20s+ and GBs: it sits out and says why
+
+
 def clustering_detector(df, column_types):
     """DBSCAN noise rows. eps = robust cutoff on k-th neighbor distance."""
     n, cols = len(df), numbers(column_types)
@@ -171,9 +174,17 @@ def clustering_detector(df, column_types):
         return _result(n, why)
     x = _scaled(df, cols).to_numpy()
     ms = max(5, 2 * len(cols))
-    # kneighbors() with no X skips self; passing X would count self at distance 0
-    kth = NearestNeighbors(n_neighbors=min(ms, n - 1)).fit(x).kneighbors()[0][:, -1]
-    votes = DBSCAN(eps=max(np.median(kth) + K * spread(kth), 1e-9), min_samples=ms).fit_predict(x) == -1
+    # Same answer, once per DISTINCT row: real sheets repeat values (107 patterns in 10k sales rows) and DBSCAN on the
+    # copies grows with rows squared (200k rows: 9 GB, never finished). Each pattern weighs as many rows as share it.
+    xu, inv, cnt = np.unique(x, axis=0, return_inverse=True, return_counts=True)
+    inv = inv.ravel()
+    if len(xu) > MAX_DISTINCT:
+        return _result(n, f"too many different rows to group ({len(xu):,}; limit {MAX_DISTINCT:,})")
+    # k-th nearest OTHER row: walk each pattern's neighbours adding up rows until k = min(ms, n-1) are passed
+    dist, idx = NearestNeighbors(n_neighbors=min(ms + 1, len(xu))).fit(xu).kneighbors(xu)
+    w = cnt[idx] - (idx == np.arange(len(xu))[:, None])  # a pattern's own other copies sit at distance 0
+    kth = dist[np.arange(len(xu)), np.argmax(np.cumsum(w, axis=1) >= min(ms, n - 1), axis=1)][inv]
+    votes = DBSCAN(eps=max(np.median(kth) + K * spread(kth), 1e-9), min_samples=ms).fit_predict(xu, sample_weight=cnt)[inv] == -1
     # ponytail: magnitude = kth distance in spread units, sort key only
     mag = np.where(votes, kth / (spread(kth) or 1.0), 0.0)
     return {**_result(n), "votes": votes, "magnitude": mag,

@@ -18,7 +18,7 @@ let lastScan = null; // L1: {columns, rows, startRow, startCol, sheet, calc} the
 let lastRows = null; // L1: the engine's verdict per row
 let editorSheet = null; // L1: sheet data the limits editor rescans
 let triageRows = []; // L2: the flagged rows shown (what triage reads)
-let painted = null; // L3: {sheet, startRow, startCol, width, colors} - what Clear highlights puts back
+let painted = null; // L3: {sheet, startRow, startCol, width, colors: {row: old color}} - what Clear highlights puts back
 let picker = null; // L4: onSelectionChanged handle - clicking a highlighted row opens its fix
 let fix = null; // L4: {i, changes} for the row open in the fix view
 let undos = {}; // L4: row index -> cells to restore, while an applied fix hasn't been undone
@@ -114,16 +114,28 @@ function saveLimits(limits) {
   Office.context.document.settings.saveAsync();
 }
 
+// A scan reads at most this many cells (~250k rows x 8 columns, about a minute): Excel refuses one read over 5M cells,
+// and the engine's time and memory grow with it. Only the bottom is cut, so row numbers never shift.
+const maxCells = () => globalThis.MAX_CELLS || 2e6;
+
 async function readSheet(name) {
   return Excel.run(async (ctx) => {
     const ws = ctx.workbook.worksheets;
     const sheet = (name ? ws.getItem(name) : ws.getActiveWorksheet()).load("name");
-    const used = sheet.getUsedRange().load("values, formulas, numberFormat, rowIndex, columnIndex");
+    const used = sheet.getUsedRange().load("rowIndex, columnIndex, rowCount, columnCount");
     await ctx.sync();
-    const t = tableFromGrid(used.values, used.numberFormat, used.rowIndex, used.columnIndex, used.formulas);
-    return t && { ...t, sheet: sheet.name };
+    const n = Math.min(used.rowCount, Math.floor(maxCells() / used.columnCount));
+    const g = sheet.getRangeByIndexes(used.rowIndex, used.columnIndex, n, used.columnCount).load("values, formulas, numberFormat");
+    await ctx.sync();
+    const t = tableFromGrid(g.values, g.numberFormat, used.rowIndex, used.columnIndex, g.formulas);
+    // cut = [last sheet row read, last sheet row with data]
+    return t && { ...t, sheet: sheet.name, cut: n < used.rowCount && [used.rowIndex + n, used.rowIndex + used.rowCount] };
   });
 }
+
+// Pure: the honest line for a sheet too big to read at once
+const cutNote = ([last, total]) =>
+  `Too large to scan at once: checked down to row ${last.toLocaleString("en-US")} of ${total.toLocaleString("en-US")}. Rows below ${last.toLocaleString("en-US")} were NOT checked.`;
 
 // Pure: used-range values -> {columns, rows, startRow, startCol}, or null if there's no header + data row.
 // Header = first row that is mostly filled, so title rows above it ("Cost Report - Period 9") are skipped.
@@ -365,11 +377,14 @@ async function applyHighlights(rows, s) {
   await Excel.run(async (ctx) => {
     await unpaint(ctx);
     const sheet = ctx.workbook.worksheets.getItem(s.sheet);
-    const fills = rows.map((_, i) => sheet.getRangeByIndexes(s.startRow + 1 + i, s.startCol, 1, s.columns.length).format.fill.load("color"));
+    // only the rows we colour are touched: 100k rows with 15k flagged = 15k Excel objects, not 100k
+    const flagged = rows.flatMap((r, i) => (COLOR[r.severity] ? [i] : []));
+    const fills = flagged.map((i) => sheet.getRangeByIndexes(s.startRow + 1 + i, s.startCol, 1, s.columns.length).format.fill.load("color"));
     await ctx.sync();
-    const colors = fills.map((f) => f.color); // ponytail: one color per row; a row with mixed old fills restores only the first
-    rows.forEach((r, i) => {
-      if (COLOR[r.severity]) fills[i].color = COLOR[r.severity];
+    const colors = {}; // ponytail: one color per row; a row with mixed old fills restores only the first
+    flagged.forEach((i, k) => {
+      colors[i] = fills[k].color;
+      fills[k].color = COLOR[rows[i].severity];
     });
     await ctx.sync();
     painted = { sheet: s.sheet, startRow: s.startRow, startCol: s.startCol, width: s.columns.length, colors };
@@ -384,12 +399,13 @@ async function unpaint(ctx) {
   const sheet = ctx.workbook.worksheets.getItemOrNullObject(p.sheet).load("isNullObject");
   await ctx.sync();
   if (sheet.isNullObject) return void (painted = null); // that sheet was deleted: nothing left to restore
-  const fills = p.colors.map((_, i) => sheet.getRangeByIndexes(p.startRow + 1 + i, p.startCol, 1, p.width).format.fill.load("color"));
+  const idx = Object.keys(p.colors).map(Number);
+  const fills = idx.map((i) => sheet.getRangeByIndexes(p.startRow + 1 + i, p.startCol, 1, p.width).format.fill.load("color"));
   await ctx.sync();
   const ours = new Set(Object.values(COLOR));
-  fills.forEach((fill, i) => {
+  fills.forEach((fill, k) => {
     if (!ours.has(String(fill.color).toUpperCase())) return;
-    if (p.colors[i]) fill.color = p.colors[i];
+    if (p.colors[idx[k]]) fill.color = p.colors[idx[k]];
     else fill.clear();
   });
   await ctx.sync();
@@ -698,8 +714,14 @@ function recommendFix(columns, rows, i, limits, reason, startRow, startCol, like
   }
   const dup = /Duplicate of row (\d+)/.exec(reason); // engine counts from a header in row 1
   if (dup) notes.push(`This row repeats row ${+dup[1] + startRow}. If it's a double entry, delete it: right-click the row number > Delete.`);
-  for (const [, raw, col] of reason.matchAll(/Text "([^"]*)" in number column ([^;]+)/g))
-    notes.push(`${col} holds the text "${raw}" where a number belongs - retype it as a number.`);
+  for (const [, raw, kind, col] of reason.matchAll(/Text "([^"]*)" in (number|date) column ([^;]+)/g))
+    notes.push(`${col} holds the text "${raw}" where a ${kind} belongs - retype it as a ${kind}.`);
+  for (const [, raw, col] of reason.matchAll(/Placeholder "([^"]*)" in column ([^;]+)/g))
+    notes.push(`${col} says "${raw}" - a stand-in for a missing value. Fill in the real value, or leave the cell empty.`);
+  // a limit crossed in a cell typed as text ("$1,000,000.00"): explained, never overwritten
+  for (const [, col, lim, v] of reason.matchAll(/([^;:]+?) weird limit is ([^;]+); this is ([^;(]+)/g))
+    if (!changes.length && !why.length && !typos.length && !real.length && !calcCells.length)
+      notes.push(`${col.trim()} is ${v.trim()}, past its limit of ${lim}. Check it against the source; if it's right, leave it.`);
   for (const [, err, col] of reason.matchAll(/Excel error (#\S+) in ([^;]+)/g))
     notes.push(`${col} shows ${err}: ${EXCEL_ERRORS[err] || "its formula failed"}. Fix the formula or its inputs ` +
       `(or wrap it in IFERROR(...)) rather than typing a number over it.`);
@@ -785,7 +807,7 @@ function issuesOf(reason, columns, calc) {
     const j = columns.indexOf((/^(.+?) weird limit/.exec(text) || [])[1]);
     const dept = /^Excel error #/.test(text) || (j >= 0 && String(calc?.[j]).startsWith("=")) ? "Formulas"
       : /^Duplicate of row/.test(text) ? "Duplicates"
-      : /weird limit|^Blank cell|looks like "|^Text ".*" in number column/.test(text) ? "Irregularities" : "Anomalies";
+      : /weird limit|^Blank cell|looks like "|^Text ".*" in (number|date) column|^Placeholder "/.test(text) ? "Irregularities" : "Anomalies";
     return { dept, text };
   }).sort((a, b) => order.indexOf(a.dept) - order.indexOf(b.dept));
 }
@@ -837,6 +859,10 @@ const monitor = {
       g.classList.toggle("has-issues", counts[d] > 0);
       g.querySelector(".rm-count").textContent = counts[d];
       g.querySelector(".rm-bar").setAttribute("width", (118 * counts[d]) / most);
+    }
+    if (s.cut) {
+      this.log(cutNote(s.cut));
+      $("health-detail").textContent += " " + cutNote(s.cut);
     }
     this.log(`${how}: ` + (total ? Object.keys(DEPTS).filter((d) => counts[d]).map((d) => `${DEPTS[d]} ${counts[d]}`).join(", ") : "nothing flagged"));
     const open = view === "fix-view" && fix && rows[fix.i]?.severity;
@@ -969,4 +995,4 @@ function esc(s) {
   return d.innerHTML;
 }
 
-if (typeof module !== "undefined") module.exports = { asNumber, plainOf, routePath, issuesOf, districtCounts, flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade };
+if (typeof module !== "undefined") module.exports = { cutNote, asNumber, plainOf, routePath, issuesOf, districtCounts, flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade };
