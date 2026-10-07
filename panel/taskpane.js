@@ -5,18 +5,33 @@ const COLOR = { High: "#FFC7CE", Medium: "#FFEB9C", Low: "#FFFFCC", Noted: "#FFF
 const CAP = 25; // ponytail: list cap so big sheets don't flood the pane
 const PANELS = ["empty-state", "limits-editor", "results", "fix-view", "error-state"];
 
-let lastScan = null; // {columns, rows, startRow, startCol, sheet} the scan ran on
-let lastRows = null; // last scan result rows, for Route Monitor diff
-let lastHighlight = null; // what Clear highlights restores
-let editorSheet = null; // sheet data the limits editor rescans
-let triageRows = [];
-let aiAvailable = false;
-let watch = null; // sheet.onChanged handle
+// ==== How the pane is wired: five layers in a line, like a circuit ====
+//   L1 Scan -> L2 Flag -> L3 Highlight -> L4 Suggest (click a row: fix, Apply, Undo) -> L5 Ask AI
+// Each button enters at one layer; a layer only works on what the layer before handed it.
+// Everything that reads or writes the sheet goes through `circuit`: one action at a time, in click
+// order - a scan, an auto-rescan, an Apply and an Undo can never interleave.
+// Before a new scan, the layers below it stand down (resetDownstream).
+
+// State, by the layer that owns it:
+let lastScan = null; // L1: {columns, rows, startRow, startCol, sheet, calc} the scan read
+let lastRows = null; // L1: the engine's verdict per row
+let editorSheet = null; // L1: sheet data the limits editor rescans
+let triageRows = []; // L2: the flagged rows shown (what triage reads)
+let painted = null; // L3: {sheet, startRow, startCol, width, colors} - what Clear highlights puts back
+let picker = null; // L4: onSelectionChanged handle - clicking a highlighted row opens its fix
+let fix = null; // L4: {i, changes} for the row open in the fix view
+let undos = {}; // L4: row index -> cells to restore, while an applied fix hasn't been undone
+let triaged = {}; // L5: row_index -> AI triage verdict, shown in the fix view
+let aiAvailable = false; // L5
+let watch = null; // Route Monitor: {handle, sheet} - re-runs L1-L3 when the watched sheet changes
 let watchTimer = null;
-let picker = null; // onSelectionChanged handle: clicking a highlighted row opens its fix
-let triaged = {}; // row_index -> AI triage verdict, shown in the fix view
-let fix = null; // {i, changes} for the row open in the fix view
-let undos = {}; // row index -> cells to restore, while an applied fix hasn't been undone
+
+let line = Promise.resolve(); // the circuit: each action waits for the one before it
+const circuit = (fn) => (...args) => {
+  const run = line.then(() => fn(...args));
+  line = run.catch((e) => console.error(e)); // one failed action never stops the next
+  return run; // ...but its caller still hears about it
+};
 
 const $ = (id) => document.getElementById(id);
 const show = (id, on = true) => ($(id).style.display = on ? "block" : "none");
@@ -30,17 +45,24 @@ if (typeof Office !== "undefined") {
     if (info.host !== Office.HostType.Excel) return;
     show("sideload-msg", false);
     show("app-body");
-    $("scan").onclick = runScan;
+    // sheet-touching buttons go through the circuit; Ask AI / triage only talk to the engine
+    $("scan").onclick = () => {
+      $("scan").disabled = true;
+      $("scan").textContent = "Scanning…";
+      resetDownstream();
+      circuit(runScan)().catch(() => {});
+    };
     $("retry-health").onclick = checkHealth;
-    $("save-limits").onclick = saveLimitsAndRescan;
-    $("edit-limits").onclick = editSavedLimits;
-    $("clear-highlights").onclick = clearHighlights;
+    $("save-limits").onclick = () => (resetDownstream(), circuit(saveLimitsAndRescan)().catch(() => {}));
+    $("edit-limits").onclick = circuit(editSavedLimits);
+    $("clear-highlights").onclick = circuit(clearHighlights);
     $("run-triage").onclick = runTriage;
-    $("watch-toggle").onchange = onWatchToggle;
+    $("watch-toggle").onchange = (e) => circuit(onWatchToggle)(e.target.checked).catch(() => {}); // on/off as clicked
     $("fix-back").onclick = () => only("results");
     $("fix-ask").onclick = askFix;
-    $("fix-apply").onclick = applyFix;
-    $("fix-undo").onclick = undoFix;
+    // Apply/Undo act on the fix that was on screen when clicked, even if Scan or Ask AI changes it meanwhile
+    $("fix-apply").onclick = () => fix && circuit(applyFix)(fix, fix.changes, fix.sheet).catch(() => {});
+    $("fix-undo").onclick = () => fix && circuit(undoFix)(fix).catch(() => {});
     $("fix-intent").onkeydown = (e) => e.key === "Enter" && e.ctrlKey && askFix();
     Excel.run(async (ctx) => {
       const sheet = ctx.workbook.worksheets.getActiveWorksheet().load("name");
@@ -63,12 +85,14 @@ async function checkHealth() {
   }
 }
 
-async function post(path, body) {
+async function post(path, body, seconds = 120) { // a stuck engine never freezes the circuit for good
   const r = await fetch(SERVER + path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-  }).catch(() => {
+    signal: AbortSignal.timeout(seconds * 1000),
+  }).catch((e) => {
+    if (e.name === "TimeoutError") throw new Error(`The local engine took over ${seconds}s - try again.`);
     serverUp(false);
     throw new Error("Local engine not reachable.");
   });
@@ -86,9 +110,10 @@ function saveLimits(limits) {
   Office.context.document.settings.saveAsync();
 }
 
-async function readSheet() {
+async function readSheet(name) {
   return Excel.run(async (ctx) => {
-    const sheet = ctx.workbook.worksheets.getActiveWorksheet().load("name");
+    const ws = ctx.workbook.worksheets;
+    const sheet = (name ? ws.getItem(name) : ws.getActiveWorksheet()).load("name");
     const used = sheet.getUsedRange().load("values, formulas, numberFormat, rowIndex, columnIndex");
     await ctx.sync();
     const t = tableFromGrid(used.values, used.numberFormat, used.rowIndex, used.columnIndex, used.formulas);
@@ -119,9 +144,16 @@ const excelDate = (n) => new Date(Math.round((n - 25569) * 864e5)).toISOString()
 
 const scanBody = (s, limits) => ({ columns: s.columns, rows: s.rows, limits, order_by: null });
 
+// ---- L1 Scan: read the sheet, ask the engine. Then hand on to L2 Flag and L3 Highlight. ----
+
+// Scan (or Save limits) pressed: the layers below stand down before anything is read
+function resetDownstream() {
+  clearTimeout(watchTimer); // a pending auto-rescan would just repeat this scan
+  fix = null; // the open fix (and any AI answer still on its way) belongs to the old scan
+}
+
 async function runScan() {
   const btn = $("scan");
-  btn.disabled = true;
   btn.textContent = "Scanning…";
   try {
     const s = await readSheet();
@@ -141,15 +173,15 @@ async function runScan() {
 }
 
 async function scanAndRender(s, limits) {
-  const body = await post("/scan", scanBody(s, limits));
+  const body = await post("/scan", scanBody(s, limits)); // L1
   if (!limits) return renderLimitsEditor(body.suggested_limits, s); // first scan: review limits first
   lastScan = s;
   lastRows = body.rows;
   triaged = {};
   undos = {};
-  await applyHighlights(body.rows, s);
-  renderResults(body, s.startRow);
-  await watchSelection(s.sheet);
+  renderResults(body, s.startRow); // L2 Flag
+  await applyHighlights(body.rows, s); // L3 Highlight
+  await watchSelection(s.sheet); // L4 Suggest: clicks on the scanned sheet now open fixes
   // a scanned workbook reopens with this pane already open (Office autoopen; manifest TaskpaneId)
   Office.context.document.settings.set("Office.AutoShowTaskpaneWithDocument", true);
   Office.context.document.settings.saveAsync();
@@ -162,23 +194,27 @@ function showError(msg) {
 
 // ---- Route Monitor: rescan 1.5s after edits stop, feed new/resolved rows ----
 
-async function onWatchToggle(e) {
+async function onWatchToggle(on) {
   const status = $("watch-status");
-  if (!e.target.checked) {
+  if (!on) {
     await stopWatching();
     status.textContent = "Not watching.";
+  } else if (watch) {
+    return; // already watching
   } else if (!(await getLimits())) {
-    e.target.checked = false;
+    $("watch-toggle").checked = false;
     status.textContent = "Scan once first to set limits before watching.";
   } else {
     try {
       await Excel.run(async (ctx) => {
-        watch = ctx.workbook.worksheets.getActiveWorksheet().onChanged.add(onSheetChanged);
+        const sheet = ctx.workbook.worksheets.getActiveWorksheet().load("name");
+        const handle = sheet.onChanged.add(onSheetChanged);
         await ctx.sync();
+        watch = { handle, sheet: sheet.name };
       });
       status.textContent = "Watching - rescans ~1.5s after you stop editing.";
     } catch (err) {
-      e.target.checked = false;
+      $("watch-toggle").checked = false;
       status.textContent = "Could not start watching: " + err.message;
     }
   }
@@ -188,7 +224,7 @@ async function stopWatching() {
   clearTimeout(watchTimer);
   const w = watch;
   watch = null;
-  await removeHandler(w);
+  await removeHandler(w && w.handle);
 }
 
 // an Office event handler must be removed in the context that added it
@@ -202,20 +238,23 @@ async function removeHandler(h) {
 
 function onSheetChanged() {
   clearTimeout(watchTimer);
-  watchTimer = setTimeout(rescan, 1500); // debounce: a paste = one scan, not one per cell
+  watchTimer = setTimeout(circuit(rescan), 1500); // debounce: a paste = one scan, not one per cell
 }
 
-async function rescan() {
+async function rescan() { // L1-L3 again on the WATCHED sheet (not whichever sheet is active), results go to the feed
   try {
-    const s = await readSheet();
+    if (!watch) return; // switched off while this was queued
+    const s = await readSheet(watch.sheet);
     const limits = await getLimits();
     if (!s || !limits) return;
     const body = await post("/scan", scanBody(s, limits)); // free + local; AI triage never auto-runs
-    lastScan = s;
-    triaged = {}; // verdicts were for the old values
-    await applyHighlights(body.rows, s);
-    renderWatchFeed(diffFlaggedRows(lastRows, body.rows), s.startRow);
+    const diffs = diffFlaggedRows(lastRows, body.rows);
+    lastScan = s; // L1 data and verdicts change together
     lastRows = body.rows;
+    triaged = {}; // verdicts were for the old values
+    renderResults(body, s.startRow, false); // L2: list refreshed in place - an open fix view stays open
+    await applyHighlights(body.rows, s); // L3
+    renderWatchFeed(diffs, s.startRow);
   } catch (e) {
     console.error("watch rescan failed", e);
   }
@@ -294,37 +333,46 @@ async function editSavedLimits() {
   }
 }
 
-// ---- Highlights: remember fill, color by severity, Clear restores ----
+// ---- L3 Highlight: color flagged rows. Each painting first puts back the last one, so the colors it
+// remembers are always the sheet's own - Clear highlights restores exactly what was there. ----
 
 async function applyHighlights(rows, s) {
   await Excel.run(async (ctx) => {
-    const sheet = ctx.workbook.worksheets.getActiveWorksheet().load("name");
-    const fills = rows.map((_, i) =>
-      sheet.getRangeByIndexes(s.startRow + 1 + i, s.startCol, 1, s.columns.length).format.fill.load("color"));
+    await unpaint(ctx);
+    const sheet = ctx.workbook.worksheets.getItem(s.sheet);
+    const fills = rows.map((_, i) => sheet.getRangeByIndexes(s.startRow + 1 + i, s.startCol, 1, s.columns.length).format.fill.load("color"));
     await ctx.sync();
-    // ponytail: one color per row; a row with mixed old fills restores only the first
-    const colors = fills.map((f) => f.color);
+    const colors = fills.map((f) => f.color); // ponytail: one color per row; a row with mixed old fills restores only the first
     rows.forEach((r, i) => {
       if (COLOR[r.severity]) fills[i].color = COLOR[r.severity];
     });
     await ctx.sync();
-    lastHighlight = { sheetName: sheet.name, ...s, colors };
+    painted = { sheet: s.sheet, startRow: s.startRow, startCol: s.startCol, width: s.columns.length, colors };
   });
 }
 
-async function clearHighlights() {
-  const h = lastHighlight;
-  if (!h) return;
-  await Excel.run(async (ctx) => {
-    const sheet = ctx.workbook.worksheets.getItem(h.sheetName);
-    h.colors.forEach((c, i) => {
-      const fill = sheet.getRangeByIndexes(h.startRow + 1 + i, h.startCol, 1, h.columns.length).format.fill;
-      if (c) fill.color = c;
-      else fill.clear();
-    });
-    await ctx.sync();
+// Put back the remembered fills - only on rows still wearing one of OUR colors (rows inserted or deleted
+// since, or recolored by the user, are left alone). The record is dropped only once that has worked.
+async function unpaint(ctx) {
+  const p = painted;
+  if (!p) return;
+  const sheet = ctx.workbook.worksheets.getItemOrNullObject(p.sheet).load("isNullObject");
+  await ctx.sync();
+  if (sheet.isNullObject) return void (painted = null); // that sheet was deleted: nothing left to restore
+  const fills = p.colors.map((_, i) => sheet.getRangeByIndexes(p.startRow + 1 + i, p.startCol, 1, p.width).format.fill.load("color"));
+  await ctx.sync();
+  const ours = new Set(Object.values(COLOR));
+  fills.forEach((fill, i) => {
+    if (!ours.has(String(fill.color).toUpperCase())) return;
+    if (p.colors[i]) fill.color = p.colors[i];
+    else fill.clear();
   });
-  lastHighlight = null;
+  await ctx.sync();
+  painted = null;
+}
+
+async function clearHighlights() {
+  await Excel.run(unpaint);
 }
 
 // ---- AI triage: explicit button only. Safe actions need a human click. ----
@@ -335,7 +383,9 @@ async function runTriage() {
   btn.disabled = true;
   btn.textContent = "Triaging…";
   try {
-    (await post("/triage", { columns: lastScan.columns, flagged: triageRows })).results.forEach(renderTriage);
+    const s = lastScan;
+    const out = await post("/triage", { columns: s.columns, flagged: triageRows }, 300);
+    if (s === lastScan) out.results.forEach(renderTriage); // a scan ran meanwhile: these verdicts are for old values
   } catch (e) {
     showError("AI triage failed: " + e.message);
   } finally {
@@ -363,11 +413,10 @@ function renderTriage(t) {
       b.disabled = true;
       b.textContent = "Applying…";
       try {
-        await approve(t.row_index, t.safe_action, t.suggested_action_detail);
+        await circuit(approve)(t.row_index, t.safe_action, t.suggested_action_detail); // rejects if it failed
         b.textContent = "Applied";
-      } catch (e) {
-        console.error(e);
-        b.disabled = false;
+      } catch {
+        b.disabled = false; // the circuit already logged why
         b.textContent = "Failed - retry";
       }
     };
@@ -382,7 +431,7 @@ async function approve(i, action, detail) {
     const wb = ctx.workbook;
     if (action === "add_note") {
       // note goes in the column right of the data, never over a value
-      wb.worksheets.getActiveWorksheet().getRangeByIndexes(startRow + 1 + i, startCol + columns.length, 1, 1).values = [[`AI note: ${detail}`]];
+      wb.worksheets.getItem(lastScan.sheet).getRangeByIndexes(startRow + 1 + i, startCol + columns.length, 1, 1).values = [[`AI note: ${detail}`]];
       return ctx.sync();
     }
     let sheet = wb.worksheets.getItemOrNullObject("Anomalies").load("isNullObject");
@@ -398,8 +447,8 @@ async function approve(i, action, detail) {
   });
 }
 
-// ---- Fix a flagged row: click it (pane list or the sheet), say what you want in plain English,
-// Claude proposes cell writes, user previews old -> new and clicks Apply. Undo restores. ----
+// ---- L4 Suggest: click a flagged row (pane list or the sheet) -> instant recommended fix, previewed
+// old -> new; Apply writes it, Undo puts it back. L5 Ask AI: describe a different fix in plain English. ----
 
 async function watchSelection(sheetName) {
   if (picker && picker.sheet === sheetName) return;
@@ -420,7 +469,7 @@ async function watchSelection(sheetName) {
 async function onSelect(e) {
   if (!lastScan || (view !== "results" && view !== "fix-view")) return; // never yank the user out of the limits editor
   const i = rowFromAddress(e.address, lastScan.startRow);
-  if (i !== null && !(view === "fix-view" && fix.i === i)) openFix(i, false); // openFix ignores clean rows
+  if (i !== null && !(view === "fix-view" && fix && fix.i === i)) circuit(openFix)(i, false); // openFix ignores clean rows
 }
 
 // Pure: "C7", "B7:D7", "Sheet1!C7", "7:7" -> 0-based data row index (header at startRow), or null.
@@ -433,10 +482,11 @@ function rowFromAddress(address, startRow) {
 }
 
 async function openFix(i, selectInSheet) {
+  if (!lastScan) return;
   const { columns, rows, startRow, startCol, sheet } = lastScan;
   const r = lastRows[i];
   if (!r || !r.severity) return; // list item left over from before a Route Monitor rescan
-  const f = (fix = { i, changes: [] });
+  const f = (fix = { i, changes: [], sheet }); // the fix remembers its sheet: Apply/Undo write there, whatever happens later
   $("fix-title").textContent = `Fix row ${startRow + i + 2} - ${r.severity}`;
   $("fix-values").textContent = columns.map((c, j) => `${c}: ${rows[i][j]}`).join(" · ");
   const t = triaged[i];
@@ -459,7 +509,7 @@ async function openFix(i, selectInSheet) {
   if (fix === f) await showFix(f, "Recommended fix", rec);
 }
 
-async function askFix() {
+async function askFix() { // L5: engine + Claude only; the sheet is touched later, by Apply (through the circuit)
   if (!fix || $("fix-ask").disabled) return; // disabled while busy or without an API key
   const f = fix;
   const btn = $("fix-ask");
@@ -468,10 +518,10 @@ async function askFix() {
   $("fix-status").textContent = "";
   try {
     const { columns, rows, startRow, startCol } = lastScan;
-    const out = await post("/fix", {
+    const out = await post("/fix", { // outside the circuit, so it may take its time
       columns, rows, row_index: f.i, start_row: startRow, start_col: startCol,
       reason: lastRows[f.i].reason, intent: $("fix-intent").value, formulas: lastScan.calc?.[f.i],
-    });
+    }, 300);
     if (fix === f) await showFix(f, "AI suggestion", out); // else: user moved to another row meanwhile
   } catch (e) {
     if (fix === f) $("fix-status").textContent = "Could not get a fix: " + e.message;
@@ -483,7 +533,7 @@ async function askFix() {
 
 // Preview a fix as cell: old -> new. Nothing is written until Apply.
 async function showFix(f, label, out) {
-  const olds = await readCells(lastScan.sheet, out.changes.map((c) => c.cell));
+  const olds = await readCells(f.sheet, out.changes.map((c) => c.cell));
   if (fix !== f) return;
   f.changes = out.changes;
   $("fix-label").textContent = label;
@@ -612,43 +662,47 @@ async function writeCells(sheetName, writes) {
   });
 }
 
-async function applyFix() {
-  const f = fix;
+async function applyFix(f, changes, sheet) { // the fix, its changes and sheet as they were when Apply was clicked
   if (undos[f.i]) return;
   $("fix-apply").disabled = true;
   try {
-    const cells = f.changes.map((c) => c.cell);
-    const olds = await readCells(lastScan.sheet, cells);
-    await writeCells(lastScan.sheet, f.changes.map((c) => ({ cell: c.cell, value: c.new })));
-    undos[f.i] = cells.map((cell, k) => ({ cell, value: olds[k] })); // all read before any write
+    const cells = changes.map((c) => c.cell);
+    const olds = await readCells(sheet, cells);
+    await writeCells(sheet, changes.map((c) => ({ cell: c.cell, value: c.new })));
+    undos[f.i] = { sheet, writes: cells.map((cell, k) => ({ cell, value: olds[k] })) }; // all read before any write
     if (fix === f) {
       setApplied(true);
       $("fix-status").textContent = "Applied. Scan again to refresh the highlights.";
     }
   } catch (e) {
-    $("fix-apply").disabled = false;
-    $("fix-status").textContent = "Apply failed: " + e.message;
+    if (fix === f) {
+      $("fix-apply").disabled = false;
+      $("fix-status").textContent = "Apply failed: " + e.message;
+    }
+    throw e;
   }
 }
 
-async function undoFix() {
-  const f = fix;
+async function undoFix(f) {
+  const u = undos[f.i];
+  if (!u) return;
   try {
-    await writeCells(lastScan.sheet, undos[f.i]);
+    await writeCells(u.sheet, u.writes); // back on the sheet it was applied to
     delete undos[f.i];
     if (fix === f) {
       setApplied(false);
       $("fix-status").textContent = "Undone - the cells are back to what they were.";
     }
   } catch (e) {
-    $("fix-status").textContent = "Undo failed: " + e.message;
+    if (fix === f) $("fix-status").textContent = "Undo failed: " + e.message;
+    throw e;
   }
 }
 
-// ---- Results dashboard ----
+// ---- L2 Flag: the dashboard and the list of flagged rows ----
 
-function renderResults(body, startRow) {
-  only("results");
+function renderResults(body, startRow, switchTo = true) {
+  if (switchTo) only("results");
   const h = computeHealthSummary(body);
   $("stat-rows").textContent = h.totalRows;
   $("stat-anomalies").textContent = h.flaggedCount;
@@ -661,13 +715,13 @@ function renderResults(body, startRow) {
   $("bucket-row").innerHTML = ["Duplicates", "Irregularities", "Behavioral"]
     .map((b) => `<span class="bucket-chip">${b}: ${h.bucketCounts[b] || 0}</span>`).join("");
 
-  const flagged = body.rows.map((r, i) => ({ ...r, i })).filter((r) => r.severity).sort((a, b) => b.magnitude - a.magnitude);
+  const flagged = flaggedRows(body.rows);
   const shown = flagged.slice(0, CAP);
   const list = $("flagged-list");
   list.replaceChildren(...shown.map((r) => {
     const li = rowItem(startRow + r.i + 2, r.severity, r.reason);
     li.dataset.rowIndex = r.i;
-    li.onclick = () => openFix(r.i, true);
+    li.onclick = () => circuit(openFix)(r.i, true);
     return li;
   }));
   if (flagged.length > CAP) {
@@ -679,6 +733,9 @@ function renderResults(body, startRow) {
   // triage only what's shown = what the analyst can act on
   triageRows = shown.map((r) => ({ row_index: r.i, values: lastScan.rows[r.i], severity: r.severity, bucket: r.bucket, reason: r.reason }));
 }
+
+// Pure, L2: the flagged rows, worst first, each with its data-row index
+const flaggedRows = (rows) => rows.map((r, i) => ({ ...r, i })).filter((r) => r.severity).sort((a, b) => b.magnitude - a.magnitude);
 
 // Pure: health % = rows not flagged (Noted doesn't count as flagged).
 function computeHealthSummary(body) {
@@ -703,4 +760,4 @@ function esc(s) {
   return d.innerHTML;
 }
 
-if (typeof module !== "undefined") module.exports = { computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade };
+if (typeof module !== "undefined") module.exports = { flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade };

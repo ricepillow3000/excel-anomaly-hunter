@@ -2,3 +2,8 @@
 __pycache__/
 *.egg-info/
 .pytest_cache/
+e2e/cert/
+e2e/*.log
+e2e/*.out
+e2e/*.txt
+e2e/*.png
