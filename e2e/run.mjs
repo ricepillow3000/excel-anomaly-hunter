@@ -1,5 +1,5 @@
 // Browser test of the REAL panel against the REAL engine, with fake-office.js standing in for Excel.
-// Run via ./e2e/all.sh (needs: node + playwright with chromium, the repo's .venv). Modes: ai oldengine layout layers nokey.
+// Run via ./e2e/all.sh (needs: node + playwright with chromium, the repo's .venv). Modes: ai oldengine layout layers monitor nokey.
 import { createRequire } from "node:module";
 const pw = await import(process.env.PLAYWRIGHT || "playwright") // local install, else the global one
   .catch(() => import(createRequire(import.meta.url).resolve("playwright", { paths: [process.env.NODE_PATH || ""] })));
@@ -34,7 +34,84 @@ const cell = (a) => page.evaluate((a) => __cell("Sales", a), a);
 const scanned = async () => { await page.click("#scan"); await page.click("#save-limits"); await page.waitForSelector("#results", { state: "visible" }); };
 const recShown = () => page.waitForFunction(() => document.querySelector("#fix-result").style.display === "block" && document.querySelector("#fix-label").textContent === "Recommended fix");
 
-if (mode === "layers") {
+if (mode === "monitor") { // L6 Route Monitor + web research, with screenshots of each state (e2e/rm-*.png)
+  const shot = async (name) => (await page.$("#route-monitor")).screenshot({ path: DIR + `rm-${name}.png` });
+  const has = (id, cls) => page.evaluate(([id, cls]) => document.getElementById(id).classList.contains(cls), [id, cls]);
+  const note = (src) => text(`#rm-src-${src} .rm-note`);
+  const trace = () => text("#rm-trace");
+  const research = () => fs.readFileSync(DIR + "claude.log", "utf8").trim().split("\n").map(JSON.parse).filter((l) => l.tools.length);
+  await shot("0-idle");
+  ok((await note("engine")) === "always on" && (await note("web")) === "on request", "idle: shelves say what they can do");
+  await scanned();
+  await shot("1-scanned");
+  const counts = await page.$$eval(".rm-count", (t) => t.map((x) => +x.textContent));
+  const total = counts.reduce((a, b) => a + b, 0);
+  ok(total > 0 && (await text("#rm-caption")).startsWith(`${total} issue`), "scan: department counts add up to the caption - " + counts);
+  ok(+(await text("#rm-Irregularities .rm-count")) >= 2, "scan: both planted Units values reach Irregularities");
+
+  await page.click("#flagged-list li[data-row-index] >> text=Row 11");
+  await recShown();
+  await shot("2-investigate-row11");
+  ok(await has("rm-Irregularities", "is-target") && (await text("#rm-row")) === "Row 11", "row 11: its case goes to Irregularities, the card names the row");
+  ok((await text("#rm-desc")).startsWith("Row 11 → Irregularities → Engine checks"), "row 11: caption and accessible description name the path");
+  ok((await trace()).includes("C11 Units = -5 · limit"), "row 11: trace line has the cell and plain numbers - " + (await trace()).slice(-120));
+  ok((await page.getAttribute("#rm-route-engine", "d")).startsWith("M158 64") && await has("rm-route-engine", "is-on")
+    && !(await has("rm-route-ai", "is-on")), "row 11: only the engine route is drawn, from the case");
+
+  await page.fill("#fix-intent", "slow please, average for East");
+  await page.click("#fix-ask");
+  await page.waitForTimeout(700);
+  await shot("3-ai-pending");
+  ok(await has("rm-route-ai", "is-pending") && (await note("ai")) === "thinking…", "Ask AI: dashed route while Claude thinks");
+  await page.waitForFunction(() => document.querySelector("#fix-label").textContent === "AI suggestion", null, { timeout: 15000 });
+  await shot("4-ai-answered");
+  ok(await has("rm-route-ai", "is-on") && !(await has("rm-route-ai", "is-pending")) && (await trace()).includes("Claude: C11 → =AVERAGEIFS"),
+    "Ask AI: solid route once answered; the trace quotes the proposed value");
+
+  await page.click("#fix-research");
+  await page.waitForTimeout(500);
+  ok(await has("rm-route-web", "is-pending") && (await note("web")) === "searching…", "Research: dashed route to Excel pros while searching");
+  await page.waitForSelector("#fix-web", { state: "visible", timeout: 15000 });
+  await shot("5-research");
+  ok((await text("#web-sources")) === "exceljet.net" && (await page.getAttribute("#web-sources a", "href")).startsWith("https://exceljet.net/"),
+    "Research: only the vetted source is shown - " + (await text("#web-sources")));
+  ok((await text("#web-formula")) === '=COUNTIF(C:C,"<0")' && (await page.$$("#web-steps li")).length === 3, "Research: formula and steps shown");
+  ok((await note("web")) === "1 source" && (await trace()).includes("Excel pros (1): Excel pros mark"), "Research: shelf and trace say what came back");
+  const calls = research();
+  ok(calls.length === 2 && calls[1].turns === 2 && !calls[0].prompt.includes("-5"), "Research: a paused search resumed once; no sheet values in the prompt");
+  ok((await cell("C11")).v === -5, "Research writes nothing to the sheet");
+  await page.click("#web-use");
+  ok((await page.inputValue("#fix-intent")).startsWith("Use this approach from Excel pros: "), "Use in Ask AI fills the request box only");
+
+  await page.fill("#fix-intent", "slow please");
+  await page.click("#fix-ask");
+  await page.click("#fix-back");
+  ok(!(await has("rm-case", "is-active")) && (await page.getAttribute("#rm-route-ai", "d")) === "", "Back: case returns home, routes cleared");
+  await page.waitForFunction(() => !document.querySelector("#fix-ask").disabled, null, { timeout: 15000 });
+  ok(!(await has("rm-route-ai", "is-on")), "Back: an AI answer that lands later draws no route");
+
+  await page.click("#flagged-list li[data-row-index] >> text=Row 22");
+  await recShown();
+  await shot("6-investigate-row22");
+  const before = research().length;
+  await page.click("#fix-research"); // a different issue: a real search that the next Scan makes stale
+  await page.click("#scan"); // limits are saved now: straight to the results
+  await page.waitForSelector("#results", { state: "visible" });
+  await page.waitForFunction(() => !document.querySelector("#fix-research").disabled, null, { timeout: 15000 });
+  ok(research().length === before + 1 && !(await vis("fix-web")) && !(await has("rm-route-web", "is-on")), "a research answer after a new Scan is dropped");
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.click("#flagged-list li[data-row-index] >> text=Row 11");
+  await recShown();
+  await page.fill("#fix-intent", "slow please");
+  await page.click("#fix-ask");
+  ok(await page.evaluate(() => getComputedStyle(document.getElementById("rm-route-ai")).animationName === "none"
+    && getComputedStyle(document.getElementById("rm-case")).transitionDuration === "0s"), "reduced motion: nothing animates");
+  await page.waitForFunction(() => !document.querySelector("#fix-ask").disabled, null, { timeout: 15000 });
+  await page.setViewportSize({ width: 280, height: 900 });
+  await shot("7-narrow-280");
+  ok(await page.evaluate(() => document.documentElement.scrollWidth <= 280), "280px pane: no sideways scroll");
+} else if (mode === "layers") {
   // 1) Clear highlights must restore the ORIGINAL fills even after several scans
   await page.evaluate(() => { __fill("Sales", "A5", "#C6EFCE"); __fill("Sales", "B5", "#C6EFCE"); });
   await scanned(); // first scan + limits
@@ -206,6 +283,8 @@ if (mode === "layers") {
   ok((await cell("C11")).v === -5, mode + ": Undo works without AI");
   if (mode === "nokey") {
     ok(await page.isDisabled("#fix-ask"), "no key: Ask AI disabled");
+    ok(await page.isDisabled("#fix-research") && (await text("#rm-src-web .rm-note")) === "needs API key", "no key: web research disabled, and the monitor says why");
+    ok(await page.evaluate(() => document.getElementById("rm-route-engine").classList.contains("is-on")), "no key: the engine route still draws");
     ok(await vis("fix-nokey") && (await text("#fix-nokey")).includes("ANTHROPIC_API_KEY"), "no key: says why, even after Apply/Undo");
   } else {
     await page.fill("#fix-intent", "anything");

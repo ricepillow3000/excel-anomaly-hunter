@@ -124,6 +124,17 @@ def create_app():
         return ai(lambda: triage.suggest_fix(body["columns"], body["rows"], body["row_index"], body["start_row"],
                                              body["start_col"], str(body.get("reason") or ""), intent, formulas))
 
+    @app.post("/research")
+    def research_route():
+        body = request.get_json(silent=True) or {}
+        text = lambda k, n: isinstance(body.get(k, ""), str) and len(body.get(k, "")) <= n
+        if not (isinstance(body, dict) and body.get("department") in ("Duplicates", "Irregularities", "Anomalies", "Formula bugs")
+                and body.get("reason") and text("reason", 2000) and text("formula", 1000)
+                and isinstance(body.get("columns"), list) and len(body["columns"]) <= 200):
+            return {"error": "'department', 'reason' and 'columns' are required"}, 400
+        return ai(lambda: triage.research(body["department"], body["reason"], [str(c)[:60] for c in body["columns"]],
+                                          body.get("formula") or ""))
+
     return app
 
 

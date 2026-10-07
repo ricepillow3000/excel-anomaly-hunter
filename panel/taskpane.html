@@ -80,15 +80,57 @@
         </section>
         <label for="fix-intent" class="hint">Want something else? Describe it in plain English and the AI writes the Excel formula.</label>
         <textarea id="fix-intent" rows="3" placeholder="e.g. Replace the -5 with the average Units for the East region"></textarea>
-        <button id="fix-ask" class="secondary-btn">Ask AI</button>
-        <p id="fix-nokey" class="hint" style="display: none">Ask AI needs ANTHROPIC_API_KEY set before install.bat - see README. The recommended fix above works without it.</p>
+        <div class="actions-row">
+          <button id="fix-ask" class="secondary-btn">Ask AI</button>
+          <button id="fix-research" class="secondary-btn">Research on the web</button>
+        </div>
+        <section id="fix-web" class="fix-result" style="display: none">
+          <h2>From Excel pros on the web</h2>
+          <p id="web-technique"></p>
+          <code id="web-formula" class="fix-values"></code>
+          <ol id="web-steps" class="web-steps"></ol>
+          <p class="hint">Sources: <span id="web-sources"></span></p>
+          <p class="hint">A reference only - nothing here is applied to your sheet.</p>
+          <button id="web-use" class="secondary-btn">Use in Ask AI</button>
+        </section>
+        <p id="fix-nokey" class="hint" style="display: none">Ask AI and web research need ANTHROPIC_API_KEY set before install.bat - see README. The recommended fix above works without it.</p>
         <p id="fix-status" class="hint"></p>
       </section>
 
       <section id="error-state" class="panel" style="display: none"><p id="error-text"></p></section>
 
-      <section class="panel">
+      <section class="panel" id="route-monitor">
         <h2>Route Monitor</h2>
+        <figure class="rm">
+          <svg viewBox="0 0 300 202" role="img" aria-labelledby="rm-title rm-desc">
+          <title id="rm-title">Route Monitor</title><desc id="rm-desc">No scan yet.</desc>
+          <defs><marker id="rm-arrow" viewBox="0 0 6 6" refX="5" refY="3" markerUnits="userSpaceOnUse" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L6 3L0 6z" /></marker></defs>
+          <path class="rm-street" d="M8 72H292M150 8V148" />
+          <g class="rm-bldg" id="rm-Duplicates"><rect x="8" y="8" width="134" height="56" rx="2" /><text class="rm-name" x="16" y="26">Duplicates</text>
+            <text class="rm-count" x="16" y="50">–</text><rect class="rm-track" x="16" y="56" width="118" height="3" /><rect class="rm-bar" x="16" y="56" width="0" height="3" /></g>
+          <g class="rm-bldg" id="rm-Irregularities"><rect x="158" y="8" width="134" height="56" rx="2" /><text class="rm-name" x="166" y="26">Irregularities</text>
+            <text class="rm-count" x="166" y="50">–</text><rect class="rm-track" x="166" y="56" width="118" height="3" /><rect class="rm-bar" x="166" y="56" width="0" height="3" /></g>
+          <g class="rm-bldg" id="rm-Anomalies"><rect x="8" y="80" width="134" height="56" rx="2" /><text class="rm-name" x="16" y="98">Anomalies</text>
+            <text class="rm-count" x="16" y="122">–</text><rect class="rm-track" x="16" y="128" width="118" height="3" /><rect class="rm-bar" x="16" y="128" width="0" height="3" /></g>
+          <g class="rm-bldg" id="rm-Formulas"><rect x="158" y="80" width="134" height="56" rx="2" /><text class="rm-name" x="166" y="98">Formula bugs</text>
+            <text class="rm-count" x="166" y="122">–</text><rect class="rm-track" x="166" y="128" width="118" height="3" /><rect class="rm-bar" x="166" y="128" width="0" height="3" /></g>
+          <text id="rm-row" class="rm-row" text-anchor="end"></text>
+          <rect class="rm-plaza" x="142" y="64" width="16" height="16" rx="2" />
+          <text class="rm-head" x="8" y="147">SOURCES</text>
+          <g class="rm-shelf" id="rm-src-engine"><rect x="8" y="164" width="92" height="34" rx="2" />
+            <text class="rm-name" x="15" y="179">Engine checks</text><text class="rm-note" x="15" y="192">–</text></g>
+          <g class="rm-shelf" id="rm-src-ai"><rect x="104" y="164" width="92" height="34" rx="2" />
+            <text class="rm-name" x="111" y="179">Claude AI</text><text class="rm-note" x="111" y="192">–</text></g>
+          <g class="rm-shelf" id="rm-src-web"><rect x="200" y="164" width="92" height="34" rx="2" />
+            <text class="rm-name" x="207" y="179">Excel pros</text><text class="rm-note" x="207" y="192">–</text></g>
+          <path class="rm-route" id="rm-route-engine" d="" marker-end="url(#rm-arrow)" />
+          <path class="rm-route" id="rm-route-ai" d="" marker-end="url(#rm-arrow)" />
+          <path class="rm-route" id="rm-route-web" d="" marker-end="url(#rm-arrow)" />
+          <g id="rm-case"><circle class="rm-halo" cx="150" cy="72" r="10" /><circle class="rm-dot" cx="150" cy="72" r="5" /></g>
+          </svg>
+          <figcaption id="rm-caption">Scan to see where each issue goes.</figcaption>
+        </figure>
+        <ol id="rm-trace" class="rm-trace" aria-live="polite" aria-relevant="additions"></ol>
         <label class="hint"><input type="checkbox" id="watch-toggle" /> Watch this sheet for changes</label>
         <p class="hint" id="watch-status"></p>
         <ul id="watch-feed" class="flagged-list"></ul>
