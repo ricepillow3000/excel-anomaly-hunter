@@ -84,22 +84,42 @@ def create_app():
             return {"error": "No scan has run yet - run a scan from the Excel panel first."}, 404
         return jsonify(app.config["last_scan"])  # bare array: Power Query turns it straight into a table
 
-    @app.post("/triage")
-    def triage_route():
+    def ai(call):
+        """Run a Claude call; map its failures to HTTP errors the panel shows as-is."""
         if not triage.api_key_configured():
-            return {"error": "ANTHROPIC_API_KEY is not set - AI triage is unavailable."}, 503
-        body = request.get_json(silent=True)
-        if not isinstance(body, dict) or not all(isinstance(body.get(k), list) for k in ("columns", "flagged")):
-            return {"error": "'columns' and 'flagged' must be lists"}, 400
+            return {"error": "ANTHROPIC_API_KEY is not set - AI features are unavailable."}, 503
         try:
-            # panel sends <= 25 shown rows; cap so a bug can't run up the Claude bill
-            return {"results": triage.triage_rows(body["columns"], body["flagged"][:25])}
+            return call()
         except anthropic.AuthenticationError:
             return {"error": "Invalid ANTHROPIC_API_KEY."}, 503
         except (anthropic.RateLimitError, anthropic.APIConnectionError) as e:
             return {"error": f"Claude API busy or unreachable - try again shortly. ({e})"}, 503
         except anthropic.APIError as e:
             return {"error": f"Claude API error: {e}"}, 502
+        except ValueError as e:
+            return {"error": str(e)}, 502
+
+    @app.post("/triage")
+    def triage_route():
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict) or not all(isinstance(body.get(k), list) for k in ("columns", "flagged")):
+            return {"error": "'columns' and 'flagged' must be lists"}, 400
+        # panel sends <= 25 shown rows; cap so a bug can't run up the Claude bill
+        return ai(lambda: {"results": triage.triage_rows(body["columns"], body["flagged"][:25])})
+
+    @app.post("/fix")
+    def fix_route():
+        body = request.get_json(silent=True)
+        if err := _bad(body):
+            return {"error": err}, 400
+        nat = lambda k, hi=None: type(body.get(k)) is int and 0 <= body[k] and (hi is None or body[k] < hi)
+        if not (nat("row_index", len(body["rows"])) and nat("start_row") and nat("start_col")):
+            return {"error": "'row_index', 'start_row', 'start_col' must be whole numbers inside the sheet"}, 400
+        intent = body.get("intent") or ""
+        if not isinstance(intent, str) or len(intent) > 2000:
+            return {"error": "'intent' must be text, at most 2000 characters"}, 400
+        return ai(lambda: triage.suggest_fix(body["columns"], body["rows"], body["row_index"], body["start_row"],
+                                             body["start_col"], str(body.get("reason") or ""), intent))
 
     return app
 

@@ -61,3 +61,18 @@ h2 { font-size: 14px; margin: 0 0 8px; }
 .flagged-list .row-head { display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 2px; }
 .flagged-list .reason { color: #3b3a39; }
 .flagged-list .more { text-align: center; color: #605e5c; font-size: 11px; }
+
+.flagged-list li[data-row-index] { cursor: pointer; }
+.flagged-list li[data-row-index]:hover { filter: brightness(0.97); }
+.back-btn { width: auto; padding: 4px 10px; font-size: 12px; margin: 12px 0 8px; }
+.fix-values { font-size: 11px; color: #3b3a39; background: white; border: 1px solid #e1dfdd; border-radius: 4px; padding: 6px 8px; margin-bottom: 6px; word-break: break-word; }
+#fix-intent { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 6px; border: 1px solid #d1d1d1; border-radius: 4px; resize: vertical; }
+#fix-explanation { font-size: 13px; margin: 0 0 8px; }
+.fix-changes { list-style: none; margin: 0 0 10px; padding: 0; font-size: 12px; }
+.fix-changes li { background: white; border: 1px solid #e1dfdd; border-radius: 4px; padding: 6px 8px; margin-bottom: 4px; word-break: break-word; }
+.fix-changes .old { color: #a19f9d; text-decoration: line-through; }
+.fix-changes .new { color: #107c10; font-family: Consolas, monospace; }
+.fix-result { background: #f0f6fc; border: 1px solid #c7e0f4; border-radius: 4px; padding: 10px; margin: 8px 0 14px; }
+.fix-result .actions-row { margin-bottom: 0; }
+.fix-result .scan-btn { margin: 0; padding: 6px 10px; font-size: 12px; }
+#fix-ask { margin-top: 6px; }

@@ -8,7 +8,12 @@ Then once in Excel: **Home > Add-ins > More Add-ins > SHARED FOLDER > Anomaly Hu
 the panel open, and the engine starts hidden at each logon. Re-run to repair; `install.bat /u` uninstalls.
 Windows-only per-user install (trusted shared-folder catalog), not a store add-in.
 
-AI triage: set `ANTHROPIC_API_KEY` before installing. No-Excel mode: `anomaly-hunter scan data.csv`.
+**Fix a flagged row:** after a scan, click a highlighted row (in the sheet or in the pane's list). A **recommended
+fix** shows up at once (no AI needed): e.g. a number past its limits -> the median of the rest of its column. Want
+something else? Type it in plain English ("replace the -5 with the average Units for East") and **Ask AI** writes the
+Excel formula. Either way you see old -> new, nothing changes until you click **Apply**, and **Undo** puts it back.
+
+AI triage + fixes: set `ANTHROPIC_API_KEY` before installing. No-Excel mode: `anomaly-hunter scan data.csv`.
 
 **Layout:** `anomaly_hunter/` engine + local server (127.0.0.1:5055) · `panel/` task pane, plain JS, no build · `powerbi/` Power BI Desktop source · `docs/` design notes.
 
