@@ -306,3 +306,27 @@ def test_two_slips_at_once_is_not_an_obvious_typo():
     from anomaly_hunter.detectors import likely_value
     units = np.array([40.0, 52, 61, 47, 55, 58, 44, 50, 66, 49])
     assert likely_value(-5.0, np.append(units, -5), 25, 80) is None  # -5 -> 50 would be sign AND zeros: just guessing
+
+
+def test_review_fixes_ids_totals_names():
+    from anomaly_hunter.load import load_from_records
+    from anomaly_hunter.limits import suggest_limits_dict
+    from anomaly_hunter.pipeline import score, summary_rows
+    # a text ID among numeric IDs is a value, not a blank
+    df, types, errors = load_from_records(["SKU", "Qty"], [[100200 + k, 10 + k % 7 + k / 100] for k in range(40)] + [["A-17", 12.5]])
+    rows, _ = score(df, types, errors, {}, None)
+    assert types["SKU"] == "id" and not rows[-1]["severity"]
+    # 0/1 count columns: no fake "sum rows"
+    df, _, _ = load_from_records(["Late", "Damaged"], [[a, b] for _ in range(10) for a, b in ((1, 0), (0, 1), (1, 1), (0, 0))])
+    assert not summary_rows(df).any()
+    # "Average" as a category in an otherwise full row (one blank) is data
+    df, _, _ = load_from_records(["Rating", "Score", "Note"], [["Good", 5 + k % 3, "x"] for k in range(9)] + [["Average", 4, ""]])
+    assert not summary_rows(df).any()
+    # whole-word ID names only
+    _, types, _ = load_from_records(["Mean", "Zip Code", "Clean"], [[k % 9, 60601 + k % 3, k % 4] for k in range(30)])
+    assert types == {"Mean": "number", "Zip Code": "id", "Clean": "number"}
+    # baseline low never tighter than weird low
+    rng = np.random.RandomState(5)
+    df, _, _ = load_from_records(["Paid"], [[round(float(rng.lognormal(8, 1)), 2)] for _ in range(80)])
+    b_lo, _, w_lo, _ = suggest_limits_dict(df, ["Paid"])["Paid"]
+    assert b_lo >= w_lo

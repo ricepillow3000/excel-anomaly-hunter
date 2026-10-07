@@ -23,7 +23,7 @@ def run_scan(files, limits_path, order_by, out_path):
         suggest_limits(df, numbers(types), limits_path)
         print(f"No limits file found. Suggested limits written to {limits_path}. Review it and run again.")
         return 2
-    limits, more = read_limits(limits_path, numbers(types))
+    limits, more = read_limits(limits_path, numbers(types), [c for c, t in types.items() if t == "id"])
     write_report(df, *score(df, types, errors, limits, order_by), out_path, limits_path, warnings + more)
     print(f"Report written to {out_path}")
     return 0

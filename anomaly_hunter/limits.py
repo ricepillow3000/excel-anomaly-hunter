@@ -13,11 +13,12 @@ def _num(v):
     return None if pd.isna(v) or not str(v).strip() else float(v)
 
 
-def read_limits(path, number_columns):
+def read_limits(path, number_columns, id_columns=()):
     """-> ({col: (b_lo, b_hi, w_lo, w_hi)}, warnings). Blank cell = no limit."""
     t = pd.read_csv(path, dtype=str).reindex(columns=COLS)
     ok = t["column"].isin(number_columns)
-    warnings = [f"limits.csv names column '{c}', not found in the data - skipped" for c in t["column"][~ok]]
+    warnings = [f"limits.csv names column '{c}', " + ("an identifier, not a measurement" if c in id_columns else "not found in the data")
+                + " - skipped" for c in t["column"][~ok]]
     return {r[0]: tuple(map(_num, r[1:])) for r in t[ok].itertuples(index=False)}, warnings
 
 
@@ -44,6 +45,7 @@ def suggest_limits_dict(df, number_columns):
                 logs = np.log10(x)
                 low = 10 ** (logs.median() - max(6 * spread(logs), math.log10(15)))
                 v[2] = max(v[2], _round(low, 10 ** math.floor(math.log10(low)), False))  # its own scale: 57 -> 50, not 0
+                v[0] = max(v[0], v[2])  # baseline is never tighter than weird
             out[c] = tuple(v)
     return out
 

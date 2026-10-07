@@ -99,4 +99,9 @@ assert.deepEqual(tableFromGrid([["A", "B"], [1, 2]], null, 0, 0, [["A", "B"], [1
 rec = recommendFix(["Dept", "Hours"], [["sales", 40]], 0, {}, "x", 0, 0, { Dept: "Sales" });
 assert.deepEqual(rec.changes, [{ cell: "A2", new: "Sales" }]);
 
+// one-column sheet still has a header; duplicate headers use the engine's names ("Dept", "Dept.1")
+assert.deepEqual(tableFromGrid([["Sq Ft"], [1900], [2100]], null, 0, 0).columns, ["Sq Ft"]);
+rec = recommendFix(["Dept", "Dept"], [["sales", "ops"]], 0, {}, "x", 0, 0, { Dept: "Sales" });
+assert.deepEqual(rec.changes, [{ cell: "A2", new: "Sales" }], "fix only the column the engine named");
+
 console.log("panel self-check passed");

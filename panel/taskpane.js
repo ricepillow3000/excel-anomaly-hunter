@@ -101,7 +101,7 @@ async function readSheet() {
 function tableFromGrid(values, formats, rowIndex, colIndex, formulas) {
   const filled = (r) => r.filter((v) => v !== "" && v !== null).length;
   const widest = Math.max(0, ...values.slice(0, 20).map(filled));
-  const h = values.findIndex((r, k) => k < 10 && filled(r) >= Math.max(2, 0.6 * widest));
+  const h = values.findIndex((r, k) => k < 10 && filled(r) >= Math.max(Math.min(2, widest), 0.6 * widest));
   if (h < 0 || h + 1 >= values.length) return null; // need header + 1 row
   // Excel hands dates over as serial numbers; send real dates so the engine finds its time axis
   const isDate = values[h + 1].map((_, j) => !!formats && isDateFormat(formats[h + 1][j]));
@@ -542,6 +542,8 @@ function median(xs) {
 // calc = this row's formulas: a cell holding a formula is never overwritten - its inputs are what's wrong.
 function recommendFix(columns, rows, i, limits, reason, startRow, startCol, likely, calc) {
   const row = startRow + 2 + i;
+  const seen = {}; // the engine names duplicate headers "Dept", "Dept.1" - limits and likely use those names
+  columns = columns.map((c) => ((c = String(c)), (seen[c] = (seen[c] ?? -1) + 1) ? `${c}.${seen[c]}` : c));
   const changes = [], why = [], typos = [], real = [], calcCells = [];
   reason = reason || "";
   columns.forEach((c, j) => {

@@ -14,18 +14,20 @@ def summary_rows(df):
     filled = df[cols].notna().to_numpy() & (df[cols].astype(str).apply(lambda s: s.str.strip()) != "").to_numpy()
     count = filled.sum(axis=1)
     nums = [c for c in cols if df[c].dtype.kind in "fi"]
-    labelled = np.array(df.attrs.get("labelled", (False,) * len(df)), bool)  # set by load, before coercion
-    mask = (count == 0) | (labelled & (count < np.median(count)))
+    rows_with = lambda key: np.isin(np.arange(len(df)), list(df.attrs.get(key, ())))  # set by load, before coercion
+    sparse = count < np.median(count)  # a totals row leaves the label/date/text cells empty
+    # "Total" + sparse; "Average"/"Mean" only if half empty ("Average" can be a rating in a normal row)
+    mask = (count == 0) | (rows_with("total_rows") & sparse) | (rows_with("stat_rows") & (count <= np.median(count) / 2))
     x = df[nums].to_numpy(dtype=float)
+    run = np.vstack([np.zeros(len(nums)), np.nancumsum(x, axis=0)])  # run[i] = sum of rows before i
     start = 0
     for i in range(len(df)):
         if mask[i]:
             start = i + 1
             continue
-        above = np.nansum(x[start:i], axis=0)
+        above = run[i] - run[start]
         have = ~np.isnan(x[i]) & (above != 0)
-        enough = have.sum() >= 2 or (have.sum() == 1 and count[i] < np.median(count))  # 1 match counts only on a sparse row
-        if i - start >= 2 and enough and (np.abs(x[i][have] - above[have]) <= 0.005 * np.abs(above[have])).all():
+        if i - start >= 2 and sparse[i] and have.any() and (np.abs(x[i][have] - above[have]) <= 0.005 * np.abs(above[have])).all():
             mask[i], start = True, i + 1
     return mask
 
