@@ -23,4 +23,5 @@ AI triage + fixes: set `ANTHROPIC_API_KEY` before installing. No-Excel mode: `an
 **Layout:** `anomaly_hunter/` engine + local server (127.0.0.1:5055) · `panel/` task pane, plain JS, no build, wired as 5 layers (Scan -> Flag -> Highlight -> Suggest -> Ask AI) through one circuit that runs sheet actions one at a time · `powerbi/` Power BI Desktop source · `docs/` design notes.
 
 **Test:** `pip install -e .[dev]` then `pytest` and `node panel/selfcheck.js`. Industry benchmark (15 fields + held-out
-traps, real panel + engine, pass/fail gates): `python bench/score.py .`
+traps, real panel + engine, pass/fail gates): `python bench/score.py .` Browser test (real panel + engine, fake Excel, 81
+checks incl. the 5 layers and their races; needs node + playwright): `e2e/all.sh`
