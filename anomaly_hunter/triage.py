@@ -5,6 +5,7 @@ import re
 from typing import Literal
 
 import anthropic
+from openpyxl.utils import column_index_from_string, get_column_letter
 from pydantic import BaseModel, ValidationError
 
 MODEL = "claude-opus-5"
@@ -71,25 +72,8 @@ class Fix(BaseModel):
     changes: list[CellChange]
 
 
-def col_letter(n):
-    """0-based column index -> Excel letters (0 -> A, 26 -> AA)."""
-    s = ""
-    n += 1
-    while n:
-        n, r = divmod(n - 1, 26)
-        s = chr(65 + r) + s
-    return s
-
-
 # formulas that reach outside the workbook - a prompt-injected sheet could use them to send data out
-OUTSIDE = re.compile(r"WEBSERVICE|IMAGE\s*\(|HYPERLINK|RTD\s*\(|CALL\s*\(|REGISTER|FILTERXML|://|\[|\|", re.I)
-
-
-def _col_number(letters):
-    n = 0
-    for ch in letters:
-        n = n * 26 + ord(ch) - 64
-    return n
+OUTSIDE = re.compile(r"WEBSERVICE|IMAGE\s*\(|HYPERLINK|RTD\s*\(|CALL\s*\(|REGISTER|FILTERXML|://|\[|\|", re.IGNORECASE)
 
 
 def refers_to_itself(cell, text):
@@ -97,11 +81,11 @@ def refers_to_itself(cell, text):
     if not text.startswith("="):
         return False
     col, row = re.fullmatch(r"([A-Z]+)(\d+)", cell).groups()
-    c, r = _col_number(col), int(row)
+    c, r = column_index_from_string(col), int(row)
     for a, r1, b, r2 in REFS.findall(re.sub(r'"[^"]*"', '""', text.upper())):  # ignore "text in quotes"
         if not r1 and not b:
             continue  # a bare word like TRUE or a function name, not a reference
-        cols = sorted((_col_number(a), _col_number(b or a)))  # C41:C2 is the same range as C2:C41
+        cols = sorted((column_index_from_string(a), column_index_from_string(b or a)))  # C41:C2 is the same range as C2:C41
         rows_hit = not r1 or min(int(r1), int(r2 or r1)) <= r <= max(int(r1), int(r2 or r1))  # no row = whole column
         if cols[0] <= c <= cols[1] and rows_hit:
             return True
@@ -109,7 +93,7 @@ def refers_to_itself(cell, text):
 
 
 def _fix_prompt(columns, rows, i, start_row, start_col, reason, intent):
-    letters = [col_letter(start_col + j) for j in range(len(columns))]
+    letters = [get_column_letter(1 + start_col + j) for j in range(len(columns))]
     top = start_row + 1  # 1-based sheet row of the header
     line = lambda k: f"row {top + 1 + k}: " + ", ".join(f"{c}{top + 1 + k}={v!r}" for c, v in zip(letters, rows[k]))
     near = [line(k) for k in range(max(0, i - 5), min(len(rows), i + 6)) if k != i]
@@ -145,7 +129,7 @@ def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent):
     changes = [c for c in changes if CELL.fullmatch(c["cell"])][:MAX_CHANGES]
     loops = [c["cell"] for c in changes if refers_to_itself(c["cell"], c["new"])]
     outside = [c["cell"] for c in changes if c["new"].lstrip()[:1] in "=+-@" and OUTSIDE.search(c["new"])]
-    note = (f" (Left out {', '.join(loops)}: the formula referred to its own cell, which Excel can't calculate.)" if loops else "") + (
-        f" (Left out {', '.join(outside)}: the formula reached outside this workbook.)" if outside else "")
+    note = "".join(f" (Left out {', '.join(cells)}: the formula {why}.)" for cells, why in (
+        (loops, "referred to its own cell, which Excel can't calculate"), (outside, "reached outside this workbook")) if cells)
     drop = set(loops + outside)
     return {"explanation": fix.explanation + note, "changes": [c for c in changes if c["cell"] not in drop]}

@@ -15,10 +15,6 @@ def post(body):
     return create_app().test_client().post("/fix", json=body)
 
 
-def test_col_letter():
-    assert [triage.col_letter(n) for n in (0, 25, 26, 27, 701, 702)] == ["A", "Z", "AA", "AB", "ZZ", "AAA"]
-
-
 def test_fix_prompt_gives_claude_real_sheet_addresses():
     p = triage._fix_prompt(COLS, ROWS, 1, 0, 0, "Units below weird low 0", "make it the median")
     assert "Data range: A1:C4 (row 1 = headers)" in p

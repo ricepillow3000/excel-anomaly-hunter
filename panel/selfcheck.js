@@ -41,7 +41,6 @@ assert.equal(rowFromAddress("B:B", 0), null, "whole column");
 assert.equal(median([3, 1, "x", "", null, 2]), 2);
 assert.equal(median([4, 1, 2, 3]), 2.5);
 assert.equal(median(["a"]), null);
-assert.equal(String(+(0.1 + 0.2).toPrecision(10)), "0.3", "float noise trimmed");
 assert.deepEqual([0, 25, 26, 27, 701, 702].map(colLetter), ["A", "Z", "AA", "AB", "ZZ", "AAA"]);
 
 // instant recommendation: data A1:C5, header row 1, limits on Units only
@@ -60,7 +59,6 @@ assert.deepEqual(recommendFix(cols, data, 3, lim, "x", 0, 0).changes, [], "a bla
 rec = recommendFix(cols, data, 0, { Units: [10, 80, 50, null] }, "x", 4, 2); // data starts at C5
 assert.deepEqual(rec.changes, [{ cell: "E6", new: "18" }], "first row, offset data: median of -5, 41 (blank skipped)");
 assert.ok(rec.explanation.includes("(50 to no high)"));
-rec = recommendFix(cols, data, 0, null, 'Flagged by 1 of 4: Duplicate of row 2; Text "12O" in number column Units', 0, 0);
 rec = recommendFix(cols, data, 0, null, 'Flagged by 1 of 4: Duplicate of row 2', 4, 0); // header in row 5
 assert.ok(rec.explanation.includes("repeats row 6"), "duplicate row number shifts with the data: " + rec.explanation);
 rec = recommendFix(cols, data, 0, null, 'Flagged by 1 of 4: Duplicate of row 2; Text "12O" in number column Units', 0, 0);

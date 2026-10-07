@@ -20,7 +20,8 @@ let undos = {}; // row index -> cells to restore, while an applied fix hasn't be
 
 const $ = (id) => document.getElementById(id);
 const show = (id, on = true) => ($(id).style.display = on ? "block" : "none");
-const only = (id) => PANELS.forEach((p) => show(p, p === id));
+let view = null; // which of PANELS is showing
+const only = (id) => ((view = id), PANELS.forEach((p) => show(p, p === id)));
 const serverUp = (up) => (show("main-ui", up), show("server-down", !up));
 
 if (typeof Office !== "undefined") {
@@ -173,12 +174,16 @@ async function onWatchToggle(e) {
 
 async function stopWatching() {
   clearTimeout(watchTimer);
-  if (!watch) return;
   const w = watch;
   watch = null;
-  // must remove in the context that added it
-  await Excel.run(w.context, async (ctx) => {
-    w.remove();
+  await removeHandler(w);
+}
+
+// an Office event handler must be removed in the context that added it
+async function removeHandler(h) {
+  if (!h) return;
+  await Excel.run(h.context, async (ctx) => {
+    h.remove();
     await ctx.sync();
   });
 }
@@ -195,6 +200,7 @@ async function rescan() {
     if (!s || !limits) return;
     const body = await post("/scan", scanBody(s, limits)); // free + local; AI triage never auto-runs
     lastScan = s;
+    triaged = {}; // verdicts were for the old values
     await applyHighlights(body.rows, s);
     renderWatchFeed(diffFlaggedRows(lastRows, body.rows), s.startRow);
     lastRows = body.rows;
@@ -385,14 +391,9 @@ async function approve(i, action, detail) {
 
 async function watchSelection(sheetName) {
   if (picker && picker.sheet === sheetName) return;
-  if (picker) {
-    const old = picker;
-    picker = null;
-    await Excel.run(old.handle.context, async (ctx) => {
-      old.handle.remove();
-      await ctx.sync();
-    }).catch(() => {}); // old sheet deleted: nothing to remove
-  }
+  const old = picker;
+  picker = null;
+  await removeHandler(old && old.handle).catch(() => {}); // old sheet deleted: nothing to remove
   try {
     await Excel.run(async (ctx) => {
       const handle = ctx.workbook.worksheets.getItem(sheetName).onSelectionChanged.add(onSelect);
@@ -405,11 +406,9 @@ async function watchSelection(sheetName) {
 }
 
 async function onSelect(e) {
-  const busy = $("results").style.display !== "block" && $("fix-view").style.display !== "block";
-  if (busy || !lastScan) return; // never yank the user out of the limits editor
+  if (!lastScan || (view !== "results" && view !== "fix-view")) return; // never yank the user out of the limits editor
   const i = rowFromAddress(e.address, lastScan.startRow);
-  if (i !== null && lastRows[i] && lastRows[i].severity && !(fix && fix.i === i && $("fix-view").style.display === "block"))
-    openFix(i, false);
+  if (i !== null && !(view === "fix-view" && fix.i === i)) openFix(i, false); // openFix ignores clean rows
 }
 
 // Pure: "C7", "B7:D7", "Sheet1!C7", "7:7" -> 0-based data row index (header at startRow), or null.
@@ -447,7 +446,7 @@ async function openFix(i, selectInSheet) {
 }
 
 async function askFix() {
-  if (!aiAvailable || !fix || $("fix-ask").disabled) return;
+  if (!fix || $("fix-ask").disabled) return; // disabled while busy or without an API key
   const f = fix;
   const btn = $("fix-ask");
   btn.disabled = true;
@@ -519,8 +518,9 @@ function recommendFix(columns, rows, i, limits, reason, startRow, startCol) {
     const v = rows[i][j], lo = lim[2], hi = lim[3];
     const blank = (v === "" || v === null) && reason.includes(`Blank cell in column ${c},`);
     const outside = typeof v === "number" && ((lo != null && v < lo) || (hi != null && v > hi));
+    if (!(blank || outside)) return;
     const med = median(rows.filter((_, k) => k !== i).map((r) => r[j]));
-    if (!(blank || outside) || med === null) return;
+    if (med === null) return;
     changes.push({ cell: `${colLetter(startCol + j)}${row}`, new: String(+med.toPrecision(10)) });
     why.push(blank ? `${c} is blank` : `${c} is ${v}, outside its limits (${lo ?? "no low"} to ${hi ?? "no high"})`);
   });
