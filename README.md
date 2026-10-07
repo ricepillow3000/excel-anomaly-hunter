@@ -17,4 +17,5 @@ AI triage + fixes: set `ANTHROPIC_API_KEY` before installing. No-Excel mode: `an
 
 **Layout:** `anomaly_hunter/` engine + local server (127.0.0.1:5055) · `panel/` task pane, plain JS, no build · `powerbi/` Power BI Desktop source · `docs/` design notes.
 
-**Test:** `pip install -e .[dev]` then `pytest` and `node panel/selfcheck.js`.
+**Test:** `pip install -e .[dev]` then `pytest` and `node panel/selfcheck.js`. Industry benchmark (15 fields + held-out
+traps, real panel + engine, pass/fail gates): `python bench/score.py .`

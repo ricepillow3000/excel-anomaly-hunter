@@ -47,10 +47,31 @@ def _crossed(v, lo, hi):
     return None
 
 
+BEYOND = 4  # a typo sits this many times past every other value in the column
+
+
+def likely_value(v, x, lo, hi):
+    """The typo behind v, if one is obvious: extra/missing 0s (x10^k, |k|<=3: % typed as 85 for 0.85, g for kg)
+    or a flipped sign - one slip, not both - landing inside the baseline [lo, hi]. None when unsure. Never "corrects" a value that
+    is merely the biggest of a wide column: v must be >= BEYOND times past every other value."""
+    x = x[~np.isnan(x)]
+    rest = np.delete(x, np.flatnonzero(x == v)[:1])  # every other value in the column
+    others = np.abs(rest[rest != 0])
+    if lo is None or hi is None or not len(others) or v == 0:
+        return None
+    k = int(round(np.log10(abs(v)) - np.median(np.log10(others))))
+    far = abs(v) >= BEYOND * others.max() if k > 0 else abs(v) * BEYOND <= others.min()
+    flip = v < 0 and (rest >= 0).mean() >= 0.95  # sign flip only where negatives are rare
+    for c in ([v / 10 ** k] if 1 <= abs(k) <= 3 and far else []) + ([-v] if flip else []):
+        if lo <= c <= hi:
+            return float(f"{c:.10g}")
+    return None
+
+
 def limits_detector(df, column_types, limits):
-    """Weird-limit breach = vote. Baseline-only breach = noted, no vote."""
+    """Weird-limit breach = vote. Baseline-only breach = noted, no vote. likely[i] = {col: probable typo fix}."""
     n = len(df)
-    r = {**_result(n), "noted": np.zeros(n, bool), "noted_reasons": [[] for _ in range(n)]}
+    r = {**_result(n), "noted": np.zeros(n, bool), "noted_reasons": [[] for _ in range(n)], "likely": [{} for _ in range(n)]}
     for col in numbers(column_types):
         if not limits.get(col):
             continue
@@ -63,7 +84,10 @@ def limits_detector(df, column_types, limits):
             if (lim := _crossed(v, w_lo, w_hi)) is not None:
                 r["votes"][i] = True
                 r["magnitude"][i] = max(r["magnitude"][i], abs(v - lim) / sd)
-                r["reasons"][i].append(f"{col} weird limit is {lim:g}; this is {v:g}")
+                fix = likely_value(v, x, b_lo, b_hi)
+                if fix is not None:
+                    r["likely"][i][col] = fix
+                r["reasons"][i].append(f"{col} weird limit is {lim:g}; this is {v:g}" + (f" (likely {fix:g})" if fix is not None else ""))
             elif (lim := _crossed(v, b_lo, b_hi)) is not None:
                 r["noted"][i] = True
                 r["noted_reasons"][i].append(f"{col} baseline limit is {lim:g}; this is {v:g}")

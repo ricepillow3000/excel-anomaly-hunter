@@ -1,6 +1,6 @@
 // Panel pure-logic check, no Office/fetch. Run: node panel/selfcheck.js
 const assert = require("node:assert");
-const { computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix } = require("./taskpane.js");
+const { computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade } = require("./taskpane.js");
 
 const clean = computeHealthSummary({
   rows: [{ severity: null }, { severity: null }, { severity: "Noted" }],
@@ -64,5 +64,39 @@ assert.ok(rec.explanation.includes("repeats row 6"), "duplicate row number shift
 rec = recommendFix(cols, data, 0, null, 'Flagged by 1 of 4: Duplicate of row 2; Text "12O" in number column Units', 0, 0);
 assert.ok(rec.explanation.includes("repeats row 2") && rec.explanation.includes('Units holds the text "12O"'), rec.explanation);
 assert.deepEqual(recommendFix(cols, [["a", "b", 999]], 0, lim, "x", 0, 0).changes, [], "one data row: nothing to take a median of");
+
+// header below title rows; numeric year headers kept; dates converted using the first DATA row's format
+let tg = tableFromGrid([["Cost Report"], ["Period 9"], [""], ["Code", "Item", "Budget"], ["03-1", "Pour", 500], ["03-2", "Form", 700]],
+  null, 0, 0);
+assert.deepEqual([tg.columns, tg.startRow, tg.rows.length], [["Code", "Item", "Budget"], 3, 2]);
+tg = tableFromGrid([["($mm)", 2024, 2025], ["Revenue", 10, 12]], null, 4, 2);
+assert.deepEqual([tg.columns, tg.startRow, tg.startCol], [["($mm)", 2024, 2025], 4, 2], "a year header is still the header");
+tg = tableFromGrid([["Date", "Units"], [46028, 5]], [["General", "General"], ["m/d/yyyy", "0"]], 0, 0);
+assert.deepEqual(tg.rows, [["2026-01-06", 5]]);
+assert.equal(tableFromGrid([["Title only"]], null, 0, 0), null);
+assert.equal(tableFromGrid([["A", "B"]], null, 0, 0), null, "header with no data");
+
+// engine-spotted typo becomes the fix; wide columns are never median-overwritten
+assert.equal(typoKind(2600, 26), "extra zeros - x100");
+assert.equal(typoKind(0.26, 26), "missing zeros - ÷100");
+assert.equal(typoKind(-26, 26), "sign flipped");
+rec = recommendFix(cols, data, 1, lim, "x", 0, 0, { Units: 5 });
+assert.deepEqual(rec.changes, [{ cell: "C3", new: "5" }]);
+assert.ok(rec.explanation.startsWith("Units is -5 - looks like a typo for 5 (sign flipped)"), rec.explanation);
+assert.ok(spansDecade([1, 2, 5, 10, 40, 80, 120, 300, 900, 2000]) && !spansDecade([20, 22, 25, 30, 31, 33, 35, 38, 40, 41]));
+const wide = [["a", 100], ["b", 900], ["c", 15000], ["d", 2200], ["e", 400], ["f", 7000], ["g", 30000], ["h", 1300], ["i", 600], ["j", 5000], ["k", 999999]];
+rec = recommendFix(["Id", "Paid"], wide, 10, { Paid: [0, 20000, 0, 40000] }, "x", 0, 0);
+assert.deepEqual(rec.changes, [], "a huge value in a naturally wide column is not overwritten");
+assert.ok(rec.explanation.includes("may be real"), rec.explanation);
+
+// a formula cell is never overwritten: its inputs are what's wrong
+rec = recommendFix(cols, data, 1, lim, "x", 0, 0, { Units: 5 }, ["", "", "=A3*2"]);
+assert.deepEqual(rec.changes, [], "no write into a formula cell");
+assert.ok(rec.explanation.startsWith("C3 is calculated by a formula"), rec.explanation);
+assert.ok(!rec.explanation.includes("Replace") && !rec.explanation.includes("typo for"), "no contradicting advice");
+assert.deepEqual(tableFromGrid([["A", "B"], [1, 2]], null, 0, 0, [["A", "B"], [1, "=A2*2"]]).calc, [[1, "=A2*2"]]);
+// spelling variant -> the usual spelling
+rec = recommendFix(["Dept", "Hours"], [["sales", 40]], 0, {}, "x", 0, 0, { Dept: "Sales" });
+assert.deepEqual(rec.changes, [{ cell: "A2", new: "Sales" }]);
 
 console.log("panel self-check passed");

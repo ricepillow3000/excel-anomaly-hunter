@@ -89,15 +89,25 @@ function saveLimits(limits) {
 async function readSheet() {
   return Excel.run(async (ctx) => {
     const sheet = ctx.workbook.worksheets.getActiveWorksheet().load("name");
-    const used = sheet.getUsedRange().load("values, numberFormat, rowIndex, columnIndex");
+    const used = sheet.getUsedRange().load("values, formulas, numberFormat, rowIndex, columnIndex");
     await ctx.sync();
-    const d = used.values;
-    if (!d || d.length < 2) return null; // need header + 1 row
-    // Excel hands dates over as serial numbers; send real dates so the engine finds its time axis
-    const isDate = d[1].map((_, j) => isDateFormat(used.numberFormat[1][j]));
-    const rows = d.slice(1).map((r) => r.map((v, j) => (isDate[j] && typeof v === "number" ? excelDate(v) : v)));
-    return { columns: d[0], rows, startRow: used.rowIndex, startCol: used.columnIndex, sheet: sheet.name };
+    const t = tableFromGrid(used.values, used.numberFormat, used.rowIndex, used.columnIndex, used.formulas);
+    return t && { ...t, sheet: sheet.name };
   });
+}
+
+// Pure: used-range values -> {columns, rows, startRow, startCol}, or null if there's no header + data row.
+// Header = first row that is mostly filled, so title rows above it ("Cost Report - Period 9") are skipped.
+function tableFromGrid(values, formats, rowIndex, colIndex, formulas) {
+  const filled = (r) => r.filter((v) => v !== "" && v !== null).length;
+  const widest = Math.max(0, ...values.slice(0, 20).map(filled));
+  const h = values.findIndex((r, k) => k < 10 && filled(r) >= Math.max(2, 0.6 * widest));
+  if (h < 0 || h + 1 >= values.length) return null; // need header + 1 row
+  // Excel hands dates over as serial numbers; send real dates so the engine finds its time axis
+  const isDate = values[h + 1].map((_, j) => !!formats && isDateFormat(formats[h + 1][j]));
+  const rows = values.slice(h + 1).map((r) => r.map((v, j) => (isDate[j] && typeof v === "number" ? excelDate(v) : v)));
+  const calc = formulas && formulas.slice(h + 1); // each data row's formulas ("=B2-C2"), so a fix never types over one
+  return { columns: values[h], rows, startRow: rowIndex + h, startCol: colIndex, gridRows: rows.map((_, k) => h + 1 + k), calc };
 }
 
 // Pure: number format shows a date? (ignore [colors/locales] and "quoted text", e.g. "[Red]0.00")
@@ -441,7 +451,7 @@ async function openFix(i, selectInSheet) {
       await ctx.sync();
     }).catch((e) => console.error("select row failed", e));
   // instant, local recommendation - no AI, no key needed
-  const rec = recommendFix(columns, rows, i, await getLimits(), r.reason, startRow, startCol);
+  const rec = recommendFix(columns, rows, i, await getLimits(), r.reason, startRow, startCol, r.likely, lastScan.calc && lastScan.calc[i]);
   if (fix === f) await showFix(f, "Recommended fix", rec);
 }
 
@@ -456,7 +466,7 @@ async function askFix() {
     const { columns, rows, startRow, startCol } = lastScan;
     const out = await post("/fix", {
       columns, rows, row_index: f.i, start_row: startRow, start_col: startCol,
-      reason: lastRows[f.i].reason, intent: $("fix-intent").value,
+      reason: lastRows[f.i].reason, intent: $("fix-intent").value, formulas: lastScan.calc ? lastScan.calc[f.i] : undefined,
     });
     if (fix === f) await showFix(f, "AI suggestion", out); // else: user moved to another row meanwhile
   } catch (e) {
@@ -496,6 +506,27 @@ function colLetter(n) {
   return s;
 }
 
+// Pure: how a typo turned `fix` into `v`, in words: "extra zeros", "missing zeros", "sign flipped"
+function typoKind(v, fix) {
+  if (v === -fix) return "sign flipped";
+  const k = Math.round(Math.log10(Math.abs(v / fix)));
+  return `${k > 0 ? "extra" : "missing"} zeros - ${k > 0 ? "x" : "÷"}${10 ** Math.abs(k)}`;
+}
+
+// Pure: do the positive numbers span more than 10x between their 5th and 95th percentile? (claims, deal sizes)
+function spansDecade(xs) {
+  const v = xs.filter((x) => typeof x === "number" && x > 0).sort((a, b) => a - b);
+  return v.length >= 10 && v[Math.floor(0.95 * (v.length - 1))] > 10 * v[Math.floor(0.05 * (v.length - 1))];
+}
+
+// What Excel's own error codes mean, in plain words
+const EXCEL_ERRORS = {
+  "#N/A": "a lookup (VLOOKUP/XLOOKUP/MATCH) found no match", "#DIV/0!": "it divides by zero or by a blank cell",
+  "#REF!": "it points at a cell or sheet that was deleted", "#VALUE!": "one of its inputs is the wrong type (text where a number belongs)",
+  "#NAME?": "a function or name in it is misspelled", "#NUM!": "the math is impossible (e.g. square root of a negative)",
+  "#NULL!": "two ranges in it don't overlap", "#SPILL!": "its results are blocked by cells in the way", "#CALC!": "the calculation failed",
+};
+
 // Pure: median of the numbers in a list (null if none)
 function median(xs) {
   const v = xs.filter((x) => typeof x === "number" && isFinite(x)).sort((a, b) => a - b);
@@ -508,31 +539,52 @@ function median(xs) {
 // number column -> the median of the OTHER rows' values in that column, written as a plain number (a formula
 // over the column could loop back through a totals row = circular reference). Anything else -> advice only.
 // limits = {col: [baseLo, baseHi, weirdLo, weirdHi]}.
-function recommendFix(columns, rows, i, limits, reason, startRow, startCol) {
+// calc = this row's formulas: a cell holding a formula is never overwritten - its inputs are what's wrong.
+function recommendFix(columns, rows, i, limits, reason, startRow, startCol, likely, calc) {
   const row = startRow + 2 + i;
-  const changes = [], why = [];
+  const changes = [], why = [], typos = [], real = [], calcCells = [];
   reason = reason || "";
   columns.forEach((c, j) => {
-    const lim = limits && limits[c];
-    if (!lim) return;
-    const v = rows[i][j], lo = lim[2], hi = lim[3];
-    const blank = (v === "" || v === null) && reason.includes(`Blank cell in column ${c},`);
-    const outside = typeof v === "number" && ((lo != null && v < lo) || (hi != null && v > hi));
-    if (!(blank || outside)) return;
-    const med = median(rows.filter((_, k) => k !== i).map((r) => r[j]));
+    const v = rows[i][j], cell = `${colLetter(startCol + j)}${row}`;
+    const lim = limits && limits[c], lo = lim && lim[2], hi = lim && lim[3];
+    const variant = likely && typeof likely[c] === "string" && typeof v === "string"; // "sales" where the column says "Sales"
+    const blank = !!lim && (v === "" || v === null) && reason.includes(`Blank cell in column ${c},`);
+    const outside = !!lim && typeof v === "number" && ((lo != null && v < lo) || (hi != null && v > hi));
+    if (!(variant || blank || outside)) return;
+    if (calc && String(calc[j]).startsWith("=")) return void calcCells.push(cell); // never type over a formula
+    if (variant) {
+      changes.push({ cell, new: likely[c] });
+      return void typos.push(`${c} says "${v}" where the rest of the column says "${likely[c]}" - same word, different capitals/spaces`);
+    }
+    const typo = likely && likely[c];
+    if (typo !== undefined && outside) { // engine spotted an obvious typo: extra/missing zeros or a flipped sign
+      changes.push({ cell, new: String(typo) });
+      return void typos.push(`${c} is ${v} - looks like a typo for ${typo} (${typoKind(v, typo)})`);
+    }
+    const others = rows.filter((_, k) => k !== i).map((r) => r[j]);
+    if (outside && spansDecade(others)) // wide column (claims, deal sizes): a huge value can be real - don't overwrite it
+      return void real.push(`${c} is ${v}, far outside its usual range - but ${c} naturally varies more than 10x, so this may be real`);
+    const med = median(others);
     if (med === null) return;
-    changes.push({ cell: `${colLetter(startCol + j)}${row}`, new: String(+med.toPrecision(10)) });
+    changes.push({ cell, new: String(+med.toPrecision(10)) });
     why.push(blank ? `${c} is blank` : `${c} is ${v}, outside its limits (${lo ?? "no low"} to ${hi ?? "no high"})`);
   });
   const notes = [];
-  if (changes.length) {
-    const how = changes.length > 1 ? "them each with the median of the rest of its column" : "it with the median of the rest of the column";
+  if (calcCells.length) notes.push(`${calcCells.join(", ")} ${calcCells.length > 1 ? "are" : "is"} calculated by a formula - ` +
+    "fix the cells it uses rather than typing over it.");
+  if (typos.length) notes.push(`${typos.join("; ")}. Check it against the source before applying.`);
+  if (real.length) notes.push(`${real.join("; ")}. Check it against the source; if it's right, leave it.`);
+  if (why.length) {
+    const how = why.length > 1 ? "them each with the median of the rest of its column" : "it with the median of the rest of the column";
     notes.push(`${why.join("; ")}. Replace ${how} - a typical value that ignores outliers.`);
   }
   const dup = /Duplicate of row (\d+)/.exec(reason); // engine counts from a header in row 1
   if (dup) notes.push(`This row repeats row ${+dup[1] + startRow}. If it's a double entry, delete it: right-click the row number > Delete.`);
   for (const [, raw, col] of reason.matchAll(/Text "([^"]*)" in number column ([^;]+)/g))
     notes.push(`${col} holds the text "${raw}" where a number belongs - retype it as a number.`);
+  for (const [, err, col] of reason.matchAll(/Excel error (#\S+) in ([^;]+)/g))
+    notes.push(`${col} shows ${err}: ${EXCEL_ERRORS[err] || "its formula failed"}. Fix the formula or its inputs ` +
+      `(or wrap it in IFERROR(...)) rather than typing a number over it.`);
   if (!notes.length)
     notes.push("Nothing here is clearly broken - the values are just unusual together. Check them against the source; if they're right, leave them.");
   return { explanation: notes.join(" "), changes };
@@ -647,4 +699,4 @@ function esc(s) {
   return d.innerHTML;
 }
 
-if (typeof module !== "undefined") module.exports = { computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix };
+if (typeof module !== "undefined") module.exports = { computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade };

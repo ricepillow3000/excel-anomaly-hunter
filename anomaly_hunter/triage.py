@@ -92,16 +92,21 @@ def refers_to_itself(cell, text):
     return False
 
 
-def _fix_prompt(columns, rows, i, start_row, start_col, reason, intent):
+def _fix_prompt(columns, rows, i, start_row, start_col, reason, intent, formulas=None):
     letters = [get_column_letter(1 + start_col + j) for j in range(len(columns))]
     top = start_row + 1  # 1-based sheet row of the header
     line = lambda k: f"row {top + 1 + k}: " + ", ".join(f"{c}{top + 1 + k}={v!r}" for c, v in zip(letters, rows[k]))
     near = [line(k) for k in range(max(0, i - 5), min(len(rows), i + 6)) if k != i]
+    calc = [f"{c}{top + 1 + i} {f}" for c, f in zip(letters, formulas or []) if isinstance(f, str) and f.startswith("=")]
     return (
         "You fix one flagged row in an Excel sheet. Answer with cell writes the user will preview and approve.\n"
+        "The user could be in any field - finance, healthcare, supply chain, construction, research... Infer it from "
+        "the headers and values and follow that field's conventions and units.\n"
         f"Data range: {letters[0]}{top}:{letters[-1]}{top + len(rows)} (row {top} = headers).\n"
         "Columns: " + ", ".join(f"{c}={h}" for c, h in zip(letters, columns)) + "\n"
         f"Flagged {line(i)}\n"
+        + (f"Formulas in that row: {'; '.join(calc)} - fix their inputs rather than overwrite them, unless asked.\n" if calc else "")
+        + 
         f"Why it was flagged: {reason or 'unknown'}\n"
         "Nearby rows for context:\n" + "\n".join(near) + "\n\n"
         f"User's request: {intent.strip() or 'Recommend the single best fix for this flagged row.'}\n\n"
@@ -114,12 +119,12 @@ def _fix_prompt(columns, rows, i, start_row, start_col, reason, intent):
         "non-expert. Don't claim certainty you don't have.")
 
 
-def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent):
+def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent, formulas=None):
     """-> {explanation, changes: [{cell, new}]}. Invalid cell addresses are dropped. Raises anthropic errors."""
     try:
         resp = anthropic.Anthropic().messages.parse(
             model=MODEL, max_tokens=16000, output_format=Fix,
-            messages=[{"role": "user", "content": _fix_prompt(columns, rows, row_index, start_row, start_col, reason, intent)}])
+            messages=[{"role": "user", "content": _fix_prompt(columns, rows, row_index, start_row, start_col, reason, intent, formulas)}])
     except ValidationError:  # answer cut off mid-JSON
         raise ValueError("Claude's answer came back incomplete - try again or shorten the request.") from None
     fix = resp.parsed_output

@@ -51,7 +51,7 @@ def test_fix_route_passes_request_through(monkeypatch):
     monkeypatch.setattr(triage, "suggest_fix", lambda *a: seen.setdefault("args", a) and fake)
     r = post({**BODY, "intent": None})
     assert r.status_code == 200 and r.get_json() == fake
-    assert seen["args"] == (COLS, ROWS, 1, 0, 0, "Units below weird low 0", "")
+    assert seen["args"] == (COLS, ROWS, 1, 0, 0, "Units below weird low 0", "", None)
 
 
 def stub_api(monkeypatch, content, stop="end_turn"):
