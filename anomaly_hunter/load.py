@@ -66,6 +66,7 @@ def _coerce(df, cols):
     for c, t in types.items():
         if t in ("number", "id"):
             num = pd.to_numeric(df[c], errors="coerce")
+            num = num.where(num.abs() < 1e100)  # "inf", 1e160: no real measurement - and they break the math downstream
             bad = num.isna() & ~_blank(df[c])
             if t == "number":  # text in a measurement is an error...
                 errors += [(i, c, df.at[i, c]) for i in df.index[bad]]
@@ -104,9 +105,12 @@ def load_inputs(paths):
 
 def load_from_records(columns, rows):
     """Panel rows -> (df, types, errors_log). Stringify first so it matches the file path."""
-    cols, seen = [], {}
-    for c in map(str, columns):  # dedupe headers pandas-style (Name, Name.1): dup label breaks df[c]
-        seen[c] = seen.get(c, -1) + 1
-        cols.append(f"{c}.{seen[c]}" if seen[c] else c)
+    cols = []
+    for c in map(str, columns):  # dedupe headers pandas-style (Name, Name.1), skipping names already taken: dup label breaks df[c]
+        name, k = c, 0
+        while name in cols:
+            k += 1
+            name = f"{c}.{k}"
+        cols.append(name)
     df = pd.DataFrame([["" if v is None else str(v) for v in r] for r in rows], columns=cols)
     return df, *_coerce(df, cols)

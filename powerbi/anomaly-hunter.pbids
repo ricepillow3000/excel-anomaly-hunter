@@ -5,7 +5,7 @@
       "details": {
         "protocol": "web",
         "address": {
-          "url": "http://127.0.0.1:5055/latest-scan"
+          "url": "https://127.0.0.1:5055/latest-scan"
         }
       },
       "options": {},

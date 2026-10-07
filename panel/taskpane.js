@@ -136,8 +136,12 @@ function tableFromGrid(values, formats, rowIndex, colIndex, formulas) {
   const isDate = formats ? formats[h + 1].map(isDateFormat) : [];
   const rows = values.slice(h + 1).map((r) => r.map((v, j) => (isDate[j] && typeof v === "number" ? excelDate(v) : v)));
   const calc = formulas && formulas.slice(h + 1); // each data row's formulas ("=B2-C2"), so a fix never types over one
-  const seen = {}; // name duplicate headers like the engine does ("Dept", "Dept.1"): limits and fixes are keyed by these
-  const columns = values[h].map((c) => ((c = String(c)), (seen[c] = (seen[c] ?? -1) + 1) ? `${c}.${seen[c]}` : c));
+  const columns = []; // name duplicate headers like the engine does ("Dept", "Dept.1", skipping taken names): limits and fixes are keyed by these
+  values[h].forEach((c) => {
+    let name = String(c);
+    for (let k = 1; columns.includes(name); k++) name = `${c}.${k}`;
+    columns.push(name);
+  });
   return { columns, rows, startRow: rowIndex + h, startCol: colIndex, calc };
 }
 
@@ -169,6 +173,8 @@ async function runScan() {
     }
     await scanAndRender(s, await getLimits());
   } catch (e) {
+    // limits saved before they were checked: back to the editor with the engine's reason, not a dead end
+    if (e.message.startsWith("Limits for")) return editSavedLimits().then(() => ($("limits-error").textContent = e.message));
     showError("Scan failed: " + e.message);
   } finally {
     btn.disabled = false;
@@ -298,8 +304,12 @@ function rowItem(sheetRow, severity, reason, note = "") {
 
 // ---- Limits editor ----
 
+// Pure: a saved limit as an input value - a number or nothing (a tampered workbook can't put markup in the page)
+const asNumber = (v) => (v === null || v === "" || !Number.isFinite(Number(v)) ? "" : Number(v));
+
 function renderLimitsEditor(limits, s) {
   editorSheet = s;
+  $("limits-error").textContent = "";
   const box = $("limits-rows");
   box.innerHTML =
     '<div class="limits-row limits-head"><div>Column</div><div>Base lo</div><div>Base hi</div><div>Weird lo</div><div>Weird hi</div></div>';
@@ -307,7 +317,7 @@ function renderLimitsEditor(limits, s) {
     const row = document.createElement("div");
     row.className = "limits-row";
     row.dataset.column = col;
-    row.innerHTML = `<div>${esc(col)}</div>` + bounds.map((v) => `<input type="number" value="${v ?? ""}">`).join("");
+    row.innerHTML = `<div>${esc(col)}</div>` + bounds.map((v) => `<input type="number" value="${asNumber(v)}">`).join("");
     box.appendChild(row);
   }
   only("limits-editor");
@@ -315,9 +325,17 @@ function renderLimitsEditor(limits, s) {
 
 async function saveLimitsAndRescan() {
   const limits = {};
+  let bad = null; // [column, input]: low above high - the editor stays open and nothing is saved
   document.querySelectorAll("#limits-rows .limits-row[data-column]").forEach((row) => {
-    limits[row.dataset.column] = [...row.querySelectorAll("input")].map((i) => (i.value === "" ? null : parseFloat(i.value)));
+    const ins = [...row.querySelectorAll("input")];
+    const b = (limits[row.dataset.column] = ins.map((i) => (i.value === "" ? null : parseFloat(i.value))));
+    const k = [0, 2].find((k) => b[k] !== null && b[k + 1] !== null && b[k] > b[k + 1]);
+    if (!bad && k !== undefined) bad = [row.dataset.column, ins[k]];
   });
+  if (bad) {
+    $("limits-error").textContent = `Limits for ${bad[0]}: the low value is above the high value.`;
+    return bad[1].focus();
+  }
   saveLimits(limits);
   try {
     await scanAndRender(editorSheet, limits);
@@ -951,4 +969,4 @@ function esc(s) {
   return d.innerHTML;
 }
 
-if (typeof module !== "undefined") module.exports = { plainOf, routePath, issuesOf, districtCounts, flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade };
+if (typeof module !== "undefined") module.exports = { asNumber, plainOf, routePath, issuesOf, districtCounts, flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade };

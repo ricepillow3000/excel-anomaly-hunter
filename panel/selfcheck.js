@@ -1,6 +1,6 @@
 // Panel pure-logic check, no Office/fetch. Run: node panel/selfcheck.js
 const assert = require("node:assert");
-const { plainOf, routePath, issuesOf, districtCounts, flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade } = require("./taskpane.js");
+const { asNumber, plainOf, routePath, issuesOf, districtCounts, flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade } = require("./taskpane.js");
 
 const clean = computeHealthSummary({
   rows: [{ severity: null }, { severity: null }, { severity: "Noted" }],
@@ -131,5 +131,10 @@ const many = plainOf(issuesOf(R, ["Units", "Qty", "Ratio", "Dept", "Price"], nul
 assert.deepEqual([many.length, many[0], /\(\+7 more\)$/.test(many[2])], [3, "C9 Excel error #DIV/0! in Ratio", true], "long lists are cut, the rest counted");
 assert.equal(routePath("Irregularities", "engine"), "M158 64H150V152H54V161", "route starts at the case");
 assert.equal(routePath("Anomalies", "web"), "M142 80H150V152H246V161");
+
+// Batch 1: header names never collide (same rule as the engine); the limits editor only shows numbers
+assert.deepEqual(tableFromGrid([["Dept", "Dept", "Dept.1"], ["a", "b", "c"]], null, 0, 0).columns, ["Dept", "Dept.1", "Dept.1.1"]);
+assert.deepEqual(tableFromGrid([["Name", "Name", "Name"], ["a", "b", "c"]], null, 0, 0).columns, ["Name", "Name.1", "Name.2"]);
+assert.deepEqual([asNumber(5), asNumber("2.5"), asNumber(null), asNumber(""), asNumber('1" onfocus="alert(1)'), asNumber(Infinity)], [5, 2.5, "", "", "", ""]);
 
 console.log("panel self-check passed");

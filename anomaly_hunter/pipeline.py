@@ -91,7 +91,8 @@ def score(df, column_types, errors_log, limits, order_by):
     Totals/summary rows are left out of every check (their numbers would distort the rest) and say so."""
     n, skip = len(df), summary_rows(df)
     df = df.copy()
-    df.loc[skip, [c for c, t in column_types.items() if t in ("number", "id")]] = np.nan
+    if nums := [c for c, t in column_types.items() if t in ("number", "id")]:  # (pandas 3 fails on an empty column list)
+        df.loc[skip, nums] = np.nan
     errors_log = [e for e in errors_log if not skip[e[0]]]
     lim = limits_detector(df, column_types, limits)
     dets = {"limits": lim, "sequence": sequence_detector(df, column_types, order_by),

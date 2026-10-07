@@ -404,6 +404,20 @@ if (mode === "monitor") { // L6 Route Monitor + web research, with screenshots o
   await page.waitForSelector("#limits-editor", { state: "visible" });
   await page.evaluate(() => __userSelect("Sales", "B22"));
   ok(await vis("limits-editor"), "clicking a flagged row never yanks you out of the limits editor");
+  const inp = page.locator("#limits-rows .limits-row[data-column] input"), was = [await inp.nth(0).inputValue(), await inp.nth(1).inputValue()];
+  const savedLimits = () => page.evaluate(() => JSON.stringify(__settings.anomalyHunterLimits));
+  const before = await savedLimits();
+  await inp.nth(0).fill("999"); await inp.nth(1).fill("1"); await page.click("#save-limits");
+  ok(await vis("limits-editor") && (await text("#limits-error")).includes("low value is above") && (await savedLimits()) === before,
+    "limits low > high: editor stays open, says why, nothing saved");
+  await inp.nth(0).fill(was[0]); await inp.nth(1).fill(was[1]);
+  await page.click("#save-limits");
+  await page.waitForSelector("#results", { state: "visible" });
+  await page.evaluate(() => { const l = __settings.anomalyHunterLimits, c = Object.keys(l)[0]; __settings.anomalyHunterLimits = { ...l, [c]: [9, 1, ...l[c].slice(2)] }; });
+  await page.click("#scan"); // a workbook saved with bad limits before they were checked
+  await page.waitForSelector("#limits-editor", { state: "visible" });
+  ok((await text("#limits-error")).includes("the low value is above the high value"), "old bad limits in a workbook: back to the editor with the reason, not a dead end");
+  await inp.nth(0).fill(was[0]); await inp.nth(1).fill(was[1]);
   await page.click("#save-limits");
   await page.waitForSelector("#results", { state: "visible" });
   await page.click("#scan"); await page.waitForSelector("#results", { state: "visible" });
@@ -419,6 +433,7 @@ if (mode === "monitor") { // L6 Route Monitor + web research, with screenshots o
   ok(await page.evaluate(() => __handlers("Sales") === 0 && __handlers("Other") === 1), "watcher moved to the newly scanned sheet");
 }
 const real = errors.filter((e) => !(mode === "oldengine" && e.startsWith("Failed to load resource: the server responded with a status of 404"))
-  && !(mode === "layers" && e.includes("ItemNotFound Second"))); // test 12 deletes that sheet on purpose
+  && !(mode === "layers" && e.includes("ItemNotFound Second")) // test 12 deletes that sheet on purpose
+  && !(mode === "ai" && e.includes("status of 400 (BAD REQUEST)"))); // the old-bad-limits check gets the engine's 400 on purpose
 ok(real.length === 0, "no page errors " + JSON.stringify(real));
 await browser.close();

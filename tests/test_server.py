@@ -165,3 +165,60 @@ def test_latest_scan_does_not_leak_across_app_instances():
     c2 = client()  # a fresh app instance — must not see c1's cached scan
     resp = c2.get("/latest-scan")
     assert resp.status_code == 404
+
+
+# ---- Batch 1: bad input gets a clear 400, never a crash; odd values never crash a scan ----
+
+GOOD = [[f"n{i}", 50 + i % 7] for i in range(40)]
+
+
+def scan(body, raw=None):
+    c = create_app().test_client()
+    return c.post("/scan", data=raw, content_type="application/json") if raw else c.post("/scan", json=body)
+
+
+@pytest.mark.parametrize("raw", [
+    '{"columns":["A"],"rows":[[NaN]]}', '{"columns":["A"],"rows":[[Infinity]]}', '{"columns":["A"],"rows":[[{"x":1}]]}',
+    '{"columns":["A"],"rows":[[[1,2]]]}', '{"columns":["A","B"],"rows":[["a",1]],"limits":"x"}',
+    '{"columns":["A","B"],"rows":[["a",1]],"limits":[1,2]}', '{"columns":["A","B"],"rows":[["a",1]],"limits":{"B":[1,2,3]}}',
+    '{"columns":["A","B"],"rows":[["a",1]],"limits":{"B":["1",2,3,4]}}', '{"columns":["A","B"],"rows":[["a",1]],"order_by":"Nope"}',
+    '{"columns":["A","B"],"rows":[["a",1]],"order_by":["A"]}', '{"columns":["A","B"],"rows":[["a",1]],"limits":{"B":[150,50,200,20]}}'])
+def test_bad_input_is_a_clear_400(raw):
+    r = scan(None, raw)
+    assert r.status_code == 400 and r.get_json()["error"] and "pandas" not in r.get_json()["error"]
+
+
+@pytest.mark.parametrize("cols,rows", [
+    (["Name"], [["a"], ["b"], ["c"]]),  # no number column at all
+    (["Name", "Amt"], GOOD[:39] + [["x", "inf"]]), (["Name", "Amt"], GOOD[:39] + [["x", "-Infinity"]]),
+    (["Name", "Amt"], GOOD[:39] + [["x", 1e160]]),
+    (["Dept", "Dept", "Dept.1", "Amt"], [["a", "b", "c", 50 + i % 7] for i in range(40)])])  # names collide after de-dup
+def test_odd_sheets_scan_without_crashing(cols, rows):
+    r = scan({"columns": cols, "rows": rows, "limits": None, "order_by": None})
+    assert r.status_code == 200, r.get_json()
+    import json
+    json.loads(r.get_data(as_text=True), parse_constant=lambda c: pytest.fail(f"bare {c} in JSON"))  # Power BI needs strict JSON
+
+
+def test_a_huge_or_infinite_value_is_flagged_as_unusable():
+    for bad in ("inf", 1e160):
+        rows = scan({"columns": ["Name", "Amt"], "rows": GOOD[:39] + [["x", bad]]}).get_json()["rows"]
+        assert rows[39]["severity"] and "Amt" in rows[39]["reason"], rows[39]
+
+
+def test_duplicate_headers_stay_distinct_after_dedup():
+    from anomaly_hunter.load import load_from_records
+    df, _, _ = load_from_records(["Dept", "Dept", "Dept.1"], [["a", "b", "c"]])
+    assert list(df.columns) == ["Dept", "Dept.1", "Dept.1.1"]  # same rule as the panel's tableFromGrid
+
+
+def test_an_engine_bug_is_logged_not_leaked(monkeypatch):
+    import anomaly_hunter.server as srv
+    monkeypatch.setattr(srv, "score", lambda *a: (_ for _ in ()).throw(RuntimeError("pandas internal detail")))
+    r = scan({"columns": ["Name", "Amt"], "rows": GOOD})
+    assert r.status_code == 500 and r.get_json() == {"error": "Engine error - details in server.log"}
+
+
+def test_power_bi_link_uses_https():
+    from pathlib import Path
+    assert '"url": "https://127.0.0.1:5055/latest-scan"' in (Path(__file__).parent.parent / "powerbi/anomaly-hunter.pbids").read_text()

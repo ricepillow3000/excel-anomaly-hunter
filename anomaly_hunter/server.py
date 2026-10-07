@@ -2,6 +2,7 @@
 import datetime
 import ipaddress
 import json
+import math
 import os
 import ssl
 import sys
@@ -31,12 +32,25 @@ ORIGINS = {None, f"https://127.0.0.1:{PORT}", f"https://localhost:{PORT}"}  # No
 
 
 def _bad(body):
-    """Trust boundary: body must be {columns: [...], rows: [[...] same width]}. -> error text or None."""
+    """Trust boundary: {columns, rows (same width; cells are text, numbers, true/false or blank), limits?, order_by?}
+    -> error text or None. Anything else is a clear 400, never a crash deep in pandas."""
     if not isinstance(body, dict) or not isinstance(body.get("columns"), list) or not body["columns"]:
         return "'columns' must be a non-empty list"
     rows = body.get("rows")
     if not isinstance(rows, list) or any(not isinstance(r, list) or len(r) != len(body["columns"]) for r in rows):
         return "'rows' must be a list of lists, each as long as 'columns'"
+    finite = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+    if not all(v is None or isinstance(v, (str, bool)) or finite(v) for r in rows for v in r):
+        return "cells must be text, numbers, true/false or blank"  # NaN/Infinity parse as JSON in Python, not in Excel
+    limits = body.get("limits")
+    if limits is not None and not (isinstance(limits, dict) and all(
+            isinstance(b, list) and len(b) == 4 and all(v is None or finite(v) for v in b) for b in limits.values())):
+        return "'limits' must give each column [base low, base high, weird low, weird high] as numbers or blanks"
+    for col, b in (limits or {}).items():
+        if any(lo is not None and hi is not None and lo > hi for lo, hi in (b[:2], b[2:])):
+            return f"Limits for {col}: the low value is above the high value - fix it in Edit limits"
+    if body.get("order_by") is not None and body["order_by"] not in body["columns"]:
+        return "'order_by' must be one of the columns"
     return None
 
 
@@ -69,8 +83,9 @@ def create_app():
             df, types, errors = load_from_records(cols, rows)
             suggested = suggest_limits_dict(df, numbers(types)) if limits is None else None
             out, status = score(df, types, errors, limits or {}, body.get("order_by"))
-        except Exception as e:
-            return {"error": str(e)}, 500
+        except Exception:  # a bug in the engine: full detail to the log, not pandas internals to the user
+            app.logger.exception("scan failed")
+            return {"error": "Engine error - details in server.log"}, 500
         app.config["last_scan"] = [{**dict(zip(cols, row)), **{k.capitalize(): v for k, v in r.items() if k != "likely"}}
                                    for row, r in zip(rows, out)]
         return {"rows": out, "suggested_limits": suggested, "summary": {
