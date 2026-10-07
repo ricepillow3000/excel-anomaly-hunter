@@ -7,7 +7,7 @@ engine() { (cd $R && env "$@" .venv/bin/python $D/engine.py $D/cert &> $D/engine
 stop; rm -f $D/claude.log; (python3 $D/stub_claude.py $D/claude.log &> $D/stub.out &)
 fail=0
 engine ANTHROPIC_API_KEY=test ANTHROPIC_BASE_URL=http://127.0.0.1:5099
-for m in ${MODES:-ai oldengine layout layers}; do echo "== $m"; (cd $D && timeout 150 node run.mjs $m) || fail=1; done
+for m in ${MODES:-ai oldengine layout layers monitor}; do echo "== $m"; (cd $D && timeout 150 node run.mjs $m) || fail=1; done
 stop; engine -u ANTHROPIC_API_KEY
 echo "== nokey"; (cd $D && timeout 150 node run.mjs nokey) || fail=1
 stop

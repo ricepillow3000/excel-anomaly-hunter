@@ -78,6 +78,13 @@ def test_research_returns_technique_formula_and_only_vetted_https_sources(api):
     sent = api["sent"][0]
     assert sent["tools"] == [{"type": "web_search_20260209", "name": "web_search", "max_uses": 3, "allowed_domains": triage.EXCEL_PROS}]
     assert "never put this sheet's values" in sent["messages"][0]["content"]
+    assert "-5" not in sent["messages"][0]["content"] and "Units weird limit is #; this is # (likely #)" in sent["messages"][0]["content"]
+
+
+def test_research_prompt_carries_the_issue_not_the_sheet_values(api):
+    post({**BODY, "department": "Irregularities", "reason": 'Dept "acme corp" looks like "ACME Corp"; Duplicate of row 17'})
+    prompt = api["sent"][0]["messages"][0]["content"]
+    assert "acme" not in prompt.lower() and "17" not in prompt and 'Dept "…" looks like "…"; Duplicate of row #' in prompt
 
 
 def test_research_repeat_costs_nothing(api):

@@ -59,8 +59,10 @@ if (typeof Office !== "undefined") {
     $("clear-highlights").onclick = circuit(clearHighlights);
     $("run-triage").onclick = runTriage;
     $("watch-toggle").onchange = (e) => circuit(onWatchToggle)(e.target.checked).catch(() => {}); // on/off as clicked
-    $("fix-back").onclick = () => only("results");
+    $("fix-back").onclick = () => (only("results"), monitor.home(), monitor.caption("Back to the list. Click a row to follow it."));
     $("fix-ask").onclick = askFix;
+    $("fix-research").onclick = researchFix;
+    $("web-use").onclick = () => (($("fix-intent").value = $("web-use").dataset.intent), $("fix-intent").focus());
     // Apply/Undo act on the fix that was on screen when clicked, even if Scan or Ask AI changes it meanwhile
     $("fix-apply").onclick = () => fix && circuit(applyFix)(fix, fix.changes, fix.sheet).catch(() => {});
     $("fix-undo").onclick = () => fix && circuit(undoFix)(fix).catch(() => {});
@@ -79,7 +81,7 @@ async function checkHealth() {
     const r = await fetch(`${SERVER}/health`);
     if (!r.ok) throw new Error();
     aiAvailable = !!(await r.json()).ai_available;
-    $("ai-toggle").disabled = $("run-triage").disabled = $("fix-ask").disabled = !aiAvailable;
+    $("ai-toggle").disabled = $("run-triage").disabled = $("fix-ask").disabled = $("fix-research").disabled = !aiAvailable;
     monitor.ready(aiAvailable);
     serverUp(true);
   } catch {
@@ -501,6 +503,7 @@ async function openFix(i, selectInSheet) {
   $("fix-status").textContent = "";
   show("fix-nokey", !aiAvailable);
   show("fix-result", false);
+  show("fix-web", false);
   only("fix-view");
   if (selectInSheet)
     await Excel.run(async (ctx) => {
@@ -522,7 +525,7 @@ async function askFix() { // L5: engine + Claude only; the sheet is touched late
   btn.disabled = true;
   btn.textContent = "Thinking… (up to a minute)";
   $("fix-status").textContent = "";
-  monitor.source("ai", "pending", "thinking…");
+  monitor.source(f.i, "ai", "pending", "thinking…");
   try {
     const { columns, rows, startRow, startCol } = lastScan;
     const out = await post("/fix", { // outside the circuit, so it may take its time
@@ -530,13 +533,45 @@ async function askFix() { // L5: engine + Claude only; the sheet is touched late
       reason: lastRows[f.i].reason, intent: $("fix-intent").value, formulas: lastScan.calc?.[f.i],
     }, 300);
     if (fix === f) await showFix(f, "AI suggestion", out); // else: user moved to another row meanwhile
-    if (fix === f) monitor.source("ai", "on", "answered", `Claude: ${out.explanation}`);
+    const said = out.changes.slice(0, 2).map((c) => `${c.cell} → ${c.new}`).join(", ") || short(out.explanation);
+    if (fix === f) monitor.source(f.i, "ai", "on", "answered", `Claude: ${said}`);
   } catch (e) {
     if (fix === f) $("fix-status").textContent = "Could not get a fix: " + e.message;
-    if (fix === f) monitor.source("ai", "failed", "failed");
+    if (fix === f) monitor.source(f.i, "ai", "failed", "failed");
   } finally {
     btn.disabled = !aiAvailable;
     btn.textContent = "Ask AI";
+  }
+}
+
+// Web research: how Excel pros fix this kind of issue. Sends the issue, not the sheet; shows a reference, writes nothing.
+async function researchFix() {
+  if (!fix || $("fix-research").disabled) return; // disabled while busy or without an API key
+  const f = fix, btn = $("fix-research");
+  const dept = issuesOf(lastRows[f.i].reason, lastScan.columns, lastScan.calc?.[f.i])[0]?.dept || "Anomalies";
+  btn.disabled = true;
+  btn.textContent = "Searching… (up to a minute)";
+  $("fix-status").textContent = "";
+  monitor.source(f.i, "web", "pending", "searching…");
+  try {
+    const formula = dept === "Formulas" ? (lastScan.calc?.[f.i] || []).find((v) => String(v).startsWith("=")) || "" : "";
+    const out = await post("/research", { department: DEPTS[dept], reason: lastRows[f.i].reason, columns: lastScan.columns, formula }, 300);
+    if (fix !== f) return; // user moved on meanwhile
+    $("web-technique").textContent = out.technique + (out.partial ? " (The search ran long - this answer may be incomplete.)" : "");
+    $("web-formula").textContent = out.formula;
+    show("web-formula", !!out.formula);
+    $("web-steps").replaceChildren(...out.steps.map((t) => Object.assign(document.createElement("li"), { textContent: t })));
+    $("web-sources").replaceChildren(...(out.sources.length ? out.sources.flatMap((l, k) => (k ? [" · ", link(l)] : [link(l)])) : ["none came back"]));
+    $("web-use").dataset.intent = `Use this approach from Excel pros: ${out.technique}` + (out.formula ? ` Formula: ${out.formula}` : "");
+    show("fix-web");
+    const n = out.sources.length;
+    monitor.source(f.i, "web", "on", `${n} source${n === 1 ? "" : "s"}`, `Excel pros (${n}): ${short(out.technique)}`, out.sources);
+  } catch (e) {
+    if (fix === f) $("fix-status").textContent = "Could not research: " + e.message;
+    if (fix === f) monitor.source(f.i, "web", "failed", "failed");
+  } finally {
+    btn.disabled = !aiAvailable;
+    btn.textContent = "Research on the web";
   }
 }
 
@@ -712,15 +747,12 @@ async function undoFix(f) {
 // touches the sheet, never calls the engine. Nothing moves unless a layer reported something real. ----
 
 const DEPTS = { Formulas: "Formula bugs", Duplicates: "Duplicates", Irregularities: "Irregularities", Anomalies: "Anomalies" }; // fix order
-// geometry of the drawing in taskpane.html (viewBox 300x202): where a case stops, where each route leaves, shelf centers
+// geometry of the drawing in taskpane.html (viewBox 300x202): card corners, where a case stops, shelf centers
+const CARD = { Duplicates: [8, 8], Irregularities: [158, 8], Anomalies: [8, 80], Formulas: [158, 80] };
 const CORNER = { Duplicates: [142, 64], Irregularities: [158, 64], Anomalies: [142, 80], Formulas: [158, 80] };
-const DOOR = { Duplicates: [75, 64], Irregularities: [225, 64], Anomalies: [75, 136], Formulas: [225, 136] };
 const SHELF_X = { engine: 54, ai: 150, web: 246 };
-// Pure: a route from a department's door down the streets to a source shelf (top row goes via the middle street)
-const routePath = (dept, src) => {
-  const [x, y] = DOOR[dept];
-  return `M${x} ${y}` + (y < 72 ? "V72H150" : "") + `V150H${SHELF_X[src]}V161`;
-};
+// Pure: one line from the case (at its department's corner) down the middle street to a source shelf
+const routePath = (dept, src) => `M${CORNER[dept].join(" ")}H150V152H${SHELF_X[src]}V161`;
 
 // Pure: a row's engine reason -> its issues, each sent to one department, worst-to-fix first
 // (a broken formula or a double entry explains what follows it). calc = the row's formulas.
@@ -738,11 +770,18 @@ function issuesOf(reason, columns, calc) {
   }).sort((a, b) => order.indexOf(a.dept) - order.indexOf(b.dept));
 }
 
-// Pure: one short line for the trace - first issue, timestamps trimmed, the rest counted
-function briefOf(issues) {
+const short = (t) => (t.length > 90 ? t.slice(0, 89) + "…" : t);
+
+// Pure: an issue in plain words with its cell - "C11 Units = -5 · limit 0" - repeats collapsed, at most 3 lines
+function plainOf(issues, columns, startCol, row) {
+  const byLength = columns.map(String).map((c, j) => [c, j]).sort((x, y) => y[0].length - x[0].length);
   const texts = [...new Set(issues.map((x) => x.text.replace(/ 00:00:00/g, "").replace(/ \(\d-order change\)/, "")))];
-  const first = texts[0] || "flagged";
-  return (first.length > 90 ? first.slice(0, 89) + "…" : first) + (texts.length > 1 ? ` (+${texts.length - 1} more)` : "");
+  const lines = texts.map((t) => {
+    const hit = byLength.find(([c]) => ` ${t.replace(/[,;]/g, " ")} `.includes(` ${c} `));
+    const words = t.replace(/^(.+?) weird limit is (\S+); this is (.+)$/, "$1 = $3 · limit $2");
+    return short((hit ? `${colLetter(startCol + hit[1])}${row} ` : "") + words);
+  });
+  return lines.length > 3 ? [...lines.slice(0, 2), `${lines[2]} (+${lines.length - 3} more)`] : lines;
 }
 
 // Pure: issues per department over the flagged rows (Noted rows aren't flagged)
@@ -757,74 +796,95 @@ function districtCounts(rows, columns, calc) {
   return { counts, flagged };
 }
 
+// an https link that opens outside the pane; its text is the site's name
+function link(l) {
+  const a = document.createElement("a");
+  a.href = /^https:\/\//.test(l.url) ? l.url : "#";
+  a.target = "_blank";
+  a.rel = "noopener";
+  a.title = l.title || "";
+  a.textContent = new URL(a.href, "https://x/").hostname.replace(/^www\./, "");
+  return a;
+}
+
 const monitor = {
-  scanned(rows, s, how) { // L1-L3 finished: counts per department, the case waits on the plaza
+  row: null, // the row whose case is out; answers for any other row aren't drawn
+  scanned(rows, s, how) { // L1-L3 finished: counts per department
     const { counts, flagged } = districtCounts(rows, s.columns, s.calc);
     const total = Object.values(counts).reduce((a, b) => a + b, 0), most = Math.max(1, ...Object.values(counts));
     for (const d in DEPTS) {
       const g = $(`rm-${d}`);
       g.classList.toggle("has-issues", counts[d] > 0);
       g.querySelector(".rm-count").textContent = counts[d];
-      g.querySelector(".rm-bar").setAttribute("width", (76 * counts[d]) / most);
+      g.querySelector(".rm-bar").setAttribute("width", (118 * counts[d]) / most);
     }
+    this.log(`${how}: ` + (total ? Object.keys(DEPTS).filter((d) => counts[d]).map((d) => `${DEPTS[d]} ${counts[d]}`).join(", ") : "nothing flagged"));
+    const open = view === "fix-view" && fix && rows[fix.i]?.severity;
+    if (open) return this.investigate(fix.i, false); // a rescan under an open row: its case stays out, on fresh counts
     this.home();
     this.caption(`${total} issue${total === 1 ? "" : "s"} in ${flagged} flagged row${flagged === 1 ? "" : "s"}. Click one to follow it.`);
-    this.log(`${how}: ` + (total ? Object.keys(DEPTS).filter((d) => counts[d]).map((d) => `${DEPTS[d]} ${counts[d]}`).join(", ") : "nothing flagged"));
   },
-  investigate(i) { // L4 opened a row: its case travels to the department that should fix it first
-    const r = lastRows[i], issues = issuesOf(r.reason, lastScan.columns, lastScan.calc?.[i]);
-    const dept = issues[0]?.dept || "Anomalies", [x, y] = CORNER[dept], row = lastScan.startRow + i + 2;
+  investigate(i, say = true) { // L4 opened a row: its case travels to the department that should fix it first
+    const r = lastRows[i], row = lastScan.startRow + i + 2;
+    const issues = issuesOf(r.reason, lastScan.columns, lastScan.calc?.[i]);
     this.home();
+    if (r.severity === "Noted") { // below every alarm: shown for context, not sent anywhere
+      this.caption(`Row ${row} is only noted - not sent to a department.`);
+      return say && this.log(`Row ${row} noted: ${short(r.reason)}`);
+    }
+    const dept = issues[0]?.dept || "Anomalies", [x, y] = CORNER[dept], [cx, cy] = CARD[dept];
+    this.row = i;
     $(`rm-${dept}`).classList.add("is-target");
+    issues.forEach((t) => t.dept !== dept && $(`rm-${t.dept}`).classList.add("is-also"));
+    Object.assign($("rm-row"), { textContent: `Row ${row}` }).setAttribute("x", cx + 126);
+    $("rm-row").setAttribute("y", cy + 42);
+    $("rm-case").classList.add("is-active");
     $("rm-case").style.transform = `translate(${x - 150}px, ${y - 72}px)`;
     for (const src in SHELF_X) $(`rm-route-${src}`).setAttribute("d", routePath(dept, src));
-    const checks = /^Flagged by (\d+) of (\d+)/.exec(r.reason);
-    this.source("engine", "on", checks ? `${checks[1]} of ${checks[2]} checks` : "hygiene check");
-    const also = issues.slice(1).map((x) => DEPTS[x.dept]).filter((d, k, a) => d !== DEPTS[dept] && a.indexOf(d) === k);
-    this.caption(`Row ${row} → ${DEPTS[dept]}${also.length ? ` (also ${also.join(", ")})` : ""}`);
-    this.log(`Row ${row} → ${DEPTS[dept]}: ${briefOf(issues)}`);
+    const checks = /^Flagged by (\d+) of (\d+)/.exec(r.reason), engine = checks ? `${checks[1]} of ${checks[2]} checks` : "hygiene check";
+    this.source(i, "engine", "on", engine);
+    const also = [...new Set(issues.map((t) => DEPTS[t.dept]))].filter((d) => d !== DEPTS[dept]);
+    this.caption(`Row ${row} → ${DEPTS[dept]} → Engine checks (${engine})${also.length ? `. Also: ${also.join(", ")}` : ""}`);
+    if (say) plainOf(issues, lastScan.columns, lastScan.startCol, row).forEach((t, k) => this.log((k ? "" : `Row ${row}: `) + t));
   },
-  source(src, state, note, line) { // a source was asked (pending), answered (on) or failed - routes only for real answers
+  source(i, src, state, note, line, links) { // a source was asked (pending), answered (on) or failed - routes only for real answers
+    if (i !== this.row) return;
     const route = $(`rm-route-${src}`), shelf = $(`rm-src-${src}`);
     route.classList.toggle("is-on", state === "on" || state === "pending");
     route.classList.toggle("is-pending", state === "pending");
     shelf.classList.toggle("is-on", state === "on");
     $("rm-case").classList.toggle("is-busy", state === "pending");
     shelf.querySelector(".rm-note").textContent = note;
-    if (line) this.log(line);
+    if (line) this.log(line, links);
   },
   ready(ai) { // which shelves can answer at all
     for (const src of ["ai", "web"]) {
       $(`rm-src-${src}`).classList.toggle("is-off", !ai);
-      $(`rm-src-${src}`).querySelector(".rm-note").textContent = ai ? (src === "web" ? "web · on request" : "on request") : "needs API key";
+      $(`rm-src-${src}`).querySelector(".rm-note").textContent = ai ? "on request" : "needs API key";
     }
     $("rm-src-engine").querySelector(".rm-note").textContent = "always on";
   },
   home() { // case back on the plaza, nothing targeted, no routes, shelves back to idle
+    this.row = null;
     this.ready(aiAvailable);
     $("rm-case").style.transform = "";
-    $("rm-case").classList.remove("is-busy");
-    document.querySelectorAll(".rm-bldg.is-target, .rm-shelf.is-on").forEach((g) => g.classList.remove("is-target", "is-on"));
-    document.querySelectorAll(".rm-route").forEach((p) => p.classList.remove("is-on", "is-pending"));
+    $("rm-case").classList.remove("is-busy", "is-active");
+    $("rm-row").textContent = "";
+    document.querySelectorAll(".rm-bldg, .rm-shelf").forEach((g) => g.classList.remove("is-target", "is-also", "is-on"));
+    document.querySelectorAll(".rm-route").forEach((p) => (p.classList.remove("is-on", "is-pending"), p.setAttribute("d", "")));
   },
   caption(text) {
     $("rm-caption").textContent = text;
     $("rm-desc").textContent = text; // the picture's accessible description says the same
   },
-  log(text, links = []) { // newest last, five lines kept; links only https
-    const li = document.createElement("li"), t = document.createElement("time");
+  log(text, links = []) { // newest last, six lines kept
+    const li = document.createElement("li"), t = document.createElement("time"), body = document.createElement("span");
     t.textContent = new Date().toTimeString().slice(0, 8);
-    li.append(t, text);
-    links.filter((l) => /^https:\/\//.test(l.url)).forEach((l, k) => {
-      const a = document.createElement("a");
-      a.href = l.url;
-      a.target = "_blank";
-      a.rel = "noopener";
-      a.textContent = l.title || new URL(l.url).hostname;
-      li.append(k ? " · " : " ", a);
-    });
+    body.append(text);
+    links.forEach((l, k) => body.append(k ? " · " : " ", link(l)));
+    li.append(t, body);
     $("rm-trace").append(li);
-    while ($("rm-trace").children.length > 5) $("rm-trace").firstChild.remove();
+    while ($("rm-trace").children.length > 6) $("rm-trace").firstChild.remove();
   },
 };
 
@@ -889,4 +949,4 @@ function esc(s) {
   return d.innerHTML;
 }
 
-if (typeof module !== "undefined") module.exports = { briefOf, routePath, issuesOf, districtCounts, flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade };
+if (typeof module !== "undefined") module.exports = { plainOf, routePath, issuesOf, districtCounts, flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade };

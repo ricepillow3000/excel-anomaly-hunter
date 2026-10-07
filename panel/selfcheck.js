@@ -1,6 +1,6 @@
 // Panel pure-logic check, no Office/fetch. Run: node panel/selfcheck.js
 const assert = require("node:assert");
-const { briefOf, routePath, issuesOf, districtCounts, flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade } = require("./taskpane.js");
+const { plainOf, routePath, issuesOf, districtCounts, flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade } = require("./taskpane.js");
 
 const clean = computeHealthSummary({
   rows: [{ severity: null }, { severity: null }, { severity: "Noted" }],
@@ -121,10 +121,15 @@ assert.deepEqual(issuesOf("", [], null), []);
 const dc = districtCounts([{ severity: "High", reason: "Flagged by 2 of 4: A weird limit is 1; this is 9; Duplicate of row 2" }, { severity: "Noted", reason: "A baseline limit is 1; this is 2" },
   { severity: null, reason: "" }], ["A"], null);
 assert.deepEqual([dc.counts, dc.flagged], [{ Formulas: 0, Duplicates: 1, Irregularities: 1, Anomalies: 0 }, 1], "Noted rows aren't counted");
-assert.equal(briefOf(issuesOf(R, ["Units"], null)), "Excel error #DIV/0! in Ratio (+9 more)");
-assert.equal(briefOf(issuesOf("Units jumped sharply near 2026-01-26 00:00:00 (1-order change); Units jumped sharply near 2026-01-26 00:00:00 (2-order change)", [], null)),
-  "Units jumped sharply near 2026-01-26", "repeats collapse, timestamps trimmed");
-assert.equal(routePath("Irregularities", "engine"), "M225 64V72H150V150H54V161", "top row goes via the middle street");
-assert.equal(routePath("Anomalies", "web"), "M75 136V150H246V161", "bottom row goes straight down");
+// L6 trace: plain words with the cell, no "weird limit" jargon, repeats collapsed, at most 3 lines
+assert.deepEqual(plainOf(issuesOf("Flagged by 1 of 4: Units weird limit is 0; this is -5", ["Region", "Units"], null), ["Region", "Units"], 1, 11),
+  ["C11 Units = -5 · limit 0"]);
+assert.deepEqual(plainOf(issuesOf("Units jumped sharply near 2026-01-26 00:00:00 (1-order change); Units jumped sharply near 2026-01-26 00:00:00 (2-order change)", [], null), ["Units"], 0, 5),
+  ["A5 Units jumped sharply near 2026-01-26"], "repeats collapse, timestamps trimmed");
+assert.equal(plainOf(issuesOf("Blank cell in column Units Sold, which is otherwise filled", [], null), ["Units", "Units Sold"], 0, 3)[0].slice(0, 3), "B3 ", "longest header wins");
+const many = plainOf(issuesOf(R, ["Units", "Qty", "Ratio", "Dept", "Price"], null), ["Units", "Qty", "Ratio", "Dept", "Price"], 0, 9);
+assert.deepEqual([many.length, many[0], /\(\+7 more\)$/.test(many[2])], [3, "C9 Excel error #DIV/0! in Ratio", true], "long lists are cut, the rest counted");
+assert.equal(routePath("Irregularities", "engine"), "M158 64H150V152H54V161", "route starts at the case");
+assert.equal(routePath("Anomalies", "web"), "M142 80H150V152H246V161");
 
 console.log("panel self-check passed");

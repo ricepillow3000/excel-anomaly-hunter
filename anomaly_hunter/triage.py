@@ -143,7 +143,7 @@ def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent, 
 
 EXCEL_PROS = ["support.microsoft.com", "learn.microsoft.com", "exceljet.net", "contextures.com", "ablebits.com",
               "myonlinetraininghub.com", "chandoo.org", "excelguru.ca", "exceloffthegrid.com", "excel-easy.com"]
-_researched = {}  # (department, reason without numbers) -> answer: a repeat click costs nothing
+_researched = {}  # (department, reason without values) -> answer: a repeat click costs nothing
 
 
 class Research(BaseModel):
@@ -170,7 +170,8 @@ def _host_ok(url):
 
 def research(department, reason, columns, formula=""):
     """-> {technique, formula, steps, sources: [{url, title}], partial}. Display only: no cell changes, ever."""
-    key = (department, re.sub(r"-?\d[\d.,]*", "#", reason))
+    reason = re.sub(r"-?\d[\d.,]*", "#", re.sub(r'"[^"]*"', '"…"', reason))  # the issue, not the sheet's values
+    key = (department, reason)
     if key in _researched:
         return _researched[key]
     tool = {"type": "web_search_20260209", "name": "web_search", "max_uses": 3, "allowed_domains": EXCEL_PROS}
