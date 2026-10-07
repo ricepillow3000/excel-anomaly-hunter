@@ -20,7 +20,7 @@ Excel formula. Either way you see old -> new, nothing changes until you click **
 
 AI triage + fixes: set `ANTHROPIC_API_KEY` before installing. No-Excel mode: `anomaly-hunter scan data.csv`.
 
-**Layout:** `anomaly_hunter/` engine + local server (127.0.0.1:5055) · `panel/` task pane, plain JS, no build · `powerbi/` Power BI Desktop source · `docs/` design notes.
+**Layout:** `anomaly_hunter/` engine + local server (127.0.0.1:5055) · `panel/` task pane, plain JS, no build, wired as 5 layers (Scan -> Flag -> Highlight -> Suggest -> Ask AI) through one circuit that runs sheet actions one at a time · `powerbi/` Power BI Desktop source · `docs/` design notes.
 
 **Test:** `pip install -e .[dev]` then `pytest` and `node panel/selfcheck.js`. Industry benchmark (15 fields + held-out
 traps, real panel + engine, pass/fail gates): `python bench/score.py .`
