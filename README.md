@@ -8,6 +8,11 @@ Then once in Excel: **Home > Add-ins > More Add-ins > SHARED FOLDER > Anomaly Hu
 the panel open, and the engine starts hidden at each logon. Re-run to repair; `install.bat /u` uninstalls.
 Windows-only per-user install (trusted shared-folder catalog), not a store add-in.
 
+**Works on any analyst's sheet** (finance, banking, quant, supply chain, healthcare, construction, HR, marketing, real
+estate, insurance, manufacturing, education, energy, logistics...): it skips title rows, totals rows and ID columns
+(SKU, MRN, account no.), and names the mistakes every field makes - extra/missing zeros, % typed as 85 for 0.85, flipped
+signs, "Sales" vs "sales ", #N/A / #DIV/0! cells, blanks, duplicates - plus anything statistically out of line.
+
 **Fix a flagged row:** after a scan, click a highlighted row (in the sheet or in the pane's list). A **recommended
 fix** shows up at once (no AI needed): e.g. a number past its limits -> the median of the rest of its column. Want
 something else? Type it in plain English ("replace the -5 with the average Units for East") and **Ask AI** writes the
@@ -17,4 +22,5 @@ AI triage + fixes: set `ANTHROPIC_API_KEY` before installing. No-Excel mode: `an
 
 **Layout:** `anomaly_hunter/` engine + local server (127.0.0.1:5055) · `panel/` task pane, plain JS, no build · `powerbi/` Power BI Desktop source · `docs/` design notes.
 
-**Test:** `pip install -e .[dev]` then `pytest` and `node panel/selfcheck.js`.
+**Test:** `pip install -e .[dev]` then `pytest` and `node panel/selfcheck.js`. Industry benchmark (15 fields + held-out
+traps, real panel + engine, pass/fail gates): `python bench/score.py .`

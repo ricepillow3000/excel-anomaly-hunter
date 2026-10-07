@@ -1,4 +1,5 @@
 """Files or panel rows -> DataFrame. Classify columns number/date/text, coerce in place."""
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -16,28 +17,63 @@ def _blank(s):
     return s.isna() | (s.astype(str).str.strip() == "")
 
 
+# header ends with an identifier word: "SKU", "Employee ID", "Claim #", "Acct No.", "Zip Code", "MRN" (whole words:
+# "Mean" is not "ean", "Barcode" is not "code")
+ID_NAME = re.compile(r"(#|(^|[^a-z])(id|no\.?|num(ber)?|code|sku|zip|postal|mrn|acct|account|ssn|upc|ean))\s*$", re.I)
+
+
+def _is_id(name, num):
+    """Whole numbers that label rows instead of measuring them: ID-like header, or >=20 near-sequential unique values."""
+    if not len(num) or (num != num.round()).any():
+        return False
+    if ID_NAME.search(str(name)):
+        return True
+    u = num.drop_duplicates().sort_values()
+    return len(num) >= 20 and len(u) >= 0.95 * len(num) and u.diff().median() <= 2
+
+
+def _dates(s):
+    """Parse dates; years outside 1900-2200 don't count (cost code "03-100" parses as the year 100)."""
+    d = pd.to_datetime(s, errors="coerce", format="mixed")
+    return d.where(d.dt.year.between(1900, 2200))
+
+
+# a row labelled like a summary. "Total"-words are almost never data; "Average" can be a category (a rating)
+TOTAL = re.compile(r"\s*(sub\s*-?\s*total|grand\s+total|totals?)\b", re.I)
+STAT = re.compile(r"\s*(sum|mean|median|average|avg)\b", re.I)
+
+
 def _kind(s):
-    """number / date / text: 90% of non-blank cells must parse."""
+    """number / id / date / text: 90% of non-blank cells must parse. id = number column that's an identifier."""
     s = s[~_blank(s)]
     if not len(s):
         return "text"
-    if pd.to_numeric(s, errors="coerce").notna().mean() >= 0.9:
-        return "number"
-    if pd.to_datetime(s, errors="coerce", format="mixed").notna().mean() >= 0.9:
+    num = pd.to_numeric(s, errors="coerce")
+    if num.notna().mean() >= 0.9:
+        return "id" if _is_id(s.name, num.dropna()) else "number"
+    if _dates(s).notna().mean() >= 0.9:
         return "date"
     return "text"
 
 
 def _coerce(df, cols):
     """-> (types, errors_log). errors_log = (row, col, raw) for text stuck in a number column."""
+    # remember summary labels before coercion erases them ("Total" in a date column becomes NaT)
+    # just the few labelled row numbers: pandas copies attrs on every operation
+    for key, rx in (("total_rows", TOTAL), ("stat_rows", STAT)):
+        df.attrs[key] = frozenset(df.index[df[cols].apply(lambda s, rx=rx: s.astype(str).str.match(rx)).any(axis=1)])
     types, errors = {c: _kind(df[c]) for c in cols}, []
     for c, t in types.items():
-        if t == "number":
+        if t in ("number", "id"):
             num = pd.to_numeric(df[c], errors="coerce")
-            errors += [(i, c, df.at[i, c]) for i in df.index[num.isna() & ~_blank(df[c])]]
-            df[c] = num
+            bad = num.isna() & ~_blank(df[c])
+            if t == "number":  # text in a measurement is an error...
+                errors += [(i, c, df.at[i, c]) for i in df.index[bad]]
+                df[c] = num
+            else:  # ...but an ID like "A-17" among numbers is fine: keep it as it is
+                df[c] = num.astype(object).where(~bad, df[c]) if bad.any() else num
         elif t == "date":
-            df[c] = pd.to_datetime(df[c], errors="coerce")
+            df[c] = _dates(df[c])
     return types, errors
 
 

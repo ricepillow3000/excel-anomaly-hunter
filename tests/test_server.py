@@ -81,7 +81,7 @@ def test_scan_clean_data_no_anomalies():
     body = resp.get_json()
     assert len(body["rows"]) == len(rows)
     assert body["suggested_limits"] is not None
-    assert set(body["suggested_limits"]) == {"order", "Amount", "Price"}
+    assert set(body["suggested_limits"]) == {"Amount", "Price"}  # "order" 1..n is an identifier, not a measurement
 
 
 def test_scan_flags_planted_outlier():

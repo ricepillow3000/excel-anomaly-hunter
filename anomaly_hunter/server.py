@@ -71,7 +71,7 @@ def create_app():
             out, status = score(df, types, errors, limits or {}, body.get("order_by"))
         except Exception as e:
             return {"error": str(e)}, 500
-        app.config["last_scan"] = [{**dict(zip(cols, row)), **{k.capitalize(): v for k, v in r.items()}}
+        app.config["last_scan"] = [{**dict(zip(cols, row)), **{k.capitalize(): v for k, v in r.items() if k != "likely"}}
                                    for row, r in zip(rows, out)]
         return {"rows": out, "suggested_limits": suggested, "summary": {
             "severity_counts": Counter(r["severity"] for r in out if r["severity"]),
@@ -118,8 +118,11 @@ def create_app():
         intent = body.get("intent") or ""
         if not isinstance(intent, str) or len(intent) > 2000:
             return {"error": "'intent' must be text, at most 2000 characters"}, 400
+        formulas = body.get("formulas")  # the flagged row's formulas, so Claude fixes inputs instead of overwriting them
+        if formulas is not None and not (isinstance(formulas, list) and len(formulas) == len(body["columns"])):
+            return {"error": "'formulas' must be a list as long as 'columns'"}, 400
         return ai(lambda: triage.suggest_fix(body["columns"], body["rows"], body["row_index"], body["start_row"],
-                                             body["start_col"], str(body.get("reason") or ""), intent))
+                                             body["start_col"], str(body.get("reason") or ""), intent, formulas))
 
     return app
 
