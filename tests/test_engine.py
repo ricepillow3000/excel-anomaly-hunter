@@ -540,3 +540,13 @@ def test_cell_text_quoted_in_a_reason_is_kept_short():
     rows[3][1] = "x" * 5000
     _, out = _scan(["Name", "Amt"], rows)
     assert len(out[3]["reason"]) < 200 and out[3]["reason"].startswith('Text "xxx')
+
+
+def test_clustering_ignores_last_bit_rounding_between_equal_distances():
+    # 40 rows of small repeated integers (and blanks): rows the old algorithm left alone must stay unflagged
+    a = [None, 3, 1, 3, 3, 3, 8, None, 8, 3, 2, 8, 2, 2, 1, 8, 8, 8, None, 8, 3, 8, 1, 1, 2, 8, 8, 5, 1, 8, None, 3, 8, 8, None, 8, None, 1, 3, None]
+    b = [1, 8, 1, 3, 3, 8, 5, 1, 2, 8, 5, 1, 5, 5, 1, 1, 1, 2, 2, 5, 3, 5, 1, 1, 5, 2, 5, 5, 1, 1, 2, 3, 5, 1, 1, 2, 1, 1, 3, 1]
+    from anomaly_hunter.detectors import clustering_detector
+    from anomaly_hunter.load import load_from_records
+    df, types, _ = load_from_records(["c0", "c1"], [[x, y] for x, y in zip(a, b)])
+    assert np.array_equal(clustering_detector(df, types)["votes"], _clustering_on_every_row(df, types))

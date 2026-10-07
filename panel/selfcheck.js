@@ -156,4 +156,10 @@ let t0 = Date.now();
 recommendFix(["Amt"], [[evil]], 0, {}, evil, 0, 0, null, null);
 assert.ok(Date.now() - t0 < 500, `recommendFix took ${Date.now() - t0}ms on a crafted reason`);
 
+const both = recommendFix(["Amt", "Price"], [["$1,000,000.00", 1000], ["$1,200.00", 10]], 0, { Price: [5, 20, 0, 50] },
+  "Flagged by 2 of 3: Amt weird limit is 2000; this is 1000000; Price weird limit is 50; this is 1000", 0, 0, null, null);
+assert.ok(both.explanation.includes("Amt is 1000000, past its limit of 2000") && both.changes.length === 1 && !both.explanation.includes("null"), both.explanation);
+const note = recommendFix(["Name", "Notes"], [["a", ""], ["b", "x"]], 0, {}, "Blank cell in column Notes, which is otherwise filled", 0, 0, null, null);
+assert.ok(note.explanation.startsWith("Notes is blank where the rest of the column is filled"), note.explanation);
+
 console.log("panel self-check passed");

@@ -680,7 +680,7 @@ function median(xs) {
 // calc = this row's formulas: a cell holding a formula is never overwritten - its inputs are what's wrong.
 function recommendFix(columns, rows, i, limits, reason, startRow, startCol, likely, calc) {
   const row = startRow + 2 + i;
-  const changes = [], why = [], typos = [], real = [], calcCells = [];
+  const changes = [], why = [], typos = [], real = [], calcCells = [], seen = new Set(); // seen: columns already explained
   reason = reason || "";
   columns.forEach((c, j) => {
     const v = rows[i][j], cell = `${colLetter(startCol + j)}${row}`;
@@ -689,13 +689,14 @@ function recommendFix(columns, rows, i, limits, reason, startRow, startCol, like
     const blank = !!lim && (v === "" || v === null) && reason.includes(`Blank cell in column ${c},`);
     const outside = !!lim && typeof v === "number" && ((lo != null && v < lo) || (hi != null && v > hi));
     if (!(variant || blank || outside)) return;
+    seen.add(c);
     if (calc && String(calc[j]).startsWith("=")) return void calcCells.push(cell); // never type over a formula
     if (variant) {
       changes.push({ cell, new: likely[c] });
       return void typos.push(`${c} says "${v}" where the rest of the column says "${likely[c]}" - same word, different capitals/spaces`);
     }
     const typo = likely && likely[c];
-    if (typo !== undefined && outside) { // engine spotted an obvious typo: extra/missing zeros or a flipped sign
+    if (typo != null && outside) { // engine spotted an obvious typo: extra/missing zeros or a flipped sign
       changes.push({ cell, new: String(typo) });
       return void typos.push(`${c} is ${v} - looks like a typo for ${typo} (${typoKind(v, typo)})`);
     }
@@ -703,7 +704,7 @@ function recommendFix(columns, rows, i, limits, reason, startRow, startCol, like
     if (outside && spansDecade(others)) // wide column (claims, deal sizes): a huge value can be real - don't overwrite it
       return void real.push(`${c} is ${v}, far outside its usual range - but ${c} naturally varies more than 10x, so this may be real`);
     const med = median(others);
-    if (med === null) return;
+    if (med === null) return void seen.delete(c);
     changes.push({ cell, new: String(+med.toPrecision(10)) });
     why.push(blank ? `${c} is blank` : `${c} is ${v}, outside its limits (${lo ?? "no low"} to ${hi ?? "no high"})`);
   });
@@ -723,11 +724,11 @@ function recommendFix(columns, rows, i, limits, reason, startRow, startCol, like
   for (const [, raw, col] of reason.matchAll(/Placeholder "([^"]*)" in column ([^;]+)/g))
     notes.push(`${col} says "${raw}" - a stand-in for a missing value. Fill in the real value, or leave the cell empty.`);
   // a limit crossed in a cell typed as text ("$1,000,000.00"): explained, never overwritten
-  if (!changes.length && !why.length && !typos.length && !real.length && !calcCells.length)
-    for (const { text } of issuesOf(reason, columns)) {
-      const m = /^(.+?) weird limit is (\S+); this is (\S+)/.exec(text);
-      if (m) notes.push(`${m[1]} is ${m[3]}, past its limit of ${m[2]}. Check it against the source; if it's right, leave it.`);
-    }
+  for (const { text } of issuesOf(reason, columns)) { // anything the loop above didn't explain (text cells, no limits)
+    const m = /^(.+?) weird limit is (\S+); this is (\S+)/.exec(text), b = /^Blank cell in column (.+?), which/.exec(text);
+    if (m && !seen.has(m[1])) notes.push(`${m[1]} is ${m[3]}, past its limit of ${m[2]}. Check it against the source; if it's right, leave it.`);
+    if (b && !seen.has(b[1])) notes.push(`${b[1]} is blank where the rest of the column is filled - fill it in from the source.`);
+  }
   for (const [, err, col] of reason.matchAll(/Excel error (#\S+) in ([^;]+)/g))
     notes.push(`${col} shows ${err}: ${EXCEL_ERRORS[err] || "its formula failed"}. Fix the formula or its inputs ` +
       `(or wrap it in IFERROR(...)) rather than typing a number over it.`);

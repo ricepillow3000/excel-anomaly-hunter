@@ -185,7 +185,8 @@ def clustering_detector(df, column_types):
     # k-th nearest OTHER row: walk each pattern's neighbours adding up rows until k = min(ms, n-1) are passed
     dist, idx = NearestNeighbors(n_neighbors=min(ms + 1, len(xu))).fit(xu).kneighbors(xu)
     w = cnt[idx] - (idx == np.arange(len(xu))[:, None])  # a pattern's own other copies sit at distance 0
-    kth = dist[np.arange(len(xu)), np.argmax(np.cumsum(w, axis=1) >= min(ms, n - 1), axis=1)][inv]
+    kth = dist[np.arange(len(xu)), np.argmax(np.cumsum(w, axis=1) >= min(ms, n - 1), axis=1)]
+    kth = np.round(kth, 9)[inv]  # equal distances can differ in the last bit by path; a 1e-16 "spread" would shrink eps
     votes = DBSCAN(eps=max(np.median(kth) + K * spread(kth), 1e-9), min_samples=ms).fit_predict(xu, sample_weight=cnt)[inv] == -1
     # ponytail: magnitude = kth distance in spread units, sort key only
     mag = np.where(votes, kth / (spread(kth) or 1.0), 0.0)
