@@ -3,9 +3,9 @@ const SERVER = "https://127.0.0.1:5055";
 const KEY = "anomalyHunterLimits"; // limits saved inside the workbook
 const COLOR = { High: "#FFC7CE", Medium: "#FFEB9C", Low: "#FFFFCC", Noted: "#FFF8DC" };
 const CAP = 25; // ponytail: list cap so big sheets don't flood the pane
-const PANELS = ["empty-state", "limits-editor", "results", "error-state"];
+const PANELS = ["empty-state", "limits-editor", "results", "fix-view", "error-state"];
 
-let lastScan = null; // {columns, rows, startRow, startCol} the scan ran on
+let lastScan = null; // {columns, rows, startRow, startCol, sheet} the scan ran on
 let lastRows = null; // last scan result rows, for Route Monitor diff
 let lastHighlight = null; // what Clear highlights restores
 let editorSheet = null; // sheet data the limits editor rescans
@@ -13,6 +13,9 @@ let triageRows = [];
 let aiAvailable = false;
 let watch = null; // sheet.onChanged handle
 let watchTimer = null;
+let picker = null; // onSelectionChanged handle: clicking a highlighted row opens its fix
+let triaged = {}; // row_index -> AI triage verdict, shown in the fix view
+let fix = null; // {i, changes, undo} for the row open in the fix view
 
 const $ = (id) => document.getElementById(id);
 const show = (id, on = true) => ($(id).style.display = on ? "block" : "none");
@@ -32,6 +35,11 @@ if (typeof Office !== "undefined") {
     $("clear-highlights").onclick = clearHighlights;
     $("run-triage").onclick = runTriage;
     $("watch-toggle").onchange = onWatchToggle;
+    $("fix-back").onclick = () => only("results");
+    $("fix-ask").onclick = askFix;
+    $("fix-apply").onclick = applyFix;
+    $("fix-undo").onclick = undoFix;
+    $("fix-intent").onkeydown = (e) => e.key === "Enter" && e.ctrlKey && askFix();
     Excel.run(async (ctx) => {
       const sheet = ctx.workbook.worksheets.getActiveWorksheet().load("name");
       await ctx.sync();
@@ -46,7 +54,7 @@ async function checkHealth() {
     const r = await fetch(`${SERVER}/health`);
     if (!r.ok) throw new Error();
     aiAvailable = !!(await r.json()).ai_available;
-    $("ai-toggle").disabled = $("run-triage").disabled = !aiAvailable;
+    $("ai-toggle").disabled = $("run-triage").disabled = $("fix-ask").disabled = !aiAvailable;
     serverUp(true);
   } catch {
     serverUp(false);
@@ -77,15 +85,15 @@ function saveLimits(limits) {
 
 async function readSheet() {
   return Excel.run(async (ctx) => {
-    const used = ctx.workbook.worksheets.getActiveWorksheet().getUsedRange()
-      .load("values, numberFormat, rowIndex, columnIndex");
+    const sheet = ctx.workbook.worksheets.getActiveWorksheet().load("name");
+    const used = sheet.getUsedRange().load("values, numberFormat, rowIndex, columnIndex");
     await ctx.sync();
     const d = used.values;
     if (!d || d.length < 2) return null; // need header + 1 row
     // Excel hands dates over as serial numbers; send real dates so the engine finds its time axis
     const isDate = d[1].map((_, j) => isDateFormat(used.numberFormat[1][j]));
     const rows = d.slice(1).map((r) => r.map((v, j) => (isDate[j] && typeof v === "number" ? excelDate(v) : v)));
-    return { columns: d[0], rows, startRow: used.rowIndex, startCol: used.columnIndex };
+    return { columns: d[0], rows, startRow: used.rowIndex, startCol: used.columnIndex, sheet: sheet.name };
   });
 }
 
@@ -122,8 +130,10 @@ async function scanAndRender(s, limits) {
   if (!limits) return renderLimitsEditor(body.suggested_limits, s); // first scan: review limits first
   lastScan = s;
   lastRows = body.rows;
+  triaged = {};
   await applyHighlights(body.rows, s);
   renderResults(body, s.startRow);
+  await watchSelection(s.sheet);
   // a scanned workbook reopens with this pane already open (Office autoopen; manifest TaskpaneId)
   Office.context.document.settings.set("Office.AutoShowTaskpaneWithDocument", true);
   Office.context.document.settings.saveAsync();
@@ -316,6 +326,7 @@ async function runTriage() {
 function renderTriage(t) {
   const li = document.querySelector(`#flagged-list li[data-row-index="${t.row_index}"]`);
   if (!li) return;
+  triaged[t.row_index] = t;
   const safe = t.safe_action !== "none";
   const block = document.createElement("div");
   block.className = "ai-block";
@@ -326,7 +337,8 @@ function renderTriage(t) {
     const b = document.createElement("button");
     b.className = "approve-btn";
     b.textContent = t.safe_action === "add_note" ? "Approve: add note" : "Approve: copy to Anomalies sheet";
-    b.onclick = async () => {
+    b.onclick = async (e) => {
+      e.stopPropagation();
       b.disabled = true;
       b.textContent = "Applying…";
       try {
@@ -365,6 +377,150 @@ async function approve(i, action, detail) {
   });
 }
 
+// ---- Fix a flagged row: click it (pane list or the sheet), say what you want in plain English,
+// Claude proposes cell writes, user previews old -> new and clicks Apply. Undo restores. ----
+
+async function watchSelection(sheetName) {
+  if (picker && picker.sheet === sheetName) return;
+  if (picker) {
+    const old = picker;
+    picker = null;
+    await Excel.run(old.handle.context, async (ctx) => {
+      old.handle.remove();
+      await ctx.sync();
+    }).catch(() => {}); // old sheet deleted: nothing to remove
+  }
+  try {
+    await Excel.run(async (ctx) => {
+      const handle = ctx.workbook.worksheets.getItem(sheetName).onSelectionChanged.add(onSelect);
+      await ctx.sync();
+      picker = { sheet: sheetName, handle };
+    });
+  } catch (e) {
+    console.error("could not watch selection", e); // list clicks still work
+  }
+}
+
+async function onSelect(e) {
+  const busy = $("results").style.display !== "block" && $("fix-view").style.display !== "block";
+  if (busy || !lastScan) return; // never yank the user out of the limits editor
+  const i = rowFromAddress(e.address, lastScan.startRow);
+  if (i !== null && lastRows[i] && lastRows[i].severity && !(fix && fix.i === i && $("fix-view").style.display === "block"))
+    openFix(i, false);
+}
+
+// Pure: "C7", "B7:D9", "Sheet1!C7", "7:7" -> 0-based data row index (header at startRow), or null.
+function rowFromAddress(address, startRow) {
+  const m = /^(?:.*!)?\$?[A-Z]*\$?(\d+)/i.exec(String(address));
+  if (!m) return null;
+  const i = Number(m[1]) - startRow - 2;
+  return i >= 0 ? i : null;
+}
+
+async function openFix(i, selectInSheet) {
+  const { columns, rows, startRow, startCol, sheet } = lastScan;
+  const r = lastRows[i];
+  fix = { i, changes: [], undo: null };
+  $("fix-title").textContent = `Fix row ${startRow + i + 2} - ${r.severity}`;
+  $("fix-values").textContent = columns.map((c, j) => `${c}: ${rows[i][j]}`).join(" · ");
+  const t = triaged[i];
+  $("fix-reason").textContent = (r.reason || "Flagged by the engine.") + (t ? ` AI: ${t.verdict} - ${t.reason}` : "");
+  $("fix-intent").value = "";
+  $("fix-status").textContent = aiAvailable ? "" : "AI fixes need ANTHROPIC_API_KEY set before install.bat - see README.";
+  show("fix-result", false);
+  only("fix-view");
+  if (selectInSheet)
+    await Excel.run(async (ctx) => {
+      ctx.workbook.worksheets.getItem(sheet).activate();
+      ctx.workbook.worksheets.getItem(sheet).getRangeByIndexes(startRow + 1 + i, startCol, 1, columns.length).select();
+      await ctx.sync();
+    }).catch((e) => console.error("select row failed", e));
+}
+
+async function askFix() {
+  if (!aiAvailable || !fix || $("fix-ask").disabled) return;
+  const f = fix;
+  const btn = $("fix-ask");
+  btn.disabled = true;
+  btn.textContent = "Thinking… (up to a minute)";
+  $("fix-status").textContent = "";
+  show("fix-result", false);
+  try {
+    const { columns, rows, startRow, startCol, sheet } = lastScan;
+    const out = await post("/fix", {
+      columns, rows, row_index: f.i, start_row: startRow, start_col: startCol,
+      reason: lastRows[f.i].reason, intent: $("fix-intent").value,
+    });
+    if (fix !== f) return; // user moved to another row meanwhile
+    f.changes = out.changes;
+    const olds = await readCells(sheet, out.changes.map((c) => c.cell));
+    $("fix-explanation").textContent = out.explanation;
+    $("fix-changes").innerHTML = out.changes
+      .map((c, k) => `<li><b>${esc(c.cell)}</b>: <span class="old">${esc(olds[k])}</span> &rarr; <span class="new">${esc(c.new)}</span></li>`)
+      .join("");
+    show("fix-apply", out.changes.length > 0);
+    $("fix-apply").disabled = false;
+    $("fix-apply").textContent = "Apply to sheet";
+    show("fix-undo", false);
+    show("fix-result");
+  } catch (e) {
+    if (fix === f) $("fix-status").textContent = "Could not get a fix: " + e.message;
+  } finally {
+    btn.disabled = !aiAvailable;
+    btn.textContent = "Suggest fix";
+  }
+}
+
+async function readCells(sheetName, cells) {
+  return Excel.run(async (ctx) => {
+    const sheet = ctx.workbook.worksheets.getItem(sheetName);
+    const ranges = cells.map((c) => sheet.getRange(c).load("formulas"));
+    await ctx.sync();
+    return ranges.map((r) => r.formulas[0][0]);
+  });
+}
+
+// Writes as if typed: "=..." becomes a formula, "42" a number. Old contents kept for Undo.
+async function writeCells(sheetName, writes) {
+  await Excel.run(async (ctx) => {
+    const sheet = ctx.workbook.worksheets.getItem(sheetName);
+    writes.forEach((w) => (sheet.getRange(w.cell).formulas = [[w.value]]));
+    await ctx.sync();
+  });
+}
+
+async function applyFix() {
+  const f = fix;
+  const btn = $("fix-apply");
+  btn.disabled = true;
+  try {
+    const cells = f.changes.map((c) => c.cell);
+    const olds = await readCells(lastScan.sheet, cells);
+    await writeCells(lastScan.sheet, f.changes.map((c) => ({ cell: c.cell, value: c.new })));
+    f.undo = cells.map((cell, k) => ({ cell, value: olds[k] })); // all read before any write
+    btn.textContent = "Applied";
+    show("fix-undo");
+    $("fix-status").textContent = "Applied. Scan again to refresh the highlights.";
+  } catch (e) {
+    btn.disabled = false;
+    $("fix-status").textContent = "Apply failed: " + e.message;
+  }
+}
+
+async function undoFix() {
+  const f = fix;
+  try {
+    await writeCells(lastScan.sheet, f.undo);
+    f.undo = null;
+    show("fix-undo", false);
+    $("fix-apply").disabled = false;
+    $("fix-apply").textContent = "Apply to sheet";
+    $("fix-status").textContent = "Undone - the cells are back to what they were.";
+  } catch (e) {
+    $("fix-status").textContent = "Undo failed: " + e.message;
+  }
+}
+
 // ---- Results dashboard ----
 
 function renderResults(body, startRow) {
@@ -387,6 +543,7 @@ function renderResults(body, startRow) {
   list.replaceChildren(...shown.map((r) => {
     const li = rowItem(startRow + r.i + 2, r.severity, r.reason);
     li.dataset.rowIndex = r.i;
+    li.onclick = () => openFix(r.i, true);
     return li;
   }));
   if (flagged.length > CAP) {
@@ -422,4 +579,4 @@ function esc(s) {
   return d.innerHTML;
 }
 
-if (typeof module !== "undefined") module.exports = { computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate };
+if (typeof module !== "undefined") module.exports = { computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress };
