@@ -5,23 +5,23 @@ import re
 import numpy as np
 
 from anomaly_hunter.detectors import clustering_detector, isolation_detector, limits_detector, sequence_detector
+from anomaly_hunter.load import _blank
 
 def summary_rows(df):
     """Rows that summarise the data instead of being data -> bool array: fully blank rows, rows labelled
     Total/Subtotal/Mean/... that are sparser than a normal row ("Total Wine" the vendor is a full row), and
     unlabelled rows whose numbers equal the sum of the rows above them."""
     cols = [c for c in df.columns if c != "source_file"]
-    filled = df[cols].notna().to_numpy() & (df[cols].astype(str).apply(lambda s: s.str.strip()) != "").to_numpy()
-    count = filled.sum(axis=1)
+    count = (~df[cols].apply(_blank)).sum(axis=1).to_numpy()
     nums = [c for c in cols if df[c].dtype.kind in "fi"]
-    rows_with = lambda key: np.isin(np.arange(len(df)), list(df.attrs.get(key, ())))  # set by load, before coercion
+    rows_with = lambda key: df.index.isin(df.attrs.get(key, ()))  # set by load, before coercion
     sparse = count < np.median(count)  # a totals row leaves the label/date/text cells empty
     # "Total" + sparse; "Average"/"Mean" only if half empty ("Average" can be a rating in a normal row)
     mask = (count == 0) | (rows_with("total_rows") & sparse) | (rows_with("stat_rows") & (count <= np.median(count) / 2))
     x = df[nums].to_numpy(dtype=float)
     run = np.vstack([np.zeros(len(nums)), np.nancumsum(x, axis=0)])  # run[i] = sum of rows before i
     start = 0
-    for i in range(len(df)):
+    for i in np.flatnonzero(mask | sparse):  # only sparse rows can be unlabelled totals
         if mask[i]:
             start = i + 1
             continue
@@ -70,9 +70,11 @@ def spellings(df, column_types, skip):
     spelling is >= 3x as common. -> (reasons per row, {col: usual spelling} per row)."""
     out, fix = [[] for _ in range(len(df))], [{} for _ in range(len(df))]
     for col, t in column_types.items():
+        if t != "text":
+            continue
         s = df[col][~skip].dropna().astype(str)
         s = s[(s.str.strip() != "") & ~s.str.lstrip().str[:1].isin(list("=+-@"))]  # formula-like text is never a "spelling"
-        if t != "text" or s.nunique() > 50:
+        if s.nunique() > 50:
             continue
         for _, grp in s.groupby(s.map(lambda v: " ".join(v.split()).casefold())):
             counts = grp.value_counts()

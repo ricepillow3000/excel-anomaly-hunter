@@ -61,6 +61,7 @@ for d in make():
         print(f"{d['name']:20s} CRASH {e}")
         continue
     rows = res["rows"]
+    t["gridRows"] = [t["startRow"] + 1 + k for k in range(len(t["rows"]))]  # bench grids start at A1
     g2i = {g: k for k, g in enumerate(t["gridRows"])}
     planted = {p["row"]: p for p in d["planted"]}
     jobs, pl = [], []

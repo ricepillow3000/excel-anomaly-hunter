@@ -104,10 +104,12 @@ function tableFromGrid(values, formats, rowIndex, colIndex, formulas) {
   const h = values.findIndex((r, k) => k < 10 && filled(r) >= Math.max(Math.min(2, widest), 0.6 * widest));
   if (h < 0 || h + 1 >= values.length) return null; // need header + 1 row
   // Excel hands dates over as serial numbers; send real dates so the engine finds its time axis
-  const isDate = values[h + 1].map((_, j) => !!formats && isDateFormat(formats[h + 1][j]));
+  const isDate = formats ? formats[h + 1].map(isDateFormat) : [];
   const rows = values.slice(h + 1).map((r) => r.map((v, j) => (isDate[j] && typeof v === "number" ? excelDate(v) : v)));
   const calc = formulas && formulas.slice(h + 1); // each data row's formulas ("=B2-C2"), so a fix never types over one
-  return { columns: values[h], rows, startRow: rowIndex + h, startCol: colIndex, gridRows: rows.map((_, k) => h + 1 + k), calc };
+  const seen = {}; // name duplicate headers like the engine does ("Dept", "Dept.1"): limits and fixes are keyed by these
+  const columns = values[h].map((c) => ((c = String(c)), (seen[c] = (seen[c] ?? -1) + 1) ? `${c}.${seen[c]}` : c));
+  return { columns, rows, startRow: rowIndex + h, startCol: colIndex, calc };
 }
 
 // Pure: number format shows a date? (ignore [colors/locales] and "quoted text", e.g. "[Red]0.00")
@@ -451,7 +453,9 @@ async function openFix(i, selectInSheet) {
       await ctx.sync();
     }).catch((e) => console.error("select row failed", e));
   // instant, local recommendation - no AI, no key needed
-  const rec = recommendFix(columns, rows, i, await getLimits(), r.reason, startRow, startCol, r.likely, lastScan.calc && lastScan.calc[i]);
+  // totals rows don't count toward the median or the "naturally wide" test
+  const data = rows.map((row, k) => (/^Totals\/summary row/.test(lastRows[k].reason) ? row.map(() => "") : row));
+  const rec = recommendFix(columns, data, i, await getLimits(), r.reason, startRow, startCol, r.likely, lastScan.calc?.[i]);
   if (fix === f) await showFix(f, "Recommended fix", rec);
 }
 
@@ -466,7 +470,7 @@ async function askFix() {
     const { columns, rows, startRow, startCol } = lastScan;
     const out = await post("/fix", {
       columns, rows, row_index: f.i, start_row: startRow, start_col: startCol,
-      reason: lastRows[f.i].reason, intent: $("fix-intent").value, formulas: lastScan.calc ? lastScan.calc[f.i] : undefined,
+      reason: lastRows[f.i].reason, intent: $("fix-intent").value, formulas: lastScan.calc?.[f.i],
     });
     if (fix === f) await showFix(f, "AI suggestion", out); // else: user moved to another row meanwhile
   } catch (e) {
@@ -542,8 +546,6 @@ function median(xs) {
 // calc = this row's formulas: a cell holding a formula is never overwritten - its inputs are what's wrong.
 function recommendFix(columns, rows, i, limits, reason, startRow, startCol, likely, calc) {
   const row = startRow + 2 + i;
-  const seen = {}; // the engine names duplicate headers "Dept", "Dept.1" - limits and likely use those names
-  columns = columns.map((c) => ((c = String(c)), (seen[c] = (seen[c] ?? -1) + 1) ? `${c}.${seen[c]}` : c));
   const changes = [], why = [], typos = [], real = [], calcCells = [];
   reason = reason || "";
   columns.forEach((c, j) => {

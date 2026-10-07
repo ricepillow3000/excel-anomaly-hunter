@@ -175,7 +175,7 @@ def test_suggested_lows_stop_at_zero_for_nonnegative_columns():
 def test_blank_limit_cells_mean_no_limit(tmp_path):
     limits_path = tmp_path / "limits.csv"
     write_limits(limits_path, {"Amount": (None, None, None, None)})
-    limits, warnings = read_limits(limits_path, ["Amount"])
+    limits, warnings = read_limits(limits_path, {"Amount": "number"})
     assert limits["Amount"] == (None, None, None, None)
     assert warnings == []
 
@@ -183,7 +183,7 @@ def test_blank_limit_cells_mean_no_limit(tmp_path):
 def test_unknown_limits_column_warns_not_crash(tmp_path):
     limits_path = tmp_path / "limits.csv"
     write_limits(limits_path, {"NotAColumn": (0, 1, 0, 1)})
-    limits, warnings = read_limits(limits_path, ["Amount"])
+    limits, warnings = read_limits(limits_path, {"Amount": "number"})
     assert limits == {}
     assert len(warnings) == 1
 
@@ -270,17 +270,17 @@ def test_totals_rows_are_not_checked_but_a_vendor_called_total_is():
 
 
 def test_likely_typo_fixes_and_real_outliers_left_alone():
-    from anomaly_hunter.detectors import likely_value
+    from anomaly_hunter.detectors import column_stats, likely_value
     tight = np.array([26.0, 31, 28, 25, 30, 27, 29, 33, 24, 28])
-    assert likely_value(2900.0, np.append(tight, 2900), 15, 45) == 29  # x100 (extra zeros)
-    assert likely_value(-29.0, np.append(tight, -29), 15, 45) == 29  # sign flip in an all-positive column
-    assert likely_value(0.29, np.append(tight, 0.29), 15, 45) == 29  # missing zeros
+    assert likely_value(2900.0, column_stats(np.append(tight, 2900)), 15, 45) == 29  # x100 (extra zeros)
+    assert likely_value(-29.0, column_stats(np.append(tight, -29)), 15, 45) == 29  # sign flip in an all-positive column
+    assert likely_value(0.29, column_stats(np.append(tight, 0.29)), 15, 45) == 29  # missing zeros
     pct = np.array([0.12, 0.15, 0.11, 0.14, 0.13, 0.16, 0.12, 0.15])
-    assert likely_value(13.0, np.append(pct, 13), 0.05, 0.25) == 0.13  # % typed as 13 for 0.13
+    assert likely_value(13.0, column_stats(np.append(pct, 13)), 0.05, 0.25) == 0.13  # % typed as 13 for 0.13
     pnl = np.array([520.0, -310, 870, -45, 1200, -760, 300, 95, -1500, 640])
-    assert likely_value(-120.0, np.append(pnl, -120), -2000, 2000) is None  # negatives are normal here: no flip
+    assert likely_value(-120.0, column_stats(np.append(pnl, -120)), -2000, 2000) is None  # negatives are normal here: no flip
     claims = np.array([900.0, 2500, 15000, 4200, 700, 38000, 1200, 6100, 22000, 3100])
-    assert likely_value(90000.0, np.append(claims, 90000), 0, 40000) is None  # whale claim: only 2.4x the next one
+    assert likely_value(90000.0, column_stats(np.append(claims, 90000)), 0, 40000) is None  # whale claim: only 2.4x the next one
 
 
 def test_category_spelled_differently_is_flagged_with_the_usual_spelling():
@@ -303,9 +303,9 @@ def test_value_100x_too_small_is_weird_in_a_positive_column():
 
 
 def test_two_slips_at_once_is_not_an_obvious_typo():
-    from anomaly_hunter.detectors import likely_value
+    from anomaly_hunter.detectors import column_stats, likely_value
     units = np.array([40.0, 52, 61, 47, 55, 58, 44, 50, 66, 49])
-    assert likely_value(-5.0, np.append(units, -5), 25, 80) is None  # -5 -> 50 would be sign AND zeros: just guessing
+    assert likely_value(-5.0, column_stats(np.append(units, -5)), 25, 80) is None  # -5 -> 50 would be sign AND zeros: just guessing
 
 
 def test_review_fixes_ids_totals_names():

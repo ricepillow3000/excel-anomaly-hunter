@@ -50,18 +50,27 @@ def _crossed(v, lo, hi):
 BEYOND = 4  # a typo sits this many times past every other value in the column
 
 
-def likely_value(v, x, lo, hi):
-    """The typo behind v, if one is obvious: extra/missing 0s (x10^k, |k|<=3: % typed as 85 for 0.85, g for kg)
-    or a flipped sign - one slip, not both - landing inside the baseline [lo, hi]. None when unsure. Never "corrects" a value that
-    is merely the biggest of a wide column: v must be >= BEYOND times past every other value."""
+def column_stats(x):
+    """What likely_value needs about a column, computed once: sorted |non-zero values|, their log median, signs."""
     x = x[~np.isnan(x)]
-    rest = np.delete(x, np.flatnonzero(x == v)[:1])  # every other value in the column
-    others = np.abs(rest[rest != 0])
-    if lo is None or hi is None or not len(others) or v == 0:
+    mags = np.sort(np.abs(x[x != 0]))
+    return {"n": len(x), "nonneg": int((x >= 0).sum()), "mags": mags, "logmed": np.median(np.log10(mags)) if len(mags) else 0.0}
+
+
+def likely_value(v, st, lo, hi):
+    """The typo behind v, if one is obvious: extra/missing 0s (x10^k, |k|<=3: % typed as 85 for 0.85, g for kg)
+    or a flipped sign - one slip, not both - landing inside the baseline [lo, hi]. None when unsure. Never "corrects"
+    a value that is merely the biggest of a wide column: v must be >= BEYOND times past every other value."""
+    mags = st["mags"]
+    if lo is None or hi is None or v == 0 or len(mags) < 2:
         return None
-    k = int(round(np.log10(abs(v)) - np.median(np.log10(others))))
-    far = abs(v) >= BEYOND * others.max() if k > 0 else abs(v) * BEYOND <= others.min()
-    flip = v < 0 and (rest >= 0).mean() >= 0.95  # sign flip only where negatives are rare
+    m = abs(v)
+    k = int(round(np.log10(m) - st["logmed"]))
+    if k > 0:  # the biggest / smallest of the OTHER values
+        far = m >= BEYOND * (mags[-2] if mags[-1] == m else mags[-1])
+    else:
+        far = m * BEYOND <= (mags[1] if mags[0] == m else mags[0])
+    flip = v < 0 and st["nonneg"] >= 0.95 * (st["n"] - 1)  # sign flip only where negatives are rare (v itself is one)
     for c in ([v / 10 ** k] if 1 <= abs(k) <= 3 and far else []) + ([-v] if flip else []):
         if lo <= c <= hi:
             return float(f"{c:.10g}")
@@ -77,14 +86,14 @@ def limits_detector(df, column_types, limits):
             continue
         b_lo, b_hi, w_lo, w_hi = limits[col]
         x = df[col].to_numpy(dtype=float)
-        sd = spread(x) or 1.0
+        sd, st = spread(x) or 1.0, None  # st: column_stats, built on the first breach only
         for i, v in enumerate(x):
             if np.isnan(v):
                 continue
             if (lim := _crossed(v, w_lo, w_hi)) is not None:
                 r["votes"][i] = True
                 r["magnitude"][i] = max(r["magnitude"][i], abs(v - lim) / sd)
-                fix = likely_value(v, x, b_lo, b_hi)
+                fix = likely_value(v, st := st or column_stats(x), b_lo, b_hi)
                 if fix is not None:
                     r["likely"][i][col] = fix
                 r["reasons"][i].append(f"{col} weird limit is {lim:g}; this is {v:g}" + (f" (likely {fix:g})" if fix is not None else ""))

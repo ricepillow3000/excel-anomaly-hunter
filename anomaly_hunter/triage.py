@@ -106,8 +106,7 @@ def _fix_prompt(columns, rows, i, start_row, start_col, reason, intent, formulas
         "Columns: " + ", ".join(f"{c}={h}" for c, h in zip(letters, columns)) + "\n"
         f"Flagged {line(i)}\n"
         + (f"Formulas in that row: {'; '.join(calc)} - fix their inputs rather than overwrite them, unless asked.\n" if calc else "")
-        + 
-        f"Why it was flagged: {reason or 'unknown'}\n"
+        + f"Why it was flagged: {reason or 'unknown'}\n"
         "Nearby rows for context:\n" + "\n".join(near) + "\n\n"
         f"User's request: {intent.strip() or 'Recommend the single best fix for this flagged row.'}\n\n"
         "Rules: each change is one cell (A1 style, e.g. D7) and the exact text to enter in it - an Excel formula "

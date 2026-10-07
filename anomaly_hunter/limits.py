@@ -5,6 +5,8 @@ import numpy as np
 import pandas as pd
 
 from anomaly_hunter.detectors import spread
+from anomaly_hunter.load import numbers
+from anomaly_hunter.pipeline import summary_rows
 
 COLS = ["column", "baseline_low", "baseline_high", "weird_low", "weird_high"]
 
@@ -13,11 +15,11 @@ def _num(v):
     return None if pd.isna(v) or not str(v).strip() else float(v)
 
 
-def read_limits(path, number_columns, id_columns=()):
+def read_limits(path, column_types):
     """-> ({col: (b_lo, b_hi, w_lo, w_hi)}, warnings). Blank cell = no limit."""
     t = pd.read_csv(path, dtype=str).reindex(columns=COLS)
-    ok = t["column"].isin(number_columns)
-    warnings = [f"limits.csv names column '{c}', " + ("an identifier, not a measurement" if c in id_columns else "not found in the data")
+    ok = t["column"].isin(numbers(column_types))
+    warnings = [f"limits.csv names column '{c}', " + ("an identifier, not a measurement" if column_types.get(c) == "id" else "not found in the data")
                 + " - skipped" for c in t["column"][~ok]]
     return {r[0]: tuple(map(_num, r[1:])) for r in t[ok].itertuples(index=False)}, warnings
 
@@ -28,9 +30,8 @@ def _round(v, step, up):
 
 
 def suggest_limits_dict(df, number_columns):
-    """{col: (b_lo, b_hi, w_lo, w_hi)} rounded to the spread's own scale (3 sig figs of the VALUE collapsed
-    IDs/years like 100200..100279 to "100000 to 100000"). All-blank column skipped."""
-    from anomaly_hunter.pipeline import summary_rows  # here: pipeline imports detectors imports limits' spread
+    """{col: (b_lo, b_hi, w_lo, w_hi)}, rounded outward on the spread's scale (so limits never collapse to a point),
+    totals rows left out. All-blank column skipped."""
     keep = ~summary_rows(df)
     out = {}
     for c in number_columns:
