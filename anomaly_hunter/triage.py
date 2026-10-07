@@ -163,9 +163,9 @@ def _research_prompt(department, reason, columns, formula):
         'columns, or empty>", "steps": ["<up to 5 short steps>"]}')
 
 
-def _host_ok(url):
+def _host_ok(url):  # no backslashes: a browser reads https://evil.com\.exceljet.net as evil.com
     host = (url.split("//", 1)[-1].split("/", 1)[0]).lower()
-    return url.startswith("https://") and any(host == d or host.endswith("." + d) for d in EXCEL_PROS)
+    return url.startswith("https://") and "\\" not in url and any(host == d or host.endswith("." + d) for d in EXCEL_PROS)
 
 
 def research(department, reason, columns, formula=""):
