@@ -77,13 +77,22 @@ function saveLimits(limits) {
 
 async function readSheet() {
   return Excel.run(async (ctx) => {
-    const used = ctx.workbook.worksheets.getActiveWorksheet().getUsedRange().load("values, rowIndex, columnIndex");
+    const used = ctx.workbook.worksheets.getActiveWorksheet().getUsedRange()
+      .load("values, numberFormat, rowIndex, columnIndex");
     await ctx.sync();
     const d = used.values;
     if (!d || d.length < 2) return null; // need header + 1 row
-    return { columns: d[0], rows: d.slice(1), startRow: used.rowIndex, startCol: used.columnIndex };
+    // Excel hands dates over as serial numbers; send real dates so the engine finds its time axis
+    const isDate = d[1].map((_, j) => isDateFormat(used.numberFormat[1][j]));
+    const rows = d.slice(1).map((r) => r.map((v, j) => (isDate[j] && typeof v === "number" ? excelDate(v) : v)));
+    return { columns: d[0], rows, startRow: used.rowIndex, startCol: used.columnIndex };
   });
 }
+
+// Pure: number format shows a date? (ignore [colors/locales] and "quoted text", e.g. "[Red]0.00")
+const isDateFormat = (f) => /[dy]/i.test(String(f).replace(/\[[^\]]*\]|"[^"]*"/g, ""));
+// Pure: Excel serial day -> "yyyy-mm-dd" (25569 = 1970-01-01)
+const excelDate = (n) => new Date(Math.round((n - 25569) * 864e5)).toISOString().slice(0, 10);
 
 const scanBody = (s, limits) => ({ columns: s.columns, rows: s.rows, limits, order_by: null });
 
@@ -410,4 +419,4 @@ function esc(s) {
   return d.innerHTML;
 }
 
-if (typeof module !== "undefined") module.exports = { computeHealthSummary, diffFlaggedRows };
+if (typeof module !== "undefined") module.exports = { computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate };

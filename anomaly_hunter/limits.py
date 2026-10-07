@@ -25,7 +25,10 @@ def suggest_limits_dict(df, number_columns):
         x = df[c].dropna()
         if len(x):
             med, sd = float(x.median()), spread(x)
-            out[c] = tuple(float(f"{med + k * sd:.3g}") for k in (-3, 3, -6, 6))
+            v = [float(f"{med + k * sd:.3g}") for k in (-3, 3, -6, 6)]
+            if (x >= 0).mean() >= 0.95:  # counts/prices: a negative is weird, so lows stop at 0
+                v[0], v[2] = max(v[0], 0.0), max(v[2], 0.0)
+            out[c] = tuple(v)
     return out
 
 

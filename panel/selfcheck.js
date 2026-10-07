@@ -1,6 +1,6 @@
 // Panel pure-logic check, no Office/fetch. Run: node panel/selfcheck.js
 const assert = require("node:assert");
-const { computeHealthSummary, diffFlaggedRows } = require("./taskpane.js");
+const { computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate } = require("./taskpane.js");
 
 const clean = computeHealthSummary({
   rows: [{ severity: null }, { severity: null }, { severity: "Noted" }],
@@ -22,5 +22,10 @@ const diffs = diffFlaggedRows(
   [{ severity: "Medium" }, { severity: null }, { severity: "Low" }]);
 assert.deepEqual(diffs.map((d) => [d.rowIndex, d.kind]), [[0, "new"], [1, "resolved"]]);
 assert.deepEqual(diffFlaggedRows(null, [{ severity: "High" }]).map((d) => d.kind), ["new"], "no prior scan = all new");
+
+assert.equal(excelDate(45658), "2025-01-01");
+assert.equal(excelDate(46028), "2026-01-06"); // first OrderDate of the Contextures practice sheet
+for (const f of ["m/d/yyyy", "yyyy-mm-dd", "[$-409]mmmm d, yyyy", "d-mmm"]) assert.ok(isDateFormat(f), f);
+for (const f of ["General", "0.00", "$#,##0.00", "[Red]0.00", '0 "days"']) assert.ok(!isDateFormat(f), f);
 
 console.log("panel self-check passed");

@@ -162,6 +162,15 @@ def test_missing_limits_file_writes_suggestions_and_exits_2(tmp_path):
     assert set(pd.read_csv(limits_path)["column"]) == {"order", "Amount", "Price"}
 
 
+def test_suggested_lows_stop_at_zero_for_nonnegative_columns():
+    # Real-Excel finding: Units -5 slipped past a suggested low of -53
+    from anomaly_hunter.limits import suggest_limits_dict
+    df = pd.DataFrame({"Units": [95, 50, 36, 27, 56, 60, 75, 90, 32, 60] * 3 + [-5], "Delta": range(-15, 16)})
+    b_lo, _, w_lo, _ = suggest_limits_dict(df, ["Units", "Delta"])["Units"]
+    assert b_lo == 0.0 and w_lo == 0.0  # -5 now breaks the weird limit
+    assert suggest_limits_dict(df, ["Delta"])["Delta"][0] < 0  # genuinely signed column keeps negative lows
+
+
 def test_blank_limit_cells_mean_no_limit(tmp_path):
     limits_path = tmp_path / "limits.csv"
     write_limits(limits_path, {"Amount": (None, None, None, None)})
