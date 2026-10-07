@@ -58,6 +58,7 @@ def triage_rows(columns, flagged):
 
 MAX_CHANGES = 50
 CELL = re.compile(r"[A-Z]{1,3}[1-9][0-9]{0,6}")
+REFS = re.compile(r"(?<![A-Z0-9_.!:])\$?([A-Z]{1,3})(?:\$?(\d+))?(?::\$?([A-Z]{1,3})(?:\$?(\d+))?)?(?![A-Z0-9_(!])")
 
 
 class CellChange(BaseModel):
@@ -80,6 +81,33 @@ def col_letter(n):
     return s
 
 
+# formulas that reach outside the workbook - a prompt-injected sheet could use them to send data out
+OUTSIDE = re.compile(r"WEBSERVICE|IMAGE\s*\(|HYPERLINK|RTD\s*\(|CALL\s*\(|REGISTER|FILTERXML|://|\[|\|", re.I)
+
+
+def _col_number(letters):
+    n = 0
+    for ch in letters:
+        n = n * 26 + ord(ch) - 64
+    return n
+
+
+def refers_to_itself(cell, text):
+    """Would writing `text` into `cell` make a circular reference? (=MEDIAN(C2:C41) or =SUM(C:C) into C11)"""
+    if not text.startswith("="):
+        return False
+    col, row = re.fullmatch(r"([A-Z]+)(\d+)", cell).groups()
+    c, r = _col_number(col), int(row)
+    for a, r1, b, r2 in REFS.findall(re.sub(r'"[^"]*"', '""', text.upper())):  # ignore "text in quotes"
+        if not r1 and not b:
+            continue  # a bare word like TRUE or a function name, not a reference
+        cols = sorted((_col_number(a), _col_number(b or a)))  # C41:C2 is the same range as C2:C41
+        rows_hit = not r1 or min(int(r1), int(r2 or r1)) <= r <= max(int(r1), int(r2 or r1))  # no row = whole column
+        if cols[0] <= c <= cols[1] and rows_hit:
+            return True
+    return False
+
+
 def _fix_prompt(columns, rows, i, start_row, start_col, reason, intent):
     letters = [col_letter(start_col + j) for j in range(len(columns))]
     top = start_row + 1  # 1-based sheet row of the header
@@ -95,7 +123,8 @@ def _fix_prompt(columns, rows, i, start_row, start_col, reason, intent):
         f"User's request: {intent.strip() or 'Recommend the single best fix for this flagged row.'}\n\n"
         "Rules: each change is one cell (A1 style, e.g. D7) and the exact text to enter in it - an Excel formula "
         "(English function names, comma separators, start with =) or a plain value. Prefer a formula when the value "
-        "should follow the data (e.g. =MEDIAN(D2:D45)). Change only what the request needs; never overwrite the "
+        "should follow the data. A formula must never refer to the cell it is written into (circular reference): to put "
+        "the median of column D into D7, write =MEDIAN(D2:D6,D8:D45), not =MEDIAN(D2:D45). Change only what the request needs; never overwrite the "
         "header row unless asked. If the request can't be done by writing cells (delete/sort/move rows, VBA), "
         "return no changes and explain the manual steps. 'explanation' = 1-3 plain-English sentences for a "
         "non-expert. Don't claim certainty you don't have.")
@@ -113,5 +142,10 @@ def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent):
     if fix is None:  # refusal
         raise ValueError(f"Claude gave no usable answer (stop_reason={resp.stop_reason}).")
     changes = [{"cell": c.cell.strip().replace("$", "").upper(), "new": c.new} for c in fix.changes]
-    return {"explanation": fix.explanation,
-            "changes": [c for c in changes if CELL.fullmatch(c["cell"])][:MAX_CHANGES]}
+    changes = [c for c in changes if CELL.fullmatch(c["cell"])][:MAX_CHANGES]
+    loops = [c["cell"] for c in changes if refers_to_itself(c["cell"], c["new"])]
+    outside = [c["cell"] for c in changes if c["new"].lstrip()[:1] in "=+-@" and OUTSIDE.search(c["new"])]
+    note = (f" (Left out {', '.join(loops)}: the formula referred to its own cell, which Excel can't calculate.)" if loops else "") + (
+        f" (Left out {', '.join(outside)}: the formula reached outside this workbook.)" if outside else "")
+    drop = set(loops + outside)
+    return {"explanation": fix.explanation + note, "changes": [c for c in changes if c["cell"] not in drop]}

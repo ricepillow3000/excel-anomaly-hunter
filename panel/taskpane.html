@@ -69,18 +69,20 @@
         <h2 id="fix-title">Fix row</h2>
         <div id="fix-values" class="fix-values"></div>
         <p id="fix-reason" class="hint"></p>
-        <label for="fix-intent" class="hint">What do you want for this row? Plain English - leave blank for a recommended fix.</label>
-        <textarea id="fix-intent" rows="3" placeholder="e.g. Replace the -5 with the median of Units"></textarea>
-        <button id="fix-ask" class="scan-btn">Suggest fix</button>
-        <p id="fix-status" class="hint"></p>
-        <section id="fix-result" style="display: none">
+        <section id="fix-result" class="fix-result">
+          <h2 id="fix-label">Recommended fix</h2>
           <p id="fix-explanation"></p>
           <ul id="fix-changes" class="fix-changes"></ul>
           <div class="actions-row">
-            <button id="fix-apply" class="secondary-btn">Apply to sheet</button>
+            <button id="fix-apply" class="scan-btn">Apply to sheet</button>
             <button id="fix-undo" class="secondary-btn" style="display: none">Undo</button>
           </div>
         </section>
+        <label for="fix-intent" class="hint">Want something else? Describe it in plain English and the AI writes the Excel formula.</label>
+        <textarea id="fix-intent" rows="3" placeholder="e.g. Replace the -5 with the average Units for the East region"></textarea>
+        <button id="fix-ask" class="secondary-btn">Ask AI</button>
+        <p id="fix-nokey" class="hint" style="display: none">Ask AI needs ANTHROPIC_API_KEY set before install.bat - see README. The recommended fix above works without it.</p>
+        <p id="fix-status" class="hint"></p>
       </section>
 
       <section id="error-state" class="panel" style="display: none"><p id="error-text"></p></section>

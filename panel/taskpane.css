@@ -72,3 +72,7 @@ h2 { font-size: 14px; margin: 0 0 8px; }
 .fix-changes li { background: white; border: 1px solid #e1dfdd; border-radius: 4px; padding: 6px 8px; margin-bottom: 4px; word-break: break-word; }
 .fix-changes .old { color: #a19f9d; text-decoration: line-through; }
 .fix-changes .new { color: #107c10; font-family: Consolas, monospace; }
+.fix-result { background: #f0f6fc; border: 1px solid #c7e0f4; border-radius: 4px; padding: 10px; margin: 8px 0 14px; }
+.fix-result .actions-row { margin-bottom: 0; }
+.fix-result .scan-btn { margin: 0; padding: 6px 10px; font-size: 12px; }
+#fix-ask { margin-top: 6px; }

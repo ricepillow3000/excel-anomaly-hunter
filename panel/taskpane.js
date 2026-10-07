@@ -15,7 +15,8 @@ let watch = null; // sheet.onChanged handle
 let watchTimer = null;
 let picker = null; // onSelectionChanged handle: clicking a highlighted row opens its fix
 let triaged = {}; // row_index -> AI triage verdict, shown in the fix view
-let fix = null; // {i, changes, undo} for the row open in the fix view
+let fix = null; // {i, changes} for the row open in the fix view
+let undos = {}; // row index -> cells to restore, while an applied fix hasn't been undone
 
 const $ = (id) => document.getElementById(id);
 const show = (id, on = true) => ($(id).style.display = on ? "block" : "none");
@@ -70,7 +71,8 @@ async function post(path, body) {
     serverUp(false);
     throw new Error("Local engine not reachable.");
   });
-  const j = await r.json();
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 404 && !j.error) throw new Error("The engine is older than this panel - re-run install.bat to restart it.");
   if (!r.ok) throw new Error(j.error || "The local engine returned an error.");
   return j;
 }
@@ -131,6 +133,7 @@ async function scanAndRender(s, limits) {
   lastScan = s;
   lastRows = body.rows;
   triaged = {};
+  undos = {};
   await applyHighlights(body.rows, s);
   renderResults(body, s.startRow);
   await watchSelection(s.sheet);
@@ -409,10 +412,11 @@ async function onSelect(e) {
     openFix(i, false);
 }
 
-// Pure: "C7", "B7:D9", "Sheet1!C7", "7:7" -> 0-based data row index (header at startRow), or null.
+// Pure: "C7", "B7:D7", "Sheet1!C7", "7:7" -> 0-based data row index (header at startRow), or null.
+// A selection spanning several rows (dragging down a column) is not a click on a row -> null.
 function rowFromAddress(address, startRow) {
-  const m = /^(?:.*!)?\$?[A-Z]*\$?(\d+)/i.exec(String(address));
-  if (!m) return null;
+  const m = /^(?:.*!)?\$?[A-Z]*\$?(\d+)(?::\$?[A-Z]*\$?(\d+))?$/i.exec(String(address));
+  if (!m || (m[2] && m[2] !== m[1])) return null;
   const i = Number(m[1]) - startRow - 2;
   return i >= 0 ? i : null;
 }
@@ -420,13 +424,15 @@ function rowFromAddress(address, startRow) {
 async function openFix(i, selectInSheet) {
   const { columns, rows, startRow, startCol, sheet } = lastScan;
   const r = lastRows[i];
-  fix = { i, changes: [], undo: null };
+  if (!r || !r.severity) return; // list item left over from before a Route Monitor rescan
+  const f = (fix = { i, changes: [] });
   $("fix-title").textContent = `Fix row ${startRow + i + 2} - ${r.severity}`;
   $("fix-values").textContent = columns.map((c, j) => `${c}: ${rows[i][j]}`).join(" · ");
   const t = triaged[i];
   $("fix-reason").textContent = (r.reason || "Flagged by the engine.") + (t ? ` AI: ${t.verdict} - ${t.reason}` : "");
   $("fix-intent").value = "";
-  $("fix-status").textContent = aiAvailable ? "" : "AI fixes need ANTHROPIC_API_KEY set before install.bat - see README.";
+  $("fix-status").textContent = "";
+  show("fix-nokey", !aiAvailable);
   show("fix-result", false);
   only("fix-view");
   if (selectInSheet)
@@ -435,6 +441,9 @@ async function openFix(i, selectInSheet) {
       ctx.workbook.worksheets.getItem(sheet).getRangeByIndexes(startRow + 1 + i, startCol, 1, columns.length).select();
       await ctx.sync();
     }).catch((e) => console.error("select row failed", e));
+  // instant, local recommendation - no AI, no key needed
+  const rec = recommendFix(columns, rows, i, await getLimits(), r.reason, startRow, startCol);
+  if (fix === f) await showFix(f, "Recommended fix", rec);
 }
 
 async function askFix() {
@@ -444,31 +453,89 @@ async function askFix() {
   btn.disabled = true;
   btn.textContent = "Thinking… (up to a minute)";
   $("fix-status").textContent = "";
-  show("fix-result", false);
   try {
-    const { columns, rows, startRow, startCol, sheet } = lastScan;
+    const { columns, rows, startRow, startCol } = lastScan;
     const out = await post("/fix", {
       columns, rows, row_index: f.i, start_row: startRow, start_col: startCol,
       reason: lastRows[f.i].reason, intent: $("fix-intent").value,
     });
-    if (fix !== f) return; // user moved to another row meanwhile
-    f.changes = out.changes;
-    const olds = await readCells(sheet, out.changes.map((c) => c.cell));
-    $("fix-explanation").textContent = out.explanation;
-    $("fix-changes").innerHTML = out.changes
-      .map((c, k) => `<li><b>${esc(c.cell)}</b>: <span class="old">${esc(olds[k])}</span> &rarr; <span class="new">${esc(c.new)}</span></li>`)
-      .join("");
-    show("fix-apply", out.changes.length > 0);
-    $("fix-apply").disabled = false;
-    $("fix-apply").textContent = "Apply to sheet";
-    show("fix-undo", false);
-    show("fix-result");
+    if (fix === f) await showFix(f, "AI suggestion", out); // else: user moved to another row meanwhile
   } catch (e) {
     if (fix === f) $("fix-status").textContent = "Could not get a fix: " + e.message;
   } finally {
     btn.disabled = !aiAvailable;
-    btn.textContent = "Suggest fix";
+    btn.textContent = "Ask AI";
   }
+}
+
+// Preview a fix as cell: old -> new. Nothing is written until Apply.
+async function showFix(f, label, out) {
+  const olds = await readCells(lastScan.sheet, out.changes.map((c) => c.cell));
+  if (fix !== f) return;
+  f.changes = out.changes;
+  $("fix-label").textContent = label;
+  $("fix-explanation").textContent = out.explanation;
+  $("fix-changes").innerHTML = out.changes
+    .map((c, k) => `<li><b>${esc(c.cell)}</b>: <span class="old">${esc(olds[k])}</span> &rarr; <span class="new">${esc(c.new)}</span></li>`)
+    .join("");
+  show("fix-apply", out.changes.length > 0);
+  setApplied(!!undos[f.i]);
+  show("fix-result");
+}
+
+// An applied fix must be undone before another one is applied, so Undo always gets back to the original.
+function setApplied(applied) {
+  $("fix-apply").disabled = applied;
+  $("fix-apply").textContent = applied ? "Applied - Undo first to apply another" : "Apply to sheet";
+  show("fix-undo", applied);
+}
+
+// Pure: 0-based column index -> Excel letters (0 -> A, 26 -> AA)
+function colLetter(n) {
+  let s = "";
+  for (n += 1; n; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s;
+  return s;
+}
+
+// Pure: median of the numbers in a list (null if none)
+function median(xs) {
+  const v = xs.filter((x) => typeof x === "number" && isFinite(x)).sort((a, b) => a - b);
+  if (!v.length) return null;
+  const m = v.length >> 1;
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+}
+
+// Pure: instant fix for a flagged row, no AI. A number past its weird limits, or a blank in a mostly-filled
+// number column -> the median of the OTHER rows' values in that column, written as a plain number (a formula
+// over the column could loop back through a totals row = circular reference). Anything else -> advice only.
+// limits = {col: [baseLo, baseHi, weirdLo, weirdHi]}.
+function recommendFix(columns, rows, i, limits, reason, startRow, startCol) {
+  const row = startRow + 2 + i;
+  const changes = [], why = [];
+  reason = reason || "";
+  columns.forEach((c, j) => {
+    const lim = limits && limits[c];
+    if (!lim) return;
+    const v = rows[i][j], lo = lim[2], hi = lim[3];
+    const blank = (v === "" || v === null) && reason.includes(`Blank cell in column ${c},`);
+    const outside = typeof v === "number" && ((lo != null && v < lo) || (hi != null && v > hi));
+    const med = median(rows.filter((_, k) => k !== i).map((r) => r[j]));
+    if (!(blank || outside) || med === null) return;
+    changes.push({ cell: `${colLetter(startCol + j)}${row}`, new: String(+med.toPrecision(10)) });
+    why.push(blank ? `${c} is blank` : `${c} is ${v}, outside its limits (${lo ?? "no low"} to ${hi ?? "no high"})`);
+  });
+  const notes = [];
+  if (changes.length) {
+    const how = changes.length > 1 ? "them each with the median of the rest of its column" : "it with the median of the rest of the column";
+    notes.push(`${why.join("; ")}. Replace ${how} - a typical value that ignores outliers.`);
+  }
+  const dup = /Duplicate of row (\d+)/.exec(reason); // engine counts from a header in row 1
+  if (dup) notes.push(`This row repeats row ${+dup[1] + startRow}. If it's a double entry, delete it: right-click the row number > Delete.`);
+  for (const [, raw, col] of reason.matchAll(/Text "([^"]*)" in number column ([^;]+)/g))
+    notes.push(`${col} holds the text "${raw}" where a number belongs - retype it as a number.`);
+  if (!notes.length)
+    notes.push("Nothing here is clearly broken - the values are just unusual together. Check them against the source; if they're right, leave them.");
+  return { explanation: notes.join(" "), changes };
 }
 
 async function readCells(sheetName, cells) {
@@ -491,18 +558,19 @@ async function writeCells(sheetName, writes) {
 
 async function applyFix() {
   const f = fix;
-  const btn = $("fix-apply");
-  btn.disabled = true;
+  if (undos[f.i]) return;
+  $("fix-apply").disabled = true;
   try {
     const cells = f.changes.map((c) => c.cell);
     const olds = await readCells(lastScan.sheet, cells);
     await writeCells(lastScan.sheet, f.changes.map((c) => ({ cell: c.cell, value: c.new })));
-    f.undo = cells.map((cell, k) => ({ cell, value: olds[k] })); // all read before any write
-    btn.textContent = "Applied";
-    show("fix-undo");
-    $("fix-status").textContent = "Applied. Scan again to refresh the highlights.";
+    undos[f.i] = cells.map((cell, k) => ({ cell, value: olds[k] })); // all read before any write
+    if (fix === f) {
+      setApplied(true);
+      $("fix-status").textContent = "Applied. Scan again to refresh the highlights.";
+    }
   } catch (e) {
-    btn.disabled = false;
+    $("fix-apply").disabled = false;
     $("fix-status").textContent = "Apply failed: " + e.message;
   }
 }
@@ -510,12 +578,12 @@ async function applyFix() {
 async function undoFix() {
   const f = fix;
   try {
-    await writeCells(lastScan.sheet, f.undo);
-    f.undo = null;
-    show("fix-undo", false);
-    $("fix-apply").disabled = false;
-    $("fix-apply").textContent = "Apply to sheet";
-    $("fix-status").textContent = "Undone - the cells are back to what they were.";
+    await writeCells(lastScan.sheet, undos[f.i]);
+    delete undos[f.i];
+    if (fix === f) {
+      setApplied(false);
+      $("fix-status").textContent = "Undone - the cells are back to what they were.";
+    }
   } catch (e) {
     $("fix-status").textContent = "Undo failed: " + e.message;
   }
@@ -579,4 +647,4 @@ function esc(s) {
   return d.innerHTML;
 }
 
-if (typeof module !== "undefined") module.exports = { computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress };
+if (typeof module !== "undefined") module.exports = { computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix };
