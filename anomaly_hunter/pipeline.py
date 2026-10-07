@@ -71,7 +71,7 @@ def spellings(df, column_types, skip):
     out, fix = [[] for _ in range(len(df))], [{} for _ in range(len(df))]
     for col, t in column_types.items():
         s = df[col][~skip].dropna().astype(str)
-        s = s[s.str.strip() != ""]
+        s = s[(s.str.strip() != "") & ~s.str.lstrip().str[:1].isin(list("=+-@"))]  # formula-like text is never a "spelling"
         if t != "text" or s.nunique() > 50:
             continue
         for _, grp in s.groupby(s.map(lambda v: " ".join(v.split()).casefold())):

