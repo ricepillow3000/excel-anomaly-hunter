@@ -107,7 +107,7 @@ def test_scan_flags_planted_outlier():
     })
     assert resp.status_code == 200
     body = resp.get_json()
-    assert body["suggested_limits"] is None
+    assert body["limits"]["Amount"] == [80, 120, 0, 10000]  # the saved limit wins over the suggestion
     last = body["rows"][-1]
     assert last["severity"] in ("Medium", "High")
     assert last["bucket"] == "Irregularities"
@@ -226,3 +226,14 @@ def test_column_names_must_be_text_or_numbers_and_numeric_headers_work():
     rows = [[f"2024-01-{1 + i % 28:02d}", 50 + i % 7] for i in range(40)]
     r = scan({"columns": [2024, "b"], "rows": rows, "order_by": 2024})  # a year as a header, used to sort
     assert r.status_code == 200, r.get_json()
+
+
+def test_first_scan_uses_suggested_limits_at_once_and_saved_limits_win():
+    # no stop at a limits table: the first scan already flags past the suggested limits
+    c = client()
+    rows = [[f"n{i}", 50 + i % 7] for i in range(60)] + [["typo", 5000]]
+    body = c.post("/scan", json={"columns": ["Name", "Amt"], "rows": rows, "limits": None}).get_json()
+    assert body["rows"][60]["severity"] in ("Medium", "High") and "Amt weird limit" in body["rows"][60]["reason"]
+    assert body["limits"]["Amt"] == body["suggested_limits"]["Amt"]
+    body = c.post("/scan", json={"columns": ["Name", "Amt"], "rows": rows, "limits": {"Amt": [None, None, None, 9999]}}).get_json()
+    assert body["limits"]["Amt"] == [None, None, None, 9999] and "weird limit" not in body["rows"][60]["reason"]

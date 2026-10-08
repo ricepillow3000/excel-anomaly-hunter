@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -9,133 +9,98 @@
   <script src="taskpane.js" defer></script>
 </head>
 <body>
-  <section id="sideload-msg"><p>Open this inside Excel to see the dashboard.</p></section>
+  <p id="sideload-msg" class="pad">Open this inside Excel.</p>
 
-  <main id="app-body" style="display: none">
+  <main id="app-body" hidden>
     <header>
       <h1>Anomaly Hunter</h1>
-      <p class="sheet-name" id="sheet-name">-</p>
+      <p class="sheet-name" id="sheet-name"></p>
     </header>
 
-    <section id="server-down" style="display: none">
-      <p><b>Local engine not running.</b></p>
-      <p>Sign out and back in, or double-click <code>install.bat</code> to repair.</p>
-      <button id="retry-health" class="secondary-btn">Retry</button>
+    <section id="server-down" class="pad" hidden>
+      <p><b>The checker isn't running.</b></p>
+      <p>Double-click <code>install.bat</code> in the Anomaly Hunter folder, then press Try again.</p>
+      <button id="retry-health" class="secondary">Try again</button>
     </section>
 
-    <section id="main-ui" style="display: none">
-      <button id="scan" class="scan-btn">Scan Active Sheet</button>
+    <section id="main-ui" hidden>
+      <button id="scan" class="primary">Find problems in this sheet</button>
 
-      <section id="empty-state" class="panel">
-        <p>No scan yet. Put a header row + data starting at A1, then click <b>Scan Active Sheet</b>.</p>
+      <div id="busy" role="status" aria-live="polite" hidden>
+        <div class="bar"><div id="busy-bar"></div></div>
+        <p id="busy-text"></p>
+      </div>
+      <p id="notice" role="status" aria-live="polite"></p>
+
+      <section id="empty-state">
+        <p>Click <b>Find problems</b> to check the sheet that is open.</p>
+        <p class="hint">Your data needs a top row of column names (like Date, Amount), with one record per row below it.</p>
       </section>
 
-      <section id="limits-editor" class="panel" style="display: none">
-        <h2>Suggested limits</h2>
-        <p class="hint">Outside baseline = noted. Outside weird = flagged. Edit any number, then save.</p>
-        <div id="limits-rows"></div>
-        <p id="limits-error" class="hint"></p>
-        <button id="save-limits" class="scan-btn">Save limits &amp; rescan</button>
-      </section>
-
-      <section id="results" class="panel" style="display: none">
-        <div class="health">
-          <div id="health-ring" class="health-ring"><span id="health-pct">0%</span></div>
-          <div>
-            <div id="health-label" class="health-label">-</div>
-            <div id="health-detail" class="health-detail">-</div>
-          </div>
-        </div>
-        <div class="stat-row">
-          <div class="stat"><div class="stat-num" id="stat-rows">0</div><div class="stat-label">rows</div></div>
-          <div class="stat"><div class="stat-num" id="stat-anomalies">0</div><div class="stat-label">flagged</div></div>
-          <div class="stat"><div class="stat-num" id="stat-high">0</div><div class="stat-label">high</div></div>
-        </div>
-        <div class="bucket-row" id="bucket-row"></div>
-        <div class="actions-row">
-          <button id="edit-limits" class="secondary-btn">Edit limits</button>
-          <button id="clear-highlights" class="secondary-btn">Clear highlights</button>
-        </div>
-        <div class="ai-row">
-          <label><input type="checkbox" id="ai-toggle" /> AI triage (beta) - reads flagged rows only, never edits cells on its own</label>
-          <button id="run-triage" class="secondary-btn">Triage flagged rows</button>
-        </div>
-        <h2>Flagged rows</h2>
-        <p class="hint">Click a row here or the highlighted row in the sheet to fix it.</p>
+      <section id="results" hidden>
+        <p id="summary" class="summary"></p>
+        <ul id="legend" class="legend"></ul>
+        <p id="cut-note" class="hint warn" hidden></p>
+        <h2 id="list-title">Rows to check</h2>
+        <p class="hint">Worst first. Click a row to see what's wrong and a suggested fix.</p>
         <ul id="flagged-list" class="flagged-list"></ul>
+        <button id="clear-highlights" class="secondary">Remove highlights</button>
+        <details class="more">
+          <summary>How strict should it be?</summary>
+          <p class="hint">Numbers outside a column's limits get flagged. The limits are worked out from your data. Change them if too much, or too little, gets flagged.</p>
+          <button id="edit-limits" class="secondary">Change limits</button>
+        </details>
       </section>
 
-      <section id="fix-view" class="panel" style="display: none">
-        <button id="fix-back" class="secondary-btn back-btn">&larr; Back to flagged rows</button>
-        <h2 id="fix-title">Fix row</h2>
-        <div id="fix-values" class="fix-values"></div>
-        <p id="fix-reason" class="hint"></p>
-        <section id="fix-result" class="fix-result">
-          <h2 id="fix-label">Recommended fix</h2>
+      <section id="limits-editor" hidden>
+        <h2>When to flag a number</h2>
+        <p class="hint">A number below <b>Flag below</b> or above <b>Flag above</b> gets flagged. Leave a box empty for no limit.</p>
+        <div id="limits-rows"></div>
+        <p id="limits-error" class="hint warn" role="alert"></p>
+        <button id="save-limits" class="primary">Save and check again</button>
+        <div class="row-buttons">
+          <button id="cancel-limits" class="secondary">Cancel</button>
+          <button id="auto-limits" class="secondary">Back to automatic</button>
+        </div>
+      </section>
+
+      <section id="fix-view" hidden>
+        <button id="fix-back" class="link-btn">&larr; All rows to check</button>
+        <h2 id="fix-title"></h2>
+        <p id="fix-reason" class="reason-box"></p>
+        <div class="fix-result">
+          <h3 id="fix-label">Suggested fix</h3>
           <p id="fix-explanation"></p>
           <ul id="fix-changes" class="fix-changes"></ul>
-          <div class="actions-row">
-            <button id="fix-apply" class="scan-btn">Apply to sheet</button>
-            <button id="fix-undo" class="secondary-btn" style="display: none">Undo</button>
+          <div class="row-buttons">
+            <button id="fix-apply" class="primary">Apply fix</button>
+            <button id="fix-undo" class="secondary" hidden>Undo</button>
           </div>
-        </section>
-        <label for="fix-intent" class="hint">Want something else? Describe it in plain English and the AI writes the Excel formula.</label>
-        <textarea id="fix-intent" rows="3" placeholder="e.g. Replace the -5 with the average Units for the East region"></textarea>
-        <div class="actions-row">
-          <button id="fix-ask" class="secondary-btn">Ask AI</button>
-          <button id="fix-research" class="secondary-btn">Research on the web</button>
         </div>
-        <section id="fix-web" class="fix-result" style="display: none">
-          <h2>From Excel pros on the web</h2>
-          <p id="web-technique"></p>
-          <code id="web-formula" class="fix-values"></code>
-          <ol id="web-steps" class="web-steps"></ol>
-          <p class="hint">Sources: <span id="web-sources"></span></p>
-          <p class="hint">A reference only - nothing here is applied to your sheet.</p>
-          <button id="web-use" class="secondary-btn">Use in Ask AI</button>
-        </section>
-        <p id="fix-nokey" class="hint" style="display: none">Ask AI and web research need ANTHROPIC_API_KEY set before install.bat - see README. The recommended fix above works without it.</p>
-        <p id="fix-status" class="hint"></p>
+        <div id="ai-box">
+          <label for="fix-intent">Want a different fix? Describe it and AI writes it for you.</label>
+          <textarea id="fix-intent" rows="3" placeholder="e.g. Use the average Units for the East region"></textarea>
+          <button id="fix-ask" class="secondary">Ask AI</button>
+        </div>
+        <p id="ai-off" class="hint">Want AI help with fixes? Turn it on for free under <b>AI help</b> at the bottom.</p>
+        <p id="fix-status" class="hint" role="status" aria-live="polite"></p>
       </section>
 
-      <section id="error-state" class="panel" style="display: none"><p id="error-text"></p></section>
-
-      <section class="panel" id="route-monitor">
-        <h2>Route Monitor</h2>
-        <figure class="rm">
-          <svg viewBox="0 0 300 202" role="img" aria-labelledby="rm-title rm-desc">
-          <title id="rm-title">Route Monitor</title><desc id="rm-desc">No scan yet.</desc>
-          <defs><marker id="rm-arrow" viewBox="0 0 6 6" refX="5" refY="3" markerUnits="userSpaceOnUse" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L6 3L0 6z" /></marker></defs>
-          <path class="rm-street" d="M8 72H292M150 8V148" />
-          <g class="rm-bldg" id="rm-Duplicates"><rect x="8" y="8" width="134" height="56" rx="2" /><text class="rm-name" x="16" y="26">Duplicates</text>
-            <text class="rm-count" x="16" y="50">–</text><rect class="rm-track" x="16" y="56" width="118" height="3" /><rect class="rm-bar" x="16" y="56" width="0" height="3" /></g>
-          <g class="rm-bldg" id="rm-Irregularities"><rect x="158" y="8" width="134" height="56" rx="2" /><text class="rm-name" x="166" y="26">Irregularities</text>
-            <text class="rm-count" x="166" y="50">–</text><rect class="rm-track" x="166" y="56" width="118" height="3" /><rect class="rm-bar" x="166" y="56" width="0" height="3" /></g>
-          <g class="rm-bldg" id="rm-Anomalies"><rect x="8" y="80" width="134" height="56" rx="2" /><text class="rm-name" x="16" y="98">Anomalies</text>
-            <text class="rm-count" x="16" y="122">–</text><rect class="rm-track" x="16" y="128" width="118" height="3" /><rect class="rm-bar" x="16" y="128" width="0" height="3" /></g>
-          <g class="rm-bldg" id="rm-Formulas"><rect x="158" y="80" width="134" height="56" rx="2" /><text class="rm-name" x="166" y="98">Formula bugs</text>
-            <text class="rm-count" x="166" y="122">–</text><rect class="rm-track" x="166" y="128" width="118" height="3" /><rect class="rm-bar" x="166" y="128" width="0" height="3" /></g>
-          <text id="rm-row" class="rm-row" text-anchor="end"></text>
-          <rect class="rm-plaza" x="142" y="64" width="16" height="16" rx="2" />
-          <text class="rm-head" x="8" y="147">SOURCES</text>
-          <g class="rm-shelf" id="rm-src-engine"><rect x="8" y="164" width="92" height="34" rx="2" />
-            <text class="rm-name" x="15" y="179">Engine checks</text><text class="rm-note" x="15" y="192">–</text></g>
-          <g class="rm-shelf" id="rm-src-ai"><rect x="104" y="164" width="92" height="34" rx="2" />
-            <text class="rm-name" x="111" y="179">Claude AI</text><text class="rm-note" x="111" y="192">–</text></g>
-          <g class="rm-shelf" id="rm-src-web"><rect x="200" y="164" width="92" height="34" rx="2" />
-            <text class="rm-name" x="207" y="179">Excel pros</text><text class="rm-note" x="207" y="192">–</text></g>
-          <path class="rm-route" id="rm-route-engine" d="" marker-end="url(#rm-arrow)" />
-          <path class="rm-route" id="rm-route-ai" d="" marker-end="url(#rm-arrow)" />
-          <path class="rm-route" id="rm-route-web" d="" marker-end="url(#rm-arrow)" />
-          <g id="rm-case"><circle class="rm-halo" cx="150" cy="72" r="10" /><circle class="rm-dot" cx="150" cy="72" r="5" /></g>
-          </svg>
-          <figcaption id="rm-caption">Scan to see where each issue goes.</figcaption>
-        </figure>
-        <ol id="rm-trace" class="rm-trace" aria-live="polite" aria-relevant="additions"></ol>
-        <label class="hint"><input type="checkbox" id="watch-toggle" /> Watch this sheet for changes</label>
-        <p class="hint" id="watch-status"></p>
-        <ul id="watch-feed" class="flagged-list"></ul>
-      </section>
+      <details id="settings" class="more">
+        <summary>AI help (optional, free)</summary>
+        <p id="ai-state" class="hint"></p>
+        <ol class="steps">
+          <li>Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> and sign in with a Google account. No credit card.</li>
+          <li>Click <b>Create API key</b> and copy it.</li>
+          <li>Paste it here and click Save.</li>
+        </ol>
+        <input id="ai-key" type="password" autocomplete="off" placeholder="Paste your key" aria-label="Google AI key" />
+        <div class="row-buttons">
+          <button id="save-key" class="secondary">Save key</button>
+          <button id="remove-key" class="secondary">Remove key</button>
+        </div>
+        <p class="hint">Only the row you ask about (and a few rows around it) is sent to Google. Google's free tier may use it to improve its products, so don't ask AI about private data. The key is stored only on this computer.</p>
+      </details>
     </section>
   </main>
 </body>

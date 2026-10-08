@@ -41,7 +41,7 @@ def test_fix_route_validates_before_calling_claude(monkeypatch):
 def test_fix_route_503_without_key(monkeypatch):
     monkeypatch.setattr(triage, "api_key_configured", lambda: False)
     r = post(BODY)
-    assert r.status_code == 503 and "ANTHROPIC_API_KEY" in r.get_json()["error"]
+    assert r.status_code == 503 and "free Google AI key" in r.get_json()["error"]
 
 
 def test_fix_route_passes_request_through(monkeypatch):
@@ -177,3 +177,73 @@ def test_suggest_fix_keeps_to_the_table(monkeypatch):  # a prompt-injected cell 
         srv.shutdown()
     assert [c["cell"] for c in out["changes"]] == ["A1", last]  # header row + data rows only
     assert "outside the table" in out["explanation"] and "ZZ9999" in out["explanation"]
+
+
+# ---- free AI: a Google Gemini key pasted in the pane (no credit card), same safety checks on the answer ----
+
+def gemini_stub(monkeypatch, tmp_path, status=200, content=None, error=None):
+    """Local stand-in for Google's OpenAI-compatible endpoint. -> list of (headers, body) it received."""
+    got = []
+
+    class Stub(BaseHTTPRequestHandler):
+        def do_POST(self):
+            got.append((dict(self.headers), json.loads(self.rfile.read(int(self.headers["Content-Length"])))))
+            out = json.dumps({"error": {"message": error}} if error else {"choices": [{"message": {"content": content}}]}).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(out)))
+            self.end_headers()
+            self.wfile.write(out)
+
+        def log_message(self, *a):
+            pass
+
+    srv = HTTPServer(("127.0.0.1", 0), Stub)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    monkeypatch.setattr(triage, "GEMINI_URL", f"http://127.0.0.1:{srv.server_port}/v1beta/openai/chat/completions")
+    monkeypatch.setattr(triage, "KEY_FILE", tmp_path / "gemini-key.txt")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    return got
+
+
+def test_pasted_key_turns_on_free_ai_and_can_be_removed(monkeypatch, tmp_path):
+    gemini_stub(monkeypatch, tmp_path)
+    c = create_app().test_client()
+    assert c.get("/health").get_json()["ai_available"] is False
+    assert c.post("/key", json={"key": "  AIzaTest_key-123 "}).get_json() == {"ai_available": True, "ai_provider": "gemini"}
+    assert (tmp_path / "gemini-key.txt").read_text() == "AIzaTest_key-123"
+    assert c.get("/health").get_json()["ai_provider"] == "gemini"
+    for bad in ({"key": "<script>"}, {"key": "a b"}, {"key": 5}, {}):
+        assert c.post("/key", json=bad).status_code == 400, bad
+    assert c.post("/key", json={"key": ""}).get_json()["ai_available"] is False
+    assert not (tmp_path / "gemini-key.txt").exists()
+
+
+def test_gemini_fix_goes_through_the_same_safety_checks(monkeypatch, tmp_path):
+    answer = {"explanation": "Use the median.", "changes": [{"cell": "C3", "new": "50"}, {"cell": "B3", "new": "=WEBSERVICE(\"http://x\")"},
+                                                            {"cell": "Z99", "new": "1"}]}
+    got = gemini_stub(monkeypatch, tmp_path, content=json.dumps(answer))
+    (tmp_path / "gemini-key.txt").write_text("AIzaTest")
+    r = post(BODY)
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()["changes"] == [{"cell": "C3", "new": "50"}]  # outside-the-workbook and off-table writes dropped
+    headers, body = got[0]
+    assert headers["Authorization"] == "Bearer AIzaTest" and body["model"] == triage.GEMINI_MODEL
+    assert "C3=-5" in body["messages"][0]["content"]
+
+
+def test_gemini_free_limit_and_bad_key_say_what_to_do(monkeypatch, tmp_path):
+    for status, error, words in ((429, None, "free Google AI limit is used up"), (400, "API key not valid. Please pass a valid API key.", "paste it again"),
+                                 (403, "Permission denied", "paste it again"), (400, "Invalid JSON payload", "error 400"), (500, None, "error 500")):
+        gemini_stub(monkeypatch, tmp_path, status=status, content="", error=error)
+        (tmp_path / "gemini-key.txt").write_text("AIzaTest")
+        r = post(BODY)
+        assert r.status_code == 502 and words in r.get_json()["error"], (status, r.get_json())
+
+
+def test_gemini_garbled_answer_is_a_clear_error(monkeypatch, tmp_path):
+    gemini_stub(monkeypatch, tmp_path, content="not json")
+    (tmp_path / "gemini-key.txt").write_text("AIzaTest")
+    r = post(BODY)
+    assert r.status_code == 502 and "incomplete" in r.get_json()["error"]

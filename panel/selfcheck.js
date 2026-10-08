@@ -1,27 +1,12 @@
 // Panel pure-logic check, no Office/fetch. Run: node panel/selfcheck.js
 const assert = require("node:assert");
-const { textFormats, cutNote, asNumber, plainOf, routePath, issuesOf, districtCounts, flaggedRows, computeHealthSummary, diffFlaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade } = require("./taskpane.js");
+const { esc, cutNote, asNumber, issuesOf, plainReason, summaryOf, flaggedRows, isDateFormat, excelDate, rowFromAddress, colLetter, median, recommendFix, tableFromGrid, typoKind, spansDecade } = require("./taskpane.js");
 
-const clean = computeHealthSummary({
-  rows: [{ severity: null }, { severity: null }, { severity: "Noted" }],
-  summary: { severity_counts: { Noted: 1 }, bucket_counts: {} },
-});
-assert.equal(clean.flaggedCount, 0, "Noted must not count as flagged");
-assert.equal(clean.healthPct, 100);
-
-const dirty = computeHealthSummary({
-  rows: [{ severity: "High" }, { severity: null }, { severity: null }, { severity: null }],
-  summary: { severity_counts: { High: 1 }, bucket_counts: { Behavioral: 1 } },
-});
-assert.equal(dirty.flaggedCount, 1);
-assert.equal(dirty.healthPct, 75);
-assert.equal(dirty.healthLabel, "Needs review");
-
-const diffs = diffFlaggedRows(
-  [{ severity: null }, { severity: "High" }, { severity: "Low" }],
-  [{ severity: "Medium" }, { severity: null }, { severity: "Low" }]);
-assert.deepEqual(diffs.map((d) => [d.rowIndex, d.kind]), [[0, "new"], [1, "resolved"]]);
-assert.deepEqual(diffFlaggedRows(null, [{ severity: "High" }]).map((d) => d.kind), ["new"], "no prior scan = all new");
+// summary: "Noted" (inside the usual range) is fine, not a problem
+assert.equal(summaryOf([{ severity: null }, { severity: "Noted" }, { severity: null }]), "No problems found in 3 rows.");
+assert.equal(summaryOf([{ severity: "High" }, { severity: "Low" }, ...Array(1998).fill({ severity: null })]), "1 of 2,000 rows look wrong. 1 more is worth a quick check.");
+assert.equal(summaryOf([{ severity: "Low" }, { severity: "Low" }]), "Nothing clearly wrong in 2 rows. 2 are worth a quick check.");
+assert.deepEqual(flaggedRows([{ severity: "Low", magnitude: 99 }, { severity: "Medium", magnitude: 1 }, { severity: "High", magnitude: 0 }]).map((r) => r.i), [2, 1, 0], "surest first, not biggest");
 
 assert.equal(excelDate(45658), "2025-01-01");
 assert.equal(excelDate(46028), "2026-01-06"); // first OrderDate of the Contextures practice sheet
@@ -109,40 +94,30 @@ assert.deepEqual(rec.changes, [{ cell: "A2", new: "Sales" }], "fix only the colu
 // L2: flagged rows worst first, clean rows out, data-row index kept
 assert.deepEqual(flaggedRows([{ severity: null, magnitude: 0 }, { severity: "Low", magnitude: 2 }, { severity: "High", magnitude: 9 }]).map((r) => r.i), [2, 1]);
 
-// L6: each issue in the engine's own wording goes to exactly one department, worst-to-fix first
-const R = 'Flagged by 3 of 4: Units weird limit is 105; this is 9999 (likely 99.99); Duplicate of row 7; Excel error #DIV/0! in Ratio; ' +
-  'Dept "sales" looks like "Sales" (same word, different capitals/spaces); Text "12O" in number column Qty; Blank cell in column Qty, which is otherwise filled; ' +
-  "Unusual combination of values, mainly Price; Does not belong to any group of similar rows; Units jumped sharply near 2026-01-26 00:00:00 (1-order change); " +
-  "Units is unusual relative to its local trend near 2026-01-26 00:00:00";
-assert.deepEqual(issuesOf(R, ["Units", "Qty"], null).map((x) => x.dept),
-  ["Formulas", "Duplicates", "Irregularities", "Irregularities", "Irregularities", "Irregularities", "Anomalies", "Anomalies", "Anomalies", "Anomalies"]);
-assert.equal(issuesOf(R, ["Units"], null).find((x) => x.dept === "Irregularities").text, "Units weird limit is 105; this is 9999 (likely 99.99)", "limit clause kept whole");
-assert.deepEqual(issuesOf("Total 19.3 does not add up: Fare + Tip = 16.3; Day 2084-11-04 is far outside the column's dates (2018-01-02 to 2018-12-29)", ["Total", "Day"], null).map((x) => x.dept), ["Irregularities", "Irregularities"], "rule breaks are irregularities");
-assert.equal(issuesOf("Flagged by 1 of 4: Variance weird limit is 0; this is -5", ["Variance"], ["=B2-C2"])[0].dept, "Formulas", "odd value in a formula cell");
-assert.deepEqual(issuesOf("", [], null), []);
-const dc = districtCounts([{ severity: "High", reason: "Flagged by 2 of 4: A weird limit is 1; this is 9; Duplicate of row 2" }, { severity: "Noted", reason: "A baseline limit is 1; this is 2" },
-  { severity: null, reason: "" }], ["A"], null);
-assert.deepEqual([dc.counts, dc.flagged], [{ Formulas: 0, Duplicates: 1, Irregularities: 1, Anomalies: 0 }, 1], "Noted rows aren't counted");
-// L6 trace: plain words with the cell, no "weird limit" jargon, repeats collapsed, at most 3 lines
-assert.deepEqual(plainOf(issuesOf("Flagged by 1 of 4: Units weird limit is 0; this is -5", ["Region", "Units"], null), ["Region", "Units"], 1, 11),
-  ["C11 Units = -5 · limit 0"]);
-assert.deepEqual(plainOf(issuesOf("Units jumped sharply near 2026-01-26 00:00:00 (1-order change); Units jumped sharply near 2026-01-26 00:00:00 (2-order change)", [], null), ["Units"], 0, 5),
-  ["A5 Units jumped sharply near 2026-01-26"], "repeats collapse, timestamps trimmed");
-assert.equal(plainOf(issuesOf("Blank cell in column Units Sold, which is otherwise filled", [], null), ["Units", "Units Sold"], 0, 3)[0].slice(0, 3), "B3 ", "longest header wins");
-const many = plainOf(issuesOf(R, ["Units", "Qty", "Ratio", "Dept", "Price"], null), ["Units", "Qty", "Ratio", "Dept", "Price"], 0, 9);
-assert.deepEqual([many.length, many[0], /\(\+7 more\)$/.test(many[2])], [3, "C9 Excel error #DIV/0! in Ratio", true], "long lists are cut, the rest counted");
-assert.equal(routePath("Irregularities", "engine"), "M158 64H150V152H54V161", "route starts at the case");
-assert.equal(routePath("Anomalies", "web"), "M142 80H150V152H246V161");
+// reasons in plain words: no "weird limit", no vote count, a limit clause stays whole
+assert.equal(plainReason("Flagged by 2 of 3: Units weird limit is 0; this is -5"), "Units is -5, below its usual limit of 0");
+assert.equal(plainReason("fare amount weird limit is 35; this is 52 (likely 5.2); Duplicate of row 7"),
+  "fare amount is 52, above its usual limit of 35 (likely 5.2) · Duplicate of row 7");
+assert.equal(plainReason("Flagged by 1 of 3: Unusual combination of values, mainly tolls; Units is unusual relative to its local trend near 2026-01-26 00:00:00"),
+  "Unusual mix of values, mostly in tolls · Units breaks its usual pattern near 2026-01-26");
+assert.equal(plainReason(""), "");
+assert.equal(esc('x" autofocus onfocus="alert(1)'), "x&quot; autofocus onfocus=&quot;alert(1)", "a sheet header can't break out of an attribute");
+assert.equal(esc("<b>'&"), "&lt;b&gt;&#39;&amp;");
+assert.equal(plainReason("Flagged by 3 of 3: Units weird limit is 105; this is 9999; Units jumped sharply near 2026-01-26 00:00:00"),
+  "Units is 9999, above its usual limit of 105 · Units jumped sharply near 2026-01-26", "the ; after the value is a separator, not part of it");
+assert.deepEqual(issuesOf("Flagged by 1 of 3: Units weird limit is 105; this is 9999 (likely 99.99); Duplicate of row 7").map((x) => x.text),
+  ["Units weird limit is 105; this is 9999 (likely 99.99)", "Duplicate of row 7"], "limit clause kept whole");
+assert.deepEqual(issuesOf(""), []);
+assert.deepEqual(flaggedRows([{ severity: "Noted", magnitude: 5 }, { severity: "Low", magnitude: 2 }]).map((r) => r.i), [1], "Noted rows aren't listed");
 
 // Batch 1: header names never collide (same rule as the engine); the limits editor only shows numbers
 assert.deepEqual(tableFromGrid([["Dept", "Dept", "Dept.1"], ["a", "b", "c"]], null, 0, 0).columns, ["Dept", "Dept.1", "Dept.1.1"]);
 assert.deepEqual(tableFromGrid([["Name", "Name", "Name"], ["a", "b", "c"]], null, 0, 0).columns, ["Name", "Name.1", "Name.2"]);
-assert.deepEqual([asNumber(5), asNumber("2.5"), asNumber(null), asNumber(""), asNumber('1" onfocus="alert(1)'), asNumber(Infinity)], [5, 2.5, "", "", "", ""]);
+assert.deepEqual([asNumber(5), asNumber("2.5"), asNumber(null), asNumber(""), asNumber('1" onfocus="alert(1)'), asNumber(Infinity), asNumber(undefined)], [5, 2.5, "", "", "", "", ""]);
 
 assert.equal(cutNote([250001, 1048576]), "Too large to scan at once: checked down to row 250,001 of 1,048,576. Rows below 250,001 were NOT checked.");
 
-// Batch 3: new engine wording reaches the right department and gets a plain-English note; text cells are never overwritten
-assert.deepEqual(issuesOf('Placeholder "ERROR" in column Pay; Text "UNKNOWN" in date column When', ["Pay", "When"], null).map((x) => x.dept), ["Irregularities", "Irregularities"]);
+// Batch 3: text cells are never overwritten; placeholders and text get a plain-English note
 const ph = recommendFix(["Pay", "Amt"], [["ERROR", 5], ["Card", 6]], 0, {}, 'Placeholder "ERROR" in column Pay', 0, 0, null, null);
 assert.ok(ph.explanation.includes('Pay says "ERROR" - a stand-in for a missing value') && !ph.changes.length);
 const tx = recommendFix(["When"], [["UNKNOWN"]], 0, {}, 'Text "UNKNOWN" in date column When', 0, 0, null, null);
@@ -151,8 +126,7 @@ const money = recommendFix(["Price"], [["$1,000,000.00"], ["$1,200.00"]], 0, { P
   "Flagged by 1 of 3: Price weird limit is 2000; this is 1000000", 0, 0, null, null);
 assert.ok(!money.changes.length && money.explanation.startsWith("Price is 1000000, past its limit of 2000."), money.explanation);
 
-// Final re-attack: copying a row to the Anomalies sheet never creates a live formula; a crafted reason can't freeze the pane
-assert.deepEqual(textFormats(["=WEBSERVICE(A1)", " +1", "@SUM(1)", "-x", 5, "2024-01-05", "ok", null]), ["@", "@", "@", "@", "General", "General", "General", "General"]);
+// Final re-attack: a crafted reason can't freeze the pane
 const evil = "Flagged by 1 of 3: " + " weird limit is a".repeat(2000) + "; this is 5";
 let t0 = Date.now();
 recommendFix(["Amt"], [[evil]], 0, {}, evil, 0, 0, null, null);

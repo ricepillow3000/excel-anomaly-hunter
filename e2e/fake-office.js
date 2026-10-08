@@ -21,8 +21,9 @@
         load() { return this; }, select() { ws.selected.forEach((h) => h({ address: L(c0) + (r0 + 1) + ":" + L(c0 + nc - 1) + (r0 + nr) })); },
         get values() { return grid((k) => k.v); }, set values(v) { set(v, false); },
         get formulas() { return grid((k) => k.f ?? k.v); }, set formulas(v) { set(v, true); },
+        getCellProperties() { return { value: grid((k) => ({ format: { fill: { color: k.fill || "#FFFFFF" } } })) }; },
         get numberFormat() { return grid((k) => k.nf); }, set numberFormat(v) { v.forEach((row, i) => row.forEach((f, j) => (cell(r0 + i, c0 + j).nf = f))); },
-        format: { fill: { load() { return this; }, get color() { return cell(r0, c0).fill; },
+        format: { fill: { load() { return this; }, get color() { const all = grid((k) => k.fill ?? null).flat(); return all.every((x) => x === all[0]) ? all[0] ?? "#FFFFFF" : null; },
           set color(x) { for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) cell(r0 + i, c0 + j).fill = x; },
           clear() { this.color = null; } } },
       };
@@ -48,7 +49,7 @@
   const settings = {};
   window.Office = {
     HostType: { Excel: "Excel" }, onReady: (cb) => setTimeout(() => cb({ host: "Excel" }), 0),
-    context: { document: { settings: { get: (k) => settings[k] ?? null, set: (k, v) => (settings[k] = v), saveAsync() {}, refreshAsync: (cb) => cb() } } },
+    context: { document: { settings: { get: (k) => settings[k] ?? null, set: (k, v) => (settings[k] = v), remove: (k) => delete settings[k], saveAsync() {}, refreshAsync: (cb) => cb() } } },
   };
   window.Excel = { run: async (a, b) => (b || a)(ctx) };
   // test hooks

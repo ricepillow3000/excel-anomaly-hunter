@@ -4,6 +4,7 @@ import ipaddress
 import json
 import math
 import os
+import re
 import ssl
 import sys
 import urllib.request
@@ -78,7 +79,7 @@ def create_app(scan_csv=None):
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "ai_available": triage.api_key_configured()}
+        return {"status": "ok", "ai_available": triage.api_key_configured(), "ai_provider": triage.provider()}
 
     @app.post("/scan")
     def scan():
@@ -88,8 +89,10 @@ def create_app(scan_csv=None):
         cols, rows, limits = [str(c) for c in body["columns"]], body["rows"], body.get("limits")  # a year header 2024 is "2024"
         try:
             df, types, errors = load_from_records(cols, rows)
-            suggested = suggest_limits_dict(df, numbers(types)) if limits is None else None
-            out, status = score(df, types, errors, limits or {}, None if body.get("order_by") is None else str(body["order_by"]))
+            # one scan, no stop: limits are suggested from the data; limits the user saved win, column by column
+            suggested = suggest_limits_dict(df, numbers(types))
+            used = {**suggested, **(limits or {})}
+            out, status = score(df, types, errors, used, None if body.get("order_by") is None else str(body["order_by"]))
         except Exception:  # a bug in the engine: full detail to the log, not pandas internals to the user
             app.logger.exception("scan failed")
             return {"error": "Engine error - details in server.log"}, 500
@@ -101,7 +104,7 @@ def create_app(scan_csv=None):
                 os.replace(f"{scan_csv}.tmp", scan_csv)  # Power BI never reads a half-written file
             except OSError:  # file open elsewhere: the scan itself still answers
                 app.logger.exception("could not write %s", scan_csv)
-        return {"rows": out, "suggested_limits": suggested, "summary": {
+        return {"rows": out, "suggested_limits": suggested, "limits": used, "summary": {
             "severity_counts": Counter(r["severity"] for r in out if r["severity"]),
             "bucket_counts": Counter(r["bucket"] for r in out if r["bucket"]),
             "detectors": status, "k": K}}
@@ -109,7 +112,7 @@ def create_app(scan_csv=None):
     def ai(call):
         """Run a Claude call; map its failures to HTTP errors the panel shows as-is."""
         if not triage.api_key_configured():
-            return {"error": "ANTHROPIC_API_KEY is not set - AI features are unavailable."}, 503
+            return {"error": "No AI key yet - paste a free Google AI key under Settings."}, 503
         try:
             return call()
         except anthropic.AuthenticationError:
@@ -121,13 +124,18 @@ def create_app(scan_csv=None):
         except ValueError as e:
             return {"error": str(e)}, 502
 
-    @app.post("/triage")
-    def triage_route():
-        body = request.get_json(silent=True)
-        if not isinstance(body, dict) or not all(isinstance(body.get(k), list) for k in ("columns", "flagged")):
-            return {"error": "'columns' and 'flagged' must be lists"}, 400
-        # panel sends <= 25 shown rows; cap so a bug can't run up the Claude bill
-        return ai(lambda: {"results": triage.triage_rows(body["columns"], body["flagged"][:25])})
+    @app.post("/key")
+    def key_route():
+        """Save (or with "" remove) the free Gemini key in %LOCALAPPDATA%/AnomalyHunter - this PC only."""
+        key = (request.get_json(silent=True) or {}).get("key")
+        if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_\-]{0,200}", key.strip()):
+            return {"error": "That doesn't look like an API key - copy it again from aistudio.google.com."}, 400
+        triage.KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        if key.strip():
+            triage.KEY_FILE.write_text(key.strip(), encoding="utf-8")
+        else:
+            triage.KEY_FILE.unlink(missing_ok=True)
+        return {"ai_available": triage.api_key_configured(), "ai_provider": triage.provider()}
 
     @app.post("/fix")
     def fix_route():
@@ -145,17 +153,6 @@ def create_app(scan_csv=None):
             return {"error": "'formulas' must be a list as long as 'columns'"}, 400
         return ai(lambda: triage.suggest_fix(body["columns"], body["rows"], body["row_index"], body["start_row"],
                                              body["start_col"], str(body.get("reason") or ""), intent, formulas))
-
-    @app.post("/research")
-    def research_route():
-        body = request.get_json(silent=True) or {}
-        text = lambda k, n: isinstance(body.get(k, ""), str) and len(body.get(k, "")) <= n
-        if not (isinstance(body, dict) and body.get("department") in ("Duplicates", "Irregularities", "Anomalies", "Formula bugs")
-                and body.get("reason") and text("reason", 2000) and text("formula", 1000)
-                and isinstance(body.get("columns"), list) and len(body["columns"]) <= 200):
-            return {"error": "'department', 'reason' and 'columns' are required"}, 400
-        return ai(lambda: triage.research(body["department"], body["reason"], [str(c)[:60] for c in body["columns"]],
-                                          body.get("formula") or ""))
 
     return app
 

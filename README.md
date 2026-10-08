@@ -15,17 +15,22 @@ signs, "Sales" vs "sales ", #N/A / #DIV/0! cells, blanks, duplicates - plus anyt
 Also: totals that don't add up (Total != Fare + Tip + Tax), dates far outside the rest (2084 in a 2018 sheet).
 Tested on 100k real NYC taxi trips (1.7M cells): 8 s per scan, under 1% false alarms on clean rows.
 
-**Power BI:** after a scan, double-click `powerbinomaly-hunter.pbids` (written by `install.bat`), Refresh after each scan.
+**Power BI:** after a scan, double-click `powerbi\anomaly-hunter.pbids` (written by `install.bat`), Refresh after each scan.
 
-**Fix a flagged row:** after a scan, click a highlighted row (in the sheet or in the pane's list). A **recommended
-fix** shows up at once (no AI needed): e.g. a number past its limits -> the median of the rest of its column. Want
-something else? Type it in plain English ("replace the -5 with the average Units for East") and **Ask AI** writes the
-Excel formula. Either way you see old -> new, nothing changes until you click **Apply**, and **Undo** puts it back.
+**Use it:** click **Find problems in this sheet**. A progress line shows each step; rows to check are highlighted
+(orange = probably wrong, pale yellow = worth a quick check) and listed worst first. Click a row (in the list or the
+sheet) for a **suggested fix**, free and instant (e.g. a number past its limits -> the median of the rest of its
+column). You see old -> new, nothing changes until **Apply fix**, and **Undo** puts it back. **Remove highlights**
+puts the sheet's colors back as they were. "How strict should it be?" lets you change each column's limits.
 
-AI triage + fixes: set `ANTHROPIC_API_KEY` before installing. No-Excel mode: `anomaly-hunter scan data.csv`.
+**AI help (optional, free):** under "AI help" in the pane, paste a free Google Gemini key from
+https://aistudio.google.com/apikey (Google account, no credit card). Then **Ask AI** writes a different fix from a
+plain-English request. Only the row asked about and a few rows around it go to Google (its free tier may use them to
+improve its products - don't use it on private data). A Claude key (`ANTHROPIC_API_KEY`) also works.
+No-Excel mode: `anomaly-hunter scan data.csv`.
 
-**Layout:** `anomaly_hunter/` engine + local server (127.0.0.1:5055) · `panel/` task pane, plain JS, no build, wired as 5 layers (Scan -> Flag -> Highlight -> Suggest -> Ask AI) through one circuit that runs sheet actions one at a time · `powerbi/` Power BI Desktop source · `docs/` design notes.
+**Layout:** `anomaly_hunter/` engine + local server (127.0.0.1:5055) · `panel/` task pane, plain JS, no build, one path (Find problems -> highlight -> fix one row); one sheet action at a time, buttons disabled meanwhile · `powerbi/` Power BI Desktop source · `docs/` design notes.
 
 **Test:** `pip install -e .[dev]` then `pytest` and `node panel/selfcheck.js`. Industry benchmark (15 fields + held-out
-traps, real panel + engine, pass/fail gates): `python bench/score.py .` Browser test (real panel + engine, fake Excel, 81
-checks incl. the 5 layers and their races; needs node + playwright): `e2e/all.sh`
+traps, real panel + engine, pass/fail gates): `python bench/score.py .` Browser test (real panel + engine, fake Excel;
+needs node + playwright; stop the installed engine first, it uses port 5055): `e2e/all.sh`
