@@ -1,10 +1,10 @@
 // Browser test of the REAL pane against the REAL engine, with fake-office.js standing in for Excel.
 // Run via e2e/all.sh (needs node + playwright with chromium, and the repo's .venv). Modes: flow ai nokey.
 import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import fs from "node:fs";
 const pw = await import(process.env.PLAYWRIGHT || "playwright") // local install, else the global one
-  .catch(() => import(createRequire(import.meta.url).resolve("playwright", { paths: [process.env.NODE_PATH || ""] })));
+  .catch(() => import(pathToFileURL(createRequire(import.meta.url).resolve("playwright", { paths: [process.env.NODE_PATH || ""] })).href));
 const { chromium } = pw.chromium ? pw : pw.default;
 const DIR = fileURLToPath(new URL(".", import.meta.url));
 const mode = process.argv[2] || "flow";
@@ -16,7 +16,8 @@ const rows = [["OrderDate", "Region", "Units", "UnitCost", "Total"]];
 for (let i = 0; i < 300; i++) { const u = 40 + ((i * 7) % 23), c = 1.99 + (i % 4); rows.push([46028 + i, ["East", "West", "Central"][i % 3], u, c, +(u * c).toFixed(2)]); }
 rows[10][2] = -5; rows[21][2] = 9999; rows[50] = [...rows[49]]; rows[80][1] = "east "; rows[120][2] = "";
 
-const browser = await chromium.launch();
+// Playwright's own Chromium if installed, else the Edge every Windows PC has
+const browser = await chromium.launch().catch(() => chromium.launch({ channel: "msedge" }));
 const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width: 360, height: 900 } });
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.stack));
