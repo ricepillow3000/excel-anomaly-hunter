@@ -11,11 +11,12 @@ from collections import Counter
 from pathlib import Path
 
 import anthropic
+import pandas as pd
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
-from flask import Flask, jsonify, request
+from flask import Flask, request
 
 from anomaly_hunter import triage
 from anomaly_hunter.detectors import K
@@ -28,7 +29,7 @@ HOME = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local") / "
 CERT_NAME = "Anomaly Hunter local CA"  # install.bat finds the trusted CA by this name
 PORT = 5055
 LOCAL = {"127.0.0.1", "localhost"}
-ORIGINS = {None, f"https://127.0.0.1:{PORT}", f"https://localhost:{PORT}"}  # None = not a browser (Power BI, tests)
+ORIGINS = {None, f"https://127.0.0.1:{PORT}", f"https://localhost:{PORT}"}  # None = not a browser (tests, curl)
 
 
 def _bad(body):
@@ -57,9 +58,9 @@ def _bad(body):
     return None
 
 
-def create_app():
+def create_app(scan_csv=None):
+    """scan_csv: file every scan overwrites for Power BI (powerbi/anomaly-hunter.pbids). None = off (tests)."""
     app = Flask(__name__, static_folder=str(PANEL), static_url_path="")
-    app.config["last_scan"] = None  # per-app cache for GET /latest-scan (Power BI)
 
     @app.before_request
     def own_panel_only():
@@ -92,18 +93,18 @@ def create_app():
         except Exception:  # a bug in the engine: full detail to the log, not pandas internals to the user
             app.logger.exception("scan failed")
             return {"error": "Engine error - details in server.log"}, 500
-        app.config["last_scan"] = [{**dict(zip(cols, row)), **{k.capitalize(): v for k, v in r.items() if k != "likely"}}
-                                   for row, r in zip(rows, out)]
+        if scan_csv:  # Power BI reads this file: no HTTPS/cert in its way, survives engine restarts
+            try:
+                flat = pd.DataFrame(rows, columns=df.columns).assign(**{
+                    k.capitalize(): [r[k] for r in out] for k in ("severity", "bucket", "reason", "magnitude")})
+                flat.to_csv(f"{scan_csv}.tmp", index=False, encoding="utf-8-sig")
+                os.replace(f"{scan_csv}.tmp", scan_csv)  # Power BI never reads a half-written file
+            except OSError:  # file open elsewhere: the scan itself still answers
+                app.logger.exception("could not write %s", scan_csv)
         return {"rows": out, "suggested_limits": suggested, "summary": {
             "severity_counts": Counter(r["severity"] for r in out if r["severity"]),
             "bucket_counts": Counter(r["bucket"] for r in out if r["bucket"]),
             "detectors": status, "k": K}}
-
-    @app.get("/latest-scan")
-    def latest_scan():
-        if app.config["last_scan"] is None:
-            return {"error": "No scan has run yet - run a scan from the Excel panel first."}, 404
-        return jsonify(app.config["last_scan"])  # bare array: Power Query turns it straight into a table
 
     def ai(call):
         """Run a Claude call; map its failures to HTTP errors the panel shows as-is."""
@@ -232,7 +233,7 @@ def main():
     crt, key = HOME / "cert.pem", HOME / "key.pem"
     if not (crt.exists() and key.exists()):
         sys.exit(f"No HTTPS cert in {HOME}. Run install.bat.")
-    create_app().run(host="127.0.0.1", port=PORT, ssl_context=(str(crt), str(key)))
+    create_app(HOME / "latest-scan.csv").run(host="127.0.0.1", port=PORT, ssl_context=(str(crt), str(key)))
 
 
 if __name__ == "__main__":

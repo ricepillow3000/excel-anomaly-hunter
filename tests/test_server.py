@@ -150,33 +150,16 @@ def test_scan_rejects_non_json_body():
     assert resp.status_code == 400
 
 
-def test_latest_scan_404_before_any_scan():
-    resp = client().get("/latest-scan")
-    assert resp.status_code == 404
-    assert "error" in resp.get_json()
-
-
-def test_latest_scan_reflects_last_scan():
-    c = client()  # one app instance for both calls — the cache lives on app.config
+def test_each_scan_overwrites_the_power_bi_csv(tmp_path):
+    import pandas as pd
+    out = tmp_path / "latest-scan.csv"
+    c = create_app(out).test_client()
     columns, rows = make_clean_payload(n=40)
-    c.post("/scan", json={"columns": columns, "rows": rows, "limits": None, "order_by": None})
-
-    resp = c.get("/latest-scan")
-    assert resp.status_code == 200
-    body = resp.get_json()
-    assert isinstance(body, list)
-    assert len(body) == len(rows)
-    assert set(columns) | {"Severity", "Bucket", "Reason", "Magnitude"} == set(body[0])
-
-
-def test_latest_scan_does_not_leak_across_app_instances():
-    c1 = client()
-    columns, rows = make_clean_payload(n=40)
-    c1.post("/scan", json={"columns": columns, "rows": rows, "limits": None, "order_by": None})
-
-    c2 = client()  # a fresh app instance — must not see c1's cached scan
-    resp = c2.get("/latest-scan")
-    assert resp.status_code == 404
+    for n in (40, 30):  # second scan replaces the first, never appends
+        assert c.post("/scan", json={"columns": columns, "rows": rows[:n]}).status_code == 200
+        got = pd.read_csv(out, encoding="utf-8-sig")
+        assert len(got) == n and list(got.columns) == [*columns, "Severity", "Bucket", "Reason", "Magnitude"]
+    assert not (tmp_path / "latest-scan.csv.tmp").exists()
 
 
 # ---- Batch 1: bad input gets a clear 400, never a crash; odd values never crash a scan ----
@@ -229,12 +212,6 @@ def test_an_engine_bug_is_logged_not_leaked(monkeypatch):
     monkeypatch.setattr(srv, "score", lambda *a: (_ for _ in ()).throw(RuntimeError("pandas internal detail")))
     r = scan({"columns": ["Name", "Amt"], "rows": GOOD})
     assert r.status_code == 500 and r.get_json() == {"error": "Engine error - details in server.log"}
-
-
-def test_power_bi_link_uses_https():
-    from pathlib import Path
-    assert '"url": "https://127.0.0.1:5055/latest-scan"' in (Path(__file__).parent.parent / "powerbi/anomaly-hunter.pbids").read_text()
-
 
 
 def test_a_huge_whole_number_is_a_value_not_a_crash():

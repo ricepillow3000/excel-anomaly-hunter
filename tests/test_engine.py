@@ -125,7 +125,7 @@ def test_hazmat_isolation_combo_runs_clean(tmp_path):
 
     out_path = tmp_path / "report.xlsx"
     # Not asserting this exact row is caught — ML detection on a 60-row sample is
-    # inherently noisy. This just proves the isolation/clustering path runs clean.
+    # inherently noisy. This just proves the isolation path runs clean.
     assert run_scan([str(csv_path)], str(limits_path), None, str(out_path)) == 0
 
 
@@ -355,41 +355,6 @@ def test_formula_like_text_is_never_offered_as_a_spelling_fix():
     assert not any(r.get("likely") for r in rows)
 
 
-# ---- Batch 2: clustering once per distinct row = the same answer as on every row, without the blow-up ----
-
-def _clustering_on_every_row(df, types):  # the original algorithm, kept here as the reference
-    from sklearn.cluster import DBSCAN
-    from sklearn.neighbors import NearestNeighbors
-    from anomaly_hunter.detectors import K, _scaled, numbers, spread
-    x, n = _scaled(df, numbers(types)).to_numpy(), len(df)
-    ms = max(5, 2 * len(numbers(types)))
-    kth = NearestNeighbors(n_neighbors=min(ms, n - 1)).fit(x).kneighbors()[0][:, -1]
-    return DBSCAN(eps=max(np.median(kth) + K * spread(kth), 1e-9), min_samples=ms).fit_predict(x) == -1
-
-
-@pytest.mark.parametrize("make", [
-    lambda r: [[f"r{i}", int(r.integers(1, 6)), float(r.choice([1.0, 1.5, 2.0, 3.0, 4.0, 5.0]))] for i in range(3000)],  # sales: few patterns
-    lambda r: [[f"r{i}", float(r.normal(100, 5)), float(r.normal(50, 2))] for i in range(1500)],  # all different
-    lambda r: [[f"r{i}", int(r.integers(1, 4)), 7.0] for i in range(40)] + [["x", 90, 7.0]],  # small, one odd row
-    lambda r: [[f"r{i}", 5.0, 5.0] for i in range(30)],  # every row the same
-])
-def test_clustering_on_distinct_rows_matches_every_row(make):
-    from anomaly_hunter.detectors import clustering_detector
-    from anomaly_hunter.load import load_from_records
-    df, types, _ = load_from_records(["Id", "A", "B"], make(np.random.default_rng(1)))
-    got = clustering_detector(df, types)
-    assert got["ran"] and np.array_equal(got["votes"], _clustering_on_every_row(df, types))
-
-
-def test_clustering_sits_out_with_a_reason_when_rows_are_too_varied(monkeypatch):
-    from anomaly_hunter import detectors
-    from anomaly_hunter.load import load_from_records
-    monkeypatch.setattr(detectors, "MAX_DISTINCT", 100)
-    df, types, _ = load_from_records(["Id", "A"], [[f"r{i}", float(i) * 1.37] for i in range(300)])
-    r = detectors.clustering_detector(df, types)
-    assert not r["ran"] and "too many different rows" in r["sit_out_reason"]
-
-
 # ---- Batch 3: catch what it used to miss (each failed on the old code) ----
 
 def _scan(cols, rows, limits=None):
@@ -542,16 +507,6 @@ def test_cell_text_quoted_in_a_reason_is_kept_short():
     assert len(out[3]["reason"]) < 200 and out[3]["reason"].startswith('Text "xxx')
 
 
-def test_clustering_ignores_last_bit_rounding_between_equal_distances():
-    # 40 rows of small repeated integers (and blanks): rows the old algorithm left alone must stay unflagged
-    a = [None, 3, 1, 3, 3, 3, 8, None, 8, 3, 2, 8, 2, 2, 1, 8, 8, 8, None, 8, 3, 8, 1, 1, 2, 8, 8, 5, 1, 8, None, 3, 8, 8, None, 8, None, 1, 3, None]
-    b = [1, 8, 1, 3, 3, 8, 5, 1, 2, 8, 5, 1, 5, 5, 1, 1, 1, 2, 2, 5, 3, 5, 1, 1, 5, 2, 5, 5, 1, 1, 2, 3, 5, 1, 1, 2, 1, 1, 3, 1]
-    from anomaly_hunter.detectors import clustering_detector
-    from anomaly_hunter.load import load_from_records
-    df, types, _ = load_from_records(["c0", "c1"], [[x, y] for x, y in zip(a, b)])
-    assert np.array_equal(clustering_detector(df, types)["votes"], _clustering_on_every_row(df, types))
-
-
 # ---- final functional re-attack (council decisions) ----
 
 def test_a_real_category_named_error_or_unknown_is_not_a_placeholder():
@@ -622,3 +577,106 @@ def test_a_dated_row_on_a_sheet_without_text_is_not_hidden_as_a_total():
     rows[2] = ["2024-01-03", 3, None]  # 3 = 1 + 2 by chance
     _, out = _scan(["When", "Qty", "Price"], rows)
     assert "Blank cell in column Price" in out[2]["reason"]
+
+
+# ---- 2026-10-07 real-data stress test (100k NYC taxi trips): fixes for what it exposed ----
+
+def test_sequence_sits_out_on_transactions_that_share_dates():
+    # 300 trips over 10 days is a pile of transactions, not a time series: no "trend" or "jump" to vote on
+    from anomaly_hunter.detectors import sequence_detector
+    from anomaly_hunter.load import load_from_records
+    r = np.random.default_rng(3)
+    rows = [[f"2018-01-{1 + i % 10:02d}", float(r.lognormal(2, 1))] for i in range(300)]
+    df, types, _ = load_from_records(["Day", "Fare"], rows)
+    got = sequence_detector(df, types)
+    assert not got["ran"] and "not a time series" in got["sit_out_reason"]
+
+
+def test_sequence_still_runs_on_a_daily_series():
+    from anomaly_hunter.detectors import sequence_detector
+    from anomaly_hunter.load import load_from_records
+    rows = [[str(np.datetime64("2024-01-01") + np.timedelta64(i, "D")), 100.0 + i % 7] for i in range(60)]
+    df, types, _ = load_from_records(["Day", "Sales"], rows)
+    assert sequence_detector(df, types)["ran"]
+
+
+def test_heavy_tailed_money_column_gets_no_weird_flood_but_a_typo_still_trips():
+    # tips/fares: most small, a long honest tail. Symmetric median +/- 6 spread put ~2% of clean rows past "weird"
+    from anomaly_hunter.limits import suggest_limits_dict
+    from anomaly_hunter.load import load_from_records
+    r = np.random.default_rng(5)
+    vals = [round(float(v), 2) for v in r.lognormal(2, 0.8, 3000)]
+    df, types, _ = load_from_records(["Fare"], [[v] for v in vals])
+    lo, hi, wlo, whi = suggest_limits_dict(df, ["Fare"])["Fare"]
+    assert sum(v > whi for v in vals) <= 3  # <= 0.1% of honest rows
+    assert 7.4 * 1000 > whi  # an extra-zeros typo on a typical fare (x1000) is still weird
+
+
+def test_a_date_far_outside_the_columns_range_is_flagged():
+    # taxi 2018 sheet had pickups in 2084 and 2042 - nothing looked at dates at all
+    r = np.random.default_rng(7)
+    days = [str(np.datetime64("2018-01-01") + np.timedelta64(int(d), "D")) for d in r.integers(0, 365, 300)]
+    days[10], days[20] = "2084-11-04", "2042-03-01"
+    _, out = _scan(["Day", "Fare"], [[d, float(v)] for d, v in zip(days, r.normal(12, 2, 300))])
+    assert {i for i, o in enumerate(out) if "far outside" in o["reason"]} == {10, 20}
+    assert out[10]["severity"] in ("Medium", "High")
+
+
+def test_wide_but_honest_dates_are_not_flagged():
+    r = np.random.default_rng(8)
+    births = [str(np.datetime64("1940-01-01") + np.timedelta64(int(d), "D")) for d in r.integers(0, 65 * 365, 300)]
+    _, out = _scan(["Born", "Salary"], [[d, float(v)] for d, v in zip(births, r.normal(50000, 5000, 300))])
+    assert not any("far outside" in o["reason"] for o in out)
+
+
+def test_a_total_that_does_not_add_up_is_flagged():
+    # taxi: total_amount != fare + extra + tax + tip + tolls in 595 rows; no detector checked arithmetic
+    r = np.random.default_rng(9)
+    rows = []
+    for i in range(400):
+        fare, tip, tax = round(float(r.lognormal(2, .5)), 2), round(float(r.uniform(0, 5)), 2), 0.5
+        rows.append([f"t{i}", fare, tip, tax, round(fare + tip + tax, 2), round(float(r.uniform(0, 9)), 2)])
+    for i in (5, 50, 300):
+        rows[i][4] = round(rows[i][4] + 3.0, 2)
+    _, out = _scan(["Trip", "Fare", "Tip", "Tax", "Total", "Miles"], rows)
+    hit = {i for i, o in enumerate(out) if "does not add up" in o["reason"]}
+    assert hit == {5, 50, 300}, hit
+    assert "Total" in out[5]["reason"] and "Fare + Tip + Tax" in out[5]["reason"]
+
+
+def test_unrelated_columns_get_no_arithmetic_flags():
+    r = np.random.default_rng(10)
+    rows = [[f"r{i}", *(round(float(v), 2) for v in r.normal(50, 10, 4))] for i in range(400)]
+    _, out = _scan(["Id", "A", "B", "C", "D"], rows)
+    assert not any("does not add up" in o["reason"] for o in out)
+
+
+def test_sequence_sits_out_on_timestamped_transactions():
+    # every trip has its own pickup second, so the distinct-share gate passes; the fares still don't form a series
+    from anomaly_hunter.detectors import sequence_detector
+    from anomaly_hunter.load import load_from_records
+    r = np.random.default_rng(11)
+    t0 = np.datetime64("2018-01-01T00:00:00")
+    rows = [[str(t0 + np.timedelta64(int(s), "s")), float(r.lognormal(2, 1))] for s in sorted(r.integers(0, 365 * 86400, 400))]
+    df, types, _ = load_from_records(["Pickup", "Fare"], rows)
+    got = sequence_detector(df, types)
+    assert not got["ran"] and "not a time series" in got["sit_out_reason"]
+
+
+def test_one_negative_fare_does_not_switch_off_the_log_scale_limits():
+    from anomaly_hunter.limits import suggest_limits_dict
+    from anomaly_hunter.load import load_from_records
+    r = np.random.default_rng(12)
+    vals = [round(float(v), 2) for v in r.lognormal(2, 0.8, 3000)] + [-52.0]
+    df, _, _ = load_from_records(["Fare"], [[v] for v in vals])
+    assert sum(v > suggest_limits_dict(df, ["Fare"])["Fare"][3] for v in vals) <= 3
+
+
+def test_a_common_value_is_never_weird_but_a_rare_one_is():
+    # taxi: rate code 2 (JFK flat fare) is 1.7% of trips and the 5.76 toll 3.2% - tariffs, not typos. 99 is a typo.
+    r = np.random.default_rng(13)
+    rows = [[f"t{i}", float(r.choice([1, 2], p=[0.97, 0.03])), round(float(r.normal(12, 2)), 2)] for i in range(2000)]
+    rows[7][1] = 99.0
+    _, out = _scan(["Trip", "RateCode", "Fare"], rows)
+    weird = {i for i, o in enumerate(out) if "RateCode weird limit" in o["reason"]}
+    assert weird == {7}, sorted(weird)[:10]

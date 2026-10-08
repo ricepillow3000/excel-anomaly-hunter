@@ -4,8 +4,9 @@ logistics) + held-out traps (signed P&L, heavy-tailed claims, ID look-alikes, ye
 whose true values are known. Usage: python bench/score.py . [--detail] [--main-seed N] [--seeds a,b,c]
 Exit 1 when a gate fails: a crash, a harmful fix (writes into an ID/formula column or "corrects" a real outlier),
 a flagged totals row, a misread header, or Medium+ false alarms above 1% of clean rows."""
-import json, subprocess, sys
-sys.path.insert(0, sys.argv[1]); sys.path.insert(0, __file__.rsplit("/", 1)[0])
+import json, os, subprocess, sys
+HERE = os.path.dirname(os.path.abspath(__file__))  # works with \ paths on Windows too
+sys.path.insert(0, sys.argv[1]); sys.path.insert(0, HERE)
 from anomaly_hunter.server import create_app
 import datasets, datasets2
 arg = lambda k, dflt: next((sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == k), dflt)
@@ -13,7 +14,7 @@ SEEDS = [int(x) for x in arg("--seeds", "11,12,13").split(",")]
 make = lambda: datasets.make(int(arg("--main-seed", 7))) + [d for sd in SEEDS for d in datasets2.make(sd)]
 
 REPO, DETAIL = __import__("os").path.abspath(sys.argv[1]), "--detail" in sys.argv
-BRIDGE = __file__.rsplit("/", 1)[0] + "/bridge.js"
+BRIDGE = os.path.join(HERE, "bridge.js")
 node = lambda jobs: json.loads(subprocess.run(["node", BRIDGE, REPO + "/panel/taskpane.js"], input=json.dumps(jobs),
                                               capture_output=True, text=True, check=True).stdout)
 app = create_app().test_client()

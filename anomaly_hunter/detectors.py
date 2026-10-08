@@ -1,9 +1,7 @@
-"""Robust cutoff + four detectors. Each returns {ran, sit_out_reason, votes, magnitude, reasons}."""
+"""Robust cutoff + three detectors. Each returns {ran, sit_out_reason, votes, magnitude, reasons}."""
 import numpy as np
 import pandas as pd
 from pyod.models.ecod import ECOD
-from sklearn.cluster import DBSCAN
-from sklearn.neighbors import NearestNeighbors
 
 from anomaly_hunter.load import numbers
 
@@ -78,6 +76,11 @@ def likely_value(v, st, lo, hi):
     return None
 
 
+def _sentinel(v):
+    """0, -1 and all-9 numbers (99, -999, 9999.0): what people type for "missing"."""
+    return v in (0, -1) or (v == int(v) and abs(v) >= 99 and set(str(int(abs(v)))) == {"9"})
+
+
 def limits_detector(df, column_types, limits):
     """Weird-limit breach = vote. Baseline-only breach = noted, no vote. likely[i] = {col: probable typo fix}."""
     n = len(df)
@@ -88,10 +91,14 @@ def limits_detector(df, column_types, limits):
         b_lo, b_hi, w_lo, w_hi = limits[col]
         x = df[col].to_numpy(dtype=float)
         sd, st = spread(x) or 1.0, None  # st: column_stats, built on the first breach only
+        # a value repeated in >= 0.1% of rows (and 5+ times) is a tariff/category (JFK rate code 2, the 5.76 toll),
+        # not a typo: noted, never weird. Except "missing" codes, which repeat too: 0, -1, 99, 999, 9999...
+        vals, cnt = np.unique(x[~np.isnan(x)], return_counts=True)
+        common = {v for v in vals[cnt >= max(5, 0.001 * len(x))] if not _sentinel(v)}
         for i, v in enumerate(x):
             if np.isnan(v):
                 continue
-            if (lim := _crossed(v, w_lo, w_hi)) is not None:
+            if v not in common and (lim := _crossed(v, w_lo, w_hi)) is not None:
                 r["votes"][i] = True
                 r["magnitude"][i] = max(r["magnitude"][i], abs(v - lim) / sd)
                 fix = likely_value(v, st := st or column_stats(x), b_lo, b_hi)
@@ -112,8 +119,17 @@ def sequence_detector(df, column_types, order_by=None):
         return _result(n, "no order column")
     if n < 30:
         return _result(n, "fewer than 30 rows")
+    # many rows per date = transactions (100k taxi trips: 94% of its votes were false alarms), not one series
+    if df[by].nunique() < 0.5 * df[by].notna().sum():
+        return _result(n, f"not a time series (many rows share each {by})")
     r, order = _result(n), df[by]
     idx = order.sort_values(kind="mergesort").index.to_numpy()
+    # a series is evenly spaced (order 1..n, days, months 28-31): 70% of steps within 10% of the usual step.
+    # Timestamped trips (unique seconds) pass the gate above but arrive at random gaps.
+    gap = order.sort_values().diff().dropna()
+    gap = gap.dt.total_seconds() if gap.dtype.kind == "m" else gap.astype(float)
+    if (abs(gap - gap.median()) <= 0.1 * gap.median()).mean() < 0.7:
+        return _result(n, f"not a time series ({by} is not evenly spaced)")
 
     def hit(pos, mag, what):
         i = idx[pos]
@@ -168,30 +184,3 @@ def isolation_detector(df, column_types):
     reasons = [[f"Unusual combination of values, mainly {cols[w]}"] if v else [] for v, w in zip(votes, worst)]
     return {**_result(n), "votes": votes, "magnitude": mag, "reasons": reasons}
 
-
-MAX_DISTINCT = 100_000  # above this, grouping alone takes ~20s+ and GBs: it sits out and says why
-
-
-def clustering_detector(df, column_types):
-    """DBSCAN noise rows. eps = robust cutoff on k-th neighbor distance."""
-    n, cols = len(df), numbers(column_types)
-    if why := _skip(n, cols):
-        return _result(n, why)
-    x = _scaled(df, cols).to_numpy()
-    ms = max(5, 2 * len(cols))
-    # Same answer, once per DISTINCT row: real sheets repeat values (107 patterns in 10k sales rows) and DBSCAN on the
-    # copies grows with rows squared (200k rows: 9 GB, never finished). Each pattern weighs as many rows as share it.
-    xu, inv, cnt = np.unique(x, axis=0, return_inverse=True, return_counts=True)
-    inv = inv.ravel()
-    if len(xu) > MAX_DISTINCT:
-        return _result(n, f"too many different rows to group ({len(xu):,}; limit {MAX_DISTINCT:,})")
-    # k-th nearest OTHER row: walk each pattern's neighbours adding up rows until k = min(ms, n-1) are passed
-    dist, idx = NearestNeighbors(n_neighbors=min(ms + 1, len(xu))).fit(xu).kneighbors(xu)
-    w = cnt[idx] - (idx == np.arange(len(xu))[:, None])  # a pattern's own other copies sit at distance 0
-    kth = dist[np.arange(len(xu)), np.argmax(np.cumsum(w, axis=1) >= min(ms, n - 1), axis=1)]
-    kth = np.round(kth, 9)[inv]  # equal distances can differ in the last bit by path; a 1e-16 "spread" would shrink eps
-    votes = DBSCAN(eps=max(np.median(kth) + K * spread(kth), 1e-9), min_samples=ms).fit_predict(xu, sample_weight=cnt)[inv] == -1
-    # ponytail: magnitude = kth distance in spread units, sort key only
-    mag = np.where(votes, kth / (spread(kth) or 1.0), 0.0)
-    return {**_result(n), "votes": votes, "magnitude": mag,
-            "reasons": [["Does not belong to any group of similar rows"] if v else [] for v in votes]}

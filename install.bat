@@ -47,6 +47,9 @@ reg add "%CAT%" /v Url /t REG_SZ /d "%UNC%" /f >nul
 reg add "%CAT%" /v Flags /t REG_DWORD /d 1 /f >nul
 rd /s /q "%LOCALAPPDATA%\Microsoft\Office\16.0\Wef" 2>nul
 
+rem Power BI: double-click powerbi\anomaly-hunter.pbids. It opens the file every scan overwrites (this PC's path).
+"%PY%" -c "import json,os; p=os.path.join(os.environ['AH'],'latest-scan.csv'); json.dump({'version':'0.1','connections':[{'details':{'protocol':'file','address':{'path':p}},'options':{},'mode':'Import'}]}, open(r'powerbi\anomaly-hunter.pbids','w'), indent=2)" || (echo Power BI file step failed. & pause & exit /b 1)
+
 echo [4/5] Engine starts hidden at every logon...
 reg add "%RUN%" /v AnomalyHunter /t REG_SZ /d "\"%PYW%\" -m anomaly_hunter.server" /f >nul
 start "" "%PYW%" -m anomaly_hunter.server

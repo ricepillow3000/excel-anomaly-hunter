@@ -159,8 +159,12 @@ function tableFromGrid(values, formats, rowIndex, colIndex, formulas) {
 
 // Pure: number format shows a date? (ignore [colors/locales] and "quoted text", e.g. "[Red]0.00")
 const isDateFormat = (f) => /[dy]/i.test(String(f).replace(/\[[^\]]*\]|"[^"]*"/g, ""));
-// Pure: Excel serial day -> "yyyy-mm-dd" (25569 = 1970-01-01)
-const excelDate = (n) => new Date(Math.round((n - 25569) * 864e5)).toISOString().slice(0, 10);
+// Pure: Excel serial day -> "yyyy-mm-dd", plus " hh:mm:ss" when it has a time (25569 = 1970-01-01).
+// Dropping the time made two taxi trips on one day with equal fares look like duplicates.
+const excelDate = (n) => {
+  const s = new Date(Math.round((n - 25569) * 864e2) * 1e3).toISOString();
+  return Number.isInteger(n) ? s.slice(0, 10) : `${s.slice(0, 10)} ${s.slice(11, 19)}`;
+};
 
 const scanBody = (s, limits) => ({ columns: s.columns, rows: s.rows, limits, order_by: null });
 
@@ -815,7 +819,7 @@ function issuesOf(reason, columns, calc) {
     const j = columns.indexOf((/^(.+?) weird limit/.exec(text) || [])[1]);
     const dept = /^Excel error #/.test(text) || (j >= 0 && String(calc?.[j]).startsWith("=")) ? "Formulas"
       : /^Duplicate of row/.test(text) ? "Duplicates"
-      : /weird limit|^Blank cell|looks like "|^Text ".*" in (number|date) column|^Placeholder "/.test(text) ? "Irregularities" : "Anomalies";
+      : /weird limit|^Blank cell|looks like "|^Text ".*" in (number|date) column|^Placeholder "| does not add up: | is far outside the column/.test(text) ? "Irregularities" : "Anomalies";
     return { dept, text };
   }).sort((a, b) => order.indexOf(a.dept) - order.indexOf(b.dept));
 }

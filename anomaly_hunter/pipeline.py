@@ -1,11 +1,12 @@
-"""Score a loaded DataFrame: 4 detector votes + hygiene facts -> severity, bucket, reason per row.
+"""Score a loaded DataFrame: 3 detector votes + hygiene facts -> severity, bucket, reason per row.
 Shared by CLI and server."""
 import re
 
 import numpy as np
+import pandas as pd
 
-from anomaly_hunter.detectors import clustering_detector, isolation_detector, limits_detector, sequence_detector
-from anomaly_hunter.load import EXCEL_ERROR, _blank
+from anomaly_hunter.detectors import isolation_detector, limits_detector, sequence_detector
+from anomaly_hunter.load import EXCEL_ERROR, _blank, numbers
 
 def summary_rows(df):
     """Rows that summarise the data instead of being data -> bool array: fully blank rows, rows labelled
@@ -97,6 +98,50 @@ def blanks(df, column_types, skip, errors_log, threshold=0.95):
     return out
 
 
+def far_dates(df, column_types, skip):
+    """Date more than the column's whole 1%-99% span away from it (a 2018 sheet with 2084 in it). Birthdates spread
+    over decades widen the span themselves. ponytail: misses a near miss like 2019 in a 2018 sheet - no rule knows that."""
+    out = [[] for _ in range(len(df))]
+    for col, t in column_types.items():
+        d = df[col][~skip].dropna() if t == "date" else ()
+        if len(d) < 30:
+            continue
+        lo, hi = d.quantile([0.01, 0.99])
+        span = max(hi - lo, pd.Timedelta(days=30))
+        for i in d.index[(d < lo - span) | (d > hi + span)]:
+            out[i].append(f"{col} {d[i]:%Y-%m-%d} is far outside the column's dates ({lo:%Y-%m-%d} to {hi:%Y-%m-%d})")
+    return out
+
+
+def sums(df, column_types, skip):
+    """A column that is the sum of others in >= 95% of rows (Total = Fare + Tip + Tax): the other rows don't add up.
+    Least squares finds the parts; kept only when every weight is 0 or 1 (a plain sum, found once, from the total's
+    side). ponytail: plain sums only - a weighted rule (tax 8.25%) or a difference written as a sum of +1s only."""
+    out = [[] for _ in range(len(df))]
+    cols = numbers(column_types)
+    x = df[cols][~skip].dropna()
+    if len(cols) < 3 or len(x) < 20 * len(cols):  # few rows: least squares "fits" anything
+        return out
+    a = x.to_numpy(dtype=float)
+    for t, col in enumerate(cols):
+        y, rest = a[:, t], np.delete(a, t, axis=1)
+        w = np.linalg.lstsq(rest, y, rcond=None)[0]
+        res = np.abs(y - rest @ w)
+        keep = res <= np.quantile(res, 0.9)  # refit without the worst 10%: broken rows must not bend the weights
+        w = np.linalg.lstsq(rest[keep], y[keep], rcond=None)[0]
+        ones = np.round(w)
+        if (np.abs(w - ones) > 0.02).any() or not set(ones) <= {0.0, 1.0} or ones.sum() < 2:
+            continue
+        got = rest @ ones
+        bad = np.abs(y - got) > np.maximum(0.011, 1e-6 * np.abs(y))  # 1 cent + float slack
+        if bad.mean() > 0.05:
+            continue
+        parts = " + ".join(c for c, o in zip(np.delete(np.array(cols, dtype=object), t), ones) if o)
+        for i, v, g in zip(x.index[bad], y[bad], got[bad]):
+            out[i].append(f"{col} {v:g} does not add up: {parts} = {g:.10g}")
+    return out
+
+
 def spellings(df, column_types, skip):
     """Same category typed differently ("Sales" / "sales " / "SALES") - breaks SUMIFS and pivots silently.
     Only case/space differences, only in category-like columns (<= 50 distinct), only when the usual
@@ -130,10 +175,10 @@ def score(df, column_types, errors_log, limits, order_by):
     errors_log = [e for e in errors_log if not skip[e[0]]]
     lim = limits_detector(df, column_types, limits)
     dets = {"limits": lim, "sequence": sequence_detector(df, column_types, order_by),
-            "isolation": isolation_detector(df, column_types), "clustering": clustering_detector(df, column_types)}
+            "isolation": isolation_detector(df, column_types)}  # DBSCAN cut 2026-10-07: 90s/100k rows, 81% false alarms, bench same without it
     ran = [d for d in dets.values() if d["ran"]]
     dup, typ, blank = duplicates(df), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
-    hole = placeholders(df, column_types, skip)
+    hole, far, add = placeholders(df, column_types, skip), far_dates(df, column_types, skip), sums(df, column_types, skip)
     spell, spell_fix = spellings(df, column_types, skip)
     rows = []
     for i in range(n):
@@ -142,7 +187,7 @@ def score(df, column_types, errors_log, limits, order_by):
                          "magnitude": 0.0})
             continue
         voted = [d for d in ran if d["votes"][i]]
-        hygiene = dup[i] + typ[i] + blank[i] + hole[i] + spell[i]
+        hygiene = dup[i] + typ[i] + blank[i] + hole[i] + far[i] + add[i] + spell[i]
         if not voted and not hygiene:
             noted = lim["noted_reasons"][i]
             rows.append({"severity": "Noted" if noted else None, "bucket": None,
@@ -151,7 +196,7 @@ def score(df, column_types, errors_log, limits, order_by):
         v, weird = len(voted), bool(lim["votes"][i])
         rows.append({
             "severity": "High" if v >= 3 else "Medium" if v == 2 or weird or hygiene else "Low",
-            "bucket": "Duplicates" if dup[i] else "Irregularities" if weird or typ[i] or blank[i] or hole[i] or spell[i] else "Behavioral",
+            "bucket": "Duplicates" if dup[i] else "Irregularities" if weird or typ[i] or blank[i] or hole[i] or far[i] or add[i] or spell[i] else "Behavioral",
             "reason": (f"Flagged by {v} of {len(ran)}: " if v else "") + "; ".join(dict.fromkeys(hygiene + [r for d in voted for r in d["reasons"][i]])),  # dedupe, keep order
             "magnitude": float(max((d["magnitude"][i] for d in voted), default=0.0)),
             "likely": {**lim["likely"][i], **spell_fix[i]},

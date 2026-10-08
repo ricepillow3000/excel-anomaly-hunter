@@ -40,6 +40,12 @@ def suggest_limits_dict(df, number_columns):
             med, sd = float(x.median()), spread(x)
             step = 10 ** math.floor(math.log10(sd)) if sd > 0 else None
             v = [_round(med + k * sd, step, k > 0) for k in (-3, 3, -6, 6)]
+            q10, q90 = x.quantile([0.1, 0.9])
+            pos = x[x > 0]
+            if (x >= 0).mean() >= 0.95 and len(pos) >= 10 and q90 - med > 2 * (med - q10):  # long right tail (fares, tips)
+                lg = np.log(pos)  # highs on log scale, positives only: 42% zero tips would widen it 20x
+                lmed, lsd = float(lg.median()), spread(lg)
+                v[1], v[3] = (max(v[k], _round(float(np.exp(lmed + m * lsd)), step, True)) for k, m in ((1, 3), (3, 6)))
             if (x >= 0).mean() >= 0.95:  # counts/prices: a negative is weird, so lows stop at 0
                 v[0], v[2] = max(v[0], 0.0), max(v[2], 0.0)
                 if (x == 0).mean() >= 0.05:  # zero is a regular value (weekends, no-sale days), not an error

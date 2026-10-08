@@ -7,3 +7,4 @@ e2e/*.log
 e2e/*.out
 e2e/*.txt
 e2e/*.png
+powerbi/*.pbids

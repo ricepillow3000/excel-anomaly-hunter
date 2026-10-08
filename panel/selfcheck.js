@@ -25,6 +25,7 @@ assert.deepEqual(diffFlaggedRows(null, [{ severity: "High" }]).map((d) => d.kind
 
 assert.equal(excelDate(45658), "2025-01-01");
 assert.equal(excelDate(46028), "2026-01-06"); // first OrderDate of the Contextures practice sheet
+assert.equal(excelDate(45658.5), "2025-01-01 12:00:00"); // a time of day is kept: two trips on one day are not duplicates
 for (const f of ["m/d/yyyy", "yyyy-mm-dd", "[$-409]mmmm d, yyyy", "d-mmm"]) assert.ok(isDateFormat(f), f);
 for (const f of ["General", "0.00", "$#,##0.00", "[Red]0.00", '0 "days"']) assert.ok(!isDateFormat(f), f);
 
@@ -116,6 +117,7 @@ const R = 'Flagged by 3 of 4: Units weird limit is 105; this is 9999 (likely 99.
 assert.deepEqual(issuesOf(R, ["Units", "Qty"], null).map((x) => x.dept),
   ["Formulas", "Duplicates", "Irregularities", "Irregularities", "Irregularities", "Irregularities", "Anomalies", "Anomalies", "Anomalies", "Anomalies"]);
 assert.equal(issuesOf(R, ["Units"], null).find((x) => x.dept === "Irregularities").text, "Units weird limit is 105; this is 9999 (likely 99.99)", "limit clause kept whole");
+assert.deepEqual(issuesOf("Total 19.3 does not add up: Fare + Tip = 16.3; Day 2084-11-04 is far outside the column's dates (2018-01-02 to 2018-12-29)", ["Total", "Day"], null).map((x) => x.dept), ["Irregularities", "Irregularities"], "rule breaks are irregularities");
 assert.equal(issuesOf("Flagged by 1 of 4: Variance weird limit is 0; this is -5", ["Variance"], ["=B2-C2"])[0].dept, "Formulas", "odd value in a formula cell");
 assert.deepEqual(issuesOf("", [], null), []);
 const dc = districtCounts([{ severity: "High", reason: "Flagged by 2 of 4: A weird limit is 1; this is 9; Duplicate of row 2" }, { severity: "Noted", reason: "A baseline limit is 1; this is 2" },
