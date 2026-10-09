@@ -11,7 +11,7 @@ set "AH=%LOCALAPPDATA%\AnomalyHunter"
 set "CN=Anomaly Hunter local CA"
 set "PY=%~dp0.venv\Scripts\python.exe"
 set "PYW=%~dp0.venv\Scripts\pythonw.exe"
-set "P=%~dp0panel"
+set "P=%~dp0frontend"
 
 rem Excel caches add-ins; cache can only be cleared while Excel is closed.
 tasklist /fi "imagename eq EXCEL.EXE" 2>nul | findstr /i "EXCEL.EXE" >nul && (echo Close Excel first, then run this again. & pause & exit /b 1)
@@ -37,7 +37,7 @@ if %RC%==3 (
 echo [3/5] Listing Anomaly Hunter in Excel (Add-ins, Shared Folder)...
 rem A trusted catalog is a real install: survives restarts, reopens with saved workbooks.
 rem (The old "developer" registry entry is debug-only - Office drops it from saved workbooks.)
-rem Catalogs must be a share path, so use this PC's own admin share: \\localhost\C$\...\panel
+rem Catalogs must be a share path, so use this PC's own admin share: \\localhost\C$\...\frontend
 reg delete "%DEV%" /v %ID% /f >nul 2>&1
 reg delete "%DEV%\%ID%" /f >nul 2>&1
 set "UNC=\\localhost\%P:~0,1%$%P:~2%"

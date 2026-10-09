@@ -1,0 +1,34 @@
+:root {
+  --ink: #242424; --muted: #5c5b5a; --line: #e1dfdd; --bg: #faf9f8; --card: #fff;
+  --accent: #0f6cbd; --accent-dark: #0a5a9e; --warn: #a4262c;
+  --high: #ffc7ce; --medium: #ffeb9c; --low: #ffffcc; /* the same fills the sheet gets */
+}
+[hidden] { display: none !important; }
+html, body { margin: 0; padding: 0; }
+body { font: 14px/1.45 "Segoe UI", -apple-system, Arial, sans-serif; color: var(--ink); background: var(--bg); }
+::selection { background: #cfe4fa; }
+a { color: var(--accent); text-underline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code { background: #f0efee; padding: 1px 4px; border-radius: 3px; font-size: 13px; }
+
+header { padding: 16px 16px 0; }
+h1 { margin: 0; font-size: 18px; font-weight: 600; }
+h2 { margin: 20px 0 4px; font-size: 14px; font-weight: 600; }
+h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+.sheet-name { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+.pad { padding: 16px; }
+.hint { margin: 0 0 10px; color: var(--muted); font-size: 12px; }
+.warn { color: var(--warn); }
+#main-ui { padding: 0 16px 24px; }
+
+button { font: inherit; cursor: pointer; border-radius: 4px; }
+button:disabled { cursor: default; opacity: 0.45; }
+.primary, .secondary { display: block; width: 100%; padding: 9px 12px; font-size: 14px; }
+.primary { margin: 14px 0 8px; border: 0; background: var(--accent); color: #fff; font-weight: 600; }
+.primary:hover:not(:disabled) { background: var(--accent-dark); }
+.secondary { margin: 8px 0; border: 1px solid #c8c6c4; background: var(--card); color: var(--ink); }
+.secondary:hover:not(:disabled) { background: #f3f2f1; }
+.row-buttons { display: flex; gap: 8px; }
+.row-buttons > * { flex: 1; margin: 8px 0 0; }
+.link-btn { border: 0; background: none; color: var(--accent); padding: 12px 0 0; font-size: 13px; }
+

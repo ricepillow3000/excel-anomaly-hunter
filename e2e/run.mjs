@@ -72,7 +72,7 @@ if (mode === "flow") {
 
   // 5) ...also after the pane was closed and reopened (no memory of what it painted)
   await find();
-  await page.evaluate(() => { painted = null; __fill("Sales", "A30", "#00B050"); });
+  await page.evaluate(() => { __state.painted = null; __fill("Sales", "A30", "#00B050"); });
   await page.click("#clear-highlights"); await idle();
   const cleared = await page.evaluate(() => ["A22", "A51", "A30"].map((a) => __cell("Sales", a).fill));
   ok(cleared[0] === null && cleared[1] === null && cleared[2] === "#00B050", "reopened pane: only OUR colors are removed - " + cleared);

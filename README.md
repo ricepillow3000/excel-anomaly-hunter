@@ -29,8 +29,11 @@ plain-English request. Only the row asked about and a few rows around it go to G
 improve its products - don't use it on private data). A Claude key (`ANTHROPIC_API_KEY`) also works.
 No-Excel mode: `anomaly-hunter scan data.csv`.
 
-**Layout:** `anomaly_hunter/` engine + local server (127.0.0.1:5055) · `panel/` task pane, plain JS, no build, one path (Find problems -> highlight -> fix one row); one sheet action at a time, buttons disabled meanwhile · `powerbi/` Power BI Desktop source · `docs/` design notes.
+**Layout:**
+- `frontend/` the Excel pane, plain JS modules, no build: `pages/` (home, results, fix, limits, settings), `features/` (scan, highlight, fix, ai), `components/`, `hooks/` (shared state, one-action-at-a-time), `services/` (back end + Excel calls), `utils/`, `constants/`, `styles/`. Entry: `app.js`.
+- `backend/anomaly_hunter/` the local server (127.0.0.1:5055): `server.py` (routes), `engine/` (detection), `ai/client.py` (Gemini / Claude); `backend/tests/`, `backend/bench/`.
+- `e2e/` browser tests · `powerbi/` Power BI source · `docs/` design notes.
 
-**Test:** `pip install -e .[dev]` then `pytest` and `node panel/selfcheck.js`. Industry benchmark (15 fields + held-out
-traps, real panel + engine, pass/fail gates): `python bench/score.py .` Browser test (real panel + engine, fake Excel;
+**Test:** `pip install -e .[dev]` then `pytest backend/tests` and `node frontend/selfcheck.js`. Industry benchmark (15 fields + held-out
+traps, real pane + engine, pass/fail gates): `python backend/bench/score.py .` Browser test (real panel + engine, fake Excel;
 needs node + playwright; stop the installed engine first, it uses port 5055): `e2e/all.sh`

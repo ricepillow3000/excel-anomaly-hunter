@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Anomaly Hunter</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <link href="styles/global.css" rel="stylesheet" />
+  <link href="styles/components.css" rel="stylesheet" />
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <p id="sideload-msg" class="pad">Open this inside Excel.</p>
+
+  <main id="app-body" hidden>
+    <header>
+      <h1>Anomaly Hunter</h1>
+      <p class="sheet-name" id="sheet-name"></p>
+    </header>
+
+    <section id="server-down" class="pad" hidden>
+      <p><b>The checker isn't running.</b></p>
+      <p>Double-click <code>install.bat</code> in the Anomaly Hunter folder, then press Try again.</p>
+      <button id="retry-health" class="secondary">Try again</button>
+    </section>
+
+    <section id="main-ui" hidden>
+      <button id="scan" class="primary">Find problems in this sheet</button>
+
+      <div id="busy" role="status" aria-live="polite" hidden>
+        <div class="bar"><div id="busy-bar"></div></div>
+        <p id="busy-text"></p>
+      </div>
+      <p id="notice" role="status" aria-live="polite"></p>
+
+      <section id="empty-state">
+        <p>Click <b>Find problems</b> to check the sheet that is open.</p>
+        <p class="hint">Your data needs a top row of column names (like Date, Amount), with one record per row below it.</p>
+      </section>
+
+      <section id="results" hidden>
+        <p id="summary" class="summary"></p>
+        <ul id="legend" class="legend"></ul>
+        <p id="cut-note" class="hint warn" hidden></p>
+        <h2 id="list-title">Rows to check</h2>
+        <p class="hint">Worst first. Click a row to see what's wrong and a suggested fix.</p>
+        <ul id="flagged-list" class="flagged-list"></ul>
+        <button id="clear-highlights" class="secondary">Remove highlights</button>
+        <details class="more">
+          <summary>How strict should it be?</summary>
+          <p class="hint">Numbers outside a column's limits get flagged. The limits are worked out from your data. Change them if too much, or too little, gets flagged.</p>
+          <button id="edit-limits" class="secondary">Change limits</button>
+        </details>
+      </section>
+
+      <section id="limits-editor" hidden>
+        <h2>When to flag a number</h2>
+        <p class="hint">A number below <b>Flag below</b> or above <b>Flag above</b> gets flagged. Leave a box empty for no limit.</p>
+        <div id="limits-rows"></div>
+        <p id="limits-error" class="hint warn" role="alert"></p>
+        <button id="save-limits" class="primary">Save and check again</button>
+        <div class="row-buttons">
+          <button id="cancel-limits" class="secondary">Cancel</button>
+          <button id="auto-limits" class="secondary">Back to automatic</button>
+        </div>
+      </section>
+
+      <section id="fix-view" hidden>
+        <button id="fix-back" class="link-btn">&larr; All rows to check</button>
+        <h2 id="fix-title"></h2>
+        <p id="fix-reason" class="reason-box"></p>
+        <div class="fix-result">
+          <h3 id="fix-label">Suggested fix</h3>
+          <p id="fix-explanation"></p>
+          <ul id="fix-changes" class="fix-changes"></ul>
+          <div class="row-buttons">
+            <button id="fix-apply" class="primary">Apply fix</button>
+            <button id="fix-undo" class="secondary" hidden>Undo</button>
+          </div>
+        </div>
+        <div id="ai-box">
+          <label for="fix-intent">Want a different fix? Describe it and AI writes it for you.</label>
+          <textarea id="fix-intent" rows="3" placeholder="e.g. Use the average Units for the East region"></textarea>
+          <button id="fix-ask" class="secondary">Ask AI</button>
+        </div>
+        <p id="ai-off" class="hint">Want AI help with fixes? Turn it on for free under <b>AI help</b> at the bottom.</p>
+        <p id="fix-status" class="hint" role="status" aria-live="polite"></p>
+      </section>
+
+      <details id="settings" class="more">
+        <summary>AI help (optional, free)</summary>
+        <p id="ai-state" class="hint"></p>
+        <ol class="steps">
+          <li>Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> and sign in with a Google account. No credit card.</li>
+          <li>Click <b>Create API key</b> and copy it.</li>
+          <li>Paste it here and click Save.</li>
+        </ol>
+        <input id="ai-key" type="password" autocomplete="off" placeholder="Paste your key" aria-label="Google AI key" />
+        <div class="row-buttons">
+          <button id="save-key" class="secondary">Save key</button>
+          <button id="remove-key" class="secondary">Remove key</button>
+        </div>
+        <p class="hint">Only the row you ask about (and a few rows around it) is sent to Google. Google's free tier may use it to improve its products, so don't ask AI about private data. The key is stored only on this computer.</p>
+      </details>
+    </section>
+  </main>
+</body>
+</html>
