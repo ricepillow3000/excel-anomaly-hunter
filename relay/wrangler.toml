@@ -1,0 +1,18 @@
+# Cloudflare Worker config for the AI relay. Deploy from this folder: npx wrangler deploy
+# Secrets (never in this file or the repo): npx wrangler secret put GEMINI_KEY   and   npx wrangler secret put TOKENS
+name = "anomaly-hunter-relay"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[[durable_objects.bindings]]
+name = "COUNTER"
+class_name = "Counter"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Counter"] # the free plan's Durable Objects are SQLite-backed
+
+[vars]
+DAILY_PER_INVITE = "25" # AI fixes per invite code per day
+DAILY_TOTAL = "200"     # for everyone together: kept under the free Gemini quota so John's own use still works
