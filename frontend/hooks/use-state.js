@@ -8,6 +8,7 @@ export const state = {
   fix: null, // the row open in the fix view: {i, sheet, calc, changes}
   undos: {}, // row -> cells to put back, while an applied fix isn't undone
   handled: new Set(), // rows accepted or dismissed since the last scan: "Next row" skips them
+  order: [], // the flagged rows, worst first, as the last scan listed them
   aiAvailable: false,
   working: false, // one sheet action at a time; while one runs the buttons are disabled, never silently queued
   view: null, // which page is showing

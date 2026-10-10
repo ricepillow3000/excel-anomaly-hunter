@@ -13,6 +13,7 @@ import { setAi, askFix } from "./features/ai.js";
 import { showHome } from "./pages/home.js";
 import { openLimitsEditor, saveLimitsAndRescan } from "./pages/limits.js";
 import { dismissFix, nextFix } from "./pages/fix.js";
+import { listRows } from "./pages/results.js";
 import { initSettings } from "./pages/settings.js";
 
 if (typeof Office !== "undefined") {
@@ -27,7 +28,7 @@ if (typeof Office !== "undefined") {
     $("cancel-limits").onclick = () => only(state.lastScan ? "results" : "empty-state");
     $("save-limits").onclick = act(saveLimitsAndRescan);
     $("auto-limits").onclick = act(async () => (saveLimits(null), await runScan()));
-    $("fix-back").onclick = () => ((state.fix = null), only("results"));
+    $("fix-back").onclick = () => ((state.fix = null), listRows());
     $("fix-apply").onclick = act(() => state.fix && applyFix(state.fix, state.fix.changes, state.fix.sheet));
     $("fix-undo").onclick = act(() => state.fix && undoFix(state.fix));
     $("fix-dismiss").onclick = act(dismissFix);

@@ -13,6 +13,7 @@ export async function showFix(f, label, out) {
   $("fix-explanation").textContent = out.explanation;
   $("fix-changes").innerHTML = changeList(out.changes, olds);
   show("fix-apply", out.changes.length > 0);
+  $("fix-dismiss").textContent = out.changes.length ? "Dismiss" : "Looks right"; // no fix offered: the only question left
   setApplied(!!state.undos[f.i]);
 }
 

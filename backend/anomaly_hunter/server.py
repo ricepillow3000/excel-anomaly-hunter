@@ -165,6 +165,21 @@ def create_app(scan_csv=None):
             app.logger.exception("check failed")
             return {"error": "Engine error - details in server.log"}, 500
 
+    @app.post("/suggest")
+    def suggest_route():
+        """Agent 3 for an only-unusual row: the one typing slip that would make it normal, or {}."""
+        body = request.get_json(silent=True)
+        if err := _bad(body):
+            return {"error": err}, 400
+        i, cols = body.get("row_index"), [str(c) for c in body["columns"]]
+        if not (type(i) is int and 0 <= i < len(body["rows"]) and isinstance(body.get("column"), str) and body["column"] in cols):
+            return {"error": "'row_index' and 'column' must point inside the table"}, 400
+        try:
+            return checker.suggest(cols, body["rows"], body.get("limits"), i, body["column"])
+        except Exception:
+            app.logger.exception("suggest failed")
+            return {"error": "Engine error - details in server.log"}, 500
+
     return app
 
 

@@ -1,8 +1,8 @@
 // Pane pure-logic check, no Office/fetch. Run: node frontend/selfcheck.js
 import assert from "node:assert";
 import { esc, asNumber, median } from "./utils/text.js";
-import { cutNote, tableFromGrid, isDateFormat, excelDate, rowFromAddress, colLetter, cellAt } from "./utils/sheet.js";
-import { issuesOf, recommendFix, typoKind, spansDecade } from "./features/fix.js";
+import { cutNote, tableFromGrid, isDateFormat, excelDate, rowFromAddress, colLetter, cellAt, sameRow } from "./utils/sheet.js";
+import { issuesOf, recommendFix, typoKind, spansDecade, wrote, unusualColumn } from "./features/fix.js";
 import { plainReason, summaryOf, flaggedRows } from "./features/scan.js";
 
 // summary: "Noted" (inside the usual range) is fine, not a problem
@@ -33,6 +33,20 @@ assert.equal(median(["a"]), null);
 assert.deepEqual([0, 25, 26, 27, 701, 702].map(colLetter), ["A", "Z", "AA", "AB", "ZZ", "AAA"]);
 for (const n of [0, 25, 26, 701, 702]) assert.deepEqual(cellAt(colLetter(n) + "12"), { col: n, row: 12 }, "cellAt undoes colLetter");
 assert.equal(cellAt("=A1"), null);
+
+// the row Excel holds now vs the row the scan read: a date comes back as a serial, floats may wobble; any edit fails
+assert.ok(sameRow([46028, "East", 40, 0.1 + 0.2], ["2026-01-06", "East", 40, 0.3]));
+assert.ok(!sameRow([46028, "East", 41, 0.3], ["2026-01-06", "East", 40, 0.3]), "an edited cell");
+assert.ok(!sameRow([46029, "East", 40, 0.3], ["2026-01-06", "East", 40, 0.3]), "a different row slid in (sorted / inserted)");
+// does a cell still hold what a fix typed? (Excel makes "90" a number and tidies formulas)
+assert.ok(wrote(90, "90") && wrote("=AVERAGEIFS(C:C, B:B, \"East\")", "=averageifs(C:C,B:B,\"East\")") && wrote("", ""));
+assert.ok(!wrote(91, "90") && !wrote("", "90"), "edited after the fix");
+// the column an "only unusual" reason points at
+const uc = ["Units", "Unit Cost", "Total"];
+assert.equal(unusualColumn("Flagged by 1 of 3: Unusual combination of values, mainly Unit Cost", uc), "Unit Cost");
+assert.equal(unusualColumn("Flagged by 2 of 3: Units is unusual relative to its local trend near 2026-06-25", uc), "Units");
+assert.equal(unusualColumn("Flagged by 1 of 3: Total jumped sharply near 2026-06-25", uc), "Total");
+assert.equal(unusualColumn("Duplicate of row 2", uc), null);
 
 // instant recommendation: data A1:C5, header row 1, limits on Units only
 const cols = ["Date", "Region", "Units"];

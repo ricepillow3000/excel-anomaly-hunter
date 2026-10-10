@@ -1,11 +1,12 @@
 import { EXCEL_ERRORS } from "../constants/index.js";
 import { state } from "../hooks/use-state.js";
 import { $ } from "../utils/dom.js";
-import { cellAt, colLetter } from "../utils/sheet.js";
+import { cellAt, colLetter, sameRow } from "../utils/sheet.js";
 import { median } from "../utils/text.js";
 import { setApplied } from "../components/fix-preview.js";
+import { busy } from "../components/progress.js";
 import { post } from "../services/api.js";
-import { readCells, writeCells } from "../services/excel.js";
+import { readCells, readRows, writeCells } from "../services/excel.js";
 import { fillRow } from "./highlight.js";
 import { plainReason } from "./scan.js";
 
@@ -93,7 +94,36 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
   return { explanation: notes.join(" "), changes, guess: why.length > 0 }; // guess = a median stands in for an unknown value
 }
 
+// Pure: the column an "only unusual" reason points at (an odd mix across columns, or a break in a series), else null
+export function unusualColumn(reason, columns) {
+  for (const { text } of issuesOf(reason)) {
+    const m = /^Unusual combination of values, mainly (.+)$/.exec(text) || /^(.+?) (?:is unusual relative to its local trend|jumped sharply)/.exec(text);
+    if (m && columns.includes(m[1])) return m[1];
+  }
+  return null;
+}
+
+// A row that is only unusual gets no instant fix. Agent 3 hunts for the one typing slip (digits swapped, extra digit,
+// decimal point, sign) that makes the row normal again; none or two = the advice stays, nothing is guessed.
+export async function suggestTypo(f, r, rec) {
+  const { columns, rows, startRow, startCol } = state.lastScan;
+  const col = unusualColumn(r.reason, columns), j = columns.indexOf(col);
+  if (rec.changes.length || !col || String(f.calc?.[j] ?? "").startsWith("=")) return rec;
+  busy("Looking for a likely typo…");
+  const s = await post("/suggest", { columns, rows, limits: state.lastLimits, row_index: f.i, column: col });
+  if (s.value === undefined) return rec;
+  const v = rows[f.i][j];
+  return { typo: true, guess: true, changes: [{ cell: `${colLetter(startCol + j)}${startRow + 2 + f.i}`, new: String(s.value) }],
+    explanation: `Nothing here is clearly broken - the values are just unusual together. But ${col} ${v} could be a typo for ` +
+      `${s.value} (${s.kind}): with ${s.value} the whole row looks normal again. If ${v} is right, click Dismiss.` };
+}
+
 const typed = (v) => (typeof v === "string" && v.trim() !== "" && Number.isFinite(+v) ? +v : v); // "90" lands in Excel as 90
+// Pure: does a cell still hold what a fix typed into it? Excel turns "90" into 90 and tidies formula spacing/case.
+export const wrote = (now, typedIn) => { // ponytail: exact match after that tidy-up; Excel rewriting a formula's text differently counts as an edit
+  const tidy = (v) => String(v).replace(/\s+/g, "").toUpperCase();
+  return tidy(now) === tidy(typedIn) || (String(typedIn).trim() !== "" && +now === +typedIn);
+};
 
 // Agent 3 (in the engine): would these changes make row f.i look right? The engine scans the whole table again with
 // the first scan's limits. -> {clean, severity, reason}, or null when it can't be judged yet (a formula, a cell off the row).
@@ -110,6 +140,13 @@ export async function applyFix(f, changes, sheet) { // the fix, its changes and 
   $("fix-apply").disabled = true;
   const status = (t) => state.fix === f && ($("fix-status").textContent = t);
   try {
+    // the scan's addresses are only right while the rows are where the scan saw them: never write into a moved row
+    const { startRow, startCol, columns, rows } = state.lastScan;
+    const ks = [...new Set(changes.map((c) => cellAt(c.cell).row - startRow - 2))].filter((k) => rows[k]);
+    const now = await readRows(sheet, startRow, startCol, columns.length, ks);
+    const moved = ks.find((k, m) => !sameRow(now[m], rows[k]));
+    if (moved !== undefined) // an answer, not a failure: say so on the card, write nothing
+      return status(`Nothing written: row ${startRow + moved + 2} changed since the scan (edited, sorted or rows added). Click Find problems, then try again.`);
     const cells = changes.map((c) => c.cell);
     const olds = await readCells(sheet, cells);
     await writeCells(sheet, changes.map((c) => ({ cell: c.cell, value: c.new })));
@@ -144,6 +181,11 @@ export async function undoFix(f) {
   const u = state.undos[f.i];
   if (!u) return;
   try {
+    // a cell edited by hand after the fix is the user's now: Undo never types over it
+    const now = await readCells(u.sheet, u.writes.map((w) => w.cell));
+    const edited = u.writes.filter((w, k) => !wrote(now[k], u.changes[k].new)).map((w) => w.cell);
+    if (edited.length) // an answer, not a failure
+      return void (state.fix === f && ($("fix-status").textContent = `${edited.join(", ")} changed after the fix, so Undo left the row alone.`));
     await writeCells(u.sheet, u.writes); // back on the sheet it was applied to
     delete state.undos[f.i];
     state.lastScan.rows[f.i] = u.row;

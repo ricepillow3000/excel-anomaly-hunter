@@ -57,10 +57,21 @@ if (mode === "flow") {
   ok((await text("#fix-status")).includes("looks right now"), "checker re-scanned the fixed row - " + (await text("#fix-status")));
   ok((await cell("A11")).fill === "#00B050", "fixed row: highlight gone, the user's own green back");
   ok(await page.isVisible("#fix-next") && !(await page.isVisible("#fix-dismiss")), "then Undo / Next row");
-  await page.click("#fix-back"); await openRow(11); // a fixed row opened again still offers Undo
+  await page.click("#fix-back");
+  ok(/1 of \d+ done/.test(await text("#list-title")) && (await text("#flagged-list")).includes("Fixed"), "list keeps its rows and marks the fixed one - " + (await text("#list-title")));
+  await openRow(11); // a fixed row opened again still offers Undo
   ok((await text("#fix-title")) === "Row 11: fixed" && (await page.isVisible("#fix-undo")) && (await text("#fix-changes")).startsWith("C11: -5 → "), "reopened fixed row offers Undo");
+  const fixedTo = (await cell("C11")).v;
+  await page.evaluate(() => __edit("Sales", "C11", 7)); // the user retypes the cell by hand
+  await page.click("#fix-undo"); await idle();
+  ok((await cell("C11")).v === 7 && (await text("#fix-status")).includes("changed after the fix"), "Undo never types over a hand edit");
+  await page.evaluate((v) => __edit("Sales", "C11", v), fixedTo);
   await page.click("#fix-undo"); await idle();
   ok((await cell("C11")).v === -5 && !(await page.isVisible("#fix-undo")) && (await cell("A11")).fill === "#FFEB9C", "Undo puts it back, highlight too");
+  await page.evaluate(() => __edit("Sales", "B11", "North")); // the row changes after the scan (edited / sorted)
+  await page.click("#fix-apply"); await idle();
+  ok((await cell("C11")).v === -5 && (await text("#fix-status")).includes("changed since the scan"), "changed row: Accept refuses instead of writing into the wrong record");
+  await page.evaluate(() => __edit("Sales", "B11", "East"));
 
   // 3) clicking a highlighted row in the sheet opens it too; Dismiss leaves it, unhighlighted, and opens the next
   await page.click("#fix-back");
@@ -74,6 +85,7 @@ if (mode === "flow") {
 
   // 4) Remove highlights puts back exactly what was there (the user's green row 11 too)
   await page.click("#fix-back");
+  ok((await text("#flagged-list")).includes("Dismissed"), "the dismissed row is marked in the list");
   await page.click("#clear-highlights"); await idle();
   const after = await page.evaluate(() => ["A11", "A22", "B22", "A51"].map((a) => __cell("Sales", a).fill));
   ok(after[0] === "#00B050" && after[1] === null && after[2] === "#00B0F0" && after[3] === null, "Remove highlights restores the old fills, cell by cell on a two-color row - " + after);

@@ -24,6 +24,7 @@
 .row-head { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; }
 .row-head .sev { margin-left: auto; font-weight: 400; color: var(--muted); font-size: 12px; }
 .row-why { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 2px 0 0 20px; font-size: 12px; color: var(--muted); word-break: break-word; } /* full reason in the fix view */
+.flagged-list li.done { opacity: 0.6; } /* fixed or dismissed: still listed, so Undo is one click away */
 .flagged-list .more-rows { padding: 8px 4px; font-size: 12px; color: var(--muted); }
 
 details.more { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 10px; }

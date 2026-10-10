@@ -5,15 +5,18 @@ import { rowFromAddress } from "../utils/sheet.js";
 import { act } from "../hooks/use-action.js";
 import { busy, notice } from "../components/progress.js";
 import { showAccepted, showFix } from "../components/fix-preview.js";
-import { flaggedRows, plainReason } from "../features/scan.js";
-import { recommendFix } from "../features/fix.js";
+import { plainReason } from "../features/scan.js";
+import { recommendFix, suggestTypo } from "../features/fix.js";
 import { fillRow } from "../features/highlight.js";
+import { listRows } from "./results.js";
 
 // One row's card: what's wrong, the suggested fix (Accept / Dismiss, then Undo / Next row), and Ask AI.
 export function onSelect(e) {
   if (state.working || !state.lastScan || (state.view !== "results" && state.view !== "fix-view")) return; // never yank the user out of the limits editor
   const i = rowFromAddress(e.address, state.lastScan.startRow);
-  if (i !== null && (SEV[state.lastRows[i]?.severity] || state.undos[i]) && !(state.fix && state.fix.i === i)) act(() => openFix(i, false))();
+  // a dismissed row stays quiet when clicked in the sheet (the list still opens it); a fixed one offers Undo
+  const open = (SEV[state.lastRows[i]?.severity] && !state.handled.has(i)) || state.undos[i];
+  if (i !== null && open && !(state.fix && state.fix.i === i)) act(() => openFix(i, false))();
 }
 
 export async function openFix(i, selectInSheet) {
@@ -40,8 +43,10 @@ export async function openFix(i, selectInSheet) {
   if (u) return showAccepted(f, u);
   // totals rows don't count toward the median or the "naturally wide" test
   const data = rows.map((row, k) => (/^Totals\/summary row/.test(state.lastRows[k].reason) ? row.map(() => "") : row));
-  const rec = recommendFix(columns, data, i, state.lastLimits, r.reason, startRow, startCol, r.likely, f.calc);
-  const label = !rec.changes.length ? "What to check" : rec.guess ? "Best guess - check it before you accept" : "Suggested fix";
+  let rec = recommendFix(columns, data, i, state.lastLimits, r.reason, startRow, startCol, r.likely, f.calc);
+  if (state.fix === f) rec = await suggestTypo(f, r, rec).catch(() => rec); // no typo found or engine busy: the advice stays
+  const label = !rec.changes.length ? "What to check" : rec.typo ? "Possible typo - check it before you accept"
+    : rec.guess ? "Best guess - check it before you accept" : "Suggested fix";
   if (state.fix === f) await showFix(f, label, rec);
 }
 
@@ -54,12 +59,12 @@ export async function dismissFix() {
   await nextFix();
 }
 
-// The next flagged row nobody accepted or dismissed yet, worst first - selected in the sheet, card open.
+// The next row in the list (worst first) nobody accepted or dismissed yet - selected in the sheet, card open.
 export async function nextFix() {
-  const order = flaggedRows(state.lastRows).map((r) => r.i), at = order.indexOf(state.fix?.i);
+  const order = state.order, at = order.indexOf(state.fix?.i);
   const next = [...order.slice(at + 1), ...order.slice(0, at + 1)].find((i) => !state.handled.has(i));
   if (next !== undefined) return openFix(next, true);
   state.fix = null;
-  only("results");
+  listRows();
   notice("All flagged rows are done. Click Find problems to check the whole sheet again.");
 }

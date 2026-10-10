@@ -44,6 +44,16 @@ export async function readCells(sheetName, cells) {
   });
 }
 
+// The values of some data rows now (k = index into the scanned rows), to check nothing moved since the scan
+export async function readRows(sheetName, startRow, startCol, width, ks) {
+  return Excel.run(async (ctx) => {
+    const sheet = ctx.workbook.worksheets.getItem(sheetName);
+    const ranges = ks.map((k) => sheet.getRangeByIndexes(startRow + 1 + k, startCol, 1, width).load("values"));
+    await ctx.sync();
+    return ranges.map((r) => r.values[0]);
+  });
+}
+
 // Writes as if typed: "=..." becomes a formula, "42" a number. Old contents kept for Undo.
 export async function writeCells(sheetName, writes) {
   await Excel.run(async (ctx) => {
