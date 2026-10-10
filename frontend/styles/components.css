@@ -1,8 +1,25 @@
-/* the 0-10 slider under the button: how hard to look */
-.strength { margin: 4px 0 10px; }
-.strength label { display: block; font-size: 13px; }
-#strength { width: 100%; margin: 6px 0 2px; accent-color: var(--accent); }
-#strength-hint { min-height: 2.9em; margin: 0; } /* the words change length; the layout under them doesn't jump */
+/* the 0-10 slider under the button: how hard to look. A thin track with the chosen part filled, 11 tick marks, a
+   thumb that follows the pointer without lag (no transition on its position), and no text selection anywhere on it */
+.strength { margin: 6px 0 10px; user-select: none; -webkit-user-select: none; }
+.strength-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; }
+.strength-head b { font-variant-numeric: tabular-nums; font-weight: 600; }
+.slider { --pct: 50%; position: relative; height: 28px; margin: 2px 8px 0; cursor: pointer; touch-action: none; outline: none; }
+.slider-track { position: absolute; left: 0; right: 0; top: 12px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.slider-fill { width: var(--pct); height: 100%; background: var(--accent); }
+.slider::after { /* ticks at 0, 1, ... 10 */
+  content: ""; position: absolute; left: 0; width: calc(100% + 1px); top: 20px; height: 4px;
+  background: repeating-linear-gradient(90deg, #c8c6c4 0 1px, transparent 1px 10%);
+}
+.slider-thumb {
+  position: absolute; top: 6px; left: var(--pct); width: 16px; height: 16px; margin-left: -8px; border-radius: 50%;
+  background: var(--card); border: 2px solid var(--accent); box-sizing: border-box;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); transition: transform 0.12s ease-out;
+}
+.slider:hover .slider-thumb, .slider:active .slider-thumb { transform: scale(1.15); }
+.slider:focus-visible .slider-thumb { box-shadow: 0 0 0 3px #cfe4fa, 0 1px 3px rgba(0, 0, 0, 0.25); }
+@media (prefers-reduced-motion: reduce) { .slider-thumb { transition: none; } }
+.slider-scale { display: flex; justify-content: space-between; margin: 0 2px; font-size: 11px; color: var(--muted); }
+#strength-hint { min-height: 2.9em; margin: 4px 0 0; } /* the words change length; the layout under them doesn't jump */
 
 label.check { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 4px; }
 

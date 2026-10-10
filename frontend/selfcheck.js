@@ -4,7 +4,7 @@ import { esc, asNumber, median } from "./utils/text.js";
 import { cutNote, tableFromGrid, isDateFormat, excelDate, rowFromAddress, colLetter, cellAt, sameRow } from "./utils/sheet.js";
 import { issuesOf, recommendFix, typoKind, spansDecade, wrote, unusualColumn } from "./features/fix.js";
 import { plainReason, summaryOf, flaggedRows } from "./features/scan.js";
-import { strengthHint, asStrength } from "./pages/strength.js";
+import { strengthHint, asStrength, levelAt } from "./pages/strength.js";
 import { exactFixes } from "./features/autofix.js";
 
 // summary: "Noted" (inside the usual range) is fine, not a problem
@@ -54,6 +54,8 @@ assert.equal(unusualColumn("Duplicate of row 2", uc), null);
 assert.ok([...Array(11).keys()].every((s) => strengthHint(s).length > 10));
 assert.ok(strengthHint(0).startsWith("Basics") && strengthHint(5).startsWith("Recommended") && strengthHint(10).startsWith("Strictest"));
 assert.deepEqual([0, 10, 7, undefined, null, "3", 11, -1, 2.5].map(asStrength), [0, 10, 7, 5, 5, 5, 5, 5, 5]);
+// pointer anywhere on (or past) a 200px track starting at x=100 -> the nearest level
+assert.deepEqual([100, 110, 109, 200, 300, 0, 999, 141].map((x) => levelAt(x, 100, 200)), [0, 1, 0, 5, 10, 0, 10, 2]);
 // a misspelling's fix is offered, labelled a guess
 const mr = recommendFix(["Item"], [["Pencl"], ["Pencil"]], 0, {}, 'Item "Pencl" looks like a misspelling of "Pencil"', 0, 0, {}, null, { Item: "Pencil" });
 assert.deepEqual(mr.changes, [{ cell: "A2", new: "Pencil" }]);

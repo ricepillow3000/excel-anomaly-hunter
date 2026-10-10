@@ -27,8 +27,13 @@
     <section id="main-ui" hidden>
       <button id="scan" class="primary">Find problems in this sheet</button>
       <div class="strength">
-        <label for="strength">How hard to look: <b id="strength-val">5</b> of 10</label>
-        <input id="strength" type="range" min="0" max="10" step="1" value="5" />
+        <div class="strength-head"><span id="strength-label">How hard to look</span><b id="strength-val">5 of 10</b></div>
+        <div id="strength" class="slider" role="slider" tabindex="0" aria-labelledby="strength-label"
+             aria-valuemin="0" aria-valuemax="10" aria-valuenow="5">
+          <div class="slider-track"><div class="slider-fill"></div></div>
+          <div class="slider-thumb"></div>
+        </div>
+        <div class="slider-scale"><span>Basics</span><span>Recommended</span><span>Strictest</span></div>
         <p id="strength-hint" class="hint"></p>
       </div>
       <button id="undo-auto" class="secondary" hidden>Undo auto-fixes</button>

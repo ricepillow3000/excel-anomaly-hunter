@@ -112,18 +112,33 @@ if (mode === "flow") {
   await page.click("#edit-limits"); await page.click("#auto-limits"); await idle();
   ok(await page.evaluate(() => __settings.anomalyHunterLimits === undefined) && (await text("#flagged-list")).includes("Units is 9999"), "Back to automatic");
 
-  // 6b) the strength slider: letting go re-checks; 0 = basics only, saved in the workbook; 5 brings everything back
-  const slide = (v) => page.evaluate((v) => { const r = document.getElementById("strength"); r.value = v; r.dispatchEvent(new Event("input")); r.dispatchEvent(new Event("change")); }, v);
+  // 6b) the strength slider, driven by a real mouse: press the thumb, drag, let go -> re-check; 0 = basics only,
+  // saved in the workbook; 5 brings everything back
+  const track = async () => { const b = await page.locator("#strength").boundingBox(); return { x: (v) => b.x + (b.width * v) / 10, y: b.y + b.height / 2 }; };
+  const slide = async (from, to) => { const t = await track(); await page.mouse.move(t.x(from), t.y); await page.mouse.down(); await page.mouse.move(t.x(to), t.y, { steps: 8 }); await page.mouse.up(); };
+  const level = () => page.getAttribute("#strength", "aria-valuenow");
   const listed5 = (await page.$$("#flagged-list li")).length;
-  await slide("0"); await idle();
+  await slide(5, 0); await idle();
   const listed0 = (await page.$$("#flagged-list li")).length;
   ok(listed0 < listed5 && (await page.evaluate(() => __settings.anomalyHunterStrength)) === 0 && (await text("#strength-hint")).startsWith("Basics"),
     `strength 0 re-checks with the basics only (${listed5} -> ${listed0} rows), saved in the workbook`);
   const basics = await text("#flagged-list");
   const has = (r) => new RegExp(`Row ${r}(?!\\d)`).test(basics);
   ok([11, 51, 81, 121].every(has) && !has(22), "basics: minus sign, double entry, spelling, blank - not the plain outlier");
-  await slide("5"); await idle();
-  ok((await page.$$("#flagged-list li")).length === listed5 && (await text("#strength-val")) === "5", "back to 5: the same rows as before");
+  // the bug John hit: a check is running (the track was just clicked) and he grabs the thumb - it must still drag,
+  // and the level he lets go at is the one the sheet ends up checked with
+  await page.click("#scan");
+  ok((await page.evaluate(() => document.getElementById("scan").disabled)), "a check is running");
+  await slide(0, 8);
+  ok((await level()) === "8", "the thumb drags while a check runs");
+  await page.waitForFunction(() => !document.getElementById("scan").disabled && __settings.anomalyHunterStrength === 8);
+  await page.waitForTimeout(400); await idle();
+  ok((await page.evaluate(() => __state.lastStrength)) === 8, "the queued re-check ran with the newest level (8)");
+  await page.focus("#strength"); await page.keyboard.press("ArrowLeft"); await page.keyboard.press("ArrowLeft"); await page.keyboard.press("ArrowLeft");
+  ok((await level()) === "5", "arrow keys move it one step at a time");
+  await page.waitForTimeout(400); await idle();
+  ok((await page.$$("#flagged-list li")).length === listed5 && (await text("#strength-val")) === "5 of 10" && (await page.evaluate(() => __state.lastStrength)) === 5,
+    "back to 5: the same rows as before");
 
   // 6c) auto-fix (step 3): off by default; on = only the capitals/spaces slip, never numbers; Undo auto-fixes puts it back
   ok(!(await page.evaluate(() => document.getElementById("auto-fix").checked)), "auto-fix is off by default");
