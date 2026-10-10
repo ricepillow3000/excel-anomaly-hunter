@@ -51,3 +51,9 @@ export function colLetter(n) {
   for (n += 1; n; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s;
   return s;
 }
+
+// Pure: "AA12" -> {col: 26, row: 12} (0-based column, sheet row number), or null
+export function cellAt(cell) {
+  const m = /^([A-Z]+)(\d+)$/.exec(String(cell));
+  return m && { col: [...m[1]].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1, row: +m[2] };
+}

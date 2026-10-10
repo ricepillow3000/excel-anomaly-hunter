@@ -19,8 +19,10 @@ Tested on 100k real NYC taxi trips (1.7M cells): 8 s per scan, under 1% false al
 
 **Use it:** click **Find problems in this sheet**. A progress line shows each step; rows to check are highlighted
 (orange = probably wrong, pale yellow = worth a quick check) and listed worst first. Click a row (in the list or the
-sheet) for a **suggested fix**, free and instant (e.g. a number past its limits -> the median of the rest of its
-column). You see old -> new, nothing changes until **Apply fix**, and **Undo** puts it back. **Remove highlights**
+sheet) for a suggestion card, free and instant (e.g. 900 -> 90, "looks like a typo"; a median is labelled a best
+guess). You see old -> new and choose: **Accept** writes it, then the checker scans the table again and the row's
+highlight goes once it looks right (**Undo** puts it back); **Dismiss** leaves the row as it is and opens the next one.
+**Remove highlights**
 puts the sheet's colors back as they were. "How strict should it be?" lets you change each column's limits.
 
 **AI help (optional, free):** under "AI help" in the pane, paste a free Google Gemini key from

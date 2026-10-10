@@ -1,5 +1,6 @@
 // Anomaly Hunter task pane - entry point. Plain JS modules, no build. Talks to the local back end at the same origin.
-// Workflow: Home -> Find problems (Agent 1 in the engine) -> highlight -> results (Agent 2) -> fix a row / Ask AI.
+// Workflow: Home -> Find problems (Agent 1 in the engine) -> highlight -> results (Agent 2) -> a row's card: Accept / Dismiss / Ask AI
+// -> Agent 3 in the engine checks AI fixes before they show, and every accepted fix after it is written.
 import { state } from "./hooks/use-state.js";
 import { $, show, only } from "./utils/dom.js";
 import { act } from "./hooks/use-action.js";
@@ -11,6 +12,7 @@ import { applyFix, undoFix } from "./features/fix.js";
 import { setAi, askFix } from "./features/ai.js";
 import { showHome } from "./pages/home.js";
 import { openLimitsEditor, saveLimitsAndRescan } from "./pages/limits.js";
+import { dismissFix, nextFix } from "./pages/fix.js";
 import { initSettings } from "./pages/settings.js";
 
 if (typeof Office !== "undefined") {
@@ -28,6 +30,8 @@ if (typeof Office !== "undefined") {
     $("fix-back").onclick = () => ((state.fix = null), only("results"));
     $("fix-apply").onclick = act(() => state.fix && applyFix(state.fix, state.fix.changes, state.fix.sheet));
     $("fix-undo").onclick = act(() => state.fix && undoFix(state.fix));
+    $("fix-dismiss").onclick = act(dismissFix);
+    $("fix-next").onclick = act(nextFix);
     $("fix-ask").onclick = askFix;
     $("fix-intent").onkeydown = (e) => e.key === "Enter" && e.ctrlKey && askFix();
     initSettings();

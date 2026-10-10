@@ -19,11 +19,9 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 from flask import Flask, request
 
+from anomaly_hunter.agents import checker, scan_agent
 from anomaly_hunter.ai import client
 from anomaly_hunter.engine.detectors import K
-from anomaly_hunter.engine.limits import suggest_limits_dict
-from anomaly_hunter.engine.load import load_from_records, numbers
-from anomaly_hunter.engine.pipeline import score
 
 PANEL = Path(__file__).resolve().parents[2] / "frontend"  # the pane, served as-is
 HOME = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local") / "AnomalyHunter"  # cert, key, log
@@ -87,12 +85,8 @@ def create_app(scan_csv=None):
         if err := _bad(body):
             return {"error": err}, 400
         cols, rows, limits = [str(c) for c in body["columns"]], body["rows"], body.get("limits")  # a year header 2024 is "2024"
-        try:
-            df, types, errors = load_from_records(cols, rows)
-            # one scan, no stop: limits are suggested from the data; limits the user saved win, column by column
-            suggested = suggest_limits_dict(df, numbers(types))
-            used = {**suggested, **(limits or {})}
-            out, status = score(df, types, errors, used, None if body.get("order_by") is None else str(body["order_by"]))
+        try:  # Agent 1, one scan, no stop
+            df, out, suggested, used, status = scan_agent.scan(cols, rows, limits, None if body.get("order_by") is None else str(body["order_by"]))
         except Exception:  # a bug in the engine: full detail to the log, not pandas internals to the user
             app.logger.exception("scan failed")
             return {"error": "Engine error - details in server.log"}, 500
@@ -153,6 +147,23 @@ def create_app(scan_csv=None):
             return {"error": "'formulas' must be a list as long as 'columns'"}, 400
         return ai(lambda: client.suggest_fix(body["columns"], body["rows"], body["row_index"], body["start_row"],
                                              body["start_col"], str(body.get("reason") or ""), intent, formulas))
+
+    @app.post("/check")
+    def check_route():
+        """Agent 3: does this fix make the row look right? A full re-scan with the limits the first scan used."""
+        body = request.get_json(silent=True)
+        if err := _bad(body):
+            return {"error": err}, 400
+        i, changes, width = body.get("row_index"), body.get("changes"), len(body["columns"])
+        cell = lambda v: v is None or isinstance(v, (str, bool, int)) or isinstance(v, float) and math.isfinite(v)
+        if not (type(i) is int and 0 <= i < len(body["rows"]) and isinstance(changes, list) and 0 < len(changes) <= width and all(
+                isinstance(c, dict) and type(c.get("col")) is int and 0 <= c["col"] < width and cell(c.get("value")) for c in changes)):
+            return {"error": "'row_index' and 'changes' [{col, value}] must point inside the table"}, 400
+        try:
+            return checker.check([str(c) for c in body["columns"]], body["rows"], body.get("limits"), i, changes)
+        except Exception:
+            app.logger.exception("check failed")
+            return {"error": "Engine error - details in server.log"}, 500
 
     return app
 

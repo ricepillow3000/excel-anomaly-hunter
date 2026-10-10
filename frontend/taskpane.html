@@ -67,16 +67,19 @@
 
       <section id="fix-view" hidden>
         <button id="fix-back" class="link-btn">&larr; All rows to check</button>
-        <h2 id="fix-title"></h2>
-        <p id="fix-reason" class="reason-box"></p>
         <div class="fix-result">
+          <h2 id="fix-title"></h2>
+          <p id="fix-reason" class="reason-box"></p>
           <h3 id="fix-label">Suggested fix</h3>
-          <p id="fix-explanation"></p>
           <ul id="fix-changes" class="fix-changes"></ul>
+          <p id="fix-explanation"></p>
           <div class="row-buttons">
-            <button id="fix-apply" class="primary">Apply fix</button>
+            <button id="fix-apply" class="primary">Accept</button>
+            <button id="fix-dismiss" class="secondary">Dismiss</button>
             <button id="fix-undo" class="secondary" hidden>Undo</button>
+            <button id="fix-next" class="secondary" hidden>Next row &rarr;</button>
           </div>
+          <p id="fix-status" class="hint" role="status" aria-live="polite"></p>
         </div>
         <div id="ai-box">
           <label for="fix-intent">Want a different fix? Describe it and AI writes it for you.</label>
@@ -84,7 +87,6 @@
           <button id="fix-ask" class="secondary">Ask AI</button>
         </div>
         <p id="ai-off" class="hint">Want AI help with fixes? Turn it on for free under <b>AI help</b> at the bottom.</p>
-        <p id="fix-status" class="hint" role="status" aria-live="polite"></p>
       </section>
 
       <details id="settings" class="more">

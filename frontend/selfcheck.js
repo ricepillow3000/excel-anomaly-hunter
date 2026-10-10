@@ -1,7 +1,7 @@
 // Pane pure-logic check, no Office/fetch. Run: node frontend/selfcheck.js
 import assert from "node:assert";
 import { esc, asNumber, median } from "./utils/text.js";
-import { cutNote, tableFromGrid, isDateFormat, excelDate, rowFromAddress, colLetter } from "./utils/sheet.js";
+import { cutNote, tableFromGrid, isDateFormat, excelDate, rowFromAddress, colLetter, cellAt } from "./utils/sheet.js";
 import { issuesOf, recommendFix, typoKind, spansDecade } from "./features/fix.js";
 import { plainReason, summaryOf, flaggedRows } from "./features/scan.js";
 
@@ -31,6 +31,8 @@ assert.equal(median([3, 1, "x", "", null, 2]), 2);
 assert.equal(median([4, 1, 2, 3]), 2.5);
 assert.equal(median(["a"]), null);
 assert.deepEqual([0, 25, 26, 27, 701, 702].map(colLetter), ["A", "Z", "AA", "AB", "ZZ", "AAA"]);
+for (const n of [0, 25, 26, 701, 702]) assert.deepEqual(cellAt(colLetter(n) + "12"), { col: n, row: 12 }, "cellAt undoes colLetter");
+assert.equal(cellAt("=A1"), null);
 
 // instant recommendation: data A1:C5, header row 1, limits on Units only
 const cols = ["Date", "Region", "Units"];
@@ -39,6 +41,8 @@ const lim = { Units: [10, 80, 0, 120] };
 let rec = recommendFix(cols, data, 1, lim, "Flagged by 2 of 4: Units weird limit is 0; this is -5", 0, 0);
 assert.deepEqual(rec.changes, [{ cell: "C3", new: "40.5" }], "median of the OTHER rows (40, 41; blank skipped), as a plain value");
 assert.ok(rec.explanation.startsWith("Units is -5, outside its limits (0 to 120)"), rec.explanation);
+assert.equal(rec.guess, true, "a median is a best guess, and the card says so");
+assert.equal(recommendFix(cols, data, 1, lim, "x", 0, 0, { Units: 5 }).guess, false, "an obvious typo (-5 for 5) is not a guess");
 rec = recommendFix(cols, data, 0, lim, "x", 0, 0);
 assert.deepEqual(rec.changes, [], "inside limits: no change");
 assert.ok(rec.explanation.includes("Nothing here is clearly broken"));

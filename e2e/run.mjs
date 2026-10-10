@@ -46,22 +46,31 @@ if (mode === "flow") {
   const fills = await page.evaluate(() => ["A11", "A22", "A51", "A81", "A121", "A2"].map((a) => __cell("Sales", a).fill));
   ok(fills.slice(0, 5).every((f) => f === "#FFEB9C") && fills[5] === null, "flagged rows highlighted, clean rows not - " + fills);
 
-  // 2) open a row, Apply, Undo
+  // 2) open a row's card, Accept (Agent 3 checks it again, highlight goes), Undo
   await openRow(11);
   ok((await text("#fix-title")) === "Row 11: probably wrong", "fix view titled in words");
   ok((await text("#fix-reason")) === "Units is -5, below its usual limit of 0", "reason in plain words");
   ok((await text("#fix-changes")).startsWith("C11: -5 → "), "preview old -> new");
+  ok(await page.isVisible("#fix-dismiss") && !(await page.isVisible("#fix-next")), "card asks: Accept or Dismiss");
   await page.click("#fix-apply"); await idle();
-  ok((await cell("C11")).v !== -5 && (await page.isVisible("#fix-undo")) && (await text("#fix-apply")) === "Applied", "Apply writes the cell");
+  ok((await cell("C11")).v !== -5 && (await page.isVisible("#fix-undo")) && (await text("#fix-apply")) === "Accepted", "Accept writes the cell");
+  ok((await text("#fix-status")).includes("looks right now"), "checker re-scanned the fixed row - " + (await text("#fix-status")));
+  ok((await cell("A11")).fill === "#00B050", "fixed row: highlight gone, the user's own green back");
+  ok(await page.isVisible("#fix-next") && !(await page.isVisible("#fix-dismiss")), "then Undo / Next row");
+  await page.click("#fix-back"); await openRow(11); // a fixed row opened again still offers Undo
+  ok((await text("#fix-title")) === "Row 11: fixed" && (await page.isVisible("#fix-undo")) && (await text("#fix-changes")).startsWith("C11: -5 → "), "reopened fixed row offers Undo");
   await page.click("#fix-undo"); await idle();
-  ok((await cell("C11")).v === -5 && !(await page.isVisible("#fix-undo")), "Undo puts it back");
+  ok((await cell("C11")).v === -5 && !(await page.isVisible("#fix-undo")) && (await cell("A11")).fill === "#FFEB9C", "Undo puts it back, highlight too");
 
-  // 3) clicking a highlighted row in the sheet opens it too
+  // 3) clicking a highlighted row in the sheet opens it too; Dismiss leaves it, unhighlighted, and opens the next
   await page.click("#fix-back");
   await page.evaluate(() => __userSelect("Sales", "B22"));
   await page.waitForFunction(() => document.getElementById("fix-title").textContent.startsWith("Row 22"), null, { timeout: 10000 }).catch(() => {});
   ok((await text("#fix-title")).startsWith("Row 22"), "sheet click opens the row");
   await idle();
+  await page.click("#fix-dismiss"); await idle();
+  ok((await cell("C22")).v === 9999 && (await cell("A22")).fill === null && (await cell("B22")).fill === "#00B0F0", "Dismiss keeps the value and removes only our highlight");
+  ok(/^Row \d+/.test(await text("#fix-title")) && !(await text("#fix-title")).startsWith("Row 22"), "and moves to the next row - " + (await text("#fix-title")));
 
   // 4) Remove highlights puts back exactly what was there (the user's green row 11 too)
   await page.click("#fix-back");
@@ -113,9 +122,9 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
   await page.click("#fix-ask");
   await page.waitForFunction(() => document.getElementById("fix-label").textContent === "AI's fix", null, { timeout: 30000 });
   ok((await text("#fix-changes")).startsWith("C11: -5 → =AVERAGEIFS("), "AI's fix previewed - " + (await text("#fix-changes")));
-  ok((await cell("C11")).v === -5, "nothing written before Apply");
+  ok((await cell("C11")).v === -5, "nothing written before Accept");
   await page.click("#fix-apply"); await idle();
-  ok(String((await cell("C11")).f).startsWith("=AVERAGEIFS("), "Apply writes the AI formula");
+  ok(String((await cell("C11")).f).startsWith("=AVERAGEIFS("), "Accept writes the AI formula");
 }
 
 if (mode === "nokey") {

@@ -1,10 +1,13 @@
 import { EXCEL_ERRORS } from "../constants/index.js";
 import { state } from "../hooks/use-state.js";
 import { $ } from "../utils/dom.js";
-import { colLetter } from "../utils/sheet.js";
+import { cellAt, colLetter } from "../utils/sheet.js";
 import { median } from "../utils/text.js";
 import { setApplied } from "../components/fix-preview.js";
+import { post } from "../services/api.js";
 import { readCells, writeCells } from "../services/excel.js";
+import { fillRow } from "./highlight.js";
+import { plainReason } from "./scan.js";
 
 // Fix one row: the instant suggested fix (no AI), and Apply / Undo.
 // Pure: a reason -> its parts ("Units weird limit is 0; this is -5" stays ONE part)
@@ -87,28 +90,54 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
       `(or wrap it in IFERROR(...)) rather than typing a number over it.`);
   if (!notes.length)
     notes.push("Nothing here is clearly broken - the values are just unusual together. Check them against the source; if they're right, leave them.");
-  return { explanation: notes.join(" "), changes };
+  return { explanation: notes.join(" "), changes, guess: why.length > 0 }; // guess = a median stands in for an unknown value
 }
 
-export async function applyFix(f, changes, sheet) { // the fix, its changes and sheet as they were when Apply was clicked
+const typed = (v) => (typeof v === "string" && v.trim() !== "" && Number.isFinite(+v) ? +v : v); // "90" lands in Excel as 90
+
+// Agent 3 (in the engine): would these changes make row f.i look right? The engine scans the whole table again with
+// the first scan's limits. -> {clean, severity, reason}, or null when it can't be judged yet (a formula, a cell off the row).
+export async function checkFix(f, changes) {
+  const { columns, rows, startRow, startCol } = state.lastScan;
+  const at = changes.map((c) => ({ ...cellAt(c.cell), value: typed(c.new) }));
+  const off = (a) => a.row !== startRow + 2 + f.i || a.col < startCol || a.col >= startCol + columns.length || String(a.value).startsWith("=");
+  if (!at.length || at.some(off)) return null;
+  return post("/check", { columns, rows, limits: state.lastLimits, row_index: f.i, changes: at.map((a) => ({ col: a.col - startCol, value: a.value })) });
+}
+
+export async function applyFix(f, changes, sheet) { // the fix, its changes and sheet as they were when Accept was clicked
   if (state.undos[f.i]) return;
   $("fix-apply").disabled = true;
+  const status = (t) => state.fix === f && ($("fix-status").textContent = t);
   try {
     const cells = changes.map((c) => c.cell);
     const olds = await readCells(sheet, cells);
     await writeCells(sheet, changes.map((c) => ({ cell: c.cell, value: c.new })));
-    state.undos[f.i] = { sheet, writes: cells.map((cell, k) => ({ cell, value: olds[k] })) }; // all read before any write
-    if (state.fix === f) {
-      setApplied(true);
-      $("fix-status").textContent = "Applied. Click Find problems to check the sheet again.";
-    }
+    // all read before any write; the row and its verdict as they were, for Undo
+    state.undos[f.i] = { sheet, changes, writes: cells.map((cell, k) => ({ cell, value: olds[k] })), row: state.lastScan.rows[f.i],
+      verdict: state.lastRows[f.i], wasHandled: state.handled.has(f.i) }; // dismissed before: Undo leaves it dismissed
+    state.handled.add(f.i);
+    if (state.fix === f) setApplied(true);
   } catch (e) {
-    if (state.fix === f) {
-      $("fix-apply").disabled = false;
-      $("fix-status").textContent = "Apply failed: " + e.message;
-    }
+    if (state.fix === f) $("fix-apply").disabled = false;
+    status("Accept failed: " + e.message);
     throw e;
   }
+  status("Accepted. Checking the row again…");
+  let v;
+  try {
+    v = await checkFix(f, changes);
+  } catch (e) {
+    return status(`Accepted. Couldn't check it again (${e.message}) - click Find problems to check the sheet.`);
+  }
+  if (!v) return status("Accepted. A formula is checked when you click Find problems again.");
+  const { startRow, startCol } = state.lastScan, row = [...state.lastScan.rows[f.i]];
+  changes.forEach((c) => (row[cellAt(c.cell).col - startCol] = typed(c.new)));
+  state.lastScan.rows[f.i] = row; // later checks and fixes see the fixed row
+  state.lastRows[f.i] = { ...state.lastRows[f.i], severity: v.severity, reason: v.reason };
+  await fillRow(f.i, !v.clean); // fixed: highlight off. Still odd: recolored by its new severity
+  status(v.clean ? `Accepted and checked again: row ${startRow + f.i + 2} looks right now.`
+    : `Accepted, but the checker still sees a problem: ${plainReason(v.reason)}. Undo it, or describe a better fix to AI.`);
 }
 
 export async function undoFix(f) {
@@ -117,6 +146,12 @@ export async function undoFix(f) {
   try {
     await writeCells(u.sheet, u.writes); // back on the sheet it was applied to
     delete state.undos[f.i];
+    state.lastScan.rows[f.i] = u.row;
+    state.lastRows[f.i] = u.verdict;
+    if (!u.wasHandled) {
+      state.handled.delete(f.i);
+      await fillRow(f.i, true);
+    }
     if (state.fix === f) {
       setApplied(false);
       $("fix-status").textContent = "Undone - the cells are back to what they were.";

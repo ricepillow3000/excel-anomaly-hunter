@@ -47,17 +47,36 @@ export async function unpaint() {
       const part = idx.slice(k, k + CHUNK);
       const fills = part.map((i) => sheet.getRangeByIndexes(p.startRow + 1 + i, p.startCol, 1, p.width).format.fill.load("color"));
       await ctx.sync();
-      const put = (fill, old) => (old && String(old).toUpperCase() !== "#FFFFFF" ? (fill.color = old) : fill.clear());
-      fills.forEach((fill, m) => {
-        if (!ours.has(String(fill.color).toUpperCase())) return;
-        const old = p.colors[part[m]];
-        if (!Array.isArray(old)) return put(fill, old);
-        old.forEach((c, j) => put(sheet.getRangeByIndexes(p.startRow + 1 + part[m], p.startCol + j, 1, 1).format.fill, c));
-      });
+      fills.forEach((fill, m) => ours.has(String(fill.color).toUpperCase()) && restore(sheet, p, part[m], fill));
       await ctx.sync();
     }
   });
   state.painted = null;
+}
+
+// Put back row i's remembered fill (one color, or each cell's own when the row was mixed)
+function restore(sheet, p, i, fill) {
+  const put = (fill, old) => (old && String(old).toUpperCase() !== "#FFFFFF" ? (fill.color = old) : fill.clear());
+  const old = p.colors[i];
+  if (!Array.isArray(old)) return put(fill, old);
+  old.forEach((c, j) => put(sheet.getRangeByIndexes(p.startRow + 1 + i, p.startCol + j, 1, 1).format.fill, c));
+}
+
+// One row's highlight off (fix accepted and re-checked, or dismissed) or back on (Undo). Like Grammarly's underline.
+// Only a row still wearing our color, or its own untouched fill, is changed: a fill the user put on since stays.
+export async function fillRow(i, on) {
+  const p = state.painted, color = COLOR[state.lastRows[i]?.severity];
+  if (!p || !(i in p.colors) || (on && !color)) return; // pane reopened since painting: nothing remembered
+  await Excel.run(async (ctx) => {
+    const sheet = ctx.workbook.worksheets.getItem(p.sheet);
+    const fill = sheet.getRangeByIndexes(p.startRow + 1 + i, p.startCol, 1, p.width).format.fill.load("color");
+    await ctx.sync();
+    const now = fill.color === null ? null : String(fill.color).toUpperCase(), old = p.colors[i]; // null = mixed fills
+    const ours = new Set(Object.values(COLOR)).has(now);
+    if (!on && ours) restore(sheet, p, i, fill);
+    if (on && (ours || (Array.isArray(old) ? now === null : now === String(old).toUpperCase()))) fill.color = color;
+    await ctx.sync();
+  });
 }
 
 // No record of what was painted (the pane was reopened): on each row that starts with one of our three colors,

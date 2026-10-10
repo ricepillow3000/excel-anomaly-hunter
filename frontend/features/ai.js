@@ -2,6 +2,8 @@ import { state } from "../hooks/use-state.js";
 import { $, show } from "../utils/dom.js";
 import { post } from "../services/api.js";
 import { showFix } from "../components/fix-preview.js";
+import { checkFix } from "./fix.js";
+import { plainReason } from "./scan.js";
 
 // Ask AI: the API client in the workflow (the engine forwards to Gemini). Optional; fixes work without it.
 export function setAi(on) {
@@ -35,6 +37,9 @@ export async function askFix() { // talks to the engine only; the sheet is touch
       columns, rows, row_index: f.i, start_row: startRow, start_col: startCol,
       reason: state.lastRows[f.i].reason, intent: $("fix-intent").value, formulas: f.calc,
     }, 300);
+    const v = await checkFix(f, out.changes).catch(() => null); // Agent 3 looks first; null = a formula, judged after Accept
+    if (v) out.explanation += v.clean ? " Checked: with this fix the row looks right."
+      : ` Checked: with this fix the row would still look unusual - ${plainReason(v.reason)}.`;
     if (state.fix === f) await showFix(f, "AI's fix", out); // else: the user moved to another row meanwhile
   } catch (e) {
     if (state.fix === f) $("fix-status").textContent = "AI could not help: " + e.message;

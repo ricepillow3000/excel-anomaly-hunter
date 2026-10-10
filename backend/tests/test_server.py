@@ -208,7 +208,7 @@ def test_duplicate_headers_stay_distinct_after_dedup():
 
 
 def test_an_engine_bug_is_logged_not_leaked(monkeypatch):
-    import anomaly_hunter.server as srv
+    import anomaly_hunter.agents.scan_agent as srv  # the scan moved into Agent 1
     monkeypatch.setattr(srv, "score", lambda *a: (_ for _ in ()).throw(RuntimeError("pandas internal detail")))
     r = scan({"columns": ["Name", "Amt"], "rows": GOOD})
     assert r.status_code == 500 and r.get_json() == {"error": "Engine error - details in server.log"}

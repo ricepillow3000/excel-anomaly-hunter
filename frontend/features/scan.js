@@ -27,6 +27,7 @@ export async function runScan() {
   state.lastRows = body.rows;
   state.lastLimits = body.limits || {};
   state.undos = {};
+  state.handled = new Set();
   $("sheet-name").textContent = s.sheet;
   renderResults(body.rows, s);
   await paint(body.rows, s);

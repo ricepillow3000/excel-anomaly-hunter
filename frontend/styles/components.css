@@ -38,11 +38,15 @@ details.more[open] summary { margin-bottom: 8px; }
 .limits-head { font-weight: 600; color: var(--muted); }
 .limits-row input { width: 100%; box-sizing: border-box; padding: 4px; font: inherit; font-size: 12px; border: 1px solid #c8c6c4; border-radius: 3px; }
 
-.reason-box { margin: 6px 0 12px; font-size: 13px; }
-.fix-result { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 12px; margin-bottom: 16px; }
-#fix-explanation { margin: 0 0 8px; font-size: 13px; }
-.fix-changes { list-style: none; margin: 0; padding: 0; font-size: 13px; }
-.fix-changes li { padding: 4px 0; word-break: break-word; }
+/* the suggestion card: what's wrong, the change (old -> new) up front, Accept / Dismiss */
+.reason-box { margin: 0 0 12px; font-size: 13px; color: var(--muted); }
+.fix-result { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 6px; padding: 12px; margin: 10px 0 16px; }
+.fix-result h2 { margin: 0 0 4px; }
+.fix-result #fix-status { margin: 10px 0 0; }
+.fix-result #fix-status:empty { display: none; }
+#fix-explanation { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+.fix-changes { list-style: none; margin: 0; padding: 0; font-size: 15px; }
+.fix-changes li { padding: 2px 0; word-break: break-word; }
 .fix-changes .old { color: var(--muted); text-decoration: line-through; }
 .fix-changes .new { color: #0e700e; font-weight: 600; }
 .fix-result .primary { margin: 0; }
