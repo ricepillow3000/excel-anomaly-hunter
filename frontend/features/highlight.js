@@ -100,6 +100,9 @@ export async function clearOurColors() {
         if (!ours.has(color)) continue;
         let run = 1;
         while (run < w && String(row[run].format.fill.color).toUpperCase() === color) run++;
+        // we paint whole table rows; a shorter run is the user's own fill - Excel's "Bad"/"Neutral" cell styles use
+        // these very colors
+        if (run < w) continue;
         sheet.getRangeByIndexes(r0 + k + m, c0, 1, run).format.fill.clear();
         if (++queued % CHUNK === 0) await ctx.sync();
       }

@@ -93,10 +93,11 @@ if (mode === "flow") {
 
   // 5) ...also after the pane was closed and reopened (no memory of what it painted)
   await find();
-  await page.evaluate(() => { __state.painted = null; __fill("Sales", "A30", "#00B050"); });
+  await page.evaluate(() => { __state.painted = null; __fill("Sales", "A30", "#00B050"); __fill("Sales", "D40", "#FFC7CE"); });
   await page.click("#clear-highlights"); await idle();
-  const cleared = await page.evaluate(() => ["A22", "A51", "A30"].map((a) => __cell("Sales", a).fill));
+  const cleared = await page.evaluate(() => ["A22", "A51", "A30", "D40"].map((a) => __cell("Sales", a).fill));
   ok(cleared[0] === null && cleared[1] === null && cleared[2] === "#00B050", "reopened pane: only OUR colors are removed - " + cleared);
+  ok(cleared[3] === "#FFC7CE", "a single cell in Excel's own 'Bad' style (same pink) is the user's, and stays");
 
   // 6) limits: plain words, bad input refused, saving rescans, "Back to automatic" resets
   const openStrict = () => page.locator("details.more").first().evaluate((d) => (d.open = true));
@@ -184,6 +185,8 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
   ok((await cell("C11")).v === -5, "nothing written before Accept");
   await page.click("#fix-apply"); await idle();
   ok(String((await cell("C11")).f).startsWith("=AVERAGEIFS("), "Accept writes the AI formula");
+  await page.click("#fix-undo"); await idle();
+  ok((await cell("C11")).v === -5 && !String((await cell("C11")).f ?? "").startsWith("="), "Undo takes the AI formula back out - " + (await text("#fix-status")));
 }
 
 if (mode === "nokey") {

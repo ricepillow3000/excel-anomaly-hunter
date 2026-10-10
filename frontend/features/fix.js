@@ -46,7 +46,8 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
     const variant = likely && typeof likely[c] === "string" && typeof v === "string"; // "sales" where the column says "Sales"
     const miss = !variant && maybe && typeof maybe[c] === "string" && typeof v === "string"; // "Pencl" where it says "Pencil"
     const blank = !!lim && (v === "" || v === null) && reason.includes(`Blank cell in column ${c},`);
-    const outside = !!lim && typeof v === "number" && ((lo != null && v < lo) || (hi != null && v > hi));
+    // only a value the engine flagged: it never votes on a regular repeated value (a 5.76 toll), so neither do we
+    const outside = !!lim && typeof v === "number" && ((lo != null && v < lo) || (hi != null && v > hi)) && reason.includes(`${c} weird limit is`);
     if (!(variant || miss || blank || outside)) return;
     seen.add(c);
     if (calc && String(calc[j]).startsWith("=")) return void calcCells.push(cell); // never type over a formula
@@ -126,16 +127,9 @@ export async function suggestTypo(f, r, rec) {
 }
 
 export const typed = (v) => (typeof v === "string" && v.trim() !== "" && Number.isFinite(+v) ? +v : v); // "90" lands in Excel as 90
-// Pure: does a cell still hold what a fix typed into it? Excel turns "90" into 90 and tidies a formula's spacing/case;
-// text must match exactly ("EAST" typed over an auto-fixed "East" is the user's edit; a cleared cell is not 0).
-export const wrote = (now, typedIn) => { // ponytail: Excel rewriting a formula's text some other way counts as an edit
-  const s = String(typedIn), tidy = (v) => String(v).replace(/\s+/g, "").toUpperCase();
-  if (s.startsWith("=")) return tidy(now) === tidy(s);
-  return String(now) === s || (s.trim() !== "" && String(now).trim() !== "" && +now === +s);
-};
 
 // Pure: a row as it should look after a fix: the scanned row with the fix's cells (those in sheet row rowNum) typed in.
-// Undo compares the sheet to this, so after a sort it never writes the old value into a different record.
+// Undo auto-fixes compares the sheet to this, so after a sort it never writes the old value into a different record.
 export const afterFix = (row, changes, startCol, rowNum) => changes.reduce((r, c) => {
   const at = cellAt(c.cell);
   if (at.row === rowNum) r[at.col - startCol] = typed(c.new);
@@ -166,11 +160,12 @@ export async function applyFix(f, changes, sheet) { // the fix, its changes and 
     if (moved !== undefined) // an answer, not a failure: say so on the card, write nothing
       return status(`Nothing written: row ${startRow + moved + 2} changed since the scan (edited, sorted or rows added). Click Find problems, then try again.`);
     const cells = changes.map((c) => c.cell);
-    const olds = await readCells(sheet, cells);
+    const olds = await readCells(sheet, cells), formats = await readCells(sheet, cells, "numberFormat");
     await writeCells(sheet, changes.map((c) => ({ cell: c.cell, value: c.new })));
-    // all read before any write; the row and its verdict as they were, for Undo
-    state.undos[f.i] = { sheet, changes, writes: cells.map((cell, k) => ({ cell, value: olds[k] })), row: state.lastScan.rows[f.i],
-      verdict: state.lastRows[f.i], wasHandled: state.handled.has(f.i) }; // dismissed before: Undo leaves it dismissed
+    const after = await readCells(sheet, cells); // exactly what Excel made of it ("12%" -> 0.12): Undo checks against this
+    // all read before any write; the cells (with their number formats), the row and its verdict as they were, for Undo
+    state.undos[f.i] = { sheet, changes, after, writes: cells.map((cell, k) => ({ cell, value: olds[k], format: formats[k] })),
+      row: state.lastScan.rows[f.i], verdict: state.lastRows[f.i], wasHandled: state.handled.has(f.i) }; // dismissed: stays so
     state.handled.add(f.i);
     if (state.fix === f) setApplied(true);
   } catch (e) {
@@ -199,14 +194,16 @@ export async function undoFix(f) {
   const u = state.undos[f.i];
   if (!u) return;
   try {
-    // Undo only types into the same record it fixed: the row must still look as the fix left it (a sort or an
-    // inserted row moves another record under these addresses), and a cell edited by hand since is the user's now
+    // Undo only types into the same record it fixed: the row's other cells must still be what the scan read (a sort or
+    // an inserted row moves another record under these addresses), and each fixed cell must still hold exactly what
+    // Excel made of the fix - a cell edited by hand since is the user's now
     const { startRow, startCol, columns } = state.lastScan, rowNum = startRow + 2 + f.i;
     const [row] = await readRows(u.sheet, [{ row: rowNum - 1, col: startCol, width: columns.length }]);
     const now = await readCells(u.sheet, u.writes.map((w) => w.cell));
-    const edited = u.writes.filter((w, k) => !wrote(now[k], u.changes[k].new)).map((w) => w.cell);
+    const edited = u.writes.filter((w, k) => now[k] !== u.after[k]).map((w) => w.cell);
     const say = (t) => void (state.fix === f && ($("fix-status").textContent = t)); // an answer, not a failure
-    if (!sameRow(row.values, afterFix(u.row, u.changes, startCol, rowNum), row.calc))
+    const fixedHere = row.calc.map((calc, j) => calc || u.changes.some((c) => cellAt(c.cell).row === rowNum && cellAt(c.cell).col === startCol + j));
+    if (!sameRow(row.values, u.row, fixedHere))
       return say(`Undo left the sheet alone: row ${rowNum} changed after the fix (edited, sorted or rows added).`);
     if (edited.length) return say(`${edited.join(", ")} changed after the fix, so Undo left the row alone.`);
     await writeCells(u.sheet, u.writes); // back on the sheet it was applied to

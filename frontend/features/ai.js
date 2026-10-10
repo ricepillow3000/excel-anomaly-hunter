@@ -19,7 +19,8 @@ export async function saveKey(key) {
     const out = await post("/key", { key: key.trim() });
     $("ai-key").value = ""; // the key never stays on screen
     setAi(out.ai_available);
-    $("ai-state").textContent = out.ai_available ? "Saved. AI help is on." : "Key removed. AI help is off.";
+    // the engine tested the key with Google: "Key works", or why it was saved untested
+    $("ai-state").textContent = out.message || (out.ai_available ? "Saved. AI help is on." : "Key removed. AI help is off.");
   } catch (e) {
     $("ai-state").textContent = e.message;
   }

@@ -31,6 +31,24 @@ def api_key_configured():
     return provider() is not None
 
 
+def check_key(key):
+    """Ask Google (its models list) whether a pasted key works and may use GEMINI_MODEL -> (ok, words for the pane).
+    ok None = Google couldn't be asked (offline): the key is kept and Ask AI will say whether it works."""
+    url = GEMINI_URL.rsplit("/chat/completions", 1)[0] + "/models"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"Authorization": f"Bearer {key}"}), timeout=15) as r:
+            ids = {str(m.get("id", "")).removeprefix("models/") for m in json.load(r).get("data", [])}
+    except urllib.error.HTTPError as e:
+        if e.code in (400, 401, 403):
+            return False, "Google did not accept this key - copy the whole key again from aistudio.google.com."
+        return None, f"Saved. Google answered with error {e.code} while testing it - Ask AI will tell you if it works."
+    except (OSError, ValueError, AttributeError):  # offline, timeout, or an answer that isn't the expected list
+        return None, "Saved. Couldn't reach Google to test the key - check the internet connection."
+    if GEMINI_MODEL not in ids:
+        return True, f"Saved - the key works, but it can't use {GEMINI_MODEL}, so Ask AI won't work yet. Tell the developer."
+    return True, "Key works. AI help is on."
+
+
 # ---- Fix one flagged row from a plain-English request. Claude proposes cell writes; the panel shows
 # them old -> new and writes nothing until the user clicks Apply (with Undo). ----
 
@@ -49,8 +67,9 @@ class Fix(BaseModel):
     changes: list[CellChange]
 
 
-# formulas that reach outside the workbook - a prompt-injected sheet could use them to send data out
-OUTSIDE = re.compile(r"WEBSERVICE|IMAGE\s*\(|HYPERLINK|RTD\s*\(|CALL\s*\(|REGISTER|FILTERXML|://|\[|\|", re.IGNORECASE)
+# formulas that reach outside the workbook - a prompt-injected sheet could use them to send data out.
+# "[Book.xlsx]Sheet!" = another workbook ("]" then a sheet name and "!"); Table1[Units] is this workbook's own table
+OUTSIDE = re.compile(r"WEBSERVICE|IMAGE\s*\(|HYPERLINK|RTD\s*\(|CALL\s*\(|REGISTER|FILTERXML|://|\][^\[\]]*!|\|", re.IGNORECASE)
 
 
 def refers_to_itself(cell, text):
@@ -130,8 +149,9 @@ def _ask(prompt):
         bad_key = e.code in (401, 403) or (e.code == 400 and "API key" in e.read().decode("utf-8", "replace"))  # Google: 400 "API key not valid"
         raise ValueError("The free Google AI limit is used up for now - try again in a minute. The suggested fix above still works."
                          if e.code == 429 else "Google did not accept the AI key - paste it again under AI help."
-                         if bad_key else f"Google AI answered with error {e.code} - try again shortly.") from None
-    except (urllib.error.URLError, TimeoutError):
+                         if bad_key else f"Google doesn't offer the AI model {GEMINI_MODEL} to this key - tell the developer."
+                         if e.code == 404 else f"Google AI answered with error {e.code} - try again shortly.") from None
+    except OSError:  # no connection, timeout, connection reset mid-answer
         raise ValueError("Could not reach Google AI - check the internet connection.") from None
     except (KeyError, IndexError, TypeError, ValueError):  # no answer, or not the JSON asked for
         raise ValueError("Google AI's answer came back incomplete - try again.") from None

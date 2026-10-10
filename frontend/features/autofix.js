@@ -24,7 +24,10 @@ export async function autoFix() {
   if (!fixes.length) return 0;
   const cells = fixes.map((x) => `${colLetter(startCol + x.j)}${startRow + 2 + x.k}`);
   const olds = await readCells(sheet, cells);
-  const writes = fixes.map((x, m) => ({ cell: cells[m], old: olds[m], value: x.value })).filter((w) => !String(w.old).startsWith("="));
+  // only rows still where the scan saw them (the sheet stays editable during a long scan: a sort moves records)
+  const now = await readRows(sheet, fixes.map((x) => ({ row: startRow + 1 + x.k, col: startCol, width: columns.length })));
+  const writes = fixes.map((x, m) => ({ cell: cells[m], old: olds[m], value: x.value }))
+    .filter((w, m) => sameRow(now[m].values, rows[fixes[m].k], now[m].calc) && !String(w.old).startsWith("="));
   if (!writes.length) return 0;
   const typedIn = writes.map((w) => ({ cell: w.cell, new: w.value }));
   writes.forEach((w) => { // the whole row as auto-fix leaves it: Undo checks it is still the same record (sorts move rows)

@@ -36,27 +36,37 @@ def suggest_limits_dict(df, number_columns, k=6):
     out = {}
     for c in number_columns:
         x = df.loc[keep, c].dropna()
-        if len(x):
-            med, sd = float(x.median()), spread(x)
-            step = 10 ** math.floor(math.log10(sd)) if sd > 0 else None
-            v = [_round(med + m * sd, step, m > 0) for m in (-3, 3, -k, k)]
-            q10, q90 = x.quantile([0.1, 0.9])
-            pos = x[x > 0]
-            if (x >= 0).mean() >= 0.95 and len(pos) >= 10 and q90 - med > 2 * (med - q10):  # long right tail (fares, tips)
-                lg = np.log(pos)  # highs on log scale, positives only: 42% zero tips would widen it 20x
-                lmed, lsd = float(lg.median()), spread(lg)
-                v[1], v[3] = (max(v[j], _round(float(np.exp(lmed + m * lsd)), step, True)) for j, m in ((1, 3), (3, k)))
-            if (x >= 0).mean() >= 0.95:  # counts/prices: a negative is weird, so lows stop at 0
-                v[0], v[2] = max(v[0], 0.0), max(v[2], 0.0)
-                if (x == 0).mean() >= 0.05:  # zero is a regular value (weekends, no-sale days), not an error
-                    v[0] = v[2] = 0.0
-            if len(x) >= 10 and (x > 0).all():  # all positive: >=15x below typical is weird too (sq ft 19 for 1915)
-                logs = np.log10(x)
-                low = 10 ** (logs.median() - max(6 * spread(logs), math.log10(15)))
-                v[2] = max(v[2], _round(low, 10 ** math.floor(math.log10(low)), False))  # its own scale: 57 -> 50, not 0
-                v[0] = max(v[0], v[2])  # baseline is never tighter than weird
-            out[c] = tuple(v)
+        try:
+            if len(x):
+                out[c] = _limits(x, k)
+        except (ValueError, OverflowError):  # 1e-100 next to 1e99: no usual range exists - no limits, not a crash
+            continue
     return out
+
+
+def _limits(x, k):
+    """One column's (b_lo, b_hi, w_lo, w_hi) - see suggest_limits_dict."""
+    med, sd = float(x.median()), spread(x)
+    step = 10 ** math.floor(math.log10(sd)) if sd > 0 else None
+    v = [_round(med + m * sd, step, m > 0) for m in (-3, 3, -k, k)]
+    q10, q90 = x.quantile([0.1, 0.9])
+    pos = x[x > 0]
+    if (x >= 0).mean() >= 0.95 and len(pos) >= 10 and q90 - med > 2 * (med - q10):  # long right tail (fares, tips)
+        lg = np.log(pos)  # highs on log scale, positives only: 42% zero tips would widen it 20x
+        lmed, lsd = float(lg.median()), spread(lg)
+        v[1], v[3] = (max(v[j], _round(float(np.exp(lmed + m * lsd)), step, True)) for j, m in ((1, 3), (3, k)))
+    if (x >= 0).mean() >= 0.95:  # counts/prices: a negative is weird, so lows stop at 0
+        v[0], v[2] = max(v[0], 0.0), max(v[2], 0.0)
+        if (x == 0).mean() >= 0.05:  # zero is a regular value (weekends, no-sale days), not an error
+            v[0] = v[2] = 0.0
+    if len(x) >= 10 and (x > 0).all():  # all positive: >=15x below typical is weird too (sq ft 19 for 1915)
+        logs = np.log10(x)
+        low = 10 ** (logs.median() - max(6 * spread(logs), math.log10(15)))
+        v[2] = max(v[2], _round(low, 10 ** math.floor(math.log10(low)), False))  # its own scale: 57 -> 50, not 0
+        v[0] = max(v[0], v[2])  # baseline is never tighter than weird
+    if not all(math.isfinite(t) for t in v):  # an infinite limit can't even be sent to the pane as JSON
+        raise ValueError("no usual range")
+    return tuple(v)
 
 
 def suggest_limits(df, number_columns, out_path):

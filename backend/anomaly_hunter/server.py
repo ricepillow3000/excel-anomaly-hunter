@@ -100,8 +100,10 @@ def create_app(scan_csv=None):
             return {"error": "Engine error - details in server.log"}, 500
         if scan_csv:  # Power BI reads this file: no HTTPS/cert in its way, survives engine restarts
             try:
+                taken = set(df.columns)  # a sheet's own "Severity" or "Reason" column is never overwritten
                 flat = pd.DataFrame(rows, columns=df.columns).assign(**{
-                    k.capitalize(): [r[k] for r in out] for k in ("severity", "bucket", "reason", "magnitude")})
+                    (k.capitalize() if k.capitalize() not in taken else f"Anomaly Hunter {k.capitalize()}"): [r[k] for r in out]
+                    for k in ("severity", "bucket", "reason", "magnitude")})
                 flat.to_csv(f"{scan_csv}.tmp", index=False, encoding="utf-8-sig")
                 os.replace(f"{scan_csv}.tmp", scan_csv)  # Power BI never reads a half-written file
             except OSError:  # file open elsewhere: the scan itself still answers
@@ -129,15 +131,19 @@ def create_app(scan_csv=None):
     @app.post("/key")
     def key_route():
         """Save (or with "" remove) the free Gemini key in %LOCALAPPDATA%/AnomalyHunter - this PC only."""
-        key = (request.get_json(silent=True) or {}).get("key")
+        body = request.get_json(silent=True)
+        key = body.get("key") if isinstance(body, dict) else None
         if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_\-]{0,200}", key.strip()):
             return {"error": "That doesn't look like an API key - copy it again from aistudio.google.com."}, 400
         client.KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
-        if key.strip():
-            client.KEY_FILE.write_text(key.strip(), encoding="utf-8")
-        else:
+        if not key.strip():
             client.KEY_FILE.unlink(missing_ok=True)
-        return {"ai_available": client.api_key_configured(), "ai_provider": client.provider()}
+            return {"ai_available": client.api_key_configured(), "ai_provider": client.provider()}
+        ok, words = client.check_key(key.strip())  # tested now, not at the first Ask AI
+        if ok is False:
+            return {"error": words}, 400  # a rejected key is not kept
+        client.KEY_FILE.write_text(key.strip(), encoding="utf-8")
+        return {"ai_available": client.api_key_configured(), "ai_provider": client.provider(), "message": words}
 
     @app.post("/fix")
     def fix_route():

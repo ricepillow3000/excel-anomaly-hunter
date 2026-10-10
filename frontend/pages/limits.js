@@ -4,7 +4,7 @@ import { esc, asNumber } from "../utils/text.js";
 import { getLimits, saveLimits } from "../services/excel.js";
 import { runScan } from "../features/scan.js";
 
-// "How strict should it be?": plain "flag below / flag above" per number column.
+// "Exact limits per column (advanced)": plain "flag below / flag above" per number column.
 export function openLimitsEditor() {
   $("limits-error").textContent = "";
   const box = $("limits-rows");
@@ -28,9 +28,12 @@ export async function saveLimitsAndRescan() {
     const [lo, hi] = ins.map((x) => (x.value === "" ? null : parseFloat(x.value)));
     const [noteLo, noteHi, wasLo, wasHi] = state.lastLimits[row.dataset.column] || [];
     if (lo === (wasLo ?? null) && hi === (wasHi ?? null)) return; // unchanged: keeps following the data
-    // the "noted" band (shown nowhere) stays inside the new flag limits
-    limits[row.dataset.column] = [noteLo ?? null, noteHi ?? null, lo, hi].map((v, k) =>
+    // the "noted" band (shown nowhere) stays inside the new flag limits; moved wholly past it, it becomes the flag band
+    // (else it ends up low > high and the engine refuses every scan)
+    const b = [noteLo ?? null, noteHi ?? null, lo, hi].map((v, k) =>
       k === 0 && lo !== null && v !== null ? Math.max(v, lo) : k === 1 && hi !== null && v !== null ? Math.min(v, hi) : v);
+    if (b[0] !== null && b[1] !== null && b[0] > b[1]) [b[0], b[1]] = [lo, hi];
+    limits[row.dataset.column] = b;
     if (!bad && lo !== null && hi !== null && lo > hi) bad = [row.dataset.column, ins[0]];
   });
   if (bad) {

@@ -35,12 +35,13 @@ export async function readSheet(onSlice) {
   });
 }
 
-export async function readCells(sheetName, cells) {
+// One property of each cell: "formulas" (what was typed) or "numberFormat" (how it shows)
+export async function readCells(sheetName, cells, prop = "formulas") {
   return Excel.run(async (ctx) => {
     const sheet = ctx.workbook.worksheets.getItem(sheetName);
-    const ranges = cells.map((c) => sheet.getRange(c).load("formulas"));
+    const ranges = cells.map((c) => sheet.getRange(c).load(prop));
     await ctx.sync();
-    return ranges.map((r) => r.formulas[0][0]);
+    return ranges.map((r) => r[prop][0][0]);
   });
 }
 
@@ -55,11 +56,16 @@ export async function readRows(sheetName, spans) {
   });
 }
 
-// Writes as if typed: "=..." becomes a formula, "42" a number. Old contents kept for Undo.
+// Writes as if typed: "=..." becomes a formula, "42" a number. Old contents kept for Undo. A write with a `format`
+// puts that number format back too (typing "12%" makes a cell a percent; Undo must undo that as well).
 export async function writeCells(sheetName, writes) {
   await Excel.run(async (ctx) => {
     const sheet = ctx.workbook.worksheets.getItem(sheetName);
-    writes.forEach((w) => (sheet.getRange(w.cell).formulas = [[w.value]]));
+    writes.forEach((w) => {
+      const r = sheet.getRange(w.cell);
+      r.formulas = [[w.value]];
+      if (w.format !== undefined) r.numberFormat = [[w.format]];
+    });
     await ctx.sync();
   });
 }
