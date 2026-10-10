@@ -22,6 +22,7 @@ export function initStrength(rescan) {
   $("strength").onchange = () => { // let go: save it and, once a sheet was checked, check it again
     Office.context.document.settings.set(STRENGTH_KEY, strength());
     Office.context.document.settings.saveAsync();
-    if (state.lastScan) rescan();
+    // the slider is off while the sheet is re-checked, which drops keyboard focus: hand it back so arrows keep working
+    if (state.lastScan) rescan().then(() => $("strength").focus());
   };
 }
