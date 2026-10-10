@@ -43,7 +43,7 @@ export async function openFix(i, selectInSheet) {
   if (u) return showAccepted(f, u);
   // totals rows don't count toward the median or the "naturally wide" test
   const data = rows.map((row, k) => (/^Totals\/summary row/.test(state.lastRows[k].reason) ? row.map(() => "") : row));
-  let rec = recommendFix(columns, data, i, state.lastLimits, r.reason, startRow, startCol, r.likely, f.calc);
+  let rec = recommendFix(columns, data, i, state.lastLimits, r.reason, startRow, startCol, r.likely, f.calc, r.maybe);
   if (state.fix === f) rec = await suggestTypo(f, r, rec).catch(() => rec); // no typo found or engine busy: the advice stays
   const label = !rec.changes.length ? "What to check" : rec.typo ? "Possible typo - check it before you accept"
     : rec.guess ? "Best guess - check it before you accept" : "Suggested fix";

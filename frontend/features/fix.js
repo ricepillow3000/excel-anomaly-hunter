@@ -35,22 +35,29 @@ export function spansDecade(xs) {
 // over the column could loop back through a totals row = circular reference). Anything else -> advice only.
 // limits = {col: [baseLo, baseHi, weirdLo, weirdHi]}.
 // calc = this row's formulas: a cell holding a formula is never overwritten - its inputs are what's wrong.
-export function recommendFix(columns, rows, i, limits, reason, startRow, startCol, likely, calc) {
+export function recommendFix(columns, rows, i, limits, reason, startRow, startCol, likely, calc, maybe) {
   const row = startRow + 2 + i;
   const changes = [], why = [], typos = [], real = [], calcCells = [], seen = new Set(); // seen: columns already explained
+  let guessed = false; // a misspelling's fix is a guess too
   reason = reason || "";
   columns.forEach((c, j) => {
     const v = rows[i][j], cell = `${colLetter(startCol + j)}${row}`;
     const lim = limits && limits[c], lo = lim && lim[2], hi = lim && lim[3];
     const variant = likely && typeof likely[c] === "string" && typeof v === "string"; // "sales" where the column says "Sales"
+    const miss = !variant && maybe && typeof maybe[c] === "string" && typeof v === "string"; // "Pencl" where it says "Pencil"
     const blank = !!lim && (v === "" || v === null) && reason.includes(`Blank cell in column ${c},`);
     const outside = !!lim && typeof v === "number" && ((lo != null && v < lo) || (hi != null && v > hi));
-    if (!(variant || blank || outside)) return;
+    if (!(variant || miss || blank || outside)) return;
     seen.add(c);
     if (calc && String(calc[j]).startsWith("=")) return void calcCells.push(cell); // never type over a formula
     if (variant) {
       changes.push({ cell, new: likely[c] });
       return void typos.push(`${c} says "${v}" where the rest of the column says "${likely[c]}" - same word, different capitals/spaces`);
+    }
+    if (miss) {
+      changes.push({ cell, new: maybe[c] });
+      guessed = true;
+      return void typos.push(`${c} says "${v}" - probably a misspelling of "${maybe[c]}", one letter off`);
     }
     const typo = likely && likely[c];
     if (typo != null && outside) { // engine spotted an obvious typo: extra/missing zeros or a flipped sign
@@ -91,7 +98,7 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
       `(or wrap it in IFERROR(...)) rather than typing a number over it.`);
   if (!notes.length)
     notes.push("Nothing here is clearly broken - the values are just unusual together. Check them against the source; if they're right, leave them.");
-  return { explanation: notes.join(" "), changes, guess: why.length > 0 }; // guess = a median stands in for an unknown value
+  return { explanation: notes.join(" "), changes, guess: why.length > 0 || guessed }; // guess = a median or a misspelling's fix
 }
 
 // Pure: the column an "only unusual" reason points at (an odd mix across columns, or a break in a series), else null
@@ -110,7 +117,7 @@ export async function suggestTypo(f, r, rec) {
   const col = unusualColumn(r.reason, columns), j = columns.indexOf(col);
   if (rec.changes.length || !col || String(f.calc?.[j] ?? "").startsWith("=")) return rec;
   busy("Looking for a likely typo…");
-  const s = await post("/suggest", { columns, rows, limits: state.lastLimits, row_index: f.i, column: col });
+  const s = await post("/suggest", { columns, rows, limits: state.lastLimits, strength: state.lastStrength, row_index: f.i, column: col });
   if (s.value === undefined) return rec;
   const v = rows[f.i][j];
   return { typo: true, guess: true, changes: [{ cell: `${colLetter(startCol + j)}${startRow + 2 + f.i}`, new: String(s.value) }],
@@ -132,7 +139,8 @@ export async function checkFix(f, changes) {
   const at = changes.map((c) => ({ ...cellAt(c.cell), value: typed(c.new) }));
   const off = (a) => a.row !== startRow + 2 + f.i || a.col < startCol || a.col >= startCol + columns.length || String(a.value).startsWith("=");
   if (!at.length || at.some(off)) return null;
-  return post("/check", { columns, rows, limits: state.lastLimits, row_index: f.i, changes: at.map((a) => ({ col: a.col - startCol, value: a.value })) });
+  return post("/check", { columns, rows, limits: state.lastLimits, strength: state.lastStrength, row_index: f.i,
+    changes: at.map((a) => ({ col: a.col - startCol, value: a.value })) });
 }
 
 export async function applyFix(f, changes, sheet) { // the fix, its changes and sheet as they were when Accept was clicked

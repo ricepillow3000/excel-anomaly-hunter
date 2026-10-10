@@ -8,6 +8,7 @@ import { getLimits, readSheet, watchSelection } from "../services/excel.js";
 import { paint } from "./highlight.js";
 import { renderResults } from "../pages/results.js";
 import { onSelect } from "../pages/fix.js";
+import { strength } from "../pages/strength.js";
 
 // Agent 2 in the workflow: read the sheet, have the engine check it, deliver the results to the pane.
 // ---- Find problems: read, check, list, highlight ----
@@ -22,7 +23,9 @@ export async function runScan() {
     return notice("Not enough data here. Put a row of column names on top, with at least one row of data below it.");
   }
   busy(`Step 2 of 3: checking ${n(s.rows.length)} rows…`);
-  const body = await post("/scan", { columns: s.columns, rows: s.rows, limits: await getLimits(), order_by: null }, 300);
+  const level = strength();
+  const body = await post("/scan", { columns: s.columns, rows: s.rows, limits: await getLimits(), order_by: null, strength: level }, 300);
+  state.lastStrength = level; // Agent 3 judges fixes at the level this scan used
   state.lastScan = s;
   state.lastRows = body.rows;
   state.lastLimits = body.limits || {};

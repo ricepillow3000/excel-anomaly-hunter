@@ -7,7 +7,7 @@ import { setAi } from "../features/ai.js";
 export const act = (fn) => async (...args) => {
   if (state.working) return;
   state.working = true;
-  document.querySelectorAll("#main-ui button").forEach((b) => (b.disabled = true));
+  document.querySelectorAll("#main-ui button, #strength").forEach((b) => (b.disabled = true)); // the slider too: no scan stacks on a scan
   notice("");
   try {
     await fn(...args);
@@ -17,7 +17,7 @@ export const act = (fn) => async (...args) => {
   } finally {
     state.working = false;
     busy(null);
-    document.querySelectorAll("#main-ui button").forEach((b) => (b.disabled = false));
+    document.querySelectorAll("#main-ui button, #strength").forEach((b) => (b.disabled = false));
     setAi(state.aiAvailable); // Ask AI stays off without a key
     if (state.fix) setApplied(!!state.undos[state.fix.i]);
   }

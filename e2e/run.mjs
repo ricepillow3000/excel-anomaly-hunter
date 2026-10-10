@@ -112,6 +112,19 @@ if (mode === "flow") {
   await page.click("#edit-limits"); await page.click("#auto-limits"); await idle();
   ok(await page.evaluate(() => __settings.anomalyHunterLimits === undefined) && (await text("#flagged-list")).includes("Units is 9999"), "Back to automatic");
 
+  // 6b) the strength slider: letting go re-checks; 0 = basics only, saved in the workbook; 5 brings everything back
+  const slide = (v) => page.evaluate((v) => { const r = document.getElementById("strength"); r.value = v; r.dispatchEvent(new Event("input")); r.dispatchEvent(new Event("change")); }, v);
+  const listed5 = (await page.$$("#flagged-list li")).length;
+  await slide("0"); await idle();
+  const listed0 = (await page.$$("#flagged-list li")).length;
+  ok(listed0 < listed5 && (await page.evaluate(() => __settings.anomalyHunterStrength)) === 0 && (await text("#strength-hint")).startsWith("Basics"),
+    `strength 0 re-checks with the basics only (${listed5} -> ${listed0} rows), saved in the workbook`);
+  const basics = await text("#flagged-list");
+  const has = (r) => new RegExp(`Row ${r}(?!\\d)`).test(basics);
+  ok([11, 51, 81, 121].every(has) && !has(22), "basics: minus sign, double entry, spelling, blank - not the plain outlier");
+  await slide("5"); await idle();
+  ok((await page.$$("#flagged-list li")).length === listed5 && (await text("#strength-val")) === "5", "back to 5: the same rows as before");
+
   // 7) rescans don't stack click-watchers; a second sheet takes the watcher over
   await find(); await find();
   ok(await page.evaluate(() => __handlers("Sales")) === 1, "rescans don't stack selection handlers");

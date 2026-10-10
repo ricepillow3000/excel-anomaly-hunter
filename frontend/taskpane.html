@@ -26,6 +26,11 @@
 
     <section id="main-ui" hidden>
       <button id="scan" class="primary">Find problems in this sheet</button>
+      <div class="strength">
+        <label for="strength">How hard to look: <b id="strength-val">5</b> of 10</label>
+        <input id="strength" type="range" min="0" max="10" step="1" value="5" />
+        <p id="strength-hint" class="hint"></p>
+      </div>
 
       <div id="busy" role="status" aria-live="polite" hidden>
         <div class="bar"><div id="busy-bar"></div></div>
@@ -47,8 +52,8 @@
         <ul id="flagged-list" class="flagged-list"></ul>
         <button id="clear-highlights" class="secondary">Remove highlights</button>
         <details class="more">
-          <summary>How strict should it be?</summary>
-          <p class="hint">Numbers outside a column's limits get flagged. The limits are worked out from your data. Change them if too much, or too little, gets flagged.</p>
+          <summary>Exact limits per column (advanced)</summary>
+          <p class="hint">The slider above is the easy way. Here you can set the exact number below or above which a column gets flagged; these win over the slider for that column.</p>
           <button id="edit-limits" class="secondary">Change limits</button>
         </details>
       </section>

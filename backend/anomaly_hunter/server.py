@@ -54,7 +54,14 @@ def _bad(body):
             return f"Limits for {col}: the low value is above the high value - fix it in Edit limits"
     if body.get("order_by") is not None and str(body["order_by"]) not in map(str, body["columns"]):
         return "'order_by' must be one of the columns"
+    if body.get("strength") is not None and not (type(body["strength"]) is int and 0 <= body["strength"] <= 10):
+        return "'strength' must be a whole number from 0 to 10"
     return None
+
+
+def _strength(body):
+    """The slider's 0-10 (checked by _bad); none sent = 5, the tuned default. (Not `or 5`: 0 is a real choice.)"""
+    return 5 if body.get("strength") is None else body["strength"]
 
 
 def create_app(scan_csv=None):
@@ -85,8 +92,9 @@ def create_app(scan_csv=None):
         if err := _bad(body):
             return {"error": err}, 400
         cols, rows, limits = [str(c) for c in body["columns"]], body["rows"], body.get("limits")  # a year header 2024 is "2024"
+        order_by = None if body.get("order_by") is None else str(body["order_by"])
         try:  # Agent 1, one scan, no stop
-            df, out, suggested, used, status = scan_agent.scan(cols, rows, limits, None if body.get("order_by") is None else str(body["order_by"]))
+            df, out, suggested, used, status = scan_agent.scan(cols, rows, limits, order_by, _strength(body))
         except Exception:  # a bug in the engine: full detail to the log, not pandas internals to the user
             app.logger.exception("scan failed")
             return {"error": "Engine error - details in server.log"}, 500
@@ -160,7 +168,7 @@ def create_app(scan_csv=None):
                 isinstance(c, dict) and type(c.get("col")) is int and 0 <= c["col"] < width and cell(c.get("value")) for c in changes)):
             return {"error": "'row_index' and 'changes' [{col, value}] must point inside the table"}, 400
         try:
-            return checker.check([str(c) for c in body["columns"]], body["rows"], body.get("limits"), i, changes)
+            return checker.check([str(c) for c in body["columns"]], body["rows"], body.get("limits"), i, changes, _strength(body))
         except Exception:
             app.logger.exception("check failed")
             return {"error": "Engine error - details in server.log"}, 500
@@ -175,7 +183,7 @@ def create_app(scan_csv=None):
         if not (type(i) is int and 0 <= i < len(body["rows"]) and isinstance(body.get("column"), str) and body["column"] in cols):
             return {"error": "'row_index' and 'column' must point inside the table"}, 400
         try:
-            return checker.suggest(cols, body["rows"], body.get("limits"), i, body["column"])
+            return checker.suggest(cols, body["rows"], body.get("limits"), i, body["column"], _strength(body))
         except Exception:
             app.logger.exception("suggest failed")
             return {"error": "Engine error - details in server.log"}, 500

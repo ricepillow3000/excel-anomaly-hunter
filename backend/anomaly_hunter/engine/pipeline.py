@@ -5,7 +5,7 @@ import re
 import numpy as np
 import pandas as pd
 
-from anomaly_hunter.engine.detectors import isolation_detector, limits_detector, sequence_detector
+from anomaly_hunter.engine.detectors import _result, isolation_detector, limits_detector, sequence_detector
 from anomaly_hunter.engine.load import EXCEL_ERROR, _blank, numbers
 
 def summary_rows(df):
@@ -142,11 +142,25 @@ def sums(df, column_types, skip):
     return out
 
 
+def _one_edit(a, b):
+    """a and b differ by one letter: replaced, added, dropped, or two neighbours swapped."""
+    if a == b or abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        d = [k for k in range(len(a)) if a[k] != b[k]]
+        return len(d) == 1 or (len(d) == 2 and d[1] == d[0] + 1 and a[d[0]] == b[d[1]] and a[d[1]] == b[d[0]])
+    short, long = sorted((a, b), key=len)
+    return any(long[:k] + long[k + 1:] == short for k in range(len(long)))
+
+
 def spellings(df, column_types, skip):
     """Same category typed differently ("Sales" / "sales " / "SALES") - breaks SUMIFS and pivots silently.
     Only case/space differences, only in category-like columns (<= 50 distinct), only when the usual
-    spelling is >= 3x as common. -> (reasons per row, {col: usual spelling} per row)."""
-    out, fix = [[] for _ in range(len(df))], [{} for _ in range(len(df))]
+    spelling is >= 3x as common. Plus misspellings: a rare word (1-2 times) one letter off a usual one (5+ times and
+    5x as common, 4+ letters, no digits - "A101"/"A102" are codes). -> (reasons, {col: usual spelling},
+    {col: usual spelling} for misspellings - a guess, never auto-fixed, {col: usual} when 5x as common - auto-fixable)."""
+    n = len(df)
+    out, fix, maybe, exact = [[] for _ in range(n)], [{} for _ in range(n)], [{} for _ in range(n)], [{} for _ in range(n)]
     for col, t in column_types.items():
         if t != "text":
             continue
@@ -154,17 +168,39 @@ def spellings(df, column_types, skip):
         s = s[(s.str.strip() != "") & ~s.str.lstrip().str[:1].isin(list("=+-@"))]  # formula-like text is never a "spelling"
         if s.nunique() > 50:
             continue
-        for _, grp in s.groupby(s.map(lambda v: " ".join(v.split()).casefold())):
+        keys = s.map(lambda v: " ".join(v.split()).casefold())
+        for _, grp in s.groupby(keys):
             counts = grp.value_counts()
             for raw, c in counts.iloc[1:].items():
                 if counts.iloc[0] >= 3 * c:
                     for i in grp.index[grp == raw]:
                         out[i].append(f'{col} "{_short(raw)}" looks like "{_short(counts.index[0])}" (same word, different capitals/spaces)')
                         fix[i][col] = counts.index[0]
-    return out, fix
+                        if counts.iloc[0] >= 5 * c:
+                            exact[i][col] = counts.index[0]
+        cnt = keys.value_counts()
+        for rare, c in cnt[(cnt <= 2) & ~cnt.index.str.contains(r"\d")].items():
+            usual = next((u for u, m in cnt.items() if m >= max(5, 5 * c) and len(u) >= 4 and not any(ch.isdigit() for ch in u)
+                          and _one_edit(rare, u)), None)
+            if usual is None:
+                continue
+            word = s[keys == usual].value_counts().index[0]  # how the usual one is usually written
+            for i in keys.index[keys == rare]:
+                out[i].append(f'{col} "{_short(s[i])}" looks like a misspelling of "{_short(word)}"')
+                maybe[i][col] = word
+    return out, fix, maybe, exact
 
 
-def score(df, column_types, errors_log, limits, order_by):
+def knobs(strength=5):
+    """How hard to look, 0-10 -> (level, k). k = how many robust spreads out a value must be to count as weird.
+    5 = the tuned default (k 6, bench 51/51). Each step up lowers the bar ~10% and may add a check, so a row flagged
+    at s stays flagged at s+1. 0: hygiene + obvious typos; 1+: values past their column's range; 3+: breaks in a
+    series; 5+: odd mixes across columns. The floor (k 3.5 at 10) stays above the baseline band of 3."""
+    s = min(10, max(0, int(strength)))
+    return s, 6 * 0.9 ** (s - 5)
+
+
+def score(df, column_types, errors_log, limits, order_by, strength=5):
     """-> (rows, status). Severity = votes: 1 Low, 2 Medium, 3+ High. Weird limit or hygiene hit = at least Medium.
     Totals/summary rows are left out of every check (their numbers would distort the rest) and say so."""
     n, skip = len(df), summary_rows(df)
@@ -173,13 +209,16 @@ def score(df, column_types, errors_log, limits, order_by):
     if nums := [c for c, t in column_types.items() if t in ("number", "id")]:  # (pandas 3 fails on an empty column list)
         df.loc[skip, nums] = np.nan
     errors_log = [e for e in errors_log if not skip[e[0]]]
-    lim = limits_detector(df, column_types, limits)
-    dets = {"limits": lim, "sequence": sequence_detector(df, column_types, order_by),
-            "isolation": isolation_detector(df, column_types)}  # DBSCAN cut 2026-10-07: 90s/100k rows, 81% false alarms, bench same without it
+    s, k = knobs(strength)
+    lim = limits_detector(df, column_types, limits, typos_only=s < 1)
+    dets = {"limits": lim,
+            "sequence": sequence_detector(df, column_types, order_by, k) if s >= 3 else _result(n, "strength below 3"),
+            "isolation": isolation_detector(df, column_types, k) if s >= 5 else _result(n, "strength below 5")}
+    # DBSCAN cut 2026-10-07: 90s/100k rows, 81% false alarms, bench same without it
     ran = [d for d in dets.values() if d["ran"]]
     dup, typ, blank = duplicates(df), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
     hole, far, add = placeholders(df, column_types, skip), far_dates(df, column_types, skip), sums(df, column_types, skip)
-    spell, spell_fix = spellings(df, column_types, skip)
+    spell, spell_fix, spell_maybe, spell_exact = spellings(df, column_types, skip)
     rows = []
     for i in range(n):
         if skip[i]:
@@ -200,6 +239,8 @@ def score(df, column_types, errors_log, limits, order_by):
             "reason": (f"Flagged by {v} of {len(ran)}: " if v else "") + "; ".join(dict.fromkeys(hygiene + [r for d in voted for r in d["reasons"][i]])),  # dedupe, keep order
             "magnitude": float(max((d["magnitude"][i] for d in voted), default=0.0)),
             "likely": {**lim["likely"][i], **spell_fix[i]},
+            "maybe": spell_maybe[i],  # misspelling: a guess the user confirms
+            "exact": spell_exact[i],  # capitals/spaces where the usual spelling is 5x as common: safe to auto-fix
         })
     status = {k: "ran" if d["ran"] else f"sat out: {d['sit_out_reason']}" for k, d in dets.items()}
     return rows, status

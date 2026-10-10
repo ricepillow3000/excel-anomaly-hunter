@@ -4,6 +4,7 @@ import { esc, asNumber, median } from "./utils/text.js";
 import { cutNote, tableFromGrid, isDateFormat, excelDate, rowFromAddress, colLetter, cellAt, sameRow } from "./utils/sheet.js";
 import { issuesOf, recommendFix, typoKind, spansDecade, wrote, unusualColumn } from "./features/fix.js";
 import { plainReason, summaryOf, flaggedRows } from "./features/scan.js";
+import { strengthHint, asStrength } from "./pages/strength.js";
 
 // summary: "Noted" (inside the usual range) is fine, not a problem
 assert.equal(summaryOf([{ severity: null }, { severity: "Noted" }, { severity: null }]), "No problems found in 3 rows.");
@@ -47,6 +48,15 @@ assert.equal(unusualColumn("Flagged by 1 of 3: Unusual combination of values, ma
 assert.equal(unusualColumn("Flagged by 2 of 3: Units is unusual relative to its local trend near 2026-06-25", uc), "Units");
 assert.equal(unusualColumn("Flagged by 1 of 3: Total jumped sharply near 2026-06-25", uc), "Total");
 assert.equal(unusualColumn("Duplicate of row 2", uc), null);
+
+// the slider: every level has words; a missing or broken saved value is 5
+assert.ok([...Array(11).keys()].every((s) => strengthHint(s).length > 10));
+assert.ok(strengthHint(0).startsWith("Basics") && strengthHint(5).startsWith("Recommended") && strengthHint(10).startsWith("Strictest"));
+assert.deepEqual([0, 10, 7, undefined, null, "3", 11, -1, 2.5].map(asStrength), [0, 10, 7, 5, 5, 5, 5, 5, 5]);
+// a misspelling's fix is offered, labelled a guess
+const mr = recommendFix(["Item"], [["Pencl"], ["Pencil"]], 0, {}, 'Item "Pencl" looks like a misspelling of "Pencil"', 0, 0, {}, null, { Item: "Pencil" });
+assert.deepEqual(mr.changes, [{ cell: "A2", new: "Pencil" }]);
+assert.ok(mr.guess && mr.explanation.includes("misspelling"));
 
 // instant recommendation: data A1:C5, header row 1, limits on Units only
 const cols = ["Date", "Region", "Units"];

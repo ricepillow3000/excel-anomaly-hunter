@@ -3,6 +3,7 @@ export const state = {
   lastScan: null, // {columns, rows, startRow, startCol, sheet, cut} what the last scan read
   lastRows: null, // the engine's verdict per row
   lastLimits: {}, // the limits that scan used: {col: [noteLo, noteHi, flagLo, flagHi]}
+  lastStrength: 5, // the slider level that scan used (0-10)
   painted: null, // {sheet, startRow, startCol, width, colors: {row: old fill}} - what Remove highlights puts back
   picker: null, // {sheet, handle}: clicking a highlighted row in the sheet opens its fix
   fix: null, // the row open in the fix view: {i, sheet, calc, changes}

@@ -29,9 +29,9 @@ def _round(v, step, up):
     return float(f"{(math.ceil if up else math.floor)(v / step) * step:.12g}") if step else v
 
 
-def suggest_limits_dict(df, number_columns):
+def suggest_limits_dict(df, number_columns, k=6):
     """{col: (b_lo, b_hi, w_lo, w_hi)}, rounded outward on the spread's scale (so limits never collapse to a point),
-    totals rows left out. All-blank column skipped."""
+    totals rows left out. All-blank column skipped. k = how many spreads out "weird" starts (strength; 6 = default)."""
     keep = ~summary_rows(df)
     out = {}
     for c in number_columns:
@@ -39,13 +39,13 @@ def suggest_limits_dict(df, number_columns):
         if len(x):
             med, sd = float(x.median()), spread(x)
             step = 10 ** math.floor(math.log10(sd)) if sd > 0 else None
-            v = [_round(med + k * sd, step, k > 0) for k in (-3, 3, -6, 6)]
+            v = [_round(med + m * sd, step, m > 0) for m in (-3, 3, -k, k)]
             q10, q90 = x.quantile([0.1, 0.9])
             pos = x[x > 0]
             if (x >= 0).mean() >= 0.95 and len(pos) >= 10 and q90 - med > 2 * (med - q10):  # long right tail (fares, tips)
                 lg = np.log(pos)  # highs on log scale, positives only: 42% zero tips would widen it 20x
                 lmed, lsd = float(lg.median()), spread(lg)
-                v[1], v[3] = (max(v[k], _round(float(np.exp(lmed + m * lsd)), step, True)) for k, m in ((1, 3), (3, 6)))
+                v[1], v[3] = (max(v[j], _round(float(np.exp(lmed + m * lsd)), step, True)) for j, m in ((1, 3), (3, k)))
             if (x >= 0).mean() >= 0.95:  # counts/prices: a negative is weird, so lows stop at 0
                 v[0], v[2] = max(v[0], 0.0), max(v[2], 0.0)
                 if (x == 0).mean() >= 0.05:  # zero is a regular value (weekends, no-sale days), not an error

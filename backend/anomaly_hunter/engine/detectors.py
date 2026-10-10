@@ -81,8 +81,10 @@ def _sentinel(v):
     return v in (0, -1) or (v == int(v) and abs(v) >= 99 and set(str(int(abs(v)))) == {"9"})
 
 
-def limits_detector(df, column_types, limits):
-    """Weird-limit breach = vote. Baseline-only breach = noted, no vote. likely[i] = {col: probable typo fix}."""
+def limits_detector(df, column_types, limits, typos_only=False):
+    """Weird-limit breach = vote. Baseline-only breach = noted, no vote. likely[i] = {col: probable typo fix}.
+    typos_only (strength 0): only breaches with an obvious typo behind them, or negatives in a column that never goes
+    below 0, vote."""
     n = len(df)
     r = {**_result(n), "noted": np.zeros(n, bool), "noted_reasons": [[] for _ in range(n)], "likely": [{} for _ in range(n)]}
     for col in numbers(column_types):
@@ -99,9 +101,12 @@ def limits_detector(df, column_types, limits):
             if np.isnan(v):
                 continue
             if v not in common and (lim := _crossed(v, w_lo, w_hi)) is not None:
+                fix = likely_value(v, st := st or column_stats(x), b_lo, b_hi)
+                negative = v < 0 and st["nonneg"] >= 0.95 * (st["n"] - 1)  # a minus sign in a column that has none
+                if typos_only and fix is None and not negative:  # basics: an obvious typo or a stray minus sign
+                    continue
                 r["votes"][i] = True
                 r["magnitude"][i] = max(r["magnitude"][i], abs(v - lim) / sd)
-                fix = likely_value(v, st := st or column_stats(x), b_lo, b_hi)
                 if fix is not None:
                     r["likely"][i][col] = fix
                 r["reasons"][i].append(f"{col} weird limit is {lim:g}; this is {v:g}" + (f" (likely {fix:g})" if fix is not None else ""))
@@ -111,7 +116,7 @@ def limits_detector(df, column_types, limits):
     return r
 
 
-def sequence_detector(df, column_types, order_by=None):
+def sequence_detector(df, column_types, order_by=None, k=K):
     """Rows sorted by order column. Vote on spikes vs rolling-median trend and on 1st/2nd/3rd differences."""
     n = len(df)
     by = order_by or next((c for c, t in column_types.items() if t == "date"), None)
@@ -144,13 +149,13 @@ def sequence_detector(df, column_types, order_by=None):
         if len(v) and (v >= 0).mean() >= 0.95 and (v == 0).mean() >= 0.05:  # weekend / closed-day zeros are not spikes
             s = s.where(s != 0)
         trend = (s - s.rolling(7, center=True, min_periods=1).median()).to_numpy()
-        votes, mag = robust_vote(trend)
+        votes, mag = robust_vote(trend, k)
         for p in np.where(votes)[0]:
             hit(p, mag[p], f"{col} is unusual relative to its local trend")
         d = s
-        for k in (1, 2, 3):
+        for _ in (1, 2, 3):
             d = d.diff()
-            votes, mag = robust_vote(d.to_numpy())
+            votes, mag = robust_vote(d.to_numpy(), k)
             for p in np.where(votes)[0]:
                 # blame biggest trend gap in last 4 rows, not the diff's own row
                 w = trend[max(0, p - 3):p + 1]
@@ -173,13 +178,13 @@ def _skip(n, cols):
     return "fewer than 30 rows" if n < 30 else None if cols else "no numeric columns"
 
 
-def isolation_detector(df, column_types):
+def isolation_detector(df, column_types, k=K):
     """ECOD outlier score on scaled numbers."""
     n, cols = len(df), numbers(column_types)
     if why := _skip(n, cols):
         return _result(n, why)
     x = _scaled(df, cols)
-    votes, mag = robust_vote(ECOD().fit(x.to_numpy()).decision_scores_)
+    votes, mag = robust_vote(ECOD().fit(x.to_numpy()).decision_scores_, k)
     worst = x.abs().to_numpy().argmax(axis=1)
     reasons = [[f"Unusual combination of values, mainly {cols[w]}"] if v else [] for v, w in zip(votes, worst)]
     return {**_result(n), "votes": votes, "magnitude": mag, "reasons": reasons}

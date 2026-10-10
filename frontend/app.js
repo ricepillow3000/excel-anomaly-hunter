@@ -14,6 +14,7 @@ import { showHome } from "./pages/home.js";
 import { openLimitsEditor, saveLimitsAndRescan } from "./pages/limits.js";
 import { dismissFix, nextFix } from "./pages/fix.js";
 import { listRows } from "./pages/results.js";
+import { initStrength } from "./pages/strength.js";
 import { initSettings } from "./pages/settings.js";
 
 if (typeof Office !== "undefined") {
@@ -36,6 +37,7 @@ if (typeof Office !== "undefined") {
     $("fix-ask").onclick = askFix;
     $("fix-intent").onkeydown = (e) => e.key === "Enter" && e.ctrlKey && askFix();
     initSettings();
+    initStrength(act(runScan));
     Excel.run(async (ctx) => {
       const sheet = ctx.workbook.worksheets.getActiveWorksheet().load("name");
       await ctx.sync();
