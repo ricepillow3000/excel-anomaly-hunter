@@ -15,6 +15,9 @@ import { openLimitsEditor, saveLimitsAndRescan } from "./pages/limits.js";
 import { dismissFix, nextFix } from "./pages/fix.js";
 import { listRows } from "./pages/results.js";
 import { initStrength } from "./pages/strength.js";
+import { autoOn, setAuto, autoUndo, undoAutoFix } from "./features/autofix.js";
+import { notice } from "./components/progress.js";
+import { n } from "./utils/text.js";
 import { initSettings } from "./pages/settings.js";
 
 if (typeof Office !== "undefined") {
@@ -38,6 +41,14 @@ if (typeof Office !== "undefined") {
     $("fix-intent").onkeydown = (e) => e.key === "Enter" && e.ctrlKey && askFix();
     initSettings();
     initStrength(act(runScan));
+    $("auto-fix").checked = autoOn(); // off unless turned on, on this PC
+    $("auto-fix").onchange = () => setAuto($("auto-fix").checked);
+    $("undo-auto").onclick = act(async () => {
+      const [back, left] = await undoAutoFix();
+      await runScan(false); // checked again, but never auto-fixed again right away
+      notice(`Put back ${n(back)} auto-fixed cell${back === 1 ? "" : "s"}` + (left ? `; ${n(left)} that changed since (edited or sorted) ${left === 1 ? "was" : "were"} left alone.` : "."));
+    });
+    show("undo-auto", !!autoUndo());
     Excel.run(async (ctx) => {
       const sheet = ctx.workbook.worksheets.getActiveWorksheet().load("name");
       await ctx.sync();

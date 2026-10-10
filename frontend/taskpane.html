@@ -31,6 +31,7 @@
         <input id="strength" type="range" min="0" max="10" step="1" value="5" />
         <p id="strength-hint" class="hint"></p>
       </div>
+      <button id="undo-auto" class="secondary" hidden>Undo auto-fixes</button>
 
       <div id="busy" role="status" aria-live="polite" hidden>
         <div class="bar"><div id="busy-bar"></div></div>
@@ -93,6 +94,12 @@
         </div>
         <p id="ai-off" class="hint">Want AI help with fixes? Turn it on for free under <b>AI help</b> at the bottom.</p>
       </section>
+
+      <details class="more">
+        <summary>Auto-fix (optional)</summary>
+        <label class="check"><input type="checkbox" id="auto-fix" /> Fix exact mistakes by itself</label>
+        <p class="hint">Only capitals/spaces slips, like "east " where the column says "East" - and only when one spelling is clearly the usual one. Never numbers, never guesses. After it fixes something, "Undo auto-fixes" puts it back.</p>
+      </details>
 
       <details id="settings" class="more">
         <summary>AI help (optional, free)</summary>

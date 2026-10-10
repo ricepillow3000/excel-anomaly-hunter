@@ -5,6 +5,7 @@ import { cutNote, tableFromGrid, isDateFormat, excelDate, rowFromAddress, colLet
 import { issuesOf, recommendFix, typoKind, spansDecade, wrote, unusualColumn } from "./features/fix.js";
 import { plainReason, summaryOf, flaggedRows } from "./features/scan.js";
 import { strengthHint, asStrength } from "./pages/strength.js";
+import { exactFixes } from "./features/autofix.js";
 
 // summary: "Noted" (inside the usual range) is fine, not a problem
 assert.equal(summaryOf([{ severity: null }, { severity: "Noted" }, { severity: null }]), "No problems found in 3 rows.");
@@ -57,6 +58,11 @@ assert.deepEqual([0, 10, 7, undefined, null, "3", 11, -1, 2.5].map(asStrength), 
 const mr = recommendFix(["Item"], [["Pencl"], ["Pencil"]], 0, {}, 'Item "Pencl" looks like a misspelling of "Pencil"', 0, 0, {}, null, { Item: "Pencil" });
 assert.deepEqual(mr.changes, [{ cell: "A2", new: "Pencil" }]);
 assert.ok(mr.guess && mr.explanation.includes("misspelling"));
+
+// auto-fix: only the engine's exact fixes, on known columns; text must match exactly for Undo
+assert.deepEqual(exactFixes([{ exact: { Region: "East" } }, null, { severity: "Low", likely: { Units: 5 } }, { exact: { Nope: "x" } }], ["Date", "Region"]),
+  [{ k: 0, j: 1, value: "East" }]);
+assert.ok(wrote("East", "East") && !wrote("EAST", "East"), "a re-typed case is the user's edit");
 
 // instant recommendation: data A1:C5, header row 1, limits on Units only
 const cols = ["Date", "Region", "Units"];

@@ -44,15 +44,25 @@ def test_level_0_is_basics_and_obvious_typos_only():
 
 
 def test_misspellings_one_letter_off_the_usual_word():
-    assert _one_edit("pencl", "pencil") and _one_edit("pecnil", "pencil") and _one_edit("pencel", "pencil")
-    assert not _one_edit("east", "east") and not _one_edit("pen", "pencil")
-    items = ["Pencil"] * 12 + ["Binder"] * 10 + ["Desk"] * 6 + ["Pencl"]
+    assert _one_edit("pecnil", "pencil") and _one_edit("pencel", "pencil")  # two letters swapped, one letter wrong
+    assert not _one_edit("pencil", "pencil") and not _one_edit("pencl", "pencil")  # an added/dropped letter is a
+    # different word too often (Laptop/Laptops, Sara/Sarah, Jon/John) - not offered
+    items = ["Pencil"] * 12 + ["Binder"] * 10 + ["Desks"] * 6 + ["Pecnil"]
     codes = ["A101"] * 12 + ["A102"] + ["B200"] * 16  # codes one digit apart are different things
-    region = ["East"] * 14 + ["West"] * 15  # two real words one letter apart, both common
+    region = ["North"] * 14 + ["South"] * 15  # real words, both common
     rows = [[k + 1, items[k], codes[k], region[k], 10 + k % 5] for k in range(29)]
     out = scan(["Order", "Item", "Code", "Region", "Units"], rows)[1]
     assert out[28]["maybe"] == {"Item": "Pencil"} and "misspelling" in out[28]["reason"]
-    assert not any("misspelling" in r["reason"] for r in out[:28]), "codes and East/West are not misspellings"
+    assert out[28]["severity"] == "Low", "a possible misspelling alone is 'worth a check', not 'probably wrong'"
+    assert not any("misspelling" in r["reason"] for r in out[:28]), "codes and real words are not misspellings"
+
+
+@pytest.mark.parametrize("rare, usual", [("Jon", "John"), ("Sara", "Sarah"), ("Ann", "Anna"), ("Mark", "Mary"),
+                                         ("Laptop", "Laptops"), ("Phone", "Phones")])
+def test_names_and_plurals_are_not_misspellings(rare, usual):
+    words = [usual] * 10 + ["Other"] * 10 + [rare]
+    out = scan(["Name", "Units"], [[w, 10 + k % 3] for k, w in enumerate(words)])[1]
+    assert not any("misspelling" in r["reason"] for r in out), f"{rare} / {usual}"
 
 
 @pytest.mark.parametrize("bad", [11, -1, "5", True, 2.5])

@@ -4,6 +4,8 @@
 #strength { width: 100%; margin: 6px 0 2px; accent-color: var(--accent); }
 #strength-hint { min-height: 2.9em; margin: 0; } /* the words change length; the layout under them doesn't jump */
 
+label.check { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 4px; }
+
 /* progress: a real fraction while reading/highlighting, a moving sliver while the engine checks */
 #busy { margin: 4px 0 6px; }
 .bar { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }

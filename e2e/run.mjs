@@ -125,6 +125,25 @@ if (mode === "flow") {
   await slide("5"); await idle();
   ok((await page.$$("#flagged-list li")).length === listed5 && (await text("#strength-val")) === "5", "back to 5: the same rows as before");
 
+  // 6c) auto-fix (step 3): off by default; on = only the capitals/spaces slip, never numbers; Undo auto-fixes puts it back
+  ok(!(await page.evaluate(() => document.getElementById("auto-fix").checked)), "auto-fix is off by default");
+  await page.evaluate(() => { const c = document.getElementById("auto-fix"); c.checked = true; c.dispatchEvent(new Event("change")); });
+  await page.click("#scan"); await idle();
+  ok((await cell("B81")).v === "East" && (await cell("C11")).v === -5 && (await cell("C22")).v === 9999 && (await text("#notice")).startsWith("Fixed 1 "),
+    "auto-fix: only the spelling slip, never the numbers - " + (await text("#notice")));
+  ok(!(await text("#flagged-list")).includes('"east "'), "checked again: the spelling slip is gone from the list (row 81 keeps only its other, unrelated flag)");
+  ok(await page.isVisible("#undo-auto"), "Undo auto-fixes offered");
+  await page.click("#undo-auto"); await idle();
+  ok((await cell("B81")).v === "east " && !(await page.isVisible("#undo-auto")) && (await text("#notice")).startsWith("Put back 1 "), "Undo auto-fixes puts it back");
+  ok((await cell("B81")).v === "east ", "and the re-check after Undo doesn't auto-fix it again");
+  await page.click("#scan"); await idle(); // auto-fix again, then another record slides into row 81 (a sort)
+  const a81 = (await cell("A81")).v;
+  await page.evaluate(() => __edit("Sales", "A81", 99999));
+  await page.click("#undo-auto"); await idle();
+  ok((await cell("B81")).v === "East" && (await text("#notice")).includes("left alone"), "Undo auto-fixes never writes into a row that moved - " + (await text("#notice")));
+  await page.evaluate((v) => { __edit("Sales", "A81", v); __edit("Sales", "B81", "east "); }, a81);
+  await page.evaluate(() => { const c = document.getElementById("auto-fix"); c.checked = false; c.dispatchEvent(new Event("change")); });
+
   // 7) rescans don't stack click-watchers; a second sheet takes the watcher over
   await find(); await find();
   ok(await page.evaluate(() => __handlers("Sales")) === 1, "rescans don't stack selection handlers");

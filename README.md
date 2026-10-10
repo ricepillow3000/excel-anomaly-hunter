@@ -22,8 +22,17 @@ Tested on 100k real NYC taxi trips (1.7M cells): 8 s per scan, under 1% false al
 sheet) for a suggestion card, free and instant (e.g. 900 -> 90, "looks like a typo"; a median is labelled a best
 guess). You see old -> new and choose: **Accept** writes it, then the checker scans the table again and the row's
 highlight goes once it looks right (**Undo** puts it back); **Dismiss** leaves the row as it is and opens the next one.
-**Remove highlights**
-puts the sheet's colors back as they were. "How strict should it be?" lets you change each column's limits.
+A row that is only unusual gets a fix only when one typing slip (digits swapped, extra digit, decimal point, sign)
+explains it and makes the row normal again; otherwise the card says so and asks "Looks right?". Nothing is written into
+a row that changed since the scan. **Remove highlights** puts the sheet's colors back as they were.
+
+**How hard to look (0-10 slider):** 0 = basics only (misspellings, totals that don't add up, duplicates, blanks,
+obvious typos); 5 = recommended; 10 = anything slightly unusual (more rows to check, some of them fine). Letting go
+re-checks the sheet; the level is saved in the workbook. Exact per-column limits are under "advanced".
+
+**Auto-fix (optional, off by default):** fixes only capitals/spaces slips ("east " where the column says "East", one
+spelling clearly the usual one) by itself after each check - never numbers, never guesses. **Undo auto-fixes** puts
+them back (kept in the workbook).
 
 **AI help (optional, free):** under "AI help" in the pane, paste a free Google Gemini key from
 https://aistudio.google.com/apikey (Google account, no credit card). Then **Ask AI** writes a different fix from a

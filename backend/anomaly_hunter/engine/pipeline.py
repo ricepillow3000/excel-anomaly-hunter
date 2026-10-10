@@ -143,24 +143,24 @@ def sums(df, column_types, skip):
 
 
 def _one_edit(a, b):
-    """a and b differ by one letter: replaced, added, dropped, or two neighbours swapped."""
-    if a == b or abs(len(a) - len(b)) > 1:
+    """a and b are the same length and differ by one wrong letter or two neighbours swapped. An added or dropped
+    letter is left out on purpose: too often a different word (Laptop/Laptops, Sara/Sarah, Jon/John)."""
+    if a == b or len(a) != len(b):
         return False
-    if len(a) == len(b):
-        d = [k for k in range(len(a)) if a[k] != b[k]]
-        return len(d) == 1 or (len(d) == 2 and d[1] == d[0] + 1 and a[d[0]] == b[d[1]] and a[d[1]] == b[d[0]])
-    short, long = sorted((a, b), key=len)
-    return any(long[:k] + long[k + 1:] == short for k in range(len(long)))
+    d = [k for k in range(len(a)) if a[k] != b[k]]
+    return len(d) == 1 or (len(d) == 2 and d[1] == d[0] + 1 and a[d[0]] == b[d[1]] and a[d[1]] == b[d[0]])
 
 
 def spellings(df, column_types, skip):
     """Same category typed differently ("Sales" / "sales " / "SALES") - breaks SUMIFS and pivots silently.
     Only case/space differences, only in category-like columns (<= 50 distinct), only when the usual
-    spelling is >= 3x as common. Plus misspellings: a rare word (1-2 times) one letter off a usual one (5+ times and
-    5x as common, 4+ letters, no digits - "A101"/"A102" are codes). -> (reasons, {col: usual spelling},
+    spelling is >= 3x as common. Plus possible misspellings: a rare word (1-2 times) with one letter wrong or two
+    swapped vs a usual one (5+ times and 5x as common), both 5+ letters only - no digits ("A101"/"A102" are codes),
+    no short names (Mark/Mary). -> (reasons, {col: usual spelling}, misspelling reasons (worth a check, not "wrong"),
     {col: usual spelling} for misspellings - a guess, never auto-fixed, {col: usual} when 5x as common - auto-fixable)."""
     n = len(df)
-    out, fix, maybe, exact = [[] for _ in range(n)], [{} for _ in range(n)], [{} for _ in range(n)], [{} for _ in range(n)]
+    out, fix, missed = [[] for _ in range(n)], [{} for _ in range(n)], [[] for _ in range(n)]
+    maybe, exact = [{} for _ in range(n)], [{} for _ in range(n)]
     for col, t in column_types.items():
         if t != "text":
             continue
@@ -179,16 +179,17 @@ def spellings(df, column_types, skip):
                         if counts.iloc[0] >= 5 * c:
                             exact[i][col] = counts.index[0]
         cnt = keys.value_counts()
-        for rare, c in cnt[(cnt <= 2) & ~cnt.index.str.contains(r"\d")].items():
-            usual = next((u for u, m in cnt.items() if m >= max(5, 5 * c) and len(u) >= 4 and not any(ch.isdigit() for ch in u)
+        word_like = lambda w: len(w) >= 5 and w.replace(" ", "").isalpha()
+        for rare, c in cnt[cnt <= 2].items():
+            usual = next((u for u, m in cnt.items() if m >= max(5, 5 * c) and word_like(u) and word_like(rare)
                           and _one_edit(rare, u)), None)
             if usual is None:
                 continue
             word = s[keys == usual].value_counts().index[0]  # how the usual one is usually written
             for i in keys.index[keys == rare]:
-                out[i].append(f'{col} "{_short(s[i])}" looks like a misspelling of "{_short(word)}"')
+                missed[i].append(f'{col} "{_short(s[i])}" looks like a misspelling of "{_short(word)}"')
                 maybe[i][col] = word
-    return out, fix, maybe, exact
+    return out, fix, missed, maybe, exact
 
 
 def knobs(strength=5):
@@ -218,7 +219,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5):
     ran = [d for d in dets.values() if d["ran"]]
     dup, typ, blank = duplicates(df), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
     hole, far, add = placeholders(df, column_types, skip), far_dates(df, column_types, skip), sums(df, column_types, skip)
-    spell, spell_fix, spell_maybe, spell_exact = spellings(df, column_types, skip)
+    spell, spell_fix, missed, spell_maybe, spell_exact = spellings(df, column_types, skip)
     rows = []
     for i in range(n):
         if skip[i]:
@@ -227,16 +228,16 @@ def score(df, column_types, errors_log, limits, order_by, strength=5):
             continue
         voted = [d for d in ran if d["votes"][i]]
         hygiene = dup[i] + typ[i] + blank[i] + hole[i] + far[i] + add[i] + spell[i]
-        if not voted and not hygiene:
+        if not voted and not hygiene and not missed[i]:
             noted = lim["noted_reasons"][i]
             rows.append({"severity": "Noted" if noted else None, "bucket": None,
                          "reason": "; ".join(noted), "magnitude": 0.0})
             continue
         v, weird = len(voted), bool(lim["votes"][i])
-        rows.append({
+        rows.append({  # a possible misspelling alone is "worth a check" (Low): it may be a real name
             "severity": "High" if v >= 3 else "Medium" if v == 2 or weird or hygiene else "Low",
-            "bucket": "Duplicates" if dup[i] else "Irregularities" if weird or typ[i] or blank[i] or hole[i] or far[i] or add[i] or spell[i] else "Behavioral",
-            "reason": (f"Flagged by {v} of {len(ran)}: " if v else "") + "; ".join(dict.fromkeys(hygiene + [r for d in voted for r in d["reasons"][i]])),  # dedupe, keep order
+            "bucket": "Duplicates" if dup[i] else "Irregularities" if weird or typ[i] or blank[i] or hole[i] or far[i] or add[i] or spell[i] or missed[i] else "Behavioral",
+            "reason": (f"Flagged by {v} of {len(ran)}: " if v else "") + "; ".join(dict.fromkeys(hygiene + missed[i] + [r for d in voted for r in d["reasons"][i]])),  # dedupe, keep order
             "magnitude": float(max((d["magnitude"][i] for d in voted), default=0.0)),
             "likely": {**lim["likely"][i], **spell_fix[i]},
             "maybe": spell_maybe[i],  # misspelling: a guess the user confirms

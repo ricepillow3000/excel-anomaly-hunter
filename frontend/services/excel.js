@@ -44,13 +44,14 @@ export async function readCells(sheetName, cells) {
   });
 }
 
-// The values of some data rows now (k = index into the scanned rows), to check nothing moved since the scan
-export async function readRows(sheetName, startRow, startCol, width, ks) {
+// Some rows as they are now, to check nothing moved since the scan or the fix. spans: [{row (0-based), col, width}]
+// -> [{values, calc}] - calc[j] = that cell is a formula (its value changes on its own, so it proves nothing)
+export async function readRows(sheetName, spans) {
   return Excel.run(async (ctx) => {
     const sheet = ctx.workbook.worksheets.getItem(sheetName);
-    const ranges = ks.map((k) => sheet.getRangeByIndexes(startRow + 1 + k, startCol, 1, width).load("values"));
+    const ranges = spans.map((s) => sheet.getRangeByIndexes(s.row, s.col, 1, s.width).load("values, formulas"));
     await ctx.sync();
-    return ranges.map((r) => r.values[0]);
+    return ranges.map((r) => ({ values: r.values[0], calc: r.formulas[0].map((f) => typeof f === "string" && f.startsWith("=")) }));
   });
 }
 

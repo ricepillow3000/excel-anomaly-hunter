@@ -1,6 +1,6 @@
 import { SEV, RANK } from "../constants/index.js";
 import { state } from "../hooks/use-state.js";
-import { $, only } from "../utils/dom.js";
+import { $, only, show } from "../utils/dom.js";
 import { n } from "../utils/text.js";
 import { busy, notice } from "../components/progress.js";
 import { post } from "../services/api.js";
@@ -9,10 +9,11 @@ import { paint } from "./highlight.js";
 import { renderResults } from "../pages/results.js";
 import { onSelect } from "../pages/fix.js";
 import { strength } from "../pages/strength.js";
+import { autoFix, autoOn, autoUndo } from "./autofix.js";
 
 // Agent 2 in the workflow: read the sheet, have the engine check it, deliver the results to the pane.
 // ---- Find problems: read, check, list, highlight ----
-export async function runScan() {
+export async function runScan(auto) { // auto === false: the re-check right after auto-fix (never auto-fixes twice)
   const t0 = Date.now();
   state.fix = null;
   if (state.view !== "results") only(state.lastScan ? "results" : "empty-state"); // no fix view left without its row
@@ -40,6 +41,15 @@ export async function runScan() {
   // a checked workbook reopens with this pane open (Office autoopen; manifest TaskpaneId)
   Office.context.document.settings.set("Office.AutoShowTaskpaneWithDocument", true);
   Office.context.document.settings.saveAsync();
+  if (auto !== false && autoOn()) { // step 3: exact slips fixed, then the sheet checked again so the list is current
+    busy("Fixing exact mistakes…");
+    const fixed = await autoFix();
+    if (fixed) {
+      await runScan(false);
+      notice(`Fixed ${n(fixed)} capitals/spaces slip${fixed === 1 ? "" : "s"} by itself, then checked again. "Undo auto-fixes" puts ${fixed === 1 ? "it" : "them"} back.`);
+    }
+  }
+  show("undo-auto", !!autoUndo());
 }
 
 // Pure: the rows worth a look - surest first, then biggest - each with its data-row index ("Noted" = fine)

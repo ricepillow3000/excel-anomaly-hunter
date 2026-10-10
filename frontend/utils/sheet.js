@@ -52,11 +52,12 @@ export function colLetter(n) {
   return s;
 }
 
-// Pure: does a row Excel holds now still match what the scan read? Dates come back as serial numbers, and numbers
+// Pure: does a row Excel holds now still match what we expect there? Dates come back as serial numbers, and numbers
 // may differ in the last float bits. A row that was sorted, edited or shifted by an inserted row fails.
+// calc[j] = a formula cell: skipped (a running total changes whenever a row above is fixed).
 const sameCell = (now, was) => now === was || (typeof now === "number" &&
   (typeof was === "string" ? excelDate(now) === was : typeof was === "number" && Math.abs(now - was) <= 1e-9 * Math.max(1, Math.abs(now))));
-export const sameRow = (now, was) => now.length === was.length && now.every((v, j) => sameCell(v, was[j]));
+export const sameRow = (now, was, calc = []) => now.length === was.length && now.every((v, j) => calc[j] || sameCell(v, was[j]));
 
 // Pure: "AA12" -> {col: 26, row: 12} (0-based column, sheet row number), or null
 export function cellAt(cell) {
