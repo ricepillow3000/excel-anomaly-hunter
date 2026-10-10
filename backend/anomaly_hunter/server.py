@@ -133,8 +133,9 @@ def create_app(scan_csv=None):
         """Save (or with "" remove) the free Gemini key in %LOCALAPPDATA%/AnomalyHunter - this PC only."""
         body = request.get_json(silent=True)
         key = body.get("key") if isinstance(body, dict) else None
-        if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_\-]{0,200}", key.strip()):
-            return {"error": "That doesn't look like an API key - copy it again from aistudio.google.com."}, 400
+        # classic keys "AIza..."; newer service-account-bound keys "AQ.Ab8..." contain dots
+        if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_.\-]{0,200}", key.strip()):
+            return {"error": "That doesn't look like an API key - copy it again from Google Cloud (APIs & Services > Credentials)."}, 400
         client.KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
         if not key.strip():
             client.KEY_FILE.unlink(missing_ok=True)

@@ -229,6 +229,9 @@ def test_pasted_key_turns_on_free_ai_and_can_be_removed(monkeypatch, tmp_path):
         assert c.post("/key", json=bad).status_code == 400, bad
     for junk in ([1], "abc", 5):  # not even an object: a clear 400, not a crash
         assert c.post("/key", json=junk).status_code == 400, junk
+    # Google's newer keys (bound to a service account) look like "AQ.Ab8x...": a dot is part of the key
+    assert c.post("/key", json={"key": "AQ.Ab8_madeUp-Test.key"}).get_json()["ai_available"] is True
+    assert (tmp_path / "gemini-key.txt").read_text() == "AQ.Ab8_madeUp-Test.key"
     assert c.post("/key", json={"key": ""}).get_json()["ai_available"] is False
     assert not (tmp_path / "gemini-key.txt").exists()
 
