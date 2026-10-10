@@ -249,6 +249,23 @@ def test_a_pasted_key_is_tested_with_google_before_it_is_kept(monkeypatch, tmp_p
     assert r["ai_available"] and "Couldn't reach Google" in r["message"]  # kept: Ask AI will say if it works
 
 
+def test_an_invite_code_uses_johns_relay_never_a_key(monkeypatch, tmp_path):
+    got = gemini_stub(monkeypatch, tmp_path, content=json.dumps({"explanation": "Use 50.", "changes": [{"cell": "C3", "new": "50"}]}))
+    monkeypatch.setattr(client, "RELAY_URL", client.GEMINI_URL.rsplit("/v1beta", 1)[0])  # the stub stands in for the relay
+    c = create_app().test_client()
+    assert c.post("/key", json={"key": "inv_" + "a" * 24}).get_json()["ai_provider"] == "relay"
+    assert (tmp_path / "invite-code.txt").read_text() == "inv_" + "a" * 24 and not (tmp_path / "gemini-key.txt").exists()
+    r = post(BODY)
+    assert r.status_code == 200 and r.get_json()["changes"] == [{"cell": "C3", "new": "50"}]
+    headers, _ = got[-1]
+    assert headers["Authorization"] == "Bearer inv_" + "a" * 24  # the invite code goes out, no Google key exists here
+    assert c.post("/key", json={"key": "inv_short"}).status_code == 400
+    monkeypatch.setattr(client, "RELAY_URL", "")  # relay not deployed: an invite code turns nothing on
+    assert client.provider() is None
+    c.post("/key", json={"key": ""})
+    assert not (tmp_path / "invite-code.txt").exists()  # Remove key removes an invite code too
+
+
 def test_gemini_unknown_model_says_so(monkeypatch, tmp_path):
     gemini_stub(monkeypatch, tmp_path, status=404, content="", error="models/gemini-3.8-flash is not found")
     (tmp_path / "gemini-key.txt").write_text("AIzaTest")

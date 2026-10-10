@@ -5,4 +5,5 @@ from anomaly_hunter.ai import client
 from anomaly_hunter.server import create_app, make_cert
 d = Path(sys.argv[1]); make_cert(d)
 client.KEY_FILE = d / "gemini-key.txt"  # never the real key saved on this PC
+client.INVITE_FILE = d / "invite-code.txt"  # nor a real invite code
 create_app().run(host="127.0.0.1", port=5055, ssl_context=(str(d / "cert.pem"), str(d / "key.pem")))

@@ -16,15 +16,24 @@ MODEL = "claude-opus-5"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"  # OpenAI-compatible
 GEMINI_MODEL = "gemini-3.8-flash"  # free tier, no credit card (aistudio.google.com)
 KEY_FILE = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local") / "AnomalyHunter" / "gemini-key.txt"
+# John's relay (relay/worker.js): invited users send an invite code there and never hold his Gemini key.
+# "" = not deployed yet: invite codes turn nothing on. Set to the Worker's https URL after `npx wrangler deploy`.
+RELAY_URL = os.environ.get("ANOMALY_HUNTER_RELAY", "")
+INVITE_FILE = KEY_FILE.with_name("invite-code.txt")
 
 
 def gemini_key():
     return os.environ.get("GEMINI_API_KEY") or (KEY_FILE.read_text(encoding="utf-8").strip() if KEY_FILE.exists() else "")
 
 
+def invite_code():
+    return INVITE_FILE.read_text(encoding="utf-8").strip() if INVITE_FILE.exists() else ""
+
+
 def provider():
-    """Which AI answers: "gemini" (free) first, then "claude", else None."""
-    return "gemini" if gemini_key() else "claude" if os.environ.get("ANTHROPIC_API_KEY") else None
+    """Which AI answers: your own free Gemini key first, then John's relay with an invite code, then Claude, else None."""
+    return ("gemini" if gemini_key() else "relay" if RELAY_URL and invite_code() else
+            "claude" if os.environ.get("ANTHROPIC_API_KEY") else None)
 
 
 def api_key_configured():
@@ -128,7 +137,7 @@ FIX_SCHEMA = {"type": "object", "required": ["explanation", "changes"], "propert
 
 def _ask(prompt):
     """The prompt -> Fix, from Gemini (free) or Claude. Failures -> ValueError with words a user can act on."""
-    if provider() != "gemini":
+    if provider() not in ("gemini", "relay"):
         try:
             resp = anthropic.Anthropic().messages.parse(model=MODEL, max_tokens=16000, output_format=Fix,
                                                         messages=[{"role": "user", "content": prompt}])
@@ -139,13 +148,20 @@ def _ask(prompt):
         return resp.parsed_output
     body = {"model": GEMINI_MODEL, "messages": [{"role": "user", "content": prompt}],
             "response_format": {"type": "json_schema", "json_schema": {"name": "fix", "schema": FIX_SCHEMA}}}
-    req = urllib.request.Request(GEMINI_URL, json.dumps(body).encode(),
-                                 {"Content-Type": "application/json", "Authorization": f"Bearer {gemini_key()}"})
+    relay = provider() == "relay"  # same request; the relay adds John's key, picks the model and counts the caps
+    req = urllib.request.Request(RELAY_URL.rstrip("/") + "/fix" if relay else GEMINI_URL, json.dumps(body).encode(),
+                                 {"Content-Type": "application/json", "Authorization": f"Bearer {invite_code() if relay else gemini_key()}"})
     try:
         with urllib.request.urlopen(req, timeout=90) as r:
             text = json.load(r)["choices"][0]["message"]["content"]
         return Fix.model_validate_json(text)
     except urllib.error.HTTPError as e:
+        if relay:  # the relay's own words: invalid code, today's cap reached, Google busy
+            try:
+                words = json.loads(e.read().decode("utf-8", "replace"))["error"]
+            except (ValueError, KeyError, TypeError):
+                words = f"The AI relay answered with error {e.code} - try again later."
+            raise ValueError(words + (" Ask John for a new invite code." if e.code == 401 else "")) from None
         bad_key = e.code in (401, 403) or (e.code == 400 and "API key" in e.read().decode("utf-8", "replace"))  # Google: 400 "API key not valid"
         raise ValueError("The free Google AI limit is used up for now - try again in a minute. The suggested fix above still works."
                          if e.code == 429 else "Google did not accept the AI key - paste it again under AI help."

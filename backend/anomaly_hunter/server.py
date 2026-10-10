@@ -137,9 +137,17 @@ def create_app(scan_csv=None):
         if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_.\-]{0,200}", key.strip()):
             return {"error": "That doesn't look like an API key - copy it again from Google Cloud (APIs & Services > Credentials)."}, 400
         client.KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
-        if not key.strip():
+        if not key.strip():  # Remove key: an own key and an invite code alike
             client.KEY_FILE.unlink(missing_ok=True)
+            client.INVITE_FILE.unlink(missing_ok=True)
             return {"ai_available": client.api_key_configured(), "ai_provider": client.provider()}
+        if key.strip().startswith("inv_"):  # an invite code to John's relay: kept here, checked by the relay on use
+            if not re.fullmatch(r"inv_[A-Za-z0-9_\-]{20,64}", key.strip()):
+                return {"error": "That doesn't look like a whole invite code - copy it again."}, 400
+            client.INVITE_FILE.write_text(key.strip(), encoding="utf-8")
+            on = client.provider() == "relay"
+            return {"ai_available": client.api_key_configured(), "ai_provider": client.provider(),
+                    "message": "Invite code saved. AI help is on." if on else "Invite code saved - the shared AI isn't switched on yet."}
         ok, words = client.check_key(key.strip())  # tested now, not at the first Ask AI
         if ok is False:
             return {"error": words}, 400  # a rejected key is not kept
