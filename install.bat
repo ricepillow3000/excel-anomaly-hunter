@@ -13,7 +13,7 @@ set "PY=%~dp0.venv\Scripts\python.exe"
 set "PYW=%~dp0.venv\Scripts\pythonw.exe"
 set "P=%~dp0frontend"
 
-rem Excel caches add-ins; cache can only be cleared while Excel is closed.
+rem Excel reads the add-in catalog when it starts, so install with Excel closed.
 tasklist /fi "imagename eq EXCEL.EXE" 2>nul | findstr /i "EXCEL.EXE" >nul && (echo Close Excel first, then run this again. & pause & exit /b 1)
 call :stop
 if /i "%~1"=="/u" goto uninstall
@@ -45,7 +45,9 @@ if not exist "%UNC%\manifest.xml" (echo Cannot reach %UNC% - the C$ admin share 
 reg add "%CAT%" /v Id /t REG_SZ /d "{3f9a1c2e-7b4d-4e8a-9c61-5d2e8f0b7a13}" /f >nul
 reg add "%CAT%" /v Url /t REG_SZ /d "%UNC%" /f >nul
 reg add "%CAT%" /v Flags /t REG_DWORD /d 1 /f >nul
-rd /s /q "%LOCALAPPDATA%\Microsoft\Office\16.0\Wef" 2>nul
+rem Never clear Excel's add-in cache (...\Office\16.0\Wef) here: it is also where Excel remembers that you clicked
+rem Add, so a repair would drop Anomaly Hunter (and any other added add-in) from the ribbon. The pane's code is served
+rem fresh every time; only a manifest.xml change needs that cache cleared (Excel closed), then Add again.
 
 rem Power BI: double-click powerbi\anomaly-hunter.pbids. It opens the file every scan overwrites (this PC's path).
 "%PY%" -c "import json,os; p=os.path.join(os.environ['AH'],'latest-scan.csv'); json.dump({'version':'0.1','connections':[{'details':{'protocol':'file','address':{'path':p}},'options':{},'mode':'Import'}]}, open(r'powerbi\anomaly-hunter.pbids','w'), indent=2)" || (echo Power BI file step failed. & pause & exit /b 1)
@@ -64,7 +66,7 @@ ping -n 2 127.0.0.1 >nul
 goto wait
 :up
 echo.
-echo Installed. ONE TIME in Excel: Home ^> Add-ins ^> More Add-ins ^> SHARED FOLDER ^> Anomaly Hunter ^> Add.
+echo Installed. First install only - in Excel: Home ^> Add-ins ^> More Add-ins ^> SHARED FOLDER ^> Anomaly Hunter ^> Add.
 echo After that: Anomaly Hunter button in every workbook, survives restarts, scanned workbooks reopen with it.
 reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\excel.exe" >nul 2>&1 && start excel
 pause
