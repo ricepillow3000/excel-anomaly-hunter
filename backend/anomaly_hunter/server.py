@@ -30,6 +30,10 @@ CERT_NAME = "Anomaly Hunter local CA"  # install.bat finds the trusted CA by thi
 PORT = 5055
 LOCAL = {"127.0.0.1", "localhost"}
 ORIGINS = {None, f"https://127.0.0.1:{PORT}", f"https://localhost:{PORT}"}  # None = not a browser (tests, curl)
+# Only our own files plus Microsoft's office.js may run in the pane, so injected markup can't run script.
+# Measured in real Excel 2026-10-11: those are the only loads; the pane is top-level (never framed).
+CSP = ("default-src 'self'; script-src 'self' https://appsforoffice.microsoft.com; object-src 'none'; "
+       "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 # http.server writes its own "Server: Werkzeug/x Python/y" before any app header: no versions to look up CVEs for
 WSGIRequestHandler.version_string = lambda self: "Anomaly Hunter"
 
@@ -84,6 +88,7 @@ def create_app(scan_csv=None):
         cacheable = request.path.startswith("/assets/")
         resp.headers["Cache-Control"] = "public, max-age=86400" if cacheable else "no-store"
         resp.headers["X-Content-Type-Options"] = "nosniff"  # a file is only ever run as the type we say it is
+        resp.headers["Content-Security-Policy"] = CSP
         return resp
 
     @app.get("/health")

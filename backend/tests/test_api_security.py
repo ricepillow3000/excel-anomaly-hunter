@@ -48,6 +48,10 @@ def test_invite_code_is_only_ever_sent_over_https(monkeypatch):
 
 def test_safe_headers_on_every_answer():
     c = APP.test_client()
-    for r in (c.get("/health"), c.get("/taskpane.html"), c.post("/scan", data="x"), c.get("/nope")):
+    for r in (c.get("/health"), c.get("/taskpane.html"), c.get("/assets/icon-16.png"), c.post("/scan", data="x"), c.get("/nope")):
         assert r.headers["X-Content-Type-Options"] == "nosniff"
+        # exact string: loosening it (say 'unsafe-inline' or a new host) must be a deliberate, re-tested change
+        assert r.headers["Content-Security-Policy"] == (
+            "default-src 'self'; script-src 'self' https://appsforoffice.microsoft.com; object-src 'none'; "
+            "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
     assert WSGIRequestHandler.version_string(None) == "Anomaly Hunter"  # the real server's Server header (ZAP checks it live)

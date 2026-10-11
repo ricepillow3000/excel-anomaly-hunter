@@ -5,5 +5,3 @@
 10035	IGNORE	HSTS: browsers ignore HSTS for IP addresses; engine is 127.0.0.1 only
 90004	IGNORE	Spectre isolation (COEP/CORP): would block the cross-origin office.js
 10063	IGNORE	Permissions-Policy: pane uses no camera/mic/location; nothing to switch off
-10038	INFO	CSP not set: accepted for now; add one only after testing it inside real Excel
-10020	INFO	Anti-clickjacking: framed outside Excel the pane shows nothing clickable; revisit with CSP
