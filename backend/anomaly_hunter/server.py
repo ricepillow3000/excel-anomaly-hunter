@@ -81,6 +81,7 @@ def create_app(scan_csv=None):
         cacheable = request.path.startswith("/assets/")
         resp.headers["Cache-Control"] = "public, max-age=86400" if cacheable else "no-store"
         resp.headers["X-Content-Type-Options"] = "nosniff"  # a file is only ever run as the type we say it is
+        resp.headers["Server"] = "Anomaly Hunter"  # not "Werkzeug/x Python/y": no versions for an attacker to look up
         return resp
 
     @app.get("/health")

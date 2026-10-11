@@ -45,7 +45,7 @@ def test_invite_code_is_only_ever_sent_over_https(monkeypatch):
         assert (client.provider() == "relay") is ok, url
 
 
-def test_nosniff_on_every_answer():
+def test_safe_headers_on_every_answer():
     c = APP.test_client()
     for r in (c.get("/health"), c.get("/taskpane.html"), c.post("/scan", data="x"), c.get("/nope")):
-        assert r.headers["X-Content-Type-Options"] == "nosniff"
+        assert r.headers["X-Content-Type-Options"] == "nosniff" and r.headers["Server"] == "Anomaly Hunter"

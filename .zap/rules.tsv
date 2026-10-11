@@ -1,0 +1,9 @@
+10015	IGNORE	Re-examine Cache-control: no-store is deliberate (stale pane JS hid a bug once)
+10049	IGNORE	Non-storable content: same deliberate no-store
+10017	IGNORE	Cross-domain JS: office.js must load from Microsoft's CDN
+90003	IGNORE	No SRI: Microsoft updates hosted office.js in place, a hash would break the pane
+10035	IGNORE	HSTS: browsers ignore HSTS for IP addresses; engine is 127.0.0.1 only
+90004	IGNORE	Spectre isolation (COEP/CORP): would block the cross-origin office.js
+10063	IGNORE	Permissions-Policy: pane uses no camera/mic/location; nothing to switch off
+10038	INFO	CSP not set: accepted for now; add one only after testing it inside real Excel
+10020	INFO	Anti-clickjacking: framed outside Excel the pane shows nothing clickable; revisit with CSP

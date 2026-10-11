@@ -53,7 +53,7 @@ jobs:
       - name: OWASP ZAP scan of the running engine
         run: |
           mkdir -m 777 zap && cp .zap/rules.tsv zap/
-          docker run --rm --network host -v "$PWD/zap:/zap/wrk" ghcr.io/zaproxy/zaproxy:2.16.1 \
+          docker run --rm --network host -v "$PWD/zap:/zap/wrk" ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py -t https://127.0.0.1:5055/taskpane.html -c rules.tsv -r report.html
 
       - uses: actions/upload-artifact@v7
