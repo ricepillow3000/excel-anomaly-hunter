@@ -18,6 +18,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 from flask import Flask, request
+from werkzeug.serving import WSGIRequestHandler
 
 from anomaly_hunter.agents import checker, scan_agent
 from anomaly_hunter.ai import client
@@ -29,6 +30,8 @@ CERT_NAME = "Anomaly Hunter local CA"  # install.bat finds the trusted CA by thi
 PORT = 5055
 LOCAL = {"127.0.0.1", "localhost"}
 ORIGINS = {None, f"https://127.0.0.1:{PORT}", f"https://localhost:{PORT}"}  # None = not a browser (tests, curl)
+# http.server writes its own "Server: Werkzeug/x Python/y" before any app header: no versions to look up CVEs for
+WSGIRequestHandler.version_string = lambda self: "Anomaly Hunter"
 
 
 def _bad(body):
@@ -81,7 +84,6 @@ def create_app(scan_csv=None):
         cacheable = request.path.startswith("/assets/")
         resp.headers["Cache-Control"] = "public, max-age=86400" if cacheable else "no-store"
         resp.headers["X-Content-Type-Options"] = "nosniff"  # a file is only ever run as the type we say it is
-        resp.headers["Server"] = "Anomaly Hunter"  # not "Werkzeug/x Python/y": no versions for an attacker to look up
         return resp
 
     @app.get("/health")

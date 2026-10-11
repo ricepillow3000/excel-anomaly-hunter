@@ -1,6 +1,7 @@
 """API security checks CI runs on every push: what a generic scanner (ZAP) can't know about this engine."""
 import pytest
 from test_fix import BODY, gemini_stub
+from werkzeug.serving import WSGIRequestHandler
 
 from anomaly_hunter.ai import client
 from anomaly_hunter.server import create_app
@@ -48,4 +49,5 @@ def test_invite_code_is_only_ever_sent_over_https(monkeypatch):
 def test_safe_headers_on_every_answer():
     c = APP.test_client()
     for r in (c.get("/health"), c.get("/taskpane.html"), c.post("/scan", data="x"), c.get("/nope")):
-        assert r.headers["X-Content-Type-Options"] == "nosniff" and r.headers["Server"] == "Anomaly Hunter"
+        assert r.headers["X-Content-Type-Options"] == "nosniff"
+    assert WSGIRequestHandler.version_string(None) == "Anomaly Hunter"  # the real server's Server header (ZAP checks it live)
