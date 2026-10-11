@@ -1,6 +1,9 @@
 import json
 import threading
+import urllib.error
 from http.server import BaseHTTPRequestHandler, HTTPServer
+
+import pytest
 
 from anomaly_hunter.ai import client
 from anomaly_hunter.server import create_app
@@ -300,3 +303,18 @@ def test_gemini_garbled_answer_is_a_clear_error(monkeypatch, tmp_path):
     (tmp_path / "gemini-key.txt").write_text("AIzaTest")
     r = post(BODY)
     assert r.status_code == 502 and "incomplete" in r.get_json()["error"]
+
+
+@pytest.mark.parametrize("error,words", [
+    (TimeoutError(), "Google AI is slow right now"),  # Google took too long to answer
+    (urllib.error.URLError(TimeoutError()), "Google AI is slow right now"),  # too long to even connect
+    (urllib.error.URLError(ConnectionRefusedError()), "check the internet connection"),  # really unreachable
+])
+def test_a_slow_google_is_not_called_a_broken_connection(monkeypatch, error, words):
+    client.KEY_FILE.write_text("AIzaTest", encoding="utf-8")
+
+    def fail(*a, **k):
+        raise error
+    monkeypatch.setattr(client.urllib.request, "urlopen", fail)
+    with pytest.raises(ValueError, match=words):
+        client._ask("x")

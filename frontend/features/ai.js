@@ -30,7 +30,7 @@ export async function askFix() { // talks to the engine only; the sheet is touch
   if (!state.fix || !state.aiAvailable || $("fix-ask").disabled) return;
   const f = state.fix, btn = $("fix-ask");
   f.asking = btn.disabled = true;
-  btn.textContent = "AI is thinking… (up to a minute)";
+  btn.textContent = "AI is thinking… (usually a few seconds; slower when Google is busy)";
   $("fix-status").textContent = "";
   try {
     const { columns, rows, startRow, startCol } = state.lastScan;

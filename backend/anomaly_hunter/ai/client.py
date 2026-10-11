@@ -169,7 +169,10 @@ def _ask(prompt):
                          if e.code == 429 else "Google did not accept the AI key - paste it again under AI help."
                          if bad_key else f"Google doesn't offer the AI model {GEMINI_MODEL} to this key - tell the developer."
                          if e.code == 404 else f"Google AI answered with error {e.code} - try again shortly.") from None
-    except OSError:  # no connection, timeout, connection reset mid-answer
+    except OSError as e:  # no connection, timeout, connection reset mid-answer
+        # Gemini's speed swings (3.8 s to 90 s+ for the same request, 2026-10-11): a timeout is not a broken connection
+        if isinstance(e, TimeoutError) or isinstance(getattr(e, "reason", None), TimeoutError):
+            raise ValueError("Google AI is slow right now - try again in a minute.") from None
         raise ValueError("Could not reach Google AI - check the internet connection.") from None
     except (KeyError, IndexError, TypeError, ValueError):  # no answer, or not the JSON asked for
         raise ValueError("Google AI's answer came back incomplete - try again.") from None
