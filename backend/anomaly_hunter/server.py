@@ -80,6 +80,7 @@ def create_app(scan_csv=None):
         # exception: Office drops ribbon icons served with no-store/no-cache.
         cacheable = request.path.startswith("/assets/")
         resp.headers["Cache-Control"] = "public, max-age=86400" if cacheable else "no-store"
+        resp.headers["X-Content-Type-Options"] = "nosniff"  # a file is only ever run as the type we say it is
         return resp
 
     @app.get("/health")
@@ -223,7 +224,7 @@ def make_cert(folder=HOME, days=5 * 365):
         if (folder / "ca.pem").exists() and (folder / "key.pem").exists() and x509.load_pem_x509_certificate(
                 (folder / "cert.pem").read_bytes()).not_valid_after_utc > now + datetime.timedelta(days=60):
             return False
-    except Exception:
+    except Exception:  # noqa: S110 - any failure means "make a new one"
         pass  # missing or corrupt -> make a fresh chain
     ca_key, key = ec.generate_private_key(ec.SECP256R1()), ec.generate_private_key(ec.SECP256R1())
     ca_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, CERT_NAME)])

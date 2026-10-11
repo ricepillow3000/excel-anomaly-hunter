@@ -1,0 +1,63 @@
+# API security tests on every push. Red X on GitHub = something below failed; click it to see which step.
+name: API security
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "17 6 * * 1"  # Mondays: new vulnerabilities get found in old dependencies
+  workflow_dispatch:      # "Run workflow" button on the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: pip install -e ".[dev]" pip-audit==2.10.1 ruff==0.17.0
+
+      - name: Engine API tests (other websites refused, key never leaks, no files outside the pane)
+        run: pytest -q backend/tests
+      - name: Relay abuse tests (invite codes, daily caps, key never echoed)
+        run: node relay/test.mjs
+      - name: Security lint (Bandit rules)
+        run: ruff check --select S --ignore S101 backend/anomaly_hunter tools
+      - name: Dependencies with known vulnerabilities
+        run: pip-audit --skip-editable
+
+  zap:
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: pip install -e .
+
+      - name: Start the real engine (throwaway cert, no keys)
+        run: |
+          python e2e/engine.py "$RUNNER_TEMP/engine" > "$RUNNER_TEMP/engine.log" 2>&1 &
+          for i in $(seq 60); do curl -skf https://127.0.0.1:5055/health && exit 0; sleep 1; done
+          cat "$RUNNER_TEMP/engine.log"; exit 1
+
+      - name: OWASP ZAP scan of the running engine
+        run: |
+          mkdir -m 777 zap && cp .zap/rules.tsv zap/
+          docker run --rm --network host -v "$PWD/zap:/zap/wrk" ghcr.io/zaproxy/zaproxy:2.16.1 \
+            zap-baseline.py -t https://127.0.0.1:5055/taskpane.html -c rules.tsv -r report.html
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: zap-report
+          path: zap/report.html

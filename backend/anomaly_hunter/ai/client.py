@@ -32,7 +32,9 @@ def invite_code():
 
 def provider():
     """Which AI answers: your own free Gemini key first, then John's relay with an invite code, then Claude, else None."""
-    return ("gemini" if gemini_key() else "relay" if RELAY_URL and invite_code() else
+    # the invite code is a password: only over https (plain http only to this PC, for the test stub)
+    relay_ok = RELAY_URL.startswith(("https://", "http://127.0.0.1:"))
+    return ("gemini" if gemini_key() else "relay" if relay_ok and invite_code() else
             "claude" if os.environ.get("ANTHROPIC_API_KEY") else None)
 
 
@@ -45,7 +47,7 @@ def check_key(key):
     ok None = Google couldn't be asked (offline): the key is kept and Ask AI will say whether it works."""
     url = GEMINI_URL.rsplit("/chat/completions", 1)[0] + "/models"
     try:
-        with urllib.request.urlopen(urllib.request.Request(url, headers={"Authorization": f"Bearer {key}"}), timeout=15) as r:
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"Authorization": f"Bearer {key}"}), timeout=15) as r:  # noqa: S310 - https constant
             ids = {str(m.get("id", "")).removeprefix("models/") for m in json.load(r).get("data", [])}
     except urllib.error.HTTPError as e:
         if e.code in (400, 401, 403):
@@ -149,10 +151,10 @@ def _ask(prompt):
     body = {"model": GEMINI_MODEL, "messages": [{"role": "user", "content": prompt}],
             "response_format": {"type": "json_schema", "json_schema": {"name": "fix", "schema": FIX_SCHEMA}}}
     relay = provider() == "relay"  # same request; the relay adds John's key, picks the model and counts the caps
-    req = urllib.request.Request(RELAY_URL.rstrip("/") + "/fix" if relay else GEMINI_URL, json.dumps(body).encode(),
+    req = urllib.request.Request(RELAY_URL.rstrip("/") + "/fix" if relay else GEMINI_URL, json.dumps(body).encode(),  # noqa: S310 - https only, see provider()
                                  {"Content-Type": "application/json", "Authorization": f"Bearer {invite_code() if relay else gemini_key()}"})
     try:
-        with urllib.request.urlopen(req, timeout=90) as r:
+        with urllib.request.urlopen(req, timeout=90) as r:  # noqa: S310 - same request
             text = json.load(r)["choices"][0]["message"]["content"]
         return Fix.model_validate_json(text)
     except urllib.error.HTTPError as e:
