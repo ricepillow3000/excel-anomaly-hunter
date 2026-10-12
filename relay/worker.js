@@ -44,11 +44,17 @@ export default {
     })).json();
     if (!ok.allowed) return json(429, { error: ok.why });
 
-    const out = await fetch(GEMINI, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.GEMINI_KEY}` },
-      body: JSON.stringify({ model: MODEL, messages: [{ role: "user", content: prompt }], response_format: body.response_format, max_tokens: 4096 }),
-    });
+    let out;
+    for (let k = 0; ; k++) { // Google busy for a moment: try again HERE, so the invite's fix is counted only once
+      out = await fetch(GEMINI, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.GEMINI_KEY}` },
+        body: JSON.stringify({ model: MODEL, messages: [{ role: "user", content: prompt }], response_format: body.response_format, max_tokens: 4096 }),
+      });
+      if (out.ok || ![500, 502, 503, 504].includes(out.status) || k === 2) break;
+      await out.body?.cancel();
+      await new Promise((ok) => setTimeout(ok, [1000, 3000][k]));
+    }
     // Google's answer goes back as is; on its errors only the status (no body: it could echo the key's project)
     return out.ok ? new Response(out.body, { status: 200, headers: { "Content-Type": "application/json" } })
       : json(out.status === 429 ? 429 : 502, { error: out.status === 429 ? "The shared free AI limit is used up for now - try later." : `Google AI answered with error ${out.status}.` });

@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "marquee",
+        "value": "*",
+        "files": [
+          "frontend/taskpane.html"
+        ],
+        "createdAt": "2026-10-12T01:48:13.155Z",
+        "reason": "Claude: #busy-bar.unknown is an indeterminate progress bar, shown only while a scan runs, with a prefers-reduced-motion fallback (components.css)"
+      }
+    ]
+  }
+}

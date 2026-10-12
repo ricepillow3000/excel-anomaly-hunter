@@ -8,3 +8,7 @@ e2e/*.out
 e2e/*.txt
 e2e/*.png
 powerbi/*.pbids
+
+# Impeccable design hook: per-machine cache and private overrides (config.json is shared)
+.impeccable/hook.cache.json
+.impeccable/config.local.json

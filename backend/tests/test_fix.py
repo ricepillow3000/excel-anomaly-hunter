@@ -291,7 +291,7 @@ def test_gemini_fix_goes_through_the_same_safety_checks(monkeypatch, tmp_path):
 
 def test_gemini_free_limit_and_bad_key_say_what_to_do(monkeypatch, tmp_path):
     for status, error, words in ((429, None, "free Google AI limit is used up"), (400, "API key not valid. Please pass a valid API key.", "paste it again"),
-                                 (403, "Permission denied", "paste it again"), (400, "Invalid JSON payload", "error 400"), (500, None, "error 500")):
+                                 (403, "Permission denied", "paste it again"), (400, "Invalid JSON payload", "error 400"), (500, None, "busy")):  # 500 = busy, after the retries
         gemini_stub(monkeypatch, tmp_path, status=status, content="", error=error)
         (tmp_path / "gemini-key.txt").write_text("AIzaTest")
         r = post(BODY)

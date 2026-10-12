@@ -78,7 +78,7 @@ def test_ai_text_check_sends_only_distinct_words_and_keeps_only_real_values(monk
     got = gemini_stub(monkeypatch, tmp_path, content=json.dumps(answer))
     (tmp_path / "gemini-key.txt").write_text("AIzaTest", encoding="utf-8")  # gitleaks:allow - made-up test key
     r = create_app().test_client().post("/odd-text", json=ODD)
-    assert r.status_code == 200 and r.get_json() == {"odd": [{"row": 1, "col": 1, "column": "Item", "value": "London", "why": "a city, not a product"}]}
+    assert r.status_code == 200 and r.get_json() == {"odd": [{"row": 1, "col": 1, "column": "Item", "value": "London", "why": "a city, not a product"}], "partial": False}
     prompt = got[-1][1]["messages"][0]["content"]
     assert '"London"' in prompt and '"Pencil"' in prompt and prompt.count('"Pencil"') == 1  # distinct values, once each
     assert "11" not in prompt and "Units" not in prompt  # numbers and whole rows never leave the PC
@@ -87,5 +87,5 @@ def test_ai_text_check_sends_only_distinct_words_and_keeps_only_real_values(monk
 def test_ai_text_check_needs_a_key_and_skips_sheets_without_text():
     c = create_app().test_client()
     assert c.post("/odd-text", json=ODD).status_code == 503  # no AI key: says so, nothing sent
-    assert c.post("/odd-text", json={"columns": ["Units"], "rows": [[1], [2]]}).get_json() == {"odd": []}
+    assert c.post("/odd-text", json={"columns": ["Units"], "rows": [[1], [2]]}).get_json() == {"odd": [], "partial": False}
     assert c.post("/odd-text", json={"columns": []}).status_code == 400

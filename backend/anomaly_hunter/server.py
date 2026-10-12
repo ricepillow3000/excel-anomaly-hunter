@@ -198,12 +198,12 @@ def create_app(scan_csv=None):
         values = {c: sorted(set(s[(s != "") & ~s.str[:1].isin(list("=+-@"))])) for c, s in cells.items()}
         values = {c: v for c, v in values.items() if 2 <= len(v) <= 50}
         if not values:
-            return {"odd": []}
+            return {"odd": [], "partial": False}
 
-        def found():
-            hits = client.odd_text(values)
+        def found():  # partial: Google gave out before the last batch - asking again sends only what is left
+            hits, partial = client.odd_text(values)
             return {"odd": [{"row": int(i), "col": list(df.columns).index(h["column"]), **h}
-                            for h in hits for i in df.index[cells[h["column"]] == h["value"]]]}
+                            for h in hits for i in df.index[cells[h["column"]] == h["value"]]], "partial": partial}
         return ai(found)
 
     @app.post("/check")

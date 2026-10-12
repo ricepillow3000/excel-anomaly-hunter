@@ -37,7 +37,7 @@ def test_no_input_breaks_the_engine(case, monkeypatch):
     monkeypatch.setattr(client, "check_key", lambda key: (True, "Key works."))
     monkeypatch.setattr(client, "api_key_configured", lambda: True)
     monkeypatch.setattr(client, "suggest_fix", lambda *a, **k: {"explanation": "stub", "changes": []})
-    monkeypatch.setattr(client, "odd_text", lambda values: [{"column": c, "value": v[0], "why": "stub"} for c, v in values.items()])
+    monkeypatch.setattr(client, "odd_text", lambda values: ([{"column": c, "value": v[0], "why": "stub"} for c, v in values.items()], False))
     response = case.call()
     assert response.status_code != 403, "the origin gate refused the attack - it would test nothing"
     case.validate_response(response, checks=[not_a_server_error, status_code_conformance, content_type_conformance,

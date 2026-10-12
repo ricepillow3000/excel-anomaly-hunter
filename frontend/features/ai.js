@@ -57,9 +57,10 @@ export async function checkWords() {
   const { columns, rows, startRow } = state.lastScan;
   const item = (text) => Object.assign(document.createElement("li"), { textContent: text }); // AI text is never HTML
   try {
-    const { odd } = await post("/odd-text", { columns, rows }, 300);
+    const { odd, partial } = await post("/odd-text", { columns, rows }, 300);
     $("odd-list").replaceChildren(...(odd.length ? odd.map((o) => item(`Row ${startRow + o.row + 2}: ${o.column} "${o.value}" - ${o.why}`))
-      : [item("Nothing looks out of place.")]));
+      : [item(partial ? "Nothing out of place so far." : "Nothing looks out of place.")]),
+    ...(partial ? [item("Google got busy before every word was checked. Click again to check the rest - the finished part is kept.")] : []));
   } catch (e) { // Google busy (it often is), no key...: said right here, like Ask AI does
     $("odd-list").replaceChildren(item("AI could not check: " + e.message));
   }

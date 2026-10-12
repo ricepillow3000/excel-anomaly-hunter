@@ -14,11 +14,13 @@ function namespace() {
 
 const sent = [];
 let googleStatus = 200;
+const googleQueue = []; // statuses for the next calls, then googleStatus
 globalThis.fetch = async (url, init) => {
   sent.push({ url, headers: init.headers, body: JSON.parse(init.body) });
-  return googleStatus === 200
+  const status = googleQueue.length ? googleQueue.shift() : googleStatus;
+  return status === 200
     ? new Response(JSON.stringify({ choices: [{ message: { content: '{"explanation":"x","changes":[]}' } }] }), { status: 200 })
-    : new Response(JSON.stringify({ error: { message: "project 1234 key AQ.secret" } }), { status: googleStatus });
+    : new Response(JSON.stringify({ error: { message: "project 1234 key AQ.secret" } }), { status });
 };
 
 const env = { GEMINI_KEY: "AQ.the-secret", TOKENS: JSON.stringify({ [await hash("inv_ana")]: "Ana", [await hash("inv_ben")]: "Ben" }),
@@ -56,4 +58,24 @@ googleStatus = 400;
 const bad = await call(good);
 assert.equal(bad.status, 502);
 assert.ok(!JSON.stringify(await bad.json()).includes("AQ."), "Google's error text is not passed on");
+assert.equal(sent.at(-1).body.messages.length, 1);
+const n400 = sent.length;
+await call(good);
+assert.equal(sent.length - n400, 1, "a 400 is not retried");
+
+// Google busy for a moment: the relay tries again itself, and the invite's fix is counted once
+env.COUNTER = namespace();
+googleStatus = 200;
+googleQueue.push(503, 503);
+let n = sent.length;
+assert.equal((await call(good)).status, 200, "two busy answers, then Google answered");
+assert.equal(sent.length - n, 3, "3 tries reached Google");
+assert.equal((await call(good)).status, 200);
+assert.equal((await call(good)).status, 200);
+assert.equal((await call(good)).status, 429, "Ana's 3 fixes: the retried one counted once");
+env.COUNTER = namespace();
+googleQueue.push(503, 503, 503);
+n = sent.length;
+assert.equal((await call(good)).status, 502, "still busy after 3 tries: give up");
+assert.equal(sent.length - n, 3, "never more than 3 tries");
 console.log("relay abuse tests passed");

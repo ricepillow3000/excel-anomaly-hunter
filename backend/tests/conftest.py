@@ -11,3 +11,4 @@ def no_real_ai_keys(monkeypatch, tmp_path):
     monkeypatch.setattr(client, "INVITE_FILE", tmp_path / "invite-code.txt")
     monkeypatch.setattr(client, "RELAY_URL", "")
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setattr(client, "_sleep", lambda s: None, raising=False)  # retries wait for real only outside tests
