@@ -18,6 +18,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 from flask import Flask, request
+from werkzeug.exceptions import HTTPException
 from werkzeug.serving import WSGIRequestHandler
 
 from anomaly_hunter.agents import checker, scan_agent
@@ -90,6 +91,10 @@ def create_app(scan_csv=None):
         resp.headers["X-Content-Type-Options"] = "nosniff"  # a file is only ever run as the type we say it is
         resp.headers["Content-Security-Policy"] = CSP
         return resp
+
+    @app.errorhandler(HTTPException)
+    def json_error(e):  # 404, 405, 413...: JSON like every other answer, not Werkzeug's HTML page (ZAP active scan)
+        return {"error": e.description}, e.code
 
     @app.get("/health")
     def health():

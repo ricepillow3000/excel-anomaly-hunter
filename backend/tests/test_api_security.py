@@ -55,3 +55,11 @@ def test_safe_headers_on_every_answer():
             "default-src 'self'; script-src 'self' https://appsforoffice.microsoft.com; object-src 'none'; "
             "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
     assert WSGIRequestHandler.version_string(None) == "Anomaly Hunter"  # the real server's Server header (ZAP checks it live)
+
+
+def test_every_error_is_json_never_a_framework_html_page():
+    """ZAP's active scan: 404/405 came back as Werkzeug's HTML page - unlike every other answer, and it names the framework."""
+    c = APP.test_client()
+    for r in (c.get("/WEB-INF/web.xml"), c.get("/nope.php?x=1"), c.get("/scan"), c.delete("/health"), c.put("/key")):
+        assert r.status_code in (404, 405) and r.is_json and isinstance(r.get_json().get("error"), str), (r.status_code, r.data[:80])
+        assert b"<html" not in r.data.lower() and b"werkzeug" not in r.data.lower()
