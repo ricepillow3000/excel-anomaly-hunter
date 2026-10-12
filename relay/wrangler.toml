@@ -17,6 +17,15 @@ new_sqlite_classes = ["Counter"] # the free plan's Durable Objects are SQLite-ba
 # "requests per day" for the model in worker.js. Google counts per PROJECT, so give the relay its own project and key
 # (then John's own AI help never competes with it). A word check spends 1 call per batch (a 30x50 sheet = 6 calls).
 # Google's own limit is the real backstop: past it, users see "used up for today" / "busy, try in a minute".
+# Relay project rules: NO billing account linked (so a leaked key can never cost money); GEMINI_KEY restricted
+# to the Generative Language API. Rotate a leaked key: Cloud Console > Credentials > new key, same restriction;
+# npx wrangler secret put GEMINI_KEY (deploys at once); THEN delete the old key (re-uploading alone leaves it working).
+
+# Keep the promise in worker.js: no request or answer is stored (saved Workers logs are on by default). Live
+# debugging still works with: npx wrangler tail
+[observability]
+enabled = false
+
 [vars]
 DAILY_PER_INVITE = "10" # AI calls per invite code per day (one word check can take ~6)
 DAILY_TOTAL = "20"      # for everyone together: John's project, gemini-3.8-flash free tier = 20 requests/day (2026-10-12)

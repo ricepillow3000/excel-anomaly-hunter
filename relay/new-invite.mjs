@@ -19,6 +19,10 @@ if (readFileSync(join(repo, "backend/anomaly_hunter/ai/client.py"), "utf8").incl
 // one code per person: a new code for someone replaces (switches off) their old one
 const code = "inv_" + randomBytes(18).toString("base64url");
 const tokensFile = join(relay, "tokens.json");
+// tokens.json lives on ONE PC (never in git) and an upload replaces the whole list: a fresh list here = everyone else off
+if (!existsSync(tokensFile))
+  console.log("WARNING: no relay/tokens.json on this PC - uploading this list switches OFF every invite not in it.\n" +
+    "Copy tokens.json (hashes only) from the PC that made the other kits first, unless this is the very first invite.\n");
 const tokens = Object.fromEntries(Object.entries(existsSync(tokensFile) ? JSON.parse(readFileSync(tokensFile, "utf8")) : {})
   .filter(([, who]) => who !== name));
 tokens[createHash("sha256").update(code).digest("hex")] = name;

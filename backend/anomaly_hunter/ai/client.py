@@ -218,8 +218,10 @@ def _ask(prompt, out=Fix, schema=FIX_SCHEMA, name="fix", deadline=None):
 def _call(prompt, out, schema, name, deadline):
     if provider() not in ("gemini", "relay"):
         try:
-            resp = anthropic.Anthropic().messages.parse(model=MODEL, max_tokens=16000, output_format=out,
-                                                        messages=[{"role": "user", "content": prompt}])
+            # SDK defaults (10 min timeout, 2 retries) would hold the one-call lock long after the pane gave up
+            sdk = anthropic.Anthropic(timeout=max(1, deadline - time.monotonic()), max_retries=0)
+            resp = sdk.messages.parse(model=MODEL, max_tokens=16000, output_format=out,
+                                      messages=[{"role": "user", "content": prompt}])
         except ValidationError:  # answer cut off mid-JSON
             raise ValueError("Claude's answer came back incomplete - try again or shorten the request.") from None
         if resp.parsed_output is None:  # refusal
@@ -235,7 +237,9 @@ def _call(prompt, out, schema, name, deadline):
                                      {"Content-Type": "application/json", "Authorization": f"Bearer {invite_code() if relay else gemini_key()}"})
         try:
             # nosemgrep: dynamic-urllib-use-detected - GEMINI_URL constant, or RELAY_URL that provider() only allows over https
-            with urllib.request.urlopen(req, timeout=max(1, min(90, deadline - time.monotonic()))) as r:  # noqa: S310 - same request
+            # the relay tries Google 3 times itself and its call is already counted: let it run to the deadline
+            left = max(1, deadline - time.monotonic())
+            with urllib.request.urlopen(req, timeout=left if relay else min(90, left)) as r:  # noqa: S310 - same request
                 text = json.load(r)["choices"][0]["message"]["content"]
             return out.model_validate_json(text)
         except urllib.error.HTTPError as e:

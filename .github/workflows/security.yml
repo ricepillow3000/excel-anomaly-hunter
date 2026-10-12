@@ -34,6 +34,8 @@ jobs:
           backend frontend relay e2e tools
       - name: Relay abuse tests (invite codes, daily caps, key never echoed)
         run: node relay/test.mjs
+      - name: Pane logic self-check
+        run: node frontend/selfcheck.js
       - name: Security lint (Bandit rules)
         run: ruff check --select S --ignore S101 backend/anomaly_hunter tools
       - name: Dependencies with known vulnerabilities

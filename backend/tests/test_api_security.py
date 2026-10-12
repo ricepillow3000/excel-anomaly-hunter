@@ -1,8 +1,11 @@
 """API security checks CI runs on every push: what a generic scanner (ZAP) can't know about this engine."""
+import json
+
 import pytest
 from test_fix import BODY, gemini_stub
 from werkzeug.serving import WSGIRequestHandler
 
+from anomaly_hunter import server
 from anomaly_hunter.ai import client
 from anomaly_hunter.server import create_app
 
@@ -63,3 +66,38 @@ def test_every_error_is_json_never_a_framework_html_page():
     for r in (c.get("/WEB-INF/web.xml"), c.get("/nope.php?x=1"), c.get("/scan"), c.delete("/health"), c.put("/key")):
         assert r.status_code in (404, 405) and r.is_json and isinstance(r.get_json().get("error"), str), (r.status_code, r.data[:80])
         assert b"<html" not in r.data.lower() and b"werkzeug" not in r.data.lower()
+
+
+SHEET = {"columns": ["Item", "Units"], "rows": [[f"Pen {k}", 10 + k % 5] for k in range(30)]}
+
+
+def test_power_bi_csv_never_carries_a_live_formula(tmp_path):
+    """OWASP CSV injection: a cell starting = + - @ (or tab/CR, or full-width forms) runs as a formula when the
+    CSV is opened in Excel. Partial protection: OWASP notes the apostrophe may not survive a save and reopen."""
+    out = tmp_path / "s.csv"
+    rows = SHEET["rows"] + [["=cmd|' /C calc'!A0", 12], ["@SUM(1)", 11], ["＝1+1", 10], ["-5 items", 13]]
+    r = create_app(scan_csv=out).test_client().post("/scan", json={**SHEET, "rows": rows})
+    assert r.status_code == 200
+    text = out.read_text(encoding="utf-8-sig")
+    assert "'=cmd" in text and "'@SUM" in text and "'＝1+1" in text and "\n=cmd" not in text
+    assert "\nPen 0,10," in text  # numbers stay numbers (no apostrophe)
+
+
+def test_an_odd_character_never_turns_a_scan_into_a_500(tmp_path):
+    raw = json.dumps({**SHEET, "rows": SHEET["rows"] + [["ab\ud800", 12]]})  # a lone surrogate, valid JSON
+    r = create_app(scan_csv=tmp_path / "s.csv").test_client().post("/scan", data=raw, content_type="application/json")
+    assert r.status_code == 200
+
+
+def test_a_huge_body_is_refused_before_it_is_read():
+    app = create_app()
+    app.config["MAX_CONTENT_LENGTH"] = 1000
+    r = app.test_client().post("/scan", data=json.dumps({**SHEET, "rows": SHEET["rows"] * 5}), content_type="application/json")
+    assert r.status_code == 413 and r.is_json and "error" in r.get_json()
+    assert create_app().config["MAX_CONTENT_LENGTH"] == 256 * 1024 * 1024  # a 20 MB real sheet still fits
+
+
+def test_more_cells_than_the_pane_ever_sends_is_a_clear_400(monkeypatch):
+    monkeypatch.setattr(server, "MAX_CELLS", 10)
+    r = APP.test_client().post("/scan", json={"columns": ["a"], "rows": [[k] for k in range(11)]})
+    assert r.status_code == 400 and "too many cells" in r.get_json()["error"]

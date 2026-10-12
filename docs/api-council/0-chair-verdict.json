@@ -1,0 +1,255 @@
+{
+  "build": [
+    {
+      "id": "B1",
+      "title": "Relay day counter follows Google's US Pacific day (merges SEC-1, RL-1, R2-2, QA-G6)",
+      "why": "Highest risk. relay/worker.js:75 builds the day key from the UTC date, but Google says 'Requests per day (RPD) quotas reset at midnight Pacific time' and 'Rate limits are applied per project'. During daylight time the relay day and the Google day overlap, so up to about 40 relay calls can land in one Google day against a 20 RPD quota. The counter is charged before Google is called (worker.js:40-45), so every call past Google's quota still uses an invite slot and gets Google's per-day 429. Users also see two reset times: 'midnight UTC' at worker.js:78-79 and 'US Pacific time' at worker.js:63. DISPUTE RESOLVED in favour of Intl (SEC-1/RL-1): I ran it in local workerd (miniflare 5.20261006.1-alpha), and toLocaleDateString('en-CA',{timeZone:'America/Los_Angeles'}) gave 2026-10-13T06:59Z->2026-10-12, 07:00Z->2026-10-13, 2026-12-01T07:30Z->2026-11-30 and 08:00Z->2026-12-01, so DST is handled correctly. The workerd README says workerd is 'based on the same code that powers Cloudflare Workers'. R2-2's fixed UTC-8 offset is rejected: in daylight time the relay day ends at 08:00Z while Google's day starts at 07:00Z, so the old relay day's unused calls spend Google's new day and the relay's new day then adds up to 20 more. That is not 'the safe side'.",
+      "change": "relay/worker.js: add `export const dayKey = (d = new Date()) => d.toLocaleDateString(\"en-CA\", { timeZone: \"America/Los_Angeles\" });` (YYYY-MM-DD). Line 75 becomes `const day = dayKey();`. Lines 78-79: change 'midnight UTC' to 'midnight US Pacific time'. Deploy between 08:00 and 23:59 UTC; in either season the Pacific date then equals the stored UTC date, so the live counter is not reset. Deploy together with B2, B5 and B6 in one `npx wrangler deploy`.",
+      "files": [
+        "relay/worker.js",
+        "relay/test.mjs"
+      ],
+      "test": "relay/test.mjs (write first, fails today because dayKey does not exist): import { dayKey }; assert dayKey(new Date('2026-10-13T06:59:00Z')) === '2026-10-12'; dayKey(new Date('2026-10-13T07:00:00Z')) === '2026-10-13'; dayKey(new Date('2026-12-01T07:30:00Z')) === '2026-11-30'; dayKey(new Date('2026-12-01T08:00:00Z')) === '2026-12-01'; and the existing cap-reached 429 body matches /Pacific/ (fails today: it says UTC).",
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/rate-limits",
+        "https://developers.cloudflare.com/workers/runtime-apis/web-standards/",
+        "https://github.com/cloudflare/workerd",
+        "https://api-security.owasp.org/editions/2023/en/0xa4-unrestricted-resource-consumption"
+      ]
+    },
+    {
+      "id": "B2",
+      "title": "Relay always answers in JSON, and the engine waits long enough for the relay's own Google retries (merges QA-F2, QA-F3, RL-11, the catch half of R2-1, and QA-G8's tests)",
+      "why": "(a) worker.js:25 JSON.parse(env.TOKENS) and the Google loop at worker.js:48-64 (fetch and out.text()) have no try/catch. Cloudflare error 1101 means 'Worker threw a JavaScript exception', and Cloudflare advises: 'wrap fetch(request) in try...catch and return a 5xx response on failure'. Today a network error or a bad TOKENS upload returns Cloudflare's error page after the slot is already charged, which breaks the 'every error is JSON' contract. (b) client.py:238 caps each relay try at min(90, ...), but the relay can make 3 Google tries plus 4 s of waits, and Gemini has taken more than 90 s (client.py:264). Cloudflare: 'There is no hard limit on duration for HTTP-triggered Workers' and 'There is no set time limit on individual subrequests'. A slow success is therefore thrown away after the invite slot is spent, and the engine never retries the relay (client.py:243-248). Timeouts then nest: client relay timeout <= DEADLINE 240 s < the pane's 300 s (frontend/features/ai.js:41,60). (c) No test covers the relay's {error} words reaching the user, the 401 hint, or the non-JSON fallback (client.py:244-248). The AbortController timer is NOT adopted (see rejected).",
+      "change": "relay/worker.js: wrap line 25 as `let tokens; try { tokens = JSON.parse(env.TOKENS || \"{}\"); } catch { return json(500, { error: \"Relay misconfigured.\" }); }`. Wrap lines 47-64 (retry loop, out.ok return, 429 text read) in `try { ... } catch { return json(502, { error: \"Couldn't reach Google AI - try again in a minute.\" }); }`. backend/anomaly_hunter/ai/client.py:238: `timeout = max(1, deadline - time.monotonic()) if relay else max(1, min(90, deadline - time.monotonic()))` and pass `timeout=timeout` to urlopen. About 8 lines in total.",
+      "files": [
+        "relay/worker.js",
+        "relay/test.mjs",
+        "backend/anomaly_hunter/ai/client.py",
+        "backend/tests/test_ai_load.py"
+      ],
+      "test": "relay/test.mjs: (1) make globalThis.fetch reject once, then expect status 502 with a JSON {error}; (2) call with env TOKENS='{bad', then expect status 500 with a JSON {error}. Both fail today (uncaught throw). backend/tests/test_ai_load.py: (3) on the relay provider, monkeypatch urllib.request.urlopen to capture its timeout kwarg and assert > 90 (fails today: 90). (4) parametrized over (429,'{\"error\":\"used up\"}')->'used up', (401,'{\"error\":\"bad code\"}')->'bad code ... Ask John for a new invite code.', (500,'<html>1101</html>')->'The AI relay answered with error 500': assert the ValueError text (locks in current behaviour).",
+      "sources": [
+        "https://developers.cloudflare.com/workers/observability/errors/",
+        "https://developers.cloudflare.com/workers/platform/limits/",
+        "https://docs.python.org/3/library/urllib.request.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html"
+      ]
+    },
+    {
+      "id": "B3",
+      "title": "Warn before an invite kit made on the second PC silently switches off every other invite (R2-4)",
+      "why": "relay/new-invite.mjs:22 starts from {} when relay/tokens.json is missing. tokens.json is gitignored (.gitignore:15), so it exists on one PC only, and line 41-42 tells John to upload the WHOLE list. Cloudflare: secret values 'are not visible within Wrangler or Cloudflare dashboard after you define them', and `wrangler secret put` creates and deploys a new version at once. John works on two machines, so one kit made on the laptop revokes everyone else with no error, and the old list cannot be recovered.",
+      "change": "relay/new-invite.mjs after line 21: `if (!existsSync(tokensFile)) console.log(\"WARNING: no relay/tokens.json on this PC - uploading this list switches OFF every invite not in it. Copy tokens.json (hashes only) from the PC that made the other kits first.\\n\");` (existsSync is already imported at line 7). One line.",
+      "files": [
+        "relay/new-invite.mjs"
+      ],
+      "test": "No automated test (the script runs git archive and writes kits). Manual check: in a scratch clone with no relay/tokens.json, `node relay/new-invite.mjs Test` prints the WARNING line; delete kits/Test.zip and relay/tokens.json afterwards.",
+      "sources": [
+        "https://developers.cloudflare.com/workers/configuration/secrets/"
+      ]
+    },
+    {
+      "id": "B4",
+      "title": "Bound the Claude SDK call by the AI deadline (QA-F1)",
+      "why": "client.py:221 calls anthropic.Anthropic().messages.parse with SDK defaults while _LOCK is held (client.py:202-207). Anthropic docs: 'By default requests time out after 10 minutes', 'Certain errors are automatically retried 2 times by default', and 'requests that time out are retried twice by default'. When ANTHROPIC_API_KEY is the provider, one hung call keeps every other Ask AI and word check on 'AI is still working' for up to about 30 min, long after the pane gave up at 300 s. APITimeoutError is already mapped to JSON by server.py:139-140 (subclass of APIConnectionError, per QA-D4).",
+      "change": "client.py:221: `anthropic.Anthropic(timeout=max(1, deadline - time.monotonic()), max_retries=0).messages.parse(...)`. One line. Both kwargs are documented constructor options.",
+      "files": [
+        "backend/anomaly_hunter/ai/client.py",
+        "backend/tests/test_fix.py"
+      ],
+      "test": "backend/tests/test_fix.py: monkeypatch client.anthropic.Anthropic with a fake class that records its __init__ kwargs and returns a stub whose messages.parse gives a valid parsed_output; force provider() to 'claude'; call the fix path and assert kwargs['max_retries'] == 0 and 0 < kwargs['timeout'] <= client.DEADLINE (fails today: no kwargs).",
+      "sources": [
+        "https://platform.claude.com/docs/en/api/sdks/python"
+      ]
+    },
+    {
+      "id": "B5",
+      "title": "latest-scan.csv: neutralise formula-trigger cells, and stop a lone surrogate turning a scan into a 500 (P4-G3 + P4-G4, same line)",
+      "why": "server.py:119-122 writes the sheet's cells unchanged into the Power BI CSV that the real run enables (server.py:319). OWASP lists = + - @ tab CR LF and the full-width forms as formula triggers, and gives a leading apostrophe as its main mitigation. OWASP also notes quote/apostrophe methods 'are not reliable in Microsoft Excel after saving and re-opening', so this is partial hardening. Separately, to_csv(encoding='utf-8-sig') raises UnicodeEncodeError on a lone surrogate, and server.py:124 catches only OSError, so the scan answer becomes a 500. Pandas: errors 'Specifies how encoding and decoding errors are to be handled', default 'strict'. I probed both on pandas 3.0.6 (the pinned version): '=cmd|x' became \"'=cmd|x\", the full-width \uff1dSUM(1) was prefixed, the number -5 was untouched, the header '=a' became \"'=a\", and 'ab\\ud800' was written as 'ab?' with no crash. The fuzz app never enables the CSV (test_fuzz_api.py:19), so this path is untested.",
+      "change": "server.py before line 122: `TRIG = tuple(\"=+-@\\t\\r\\n\uff1d\uff0b\uff0d\uff20\")` (module level) and `esc = lambda v: \"'\" + v if isinstance(v, str) and v.startswith(TRIG) else v`; then `flat = flat.map(esc).rename(columns=esc)`; and add `errors=\"replace\"` to the to_csv call at line 122. About 3 lines.",
+      "files": [
+        "backend/anomaly_hunter/server.py",
+        "backend/tests/test_api_security.py"
+      ],
+      "test": "test_api_security.py: app = create_app(scan_csv=tmp_path/'s.csv'). (1) POST /scan with a column containing '=cmd|\\' /C calc\\'!A0' plus normal rows; assert 200 and the file text contains \"'=cmd\" (fails today). (2) POST raw bytes b'{\"columns\":[\"a\"],\"rows\":[[\"ab\\\\ud800\"],[\"x\"]]}' with content_type application/json and the allowed Origin header; assert 200 (fails today with 500).",
+      "sources": [
+        "https://community.owasp.org/attacks/CSV_Injection",
+        "https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.to_csv.html"
+      ]
+    },
+    {
+      "id": "B6",
+      "title": "Relay cap fallbacks match the real quota (RL-10 = QA-G7)",
+      "why": "worker.js:43 has `+env.DAILY_PER_INVITE || 25` and `+env.DAILY_TOTAL || 200`, while wrangler.toml:21-22 set 10 and 20 to match Google's real 20 RPD. If [vars] is ever dropped or mistyped, the caps silently become 10x looser. Probed in Node: `+\"0\"||25` and `+undefined||25` both give 25, so a cap of '0' meant as a kill switch also falls back. relay/test.mjs:28 always sets both vars, so the fallback is never tested.",
+      "change": "worker.js:43: `|| 25` becomes `|| 10` and `|| 200` becomes `|| 20`. To switch the relay off, empty TOKENS rather than setting a cap to 0. Ships in the same deploy as B1/B2.",
+      "files": [
+        "relay/worker.js",
+        "relay/test.mjs"
+      ],
+      "test": "relay/test.mjs: build an env without DAILY_PER_INVITE/DAILY_TOTAL (same TOKENS and COUNTER stub); make 10 calls with one invite (all 200), and assert the 11th gets 429 (fails today: allowed until 25).",
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/rate-limits"
+      ]
+    },
+    {
+      "id": "B7",
+      "title": "Make the relay's 'nothing logged' promise true, and record the key-handling rules in wrangler.toml (R2-3 + the doc half of SEC-2/R2-5)",
+      "why": "worker.js:8 promises 'no request or answer is ever logged', but wrangler.toml has no [observability] block. Wrangler docs: observability `enabled` is 'Shorthand for logs.enabled', 'Whether logs for the Worker are persisted', and it 'Defaults to true for all new Workers'. Workers Logs keep 3 days on Free, and each invocation log 'holds the request, response, and related metadata'. Whether the Authorization header (the invite code) is redacted is UNVERIFIED, because the current page does not say. wrangler.toml also lacks the rotation rule Google gives: 'create new API keys, update your applications to use the new API keys, and delete the old keys'. Re-uploading the secret alone leaves a leaked key valid.",
+      "change": "relay/wrangler.toml: add `[observability]` / `enabled = false` (2 lines, placed before [vars]). Extend the comment at lines 16-19: `# Relay project: NO billing account linked; GEMINI_KEY restricted to the Generative Language API (checked <date>).` and `# Rotate a leaked key: Cloud Console > Credentials > new key with the same restriction; npx wrangler secret put GEMINI_KEY (deploys at once); then DELETE the old key.` `wrangler tail` still works for live debugging.",
+      "files": [
+        "relay/wrangler.toml"
+      ],
+      "test": "Config only. Before deploying, run `npx wrangler deploy --dry-run` from relay/ and confirm it parses. After deploying, John checks that the dashboard Observability tab shows logs disabled.",
+      "sources": [
+        "https://developers.cloudflare.com/workers/wrangler/configuration/",
+        "https://developers.cloudflare.com/workers/observability/logs/workers-logs/",
+        "https://docs.cloud.google.com/docs/authentication/api-keys-best-practices"
+      ]
+    },
+    {
+      "id": "B8",
+      "title": "Gitignore Wrangler's local folder and local-secrets files (new, found in this review)",
+      "why": "`git status` shows `?? relay/.wrangler/` (untracked and NOT ignored; it holds cache/wrangler-account.json), and `git check-ignore relay/.dev.vars` matches nothing. The repo is public (.gitignore:12). Cloudflare: .dev.vars and .env 'should not be committed to git', so add '.dev.vars*' and '.env*' to .gitignore. B1/B2 suggest local `wrangler dev` testing, which is exactly when a .dev.vars holding GEMINI_KEY gets created. One `git add -A` would publish it.",
+      "change": ".gitignore, under the relay block at lines 12-15: add `.wrangler/`, `.dev.vars*` and `.env*`. 3 lines.",
+      "files": [
+        ".gitignore"
+      ],
+      "test": "`git check-ignore relay/.wrangler/x relay/.dev.vars relay/.env` prints all three paths (fails today with exit 1), and `git status --short` no longer lists relay/.wrangler/.",
+      "sources": [
+        "https://developers.cloudflare.com/workers/configuration/secrets/",
+        "https://developers.cloudflare.com/workers/wrangler/configuration/"
+      ]
+    },
+    {
+      "id": "B9",
+      "title": "Engine input bounds: body-size cap plus a server-side cell cap matching the pane (P4-G1 + P4-G2)",
+      "why": "Low risk; the only callers are processes on the same PC. Flask MAX_CONTENT_LENGTH 'Default: None' means 'no limit is enforced at the Flask application level'. Werkzeug says get_data 'is only safe to do if the max_content_length is set'. server.py create_app (lines 76-78) never sets it, and _bad (server.py:43-68) checks row width but not the cell count. The 2,000,000-cell limit lives only in the pane (frontend/utils/sheet.js:3), and checker.MAX_CELLS (300k) gates only the typo hunt. A buggy pane build or any local tool can make the engine read an unbounded body into RAM, and a byte cap alone still allows tens of millions of tiny cells. Kept over SEC-11/QA-R3 because together the two lines are the framework's documented precondition plus the pane's own number, and both return the existing JSON 413/400.",
+      "change": "server.py: module constant `MAX_CELLS = 2_000_000  # same as frontend/utils/sheet.js maxCells`. In create_app after line 78: `app.config[\"MAX_CONTENT_LENGTH\"] = 256 * 1024 * 1024`. In _bad after the rows check (line 50): `if len(rows) * len(body[\"columns\"]) > MAX_CELLS: return \"too many cells - scan at most 2,000,000 at once\"`. Add 413 to the POST routes in backend/openapi.yaml so Schemathesis status_code_conformance stays green.",
+      "files": [
+        "backend/anomaly_hunter/server.py",
+        "backend/openapi.yaml",
+        "backend/tests/test_api_security.py"
+      ],
+      "test": "test_api_security.py: (1) app = create_app(); app.config['MAX_CONTENT_LENGTH'] = 1000; POST 3 KB of JSON to /scan with the allowed Origin; assert 413 and 'error' in the JSON. (2) monkeypatch server.MAX_CELLS = 10; POST 11 cells; assert 400 and 'too many cells' (fails today: 200).",
+      "sources": [
+        "https://flask.palletsprojects.com/en/stable/config/",
+        "https://werkzeug.palletsprojects.com/en/stable/request_data/",
+        "https://api-security.owasp.org/editions/2023/en/0xa4-unrestricted-resource-consumption"
+      ]
+    },
+    {
+      "id": "B10",
+      "title": "Run the pane self-check in CI (QA-G4)",
+      "why": "`node frontend/selfcheck.js` passes today ('panel self-check passed', re-run this session), but .github/workflows/security.yml (steps at lines 26-40) never runs it. Regressions in the scan and fix logic users actually see would merge with a green check. GitHub: 'GitHub Actions usage is free ... for public repositories that use standard GitHub-hosted runners'.",
+      "change": "security.yml after line 36: `      - name: Pane logic self-check` / `        run: node frontend/selfcheck.js`. 2 lines.",
+      "files": [
+        ".github/workflows/security.yml"
+      ],
+      "test": "Push a branch: the 'Pane logic self-check' step appears and passes. Temporarily breaking one selfcheck assertion locally makes `node frontend/selfcheck.js` exit non-zero.",
+      "sources": [
+        "https://docs.github.com/en/billing/concepts/product-billing/github-actions"
+      ]
+    }
+  ],
+  "rejected": [
+    {
+      "title": "Fixed UTC-8 day key (R2-2)",
+      "reason": "In daylight time it lets the old relay day's leftover calls spend Google's new day, so up to about 40 calls can land in one Google day. Intl timeZone was verified correct in local workerd, so B1 uses Intl."
+    },
+    {
+      "title": "AbortController time budget around the relay's Google calls (second half of R2-1, RL-11's 180 s variant; QA-X2 upheld)",
+      "reason": "AbortSignal does work (it threw AbortError in local workerd), but it adds a config variable for no gain. The slot is already spent, and once B2 is in, the engine's 240 s deadline ends a hung call with its own JSON message."
+    },
+    {
+      "title": "WAF rate-limit rules, a custom domain, or the Workers Rate Limiting binding against floods (SEC-5, R2-10, RL-2)",
+      "reason": "WAF and a custom domain need a zone (a paid domain). The binding is per location and eventually consistent, and still counts as a Worker request. The worst case is Error 1027 until midnight UTC, which costs availability, not money."
+    },
+    {
+      "title": "Per-minute or burst throttle per invite (R2-11, RL-4)",
+      "reason": "Daily caps of 10/20, the engine's one-call-at-a-time lock and Google's own per-minute 429 already bound bursts."
+    },
+    {
+      "title": "Refund the cap when Google fails (R2-12)",
+      "reason": "Adds a second Durable Object round trip and a new failure path. Whether failed calls count against Google's RPD is UNVERIFIED, so a refund could overshoot the real quota."
+    },
+    {
+      "title": "gitleaks as a CI gate (QA-G5 -> QA-X1, SEC-8)",
+      "reason": "Semgrep p/secrets already runs, GitHub secret scanning is free on public repos, and a CI step runs after the push. B8 closes the real local-secrets gap."
+    },
+    {
+      "title": "Bearer token for localhost callers of the engine (SEC-10)",
+      "reason": "The engine would have to give the token to its own pane page, so any caller that can reach 127.0.0.1:5055 could fetch it too. The Host/Origin gate already stops browsers."
+    },
+    {
+      "title": "Security headers on relay responses (SEC-15)",
+      "reason": "Its only client is Python urllib, with no browser, CORS or caching in the path."
+    },
+    {
+      "title": "nginx/Caddy reverse proxy or a production WSGI server for the engine (R2-13, QA-R2)",
+      "reason": "Waitress has no native TLS and the Office pane needs https, so this means installing a TLS proxy on every user's PC. The engine is loopback-only."
+    },
+    {
+      "title": "Content-Length pre-check or UTF-8 byte counting on the relay body, and preview_urls = false (R2-14, P4-R7, optional part of R2-1)",
+      "reason": "The body is read only after auth, the engine sends ASCII only, and the caps bound abuse. Version URLs are not generated for Workers with a Durable Object."
+    },
+    {
+      "title": "Retry-After header on relay 429s (RL-7)",
+      "reason": "The only client never retries relay calls, so nothing would read it."
+    },
+    {
+      "title": "Parse Gemini RetryInfo.retryDelay (RL-8)",
+      "reason": "The body format is not in official docs (forum posts only), and the backoff already spans more than 60 s with per-day detection."
+    },
+    {
+      "title": "Jitter on the relay's Google 5xx retries (RL-9)",
+      "reason": "At 20 calls a day there are no simultaneous retriers to spread out."
+    },
+    {
+      "title": "JSON-schema or pydantic request models (P4-R1)",
+      "reason": "Duplicates _bad plus the Schemathesis fuzzing against openapi.yaml."
+    },
+    {
+      "title": "Per-cell string length cap on /scan (P4-R2)",
+      "reason": "B9 bounds the total, AI paths already cut cells, and a cap would refuse real notes columns."
+    },
+    {
+      "title": "1904 date-system detection and the 1900 leap-year fix (P4-R3, P4-R4)",
+      "reason": "use1904DateSystem is BETA-only per Microsoft, and the leap-year bug affects only dates before March 1900, which the engine ignores."
+    },
+    {
+      "title": "Deep validation of the relay's response_format (P4-R5)",
+      "reason": "Size, model and max_tokens are fixed on the server, and the caps bound abuse."
+    },
+    {
+      "title": "Compress or stream /scan uploads (P4-R6)",
+      "reason": "Loopback only, and about 21 MB at the 2M-cell maximum, so there is no network benefit."
+    },
+    {
+      "title": "ensure_ascii=False for AI request bodies (P4-R8)",
+      "reason": "Lone surrogates would then crash every AI call; the default escaping is safe."
+    },
+    {
+      "title": "RFC 9457 problem+json errors, or finer status codes such as 409 for busy (QA-R1, QA-R4)",
+      "reason": "There is a single client that reads only j.error, and the codes are already documented and fuzzed."
+    },
+    {
+      "title": "Pin Actions to SHAs, or a coverage-percentage gate (QA-R5)",
+      "reason": "The workflow holds no secrets and has a read-only token, and the behaviour is already gated by tests and fuzzing."
+    },
+    {
+      "title": "HMAC request signing, or an async job queue (prior Council)",
+      "reason": "The signer would be every user's own PC, so the secret is copyable. Calls take 4-12 s, so a queue adds machinery for nothing."
+    }
+  ],
+  "john_steps": [
+    "Google Cloud Console, relay project: check that NO billing account is linked (Billing > linked account). Google's Paid tier needs a linked billing account plus Prepay, and unlinking returns the project to the free tier.",
+    "Cloud Console > APIs & Services > Credentials > the relay's key: set API restrictions to 'Generative Language API' only. Then write the date into the wrangler.toml comment added in B7.",
+    "If the key ever leaks: create a new key with the same restriction, run `npx wrangler secret put GEMINI_KEY` from relay/ (it deploys at once), then DELETE the old key in Cloud Console. Re-uploading the secret alone leaves the leaked key working.",
+    "Before making an invite kit on the second PC: copy relay/tokens.json (hashes only) privately from the PC that made the earlier kits. Never commit it.",
+    "After B1, B2, B6 and B7 are merged and tests are green: run `npx wrangler deploy` from relay/ between 08:00 and 23:59 UTC, so the counter's stored date matches the new Pacific key and today's count is kept. Then check in the dashboard (Workers & Pages > anomaly-hunter-relay > Observability) that logs are off.",
+    "Optional: in the GitHub repo, Settings > Code security, confirm secret scanning and push protection are on for the public repo.",
+    "Run gitleaks by hand before each push, as now. After the code edits, run `graphify update .` (CLAUDE.md rule)."
+  ],
+  "summary": "The Council agreed on 10 build items, ordered by risk. All are free, small and backed by sources. Everything else is rejected or is a manual step for John.\n\n**Build items**\n1. **B1, relay day key:** count the relay's day in US Pacific time with Intl, not UTC, so it matches when Google's daily quota resets. Today up to about 40 calls can land in one Google day against a 20/day quota.\n2. **B2, relay errors and timeouts:**\n   - Add try/catch so the relay always answers in JSON.\n   - Let the engine wait up to its 240 s deadline on relay calls instead of 90 s.\n   - Add tests that the relay's error messages reach the user.\n3. **B3, invite-list warning:** `new-invite.mjs` warns before a kit made on the second PC silently switches off every other invite.\n4. **B4, Claude SDK call:** bound it by the deadline and turn off its own retries (`max_retries=0`). Today one hung call can lock all AI help for about 30 minutes.\n5. **B5, Power BI CSV:**\n   - Neutralise cells that would become live formulas when the CSV is opened in Excel.\n   - Use `errors=\"replace\"` so one odd character no longer turns a scan into a 500.\n6. **B6, cap fallbacks:** change them from 25/200 to 10/20.\n7. **B7, relay config:** turn off saved relay logs (`[observability] enabled = false`) and write the key-rotation and billing rules into `wrangler.toml`.\n8. **B8, new finding:** `relay/.wrangler/` is untracked and not gitignored, and `.dev.vars` (where a local Gemini key would go) isn't ignored either, in a public repo. Fix: add both to `.gitignore`.\n9. **B9, engine input limits:** cap request size at 256 MB and the cell count at the pane's 2M. Low risk.\n10. **B10, CI:** run the pane self-check in CI.\n\n**Disputes settled by testing, not just reading**\n- **Day key:** Cloudflare's docs don't say whether Intl time zones work in Workers. I ran it in Cloudflare's local runtime (miniflare 5.20261006.1-alpha): `America/Los_Angeles` handled daylight and winter time correctly, and abort signals threw `AbortError`. The fixed UTC-8 offset (R2-2) is rejected: in daylight time it lets the old day's unused calls spill into Google's new day, so it is not the safe side as claimed.\n- **Relay timer:** the 180 s abort timer is rejected. Once the engine waits up to 240 s, a timer adds nothing; the slot is already spent either way.\n- **CSV fix:** checked on the pinned pandas 3.0.6. Formula cells and the full-width forms get an apostrophe; `-5` is untouched; a lone surrogate is written as `?` with no crash. OWASP itself notes the apostrophe fix may not survive a save and reopen in Excel, so this is partial protection.\n\n**Rejected:** WAF, custom domain and rate-limit binding (need a paid domain or don't help), gitleaks in CI, a token for localhost callers, a production web server or reverse proxy, refunding the cap, Retry-After and jitter changes, and the other enterprise patterns listed.\n\nNothing was edited, deployed or sent to the live relay. The only things I wrote were the probe scripts in the scratchpad. The pane self-check passes today. Project: `C:\\Users\\john4\\Claude\\Projects\\excel-anomaly-hunter`."
+}

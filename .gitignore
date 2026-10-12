@@ -14,6 +14,10 @@ invite-code.txt
 kits/
 relay/tokens.json
 *.zip
+# Wrangler's local cache (account info) and local secrets files (a dev Gemini key would live there)
+.wrangler/
+.dev.vars*
+.env*
 
 # Impeccable design hook: per-machine cache and private overrides (config.json is shared)
 .impeccable/hook.cache.json

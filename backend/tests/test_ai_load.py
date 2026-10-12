@@ -160,3 +160,50 @@ def test_one_ai_call_at_a_time(monkeypatch):
         client._ask("fix row 2")
     release.set()
     first.join(5)
+
+
+def test_a_relay_call_may_wait_until_the_deadline_not_just_90_seconds(monkeypatch):
+    """The relay itself tries Google 3 times and Gemini has taken over 90 s: a slow success must not be thrown away
+    after the invite's call was already counted (Council 2026-10-12, B2)."""
+    seen = []
+    real = fake_google(monkeypatch)
+    wrapped = client.urllib.request.urlopen
+    monkeypatch.setattr(client.urllib.request, "urlopen", lambda req, timeout=None, **kw: (seen.append(timeout), wrapped(req, timeout))[1])
+    client.KEY_FILE.unlink()
+    monkeypatch.setattr(client, "RELAY_URL", "https://relay.example")
+    client.INVITE_FILE.write_text("inv_" + "a" * 24, encoding="utf-8")
+    client._ask("fix it")
+    assert real and seen[0] > 90
+
+
+@pytest.mark.parametrize("status,body,words", [
+    (429, '{"error": "used up for today"}', "used up for today"),
+    (401, '{"error": "bad code"}', "bad code Ask John for a new invite code."),
+    (500, "<html>1101</html>", "The AI relay answered with error 500"),
+])
+def test_the_relay_words_reach_the_user(monkeypatch, status, body, words):
+    fake_google(monkeypatch, (status, body))
+    client.KEY_FILE.unlink()
+    monkeypatch.setattr(client, "RELAY_URL", "https://relay.example")
+    client.INVITE_FILE.write_text("inv_" + "a" * 24, encoding="utf-8")
+    with pytest.raises(ValueError) as e:
+        client._ask("fix it")
+    assert words in str(e.value)
+
+
+def test_a_claude_call_is_bounded_by_the_deadline_and_not_retried_by_the_sdk(monkeypatch):
+    """SDK defaults are a 10-minute timeout and 2 retries, all while the one-call lock is held (Council B4)."""
+    made = {}
+
+    class FakeAnthropic:
+        def __init__(self, **kw):
+            made.update(kw)
+            self.messages = self
+
+        def parse(self, **kw):
+            return type("R", (), {"parsed_output": client.Fix(explanation="x", changes=[]), "stop_reason": "end_turn"})()
+    monkeypatch.setattr(client.anthropic, "Anthropic", FakeAnthropic)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    assert client.provider() == "claude"
+    client._ask("fix it")
+    assert made.get("max_retries") == 0 and 0 < made.get("timeout", 0) <= client.DEADLINE

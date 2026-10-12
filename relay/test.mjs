@@ -1,6 +1,6 @@
 // Abuse tests for the relay, run on this PC with a stand-in Google and an in-memory counter: node relay/test.mjs
 import assert from "node:assert";
-import worker, { Counter } from "./worker.js";
+import worker, { Counter, dayKey } from "./worker.js";
 
 const hash = async (t) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)))]
   .map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -94,4 +94,31 @@ busy = await call(good);
 words = (await busy.json()).error;
 assert.match(words, /today/i, "a per-day limit says: used up for today");
 assert.ok(!words.includes("1234") && !/minute/.test(words));
+
+// the day the caps count follows Google's own reset (midnight US Pacific, summer and winter time), not UTC
+assert.equal(dayKey(new Date("2026-10-13T06:59:00Z")), "2026-10-12", "summer: still the Pacific day before");
+assert.equal(dayKey(new Date("2026-10-13T07:00:00Z")), "2026-10-13", "summer: Pacific midnight = 07:00 UTC");
+assert.equal(dayKey(new Date("2026-12-01T07:30:00Z")), "2026-11-30", "winter: Pacific midnight = 08:00 UTC");
+assert.equal(dayKey(new Date("2026-12-01T08:00:00Z")), "2026-12-01");
+
+// never an uncaught throw (Cloudflare would answer with its own HTML page): Google unreachable, or a broken TOKENS secret
+env.COUNTER = namespace();
+const realFetch = globalThis.fetch;
+globalThis.fetch = async () => { throw new TypeError("network down"); };
+const down = await call(good);
+assert.equal(down.status, 502, "Google unreachable");
+assert.ok((await down.json()).error, "still a JSON error");
+globalThis.fetch = realFetch;
+const broken = await worker.fetch(new Request("https://relay.example/fix", { method: "POST", headers: { Authorization: "Bearer inv_ana" }, body: "{}" }),
+  { ...env, TOKENS: "{bad" });
+assert.equal(broken.status, 500, "a mistyped TOKENS secret");
+assert.ok((await broken.json()).error);
+
+// if the [vars] caps are ever lost, the fallbacks are the real quota (10 / 20), never looser
+googleStatus = 200;
+const bare = { GEMINI_KEY: env.GEMINI_KEY, TOKENS: env.TOKENS, COUNTER: namespace() };
+const bareCall = () => worker.fetch(new Request("https://relay.example/fix", {
+  method: "POST", headers: { Authorization: "Bearer inv_ana" }, body: JSON.stringify(good) }), bare);
+for (let i = 0; i < 10; i++) assert.equal((await bareCall()).status, 200, `fallback cap: call ${i + 1} of 10`);
+assert.equal((await bareCall()).status, 429, "fallback per-invite cap is 10");
 console.log("relay abuse tests passed");

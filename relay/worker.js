@@ -22,7 +22,12 @@ export default {
   async fetch(req, env) {
     if (new URL(req.url).pathname !== "/fix" || req.method !== "POST") return json(404, { error: "not found" });
     const code = (req.headers.get("Authorization") || "").replace(/^Bearer /, "");
-    const tokens = JSON.parse(env.TOKENS || "{}");
+    let tokens;
+    try {
+      tokens = JSON.parse(env.TOKENS || "{}");
+    } catch { // a mistyped TOKENS upload: our own JSON, not Cloudflare's HTML error page
+      return json(500, { error: "The AI relay is misconfigured - tell John." });
+    }
     const who = code && tokens[await sha256(code)];
     if (!who) return json(401, { error: "This invite code isn't valid (or was switched off)." });
 
@@ -40,30 +45,38 @@ export default {
     // count first: a request that would go over a cap never reaches Google
     const counter = env.COUNTER.get(env.COUNTER.idFromName("caps"));
     const ok = await (await counter.fetch("https://caps/take", {
-      method: "POST", body: JSON.stringify({ who, perUser: +env.DAILY_PER_INVITE || 25, total: +env.DAILY_TOTAL || 200 }),
+      // fallbacks = the real quota (if the [vars] are ever lost, never looser); switch the relay off by emptying TOKENS
+      method: "POST", body: JSON.stringify({ who, perUser: +env.DAILY_PER_INVITE || 10, total: +env.DAILY_TOTAL || 20 }),
     })).json();
     if (!ok.allowed) return json(429, { error: ok.why });
 
-    let out;
-    for (let k = 0; ; k++) { // Google busy for a moment: try again HERE, so the invite's fix is counted only once
-      out = await fetch(GEMINI, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.GEMINI_KEY}` },
-        body: JSON.stringify({ model: MODEL, messages: [{ role: "user", content: prompt }], response_format: body.response_format, max_tokens: 4096 }),
-      });
-      if (out.ok || ![500, 502, 503, 504].includes(out.status) || k === 2) break;
-      await out.body?.cancel();
-      await new Promise((ok) => setTimeout(ok, [1000, 3000][k]));
+    try {
+      let out;
+      for (let k = 0; ; k++) { // Google busy for a moment: try again HERE, so the invite's fix is counted only once
+        out = await fetch(GEMINI, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.GEMINI_KEY}` },
+          body: JSON.stringify({ model: MODEL, messages: [{ role: "user", content: prompt }], response_format: body.response_format, max_tokens: 4096 }),
+        });
+        if (out.ok || ![500, 502, 503, 504].includes(out.status) || k === 2) break;
+        await out.body?.cancel();
+        await new Promise((ok) => setTimeout(ok, [1000, 3000][k]));
+      }
+      // Google's answer goes back as is; on its errors only our own words (its body could echo the key's project)
+      if (out.ok) return new Response(out.body, { status: 200, headers: { "Content-Type": "application/json" } });
+      if (out.status !== 429) return json(502, { error: `Google AI answered with error ${out.status}.` });
+      // a 429 is either "too many this minute" or "today's free quota is gone" - Google's text says which (read, never sent on)
+      const daily = /perday/i.test(await out.text());
+      return json(429, { error: daily ? "The shared free AI is used up for today - it resets at midnight US Pacific time."
+        : "The shared AI is busy right now - try again in a minute." });
+    } catch { // Google unreachable (network, DNS): our own JSON, never an uncaught throw
+      return json(502, { error: "Couldn't reach Google AI - try again in a minute." });
     }
-    // Google's answer goes back as is; on its errors only our own words (its body could echo the key's project)
-    if (out.ok) return new Response(out.body, { status: 200, headers: { "Content-Type": "application/json" } });
-    if (out.status !== 429) return json(502, { error: `Google AI answered with error ${out.status}.` });
-    // a 429 is either "too many this minute" or "today's free quota is gone" - Google's text says which (read, never sent on)
-    const daily = /perday/i.test(await out.text());
-    return json(429, { error: daily ? "The shared free AI is used up for today - it resets overnight (US Pacific time)."
-      : "The shared AI is busy right now - try again in a minute." });
   },
 };
+
+// The caps' day = Google's quota day: it resets at midnight US Pacific time (summer and winter time), not UTC
+export const dayKey = (d = new Date()) => d.toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
 
 // One counter object for all caps: day -> {total, per invite}. Single-threaded by design, so counts never race.
 export class Counter {
@@ -72,11 +85,11 @@ export class Counter {
   }
   async fetch(req) {
     const { who, perUser, total } = await req.json();
-    const day = new Date().toISOString().slice(0, 10);
+    const day = dayKey();
     const c = (await this.state.storage.get("c")) || {};
     const today = c.day === day ? c : { day, total: 0, by: {} };
-    if (today.total >= total) return json(200, { allowed: false, why: "Today's shared AI limit is used up - it resets at midnight UTC." });
-    if ((today.by[who] || 0) >= perUser) return json(200, { allowed: false, why: "You've used today's AI fixes for this invite - they reset at midnight UTC." });
+    if (today.total >= total) return json(200, { allowed: false, why: "Today's shared AI limit is used up - it resets at midnight US Pacific time." });
+    if ((today.by[who] || 0) >= perUser) return json(200, { allowed: false, why: "You've used today's AI fixes for this invite - they reset at midnight US Pacific time." });
     today.total += 1;
     today.by[who] = (today.by[who] || 0) + 1;
     await this.state.storage.put("c", today);

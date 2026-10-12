@@ -38,6 +38,15 @@ CSP = ("default-src 'self'; script-src 'self' https://appsforoffice.microsoft.co
        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 # http.server writes its own "Server: Werkzeug/x Python/y" before any app header: no versions to look up CVEs for
 WSGIRequestHandler.version_string = lambda self: "Anomaly Hunter"
+MAX_CELLS = 2_000_000  # same as the pane's maxCells (frontend/utils/sheet.js): it never sends more in one scan
+# OWASP CSV injection: text starting with these runs as a formula when the Power BI CSV is opened in Excel
+FORMULA_START = tuple("=+-@\t\r\n＝＋－＠")
+
+
+def _inert(v):
+    """A leading apostrophe keeps a formula-looking text cell as text (numbers untouched). Partial protection:
+    OWASP notes Excel may drop it after a save and reopen."""
+    return "'" + v if isinstance(v, str) and v.startswith(FORMULA_START) else v
 
 
 def _bad(body):
@@ -48,6 +57,8 @@ def _bad(body):
     rows = body.get("rows")
     if not isinstance(rows, list) or any(not isinstance(r, list) or len(r) != len(body["columns"]) for r in rows):
         return "'rows' must be a list of lists, each as long as 'columns'"
+    if len(rows) * len(body["columns"]) > MAX_CELLS:
+        return f"too many cells - scan at most {MAX_CELLS:,} at once"
     if not all(isinstance(c, (str, int, float)) and not isinstance(c, bool) for c in body["columns"]):
         return "column names must be text or numbers"
     # NaN/Infinity parse as JSON in Python, not in Excel; a 400-digit whole number is just a (flagged) value
@@ -76,6 +87,8 @@ def _strength(body):
 def create_app(scan_csv=None):
     """scan_csv: file every scan overwrites for Power BI (powerbi/anomaly-hunter.pbids). None = off (tests)."""
     app = Flask(__name__, static_folder=str(PANEL), static_url_path="")
+    # Werkzeug reads a body into memory only safely with a cap; 256 MB is far above a 2M-cell sheet (~20 MB measured)
+    app.config["MAX_CONTENT_LENGTH"] = 256 * 1024 * 1024
 
     @app.before_request
     def own_panel_only():
@@ -119,7 +132,9 @@ def create_app(scan_csv=None):
                 flat = pd.DataFrame(rows, columns=df.columns).assign(**{
                     (k.capitalize() if k.capitalize() not in taken else f"Anomaly Hunter {k.capitalize()}"): [r[k] for r in out]
                     for k in ("severity", "bucket", "reason", "magnitude")})
-                flat.to_csv(f"{scan_csv}.tmp", index=False, encoding="utf-8-sig")
+                flat = flat.map(_inert).rename(columns=_inert)
+                # errors="replace": one odd character (a lone surrogate) becomes "?" instead of failing the scan
+                flat.to_csv(f"{scan_csv}.tmp", index=False, encoding="utf-8-sig", errors="replace")
                 os.replace(f"{scan_csv}.tmp", scan_csv)  # Power BI never reads a half-written file
             except OSError:  # file open elsewhere: the scan itself still answers
                 app.logger.exception("could not write %s", scan_csv)
