@@ -10,6 +10,7 @@ export function setAi(on) {
   state.aiAvailable = !!on;
   show("ai-box", state.aiAvailable);
   show("ai-off", !state.aiAvailable);
+  show("odd-box", state.aiAvailable);
   $("fix-ask").disabled = !state.aiAvailable || !!state.fix?.asking;
   $("ai-state").textContent = state.aiAvailable ? "AI help is on." : "AI help is off. It's optional - fixes work without it.";
 }
@@ -47,5 +48,19 @@ export async function askFix() { // talks to the engine only; the sheet is touch
   } finally {
     f.asking = false;
     if (state.fix === f) (btn.disabled = !state.aiAvailable), (btn.textContent = "Ask AI");
+  }
+}
+
+// The AI word check: a value that is a different KIND of thing from the rest of its column ("London" among products).
+// The engine sends only each text column's distinct words. Worth a look, not proof: nothing is changed in the sheet.
+export async function checkWords() {
+  const { columns, rows, startRow } = state.lastScan;
+  const item = (text) => Object.assign(document.createElement("li"), { textContent: text }); // AI text is never HTML
+  try {
+    const { odd } = await post("/odd-text", { columns, rows }, 300);
+    $("odd-list").replaceChildren(...(odd.length ? odd.map((o) => item(`Row ${startRow + o.row + 2}: ${o.column} "${o.value}" - ${o.why}`))
+      : [item("Nothing looks out of place.")]));
+  } catch (e) { // Google busy (it often is), no key...: said right here, like Ask AI does
+    $("odd-list").replaceChildren(item("AI could not check: " + e.message));
   }
 }

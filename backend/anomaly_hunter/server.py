@@ -24,6 +24,7 @@ from werkzeug.serving import WSGIRequestHandler
 from anomaly_hunter.agents import checker, scan_agent
 from anomaly_hunter.ai import client
 from anomaly_hunter.engine.detectors import K
+from anomaly_hunter.engine.load import load_from_records
 
 PANEL = Path(__file__).resolve().parents[2] / "frontend"  # the pane, served as-is
 HOME = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local") / "AnomalyHunter"  # cert, key, log
@@ -184,6 +185,26 @@ def create_app(scan_csv=None):
             return {"error": "'formulas' must be a list as long as 'columns'"}, 400
         return ai(lambda: client.suggest_fix(body["columns"], body["rows"], body["row_index"], body["start_row"],
                                              body["start_col"], str(body.get("reason") or ""), intent, formulas))
+
+    @app.post("/odd-text")
+    def odd_text_route():
+        """Optional AI text check: values a different KIND of thing from their column ("London" among products).
+        Only category-like text columns (2-50 distinct values) go, as their distinct values - never rows or numbers."""
+        body = request.get_json(silent=True)
+        if err := _bad(body):
+            return {"error": err}, 400
+        df, types, _ = load_from_records(body["columns"], body["rows"])
+        cells = {c: df[c].astype(str).str.strip() for c, t in types.items() if t == "text"}
+        values = {c: sorted(set(s[(s != "") & ~s.str[:1].isin(list("=+-@"))])) for c, s in cells.items()}
+        values = {c: v for c, v in values.items() if 2 <= len(v) <= 50}
+        if not values:
+            return {"odd": []}
+
+        def found():
+            hits = client.odd_text(values)
+            return {"odd": [{"row": int(i), "col": list(df.columns).index(h["column"]), **h}
+                            for h in hits for i in df.index[cells[h["column"]] == h["value"]]]}
+        return ai(found)
 
     @app.post("/check")
     def check_route():

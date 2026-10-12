@@ -59,6 +59,11 @@
         <p class="hint">Worst first. Click a row to see what's wrong and a suggested fix.</p>
         <ul id="flagged-list" class="flagged-list"></ul>
         <button id="clear-highlights" class="secondary">Remove highlights</button>
+        <div id="odd-box" hidden>
+          <button id="odd-check" class="secondary">Check words with AI</button>
+          <p class="hint">AI understands what words mean, so it can spot a value that doesn't belong, like a city in a product column. It sends only the different words in your text columns to Google - never your rows or numbers. Worth a look, not proof.</p>
+          <ul id="odd-list" class="fix-changes"></ul>
+        </div>
         <details class="more">
           <summary>Exact limits per column (advanced)</summary>
           <p class="hint">The slider above is the easy way. Here you can set the exact number below or above which a column gets flagged; these win over the slider for that column.</p>

@@ -194,6 +194,31 @@ def spellings(df, column_types, skip):
     return out, fix, missed, maybe, exact
 
 
+def shifted(df, column_types, skip):
+    """A text value typed into the wrong column ("East" in Item): once in its own column, 3+ times in another one, and
+    the two columns otherwise share under 20% of their values (Origin/Destination, Home/Away share most: left alone).
+    Category-like columns only (<= 50 distinct). Placeholders (N/A, ?) are the placeholder check's. -> reasons per row
+    (worth a check, never auto-fixed). Values that need MEANING to judge ("London" among products) are the AI text check's."""
+    out = [[] for _ in range(len(df))]
+    keys = {}
+    for col, t in column_types.items():
+        if t == "text":
+            s = df[col][~skip].map(lambda v: " ".join(str(v).split()).casefold())
+            s = s[(s != "") & ~s.str[:1].isin(list("=+-@")) & ~s.str.fullmatch(PLACEHOLDER)]
+            if s.nunique() <= 50:
+                keys[col] = s
+    counts = {c: s.value_counts() for c, s in keys.items()}
+    usual = {c: set(n.index[n >= 2]) for c, n in counts.items()}  # shared vocabulary: one-offs are suspects, not evidence
+    for a, sa in keys.items():
+        for v in counts[a].index[counts[a] == 1]:
+            for b in keys:
+                if b != a and counts[b].get(v, 0) >= 3 and len(usual[a] & usual[b]) < 0.2 * len(usual[a] | usual[b]):
+                    i = sa.index[sa == v][0]
+                    out[i].append(f'{a} "{_short(df[a][i])}" looks like {"an" if b[:1].lower() in "aeiou" else "a"} {b} value')
+                    break
+    return out
+
+
 def knobs(strength=5):
     """How hard to look, 0-10 -> (level, k). k = how many robust spreads out a value must be to count as weird.
     5 = the tuned default (k 6, bench 51/51). Each step up lowers the bar ~10% and may add a check, so a row flagged
@@ -222,6 +247,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5):
     dup, typ, blank = duplicates(df), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
     hole, far, add = placeholders(df, column_types, skip), far_dates(df, column_types, skip), sums(df, column_types, skip)
     spell, spell_fix, missed, spell_maybe, spell_exact = spellings(df, column_types, skip)
+    missed = [m + s for m, s in zip(missed, shifted(df, column_types, skip), strict=True)]  # both "worth a check" (Low)
     rows = []
     for i in range(n):
         if skip[i]:

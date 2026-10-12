@@ -22,6 +22,7 @@ ws.onmessage = (m) => {
 };
 await new Promise((ok) => (ws.onopen = ok));
 for (const d of ["Network", "Log", "Runtime", "Page"]) await send(`${d}.enable`);
+await send("Log.clear"); // Log.enable replays old entries (e.g. an earlier click's error): judge only this run
 // listen before any page script runs, so office.js boot-time violations count too
 await send("Page.addScriptToEvaluateOnNewDocument", { source: `window.__csp = []; document.addEventListener("securitypolicyviolation",
   e => __csp.push({ directive: e.effectiveDirective, file: e.sourceFile, at: e.lineNumber + ":" + e.columnNumber }))` });

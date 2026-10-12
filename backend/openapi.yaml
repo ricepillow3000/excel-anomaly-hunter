@@ -67,6 +67,14 @@ paths:
                   required: [row_index, column]
                   properties: {row_index: {type: integer, minimum: 0}, column: {type: string}}
       responses: {"200": {$ref: "#/components/responses/Json"}, "400": {$ref: "#/components/responses/Error"}}
+  /odd-text:
+    post:
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Sheet"}}}}
+      responses:
+        "200": {$ref: "#/components/responses/Json"}
+        "400": {$ref: "#/components/responses/Error"}
+        "502": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
   /key:
     post:
       requestBody:
