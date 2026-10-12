@@ -18,5 +18,5 @@ new_sqlite_classes = ["Counter"] # the free plan's Durable Objects are SQLite-ba
 # (then John's own AI help never competes with it). A word check spends 1 call per batch (a 30x50 sheet = 6 calls).
 # Google's own limit is the real backstop: past it, users see "used up for today" / "busy, try in a minute".
 [vars]
-DAILY_PER_INVITE = "25" # AI calls per invite code per day
-DAILY_TOTAL = "200"     # for everyone together: keep it at or under the project's requests-per-day
+DAILY_PER_INVITE = "10" # AI calls per invite code per day (one word check can take ~6)
+DAILY_TOTAL = "20"      # for everyone together: John's project, gemini-3.8-flash free tier = 20 requests/day (2026-10-12)

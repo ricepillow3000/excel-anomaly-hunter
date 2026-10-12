@@ -21,8 +21,8 @@ GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/compl
 GEMINI_MODEL = "gemini-3.8-flash"  # free tier, no credit card (aistudio.google.com)
 KEY_FILE = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local") / "AnomalyHunter" / "gemini-key.txt"
 # John's relay (relay/worker.js): invited users send an invite code there and never hold his Gemini key.
-# "" = not deployed yet: invite codes turn nothing on. Set to the Worker's https URL after `npx wrangler deploy`.
-RELAY_URL = os.environ.get("ANOMALY_HUNTER_RELAY", "")
+# Not a secret: without a valid invite code the relay refuses everything (401). Deployed 2026-10-12.
+RELAY_URL = os.environ.get("ANOMALY_HUNTER_RELAY", "https://anomaly-hunter-relay.john4000-nguyen.workers.dev")
 INVITE_FILE = KEY_FILE.with_name("invite-code.txt")
 
 
