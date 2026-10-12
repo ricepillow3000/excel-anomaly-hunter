@@ -236,9 +236,9 @@ def _call(prompt, out, schema, name, deadline):
         req = urllib.request.Request(RELAY_URL.rstrip("/") + "/fix" if relay else GEMINI_URL, data,  # noqa: S310 - https only, see provider()
                                      {"Content-Type": "application/json", "Authorization": f"Bearer {invite_code() if relay else gemini_key()}"})
         try:
-            # nosemgrep: dynamic-urllib-use-detected - GEMINI_URL constant, or RELAY_URL that provider() only allows over https
             # the relay tries Google 3 times itself and its call is already counted: let it run to the deadline
             left = max(1, deadline - time.monotonic())
+            # nosemgrep: dynamic-urllib-use-detected - GEMINI_URL constant, or RELAY_URL that provider() only allows over https
             with urllib.request.urlopen(req, timeout=left if relay else min(90, left)) as r:  # noqa: S310 - same request
                 text = json.load(r)["choices"][0]["message"]["content"]
             return out.model_validate_json(text)
