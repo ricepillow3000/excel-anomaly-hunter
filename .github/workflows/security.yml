@@ -21,10 +21,16 @@ jobs:
           python-version: "3.14"
           cache: pip
           cache-dependency-path: pyproject.toml
-      - run: pip install -e ".[dev]" pip-audit==2.10.1 ruff==0.17.0
+      - run: pip install -e ".[dev]" pip-audit==2.10.1 ruff==0.17.0 semgrep==1.178.0
 
-      - name: Engine API tests (other websites refused, key never leaks, no files outside the pane)
+      - name: Engine API tests + fuzzing (other websites refused, key never leaks, no input crashes the engine)
         run: pytest -q backend/tests
+      - name: Semgrep code scan, front and back end (OWASP Top 10, XSS, Flask, secrets)
+        run: >-
+          semgrep scan --metrics=off --error --exclude e2e/all.sh
+          --config p/default --config p/security-audit --config p/xss --config p/insecure-transport
+          --config p/owasp-top-ten --config p/python --config p/flask --config p/javascript --config p/secrets
+          backend frontend relay e2e tools
       - name: Relay abuse tests (invite codes, daily caps, key never echoed)
         run: node relay/test.mjs
       - name: Security lint (Bandit rules)
@@ -56,8 +62,15 @@ jobs:
           docker run --rm --network host -v "$PWD/zap:/zap/wrk" ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py -t https://127.0.0.1:5055/taskpane.html -c rules.tsv -r report.html
 
+      - name: OWASP ZAP active attack on every API route (weekly and "Run workflow"; slow, so not on every push)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: |
+          cp backend/openapi.yaml zap/
+          docker run --rm --network host -v "$PWD/zap:/zap/wrk" ghcr.io/zaproxy/zaproxy:stable \
+            zap-api-scan.py -t openapi.yaml -f openapi -c rules.tsv -r api-report.html
+
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: zap-report
-          path: zap/report.html
+          path: zap/*.html

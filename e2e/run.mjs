@@ -124,6 +124,7 @@ if (mode === "flow") {
   ok(listed0 < listed5 && (await page.evaluate(() => __settings.anomalyHunterStrength)) === 0 && (await text("#strength-hint")).startsWith("Basics"),
     `strength 0 re-checks with the basics only (${listed5} -> ${listed0} rows), saved in the workbook`);
   const basics = await text("#flagged-list");
+  // nosemgrep: detect-non-literal-regexp - test code, r is a fixed row number
   const has = (r) => new RegExp(`Row ${r}(?!\\d)`).test(basics);
   ok([11, 51, 81, 121].every(has) && !has(22), "basics: minus sign, double entry, spelling, blank - not the plain outlier");
   // the bug John hit: a check is running (the track was just clicked) and he grabs the thumb - it must still drag,

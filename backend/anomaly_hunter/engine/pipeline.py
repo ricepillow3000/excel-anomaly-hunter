@@ -12,6 +12,8 @@ def summary_rows(df):
     """Rows that summarise the data instead of being data -> bool array: fully blank rows, rows labelled
     Total/Subtotal/Mean/... that are sparser than a normal row ("Total Wine" the vendor is a full row), and
     unlabelled rows whose numbers equal the sum of the rows above them."""
+    if df.empty:  # headers only: nothing to summarise (np.median of nothing warns)
+        return np.zeros(len(df), dtype=bool)
     cols = [c for c in df.columns if c != "source_file"]
     count = (~df[cols].apply(_blank)).sum(axis=1).to_numpy()
     nums = [c for c in cols if df[c].dtype.kind in "fi"]

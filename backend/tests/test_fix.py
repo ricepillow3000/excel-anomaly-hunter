@@ -224,7 +224,7 @@ def test_pasted_key_turns_on_free_ai_and_can_be_removed(monkeypatch, tmp_path):
     gemini_stub(monkeypatch, tmp_path)
     c = create_app().test_client()
     assert c.get("/health").get_json()["ai_available"] is False
-    assert c.post("/key", json={"key": "  AIzaTest_key-123 "}).get_json() == {
+    assert c.post("/key", json={"key": "  AIzaTest_key-123 "}).get_json() == {  # gitleaks:allow - made-up test key
         "ai_available": True, "ai_provider": "gemini", "message": "Key works. AI help is on."}
     assert (tmp_path / "gemini-key.txt").read_text() == "AIzaTest_key-123"
     assert c.get("/health").get_json()["ai_provider"] == "gemini"

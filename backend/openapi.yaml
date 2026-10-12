@@ -1,0 +1,101 @@
+# The engine's API, for the attack tools: Schemathesis (backend/tests/test_fuzz_api.py) and ZAP's active API scan (CI).
+# Input rules mirror _bad() in server.py; a test fails if a route is added without being listed here.
+openapi: 3.0.3
+info: {title: Anomaly Hunter engine, version: "1"}
+servers: [{url: "https://127.0.0.1:5055"}]
+paths:
+  /health:
+    get:
+      responses: {"200": {$ref: "#/components/responses/Json"}}
+  /scan:
+    post:
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Sheet"}}}}
+      responses: {"200": {$ref: "#/components/responses/Json"}, "400": {$ref: "#/components/responses/Error"}}
+  /fix:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/Sheet"
+                - type: object
+                  required: [row_index, start_row, start_col]
+                  properties:
+                    row_index: {type: integer, minimum: 0}
+                    start_row: {type: integer, minimum: 0}
+                    start_col: {type: integer, minimum: 0}
+                    intent: {type: string, maxLength: 2000}
+                    formulas: {type: array}
+      responses:
+        "200": {$ref: "#/components/responses/Json"}
+        "400": {$ref: "#/components/responses/Error"}
+        "502": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+  /check:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/Sheet"
+                - type: object
+                  required: [row_index, changes]
+                  properties:
+                    row_index: {type: integer, minimum: 0}
+                    changes:
+                      type: array
+                      minItems: 1
+                      items:
+                        type: object
+                        required: [col, value]
+                        properties: {col: {type: integer, minimum: 0}, value: {$ref: "#/components/schemas/Cell"}}
+      responses: {"200": {$ref: "#/components/responses/Json"}, "400": {$ref: "#/components/responses/Error"}}
+  /suggest:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/Sheet"
+                - type: object
+                  required: [row_index, column]
+                  properties: {row_index: {type: integer, minimum: 0}, column: {type: string}}
+      responses: {"200": {$ref: "#/components/responses/Json"}, "400": {$ref: "#/components/responses/Error"}}
+  /key:
+    post:
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [key], properties: {key: {type: string}}}}}
+      responses: {"200": {$ref: "#/components/responses/Json"}, "400": {$ref: "#/components/responses/Error"}}
+components:
+  schemas:
+    Cell:
+      nullable: true
+      oneOf: [{type: string}, {type: number}, {type: boolean}]
+    Sheet:
+      type: object
+      required: [columns, rows]
+      properties:
+        columns: {type: array, minItems: 1, items: {oneOf: [{type: string}, {type: number}]}}
+        rows: {type: array, items: {type: array, items: {$ref: "#/components/schemas/Cell"}}}
+        limits:  # null = automatic limits (the pane sends that)
+          type: object
+          nullable: true
+          additionalProperties:
+            type: array
+            minItems: 4
+            maxItems: 4
+            items: {type: number, nullable: true, minimum: -1.0e300, maximum: 1.0e300, exclusiveMinimum: true, exclusiveMaximum: true}
+        strength: {type: integer, minimum: 0, maximum: 10, nullable: true}
+        order_by: {nullable: true}  # any column name (or null); _bad() checks it is one of the columns
+  responses:
+    Json: {description: OK, content: {application/json: {schema: {type: object}}}}
+    Error:
+      description: A plain-English problem for the pane
+      content: {application/json: {schema: {type: object, required: [error], properties: {error: {type: string}}}}}

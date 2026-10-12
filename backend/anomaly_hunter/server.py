@@ -189,7 +189,8 @@ def create_app(scan_csv=None):
         i, changes, width = body.get("row_index"), body.get("changes"), len(body["columns"])
         cell = lambda v: v is None or isinstance(v, (str, bool, int)) or isinstance(v, float) and math.isfinite(v)
         if not (type(i) is int and 0 <= i < len(body["rows"]) and isinstance(changes, list) and 0 < len(changes) <= width and all(
-                isinstance(c, dict) and type(c.get("col")) is int and 0 <= c["col"] < width and cell(c.get("value")) for c in changes)):
+                isinstance(c, dict) and type(c.get("col")) is int and 0 <= c["col"] < width and "value" in c and cell(c["value"])
+                for c in changes)):  # a blank cell is "value": null, never a missing key (that crashed the checker)
             return {"error": "'row_index' and 'changes' [{col, value}] must point inside the table"}, 400
         try:
             return checker.check([str(c) for c in body["columns"]], body["rows"], body.get("limits"), i, changes, _strength(body))
@@ -270,6 +271,7 @@ def _already_running(folder=HOME, port=PORT):
     """Is OUR engine on the port? Only a server holding a cert our CA signed passes - a stranger can't fake it."""
     try:
         ctx = ssl.create_default_context(cafile=str(folder / "ca.pem"))
+        # nosemgrep: dynamic-urllib-use-detected - fixed https://127.0.0.1 address, our own CA pinned
         with urllib.request.urlopen(f"https://127.0.0.1:{port}/health", context=ctx, timeout=2) as r:
             return json.load(r).get("status") == "ok"
     except Exception:

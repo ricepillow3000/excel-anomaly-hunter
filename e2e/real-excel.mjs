@@ -3,6 +3,7 @@
 // 1. Close Excel. 2. PowerShell: $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS='--remote-debugging-port=9229'; start excel
 // 3. Open a workbook with data and open the pane. 4. node e2e/real-excel.mjs   (exit 1 = something is wrong)
 // Scans and opens rows like a user; it never accepts a fix, so the workbook is not changed (Remove highlights at the end).
+// nosemgrep: react-insecure-request - Edge's local debug port only speaks plain http
 const pane = (await (await fetch("http://127.0.0.1:9229/json")).json()).find((t) => t.url.includes("taskpane.html"));
 if (!pane) throw new Error("No Anomaly Hunter pane found - open it in Excel first (Excel started with the debug port).");
 const ws = new WebSocket(pane.webSocketDebuggerUrl);

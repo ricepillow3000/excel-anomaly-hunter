@@ -47,6 +47,7 @@ def check_key(key):
     ok None = Google couldn't be asked (offline): the key is kept and Ask AI will say whether it works."""
     url = GEMINI_URL.rsplit("/chat/completions", 1)[0] + "/models"
     try:
+        # nosemgrep: dynamic-urllib-use-detected - url is built from the https GEMINI_URL constant
         with urllib.request.urlopen(urllib.request.Request(url, headers={"Authorization": f"Bearer {key}"}), timeout=15) as r:  # noqa: S310 - https constant
             ids = {str(m.get("id", "")).removeprefix("models/") for m in json.load(r).get("data", [])}
     except urllib.error.HTTPError as e:
@@ -154,6 +155,7 @@ def _ask(prompt):
     req = urllib.request.Request(RELAY_URL.rstrip("/") + "/fix" if relay else GEMINI_URL, json.dumps(body).encode(),  # noqa: S310 - https only, see provider()
                                  {"Content-Type": "application/json", "Authorization": f"Bearer {invite_code() if relay else gemini_key()}"})
     try:
+        # nosemgrep: dynamic-urllib-use-detected - GEMINI_URL constant, or RELAY_URL that provider() only allows over https
         with urllib.request.urlopen(req, timeout=90) as r:  # noqa: S310 - same request
             text = json.load(r)["choices"][0]["message"]["content"]
         return Fix.model_validate_json(text)

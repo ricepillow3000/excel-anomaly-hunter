@@ -21,7 +21,7 @@ anomaly-hunter = "anomaly_hunter.cli:main"
 anomaly-hunter-server = "anomaly_hunter.server:main"
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "schemathesis==4.28.0"]  # schemathesis: API fuzzing in backend/tests/test_fuzz_api.py
 
 [build-system]
 requires = ["setuptools>=68"]
