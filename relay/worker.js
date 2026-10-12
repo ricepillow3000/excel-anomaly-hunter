@@ -55,9 +55,13 @@ export default {
       await out.body?.cancel();
       await new Promise((ok) => setTimeout(ok, [1000, 3000][k]));
     }
-    // Google's answer goes back as is; on its errors only the status (no body: it could echo the key's project)
-    return out.ok ? new Response(out.body, { status: 200, headers: { "Content-Type": "application/json" } })
-      : json(out.status === 429 ? 429 : 502, { error: out.status === 429 ? "The shared free AI limit is used up for now - try later." : `Google AI answered with error ${out.status}.` });
+    // Google's answer goes back as is; on its errors only our own words (its body could echo the key's project)
+    if (out.ok) return new Response(out.body, { status: 200, headers: { "Content-Type": "application/json" } });
+    if (out.status !== 429) return json(502, { error: `Google AI answered with error ${out.status}.` });
+    // a 429 is either "too many this minute" or "today's free quota is gone" - Google's text says which (read, never sent on)
+    const daily = /perday/i.test(await out.text());
+    return json(429, { error: daily ? "The shared free AI is used up for today - it resets overnight (US Pacific time)."
+      : "The shared AI is busy right now - try again in a minute." });
   },
 };
 

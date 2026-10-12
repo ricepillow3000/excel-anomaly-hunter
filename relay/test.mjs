@@ -15,12 +15,13 @@ function namespace() {
 const sent = [];
 let googleStatus = 200;
 const googleQueue = []; // statuses for the next calls, then googleStatus
+let googleBody = JSON.stringify({ error: { message: "project 1234 key AQ.secret" } }); // Google's error text
 globalThis.fetch = async (url, init) => {
   sent.push({ url, headers: init.headers, body: JSON.parse(init.body) });
   const status = googleQueue.length ? googleQueue.shift() : googleStatus;
   return status === 200
     ? new Response(JSON.stringify({ choices: [{ message: { content: '{"explanation":"x","changes":[]}' } }] }), { status: 200 })
-    : new Response(JSON.stringify({ error: { message: "project 1234 key AQ.secret" } }), { status });
+    : new Response(googleBody, { status });
 };
 
 const env = { GEMINI_KEY: "AQ.the-secret", TOKENS: JSON.stringify({ [await hash("inv_ana")]: "Ana", [await hash("inv_ben")]: "Ben" }),
@@ -78,4 +79,19 @@ googleQueue.push(503, 503, 503);
 n = sent.length;
 assert.equal((await call(good)).status, 502, "still busy after 3 tries: give up");
 assert.equal(sent.length - n, 3, "never more than 3 tries");
+
+// Google's 429 means two different things: too many this minute (wait a minute) or today's free quota is gone
+env.COUNTER = namespace();
+googleStatus = 429;
+googleBody = '{"error":{"message":"Quota exceeded for metric GenerateRequestsPerMinutePerProjectPerModel-FreeTier, project 1234"}}';
+let busy = await call(good);
+assert.equal(busy.status, 429);
+let words = (await busy.json()).error;
+assert.match(words, /minute/, "a per-minute limit says: try again in a minute");
+assert.ok(!words.includes("1234"), "Google's text is not passed on");
+googleBody = '{"error":{"message":"Quota exceeded for metric GenerateRequestsPerDayPerProjectPerModel-FreeTier, project 1234"}}';
+busy = await call(good);
+words = (await busy.json()).error;
+assert.match(words, /today/i, "a per-day limit says: used up for today");
+assert.ok(!words.includes("1234") && !/minute/.test(words));
 console.log("relay abuse tests passed");

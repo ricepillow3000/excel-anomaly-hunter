@@ -13,6 +13,10 @@ class_name = "Counter"
 tag = "v1"
 new_sqlite_classes = ["Counter"] # the free plan's Durable Objects are SQLite-backed
 
+# Set both from the REAL free quota: Google Cloud Console > IAM & Admin > Quotas, filter "Generative Language API",
+# "requests per day" for the model in worker.js. Google counts per PROJECT, so give the relay its own project and key
+# (then John's own AI help never competes with it). A word check spends 1 call per batch (a 30x50 sheet = 6 calls).
+# Google's own limit is the real backstop: past it, users see "used up for today" / "busy, try in a minute".
 [vars]
-DAILY_PER_INVITE = "25" # AI fixes per invite code per day
-DAILY_TOTAL = "200"     # for everyone together: kept under the free Gemini quota so John's own use still works
+DAILY_PER_INVITE = "25" # AI calls per invite code per day
+DAILY_TOTAL = "200"     # for everyone together: keep it at or under the project's requests-per-day
