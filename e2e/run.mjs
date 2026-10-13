@@ -198,6 +198,12 @@ if (mode === "nokey") {
   await page.fill("#ai-key", "<script>"); await page.click("#save-key");
   await page.waitForFunction(() => document.getElementById("ai-state").textContent.includes("doesn't look like an API key"));
   ok(true, "junk key refused");
+  // Save with an empty box (the paste didn't land) must say so - never "Saved", never a silent remove (John, 2026-10-12)
+  const keyCalls = [];
+  page.on("request", (r) => r.url().endsWith("/key") && keyCalls.push(r));
+  await page.fill("#ai-key", ""); await page.click("#save-key");
+  await page.waitForFunction(() => document.getElementById("ai-state").textContent.includes("Paste a key"));
+  ok(keyCalls.length === 0, "empty Save asks for a key and sends nothing - " + (await text("#ai-state")));
 }
 
 const real = errors.filter((e) => !(mode === "nokey" && e.includes("status of 400"))); // the junk key gets the engine's 400 on purpose

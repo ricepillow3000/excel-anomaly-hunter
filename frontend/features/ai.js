@@ -21,7 +21,9 @@ export async function saveKey(key) {
     $("ai-key").value = ""; // the key never stays on screen
     setAi(out.ai_available);
     // the engine tested the key with Google: "Key works", or why it was saved untested
-    $("ai-state").textContent = out.message || (out.ai_available ? "Saved. AI help is on." : "Key removed. AI help is off.");
+    // only Remove reaches here without a message (Save sends a key); a Claude key set in Windows can keep AI on
+    $("ai-state").textContent = out.message || (out.ai_available ? "Key removed. AI help still uses the paid Claude key set on this PC."
+      : "Key removed. AI help is off.");
   } catch (e) {
     $("ai-state").textContent = e.message;
   }
