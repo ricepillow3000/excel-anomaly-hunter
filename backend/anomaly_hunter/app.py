@@ -21,8 +21,20 @@ CATALOG = "{3f9a1c2e-7b4d-4e8a-9c61-5d2e8f0b7a13}"  # same trusted catalog as in
 CAT = rf"Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{CATALOG}"
 DEV = r"Software\Microsoft\Office\16.0\WEF\Developer"
 RUN = r"Software\Microsoft\Windows\CurrentVersion\Run"
-WIN = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32"  # full paths: never a same-named file nearby
 QUIET = 0x08000000  # CREATE_NO_WINDOW: no black window flashing up for a tool
+
+
+def _system32():
+    """Windows' own System32 folder, asked from Windows (not an environment variable anyone can set)."""
+    if os.name != "nt":
+        return Path(r"C:\Windows\System32")
+    import ctypes
+    buf = ctypes.create_unicode_buffer(260)
+    ctypes.windll.kernel32.GetSystemDirectoryW(buf, 260)
+    return Path(buf.value)
+
+
+WIN = _system32()  # tools run by full path: never a same-named file nearby
 
 
 QUIET_UI = bool(os.environ.get("ANOMALY_HUNTER_NO_DIALOGS"))  # CI smoke test: no one is there to click OK
