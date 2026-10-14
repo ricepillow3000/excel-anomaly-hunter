@@ -110,6 +110,10 @@ def install():
                 time.sleep(0.5)
         else:
             return fail(f"Couldn't update {exe} - restart the PC, then double-click {APP} again.")
+    try:  # the copy keeps the download's "from the internet" mark; the user said Run once - not again at every logon
+        os.remove(f"{exe}:Zone.Identifier")
+    except OSError:
+        pass  # no mark (copied from a terminal download, or not Windows)
     invite = me.with_name("invite-code.txt")  # an invite kit from John: AI help with nothing to paste
     if invite.exists():
         shutil.copy2(invite, home / "invite-code.txt")

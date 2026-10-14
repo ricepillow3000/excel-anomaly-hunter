@@ -142,6 +142,9 @@ jobs:
           $h = Invoke-RestMethod https://127.0.0.1:5055/health   # no certificate skipping: Windows trusts the engine now
           "app copied:      $(Test-Path "$ah\AnomalyHunter.exe")"
           "start here:      $(Test-Path "$ah\Start here.xlsx") (the workbook Excel opens on: the 5 Add steps + a Practice sheet)"
+          $mark = $null; try { $mark = Get-Item "$ah\AnomalyHunter.exe" -Stream Zone.Identifier -ErrorAction Stop } catch { }
+          "internet mark:   $(if ($mark) { 'still on the installed copy - Windows would warn at every logon' } else { 'gone from the installed copy (no warning at logon)' })"
+          if ($mark) { throw "the installed copy still carries the download's internet mark" }
           "Excel add-in:    $($cat.Url)\manifest.xml exists = $(Test-Path (Join-Path $cat.Url 'manifest.xml'))"
           "starts at logon: $run"
           "certificate:     $($ca.Subject), trusted by Windows"
