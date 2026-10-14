@@ -51,7 +51,8 @@ def _limits(x, k):
     v = [_round(med + m * sd, step, m > 0) for m in (-3, 3, -k, k)]
     q10, q90 = x.quantile([0.1, 0.9])
     pos = x[x > 0]
-    if (x >= 0).mean() >= 0.95 and len(pos) >= 10 and q90 - med > 2 * (med - q10):  # long right tail (fares, tips)
+    # long right tail (fares, tips), or mostly 0 (capital losses: 96% none, the rest $155-4,356 - judge the amounts)
+    if (x >= 0).mean() >= 0.95 and len(pos) >= 10 and (q90 - med > 2 * (med - q10) or (x == 0).mean() >= 0.5):
         lg = np.log(pos)  # highs on log scale, positives only: 42% zero tips would widen it 20x
         lmed, lsd = float(lg.median()), spread(lg)
         v[1], v[3] = (max(v[j], _round(float(np.exp(lmed + m * lsd)), step, True)) for j, m in ((1, 3), (3, k)))

@@ -1,9 +1,12 @@
 # CI only: the user's hand. While AnomalyHunter.exe installs or uninstalls, answer the dialogs a person would answer -
-# "Yes" on Windows' certificate prompts (add, and remove on uninstall), "OK" on Anomaly Hunter's own message - and log each dialog's words (+ a screenshot).
-# Clicks the button directly (BM_CLICK, what a mouse click sends a classic dialog); UI Automation's Invoke didn't land.
+# "Run" on Windows' warning for a file from the internet (and SmartScreen's "More info" > "Run anyway" if it shows),
+# "Yes" on Windows' certificate prompts (add, and remove on uninstall), "OK" on Anomaly Hunter's own message - and log
+# each dialog's words (+ a screenshot), and every new window that appears (so a dialog nobody planned for shows up in the log).
+# Clicks the button directly (BM_CLICK, what a mouse click sends a classic dialog); UI Automation's Invoke didn't land
+# there - it is only used for SmartScreen, which has no classic buttons.
 # Usage (Windows PowerShell): click-like-a-user.ps1 <folder for screenshots and clicks.log> [minutes]
 param([string]$Out, [int]$Minutes = 10)
-Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+Add-Type -AssemblyName System.Windows.Forms, System.Drawing, UIAutomationClient, UIAutomationTypes
 Add-Type @"
 using System; using System.Collections.Generic; using System.Runtime.InteropServices; using System.Text;
 public static class Hand {
@@ -39,6 +42,12 @@ public static class Hand {
   }
   public static void Click() { SendMessage(found, 0x00F5, IntPtr.Zero, IntPtr.Zero); } // BM_CLICK
   // Fallback for a dialog drawn without button windows: is a window with this title up? (brought to the front)
+  // Every visible titled top-level window, for the log
+  public static string Titles() {
+    var all = new List<string>();
+    EnumWindows((w, l) => { if (IsWindowVisible(w) && Text(w).Trim().Length > 0) all.Add(Text(w)); return true; }, IntPtr.Zero);
+    all.Sort(); return string.Join(" | ", all);
+  }
   public static bool Front(string title) {
     bool up = false;
     EnumWindows((w, l) => { if (IsWindowVisible(w) && Text(w) == title) { up = true; SetForegroundWindow(w); return false; } return true; }, IntPtr.Zero);
@@ -56,16 +65,41 @@ function Shot($file) {
     $bmp.Save($file); $bmp.Dispose()
   } catch { }  # no screen to copy: the words in clicks.log are the proof
 }
-$n = 0; $end = (Get-Date).AddMinutes($Minutes)
+# SmartScreen ("Windows protected your PC"): More info, then Run anyway - by UI Automation, it has no classic buttons
+$ua = [System.Windows.Automation.AutomationElement]; $tree = [System.Windows.Automation.TreeScope]
+function Press($root, $name) {
+  $c = New-Object System.Windows.Automation.PropertyCondition($ua::NameProperty, $name)
+  $e = $root.FindFirst($tree::Descendants, $c)
+  if (-not $e) { return $false }
+  $pat = $null
+  if ($e.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pat)) { $pat.Invoke(); return $true }
+  return $false
+}
+function SmartScreen {  # its window title names it; the words inside say "Windows protected your PC"
+  foreach ($top in $ua::RootElement.FindAll($tree::Children, [System.Windows.Automation.Condition]::TrueCondition)) {
+    if ($top.Current.Name -notmatch 'SmartScreen') { continue }
+    if (Press $top 'Run anyway') { return 'Run anyway' }
+    if (Press $top 'More info') { return 'More info' }
+  }
+  return $null
+}
+$n = 0; $end = (Get-Date).AddMinutes($Minutes); $seen = ''; $tick = 0
 while ((Get-Date) -lt $end) {
-  foreach ($d in @(@('Security Warning', 'Yes'), @('Root Certificate Store', 'Yes'), @('Anomaly Hunter', 'OK'))) {
+  if (($tick++ % 6) -eq 0 -and ($now = [Hand]::Titles()) -ne $seen) { "windows: $now" | Out-File -Append -Encoding utf8 $log; $seen = $now }
+  $ss = $null; try { $ss = SmartScreen } catch { }
+  if ($ss) {
+    $n++; Shot (Join-Path $Out ("dialog-{0}.png" -f $n))
+    "dialog $n 'SmartScreen': clicked $ss" | Out-File -Append -Encoding utf8 $log
+    Start-Sleep -Milliseconds 1500
+  }
+  foreach ($d in @(@('Open File - Security Warning', 'Run'), @('Security Warning', 'Yes'), @('Root Certificate Store', 'Yes'), @('Anomaly Hunter', 'OK'))) {
     $said = [Hand]::Find($d[0], $d[1])
     if ($null -ne $said) {
       $n++; Shot (Join-Path $Out ("dialog-{0}.png" -f $n))   # what the user sees, before the click
       [Hand]::Click()
     } elseif ([Hand]::Front($d[0])) {  # no button windows to click: press the key a person would
       $n++; Shot (Join-Path $Out ("dialog-{0}.png" -f $n)); $said = '(keyboard)'
-      [System.Windows.Forms.SendKeys]::SendWait($(if ($d[1] -eq 'Yes') { 'y' } else { '{ENTER}' }))
+      [System.Windows.Forms.SendKeys]::SendWait($(switch ($d[1]) { 'Yes' { 'y' } 'Run' { '%r' } default { '{ENTER}' } }))
     } else { continue }
     "dialog $n '$($d[0])': clicked $($d[1]) - $said" | Out-File -Append -Encoding utf8 $log
     Start-Sleep -Milliseconds 1500

@@ -13,7 +13,7 @@ import sys
 import time
 from pathlib import Path
 
-from anomaly_hunter import cli, server
+from anomaly_hunter import cli, practice, server
 
 APP = "AnomalyHunter.exe"
 ID = "a64b585c-34c7-4447-b3ae-9aa8b3294bcf"  # the add-in's Id in manifest.xml
@@ -147,12 +147,18 @@ def install():
         time.sleep(0.5)
     else:
         return fail(f"The engine didn't start. Details: {home / 'server.log'}")
-    try:
-        os.startfile("excel.exe")  # noqa: S606, S607 - Excel by the name Windows registers for it (App Paths)
-    except OSError:
-        pass  # no desktop Excel registered: the message below still says what to do
-    say("Anomaly Hunter is installed.\n\nFirst time only, in Excel: Home > Add-ins > More Add-ins > SHARED FOLDER > "
-        "Anomaly Hunter > Add.\n\nAfter that the Anomaly Hunter button is on the Home tab in every workbook.")
+    # Excel opens on "Start here": the 5 clicks that add it stay on screen while the user does them (a message box is
+    # gone after one click), and a Practice sheet shows what a scan finds
+    start = practice.make(home / "Start here.xlsx")
+    for target in (start, "excel.exe"):  # Excel by the name Windows registers for it (App Paths), if .xlsx isn't Excel's
+        try:
+            os.startfile(target)  # noqa: S606 - our own workbook, or Excel itself
+            break
+        except OSError:
+            continue  # no desktop Excel registered: the message below still says what to do
+    say("Anomaly Hunter is installed.\n\nExcel is opening a \"Start here\" workbook: follow its 5 steps to add Anomaly "
+        "Hunter to Excel (first time only), then try it on the Practice sheet.\n\nIn Excel: Home > Add-ins > More Add-ins "
+        "> SHARED FOLDER > Anomaly Hunter > Add.")
     return 0
 
 

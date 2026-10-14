@@ -5,7 +5,7 @@ import { n } from "../utils/text.js";
 import { cutNote } from "../utils/sheet.js";
 import { act } from "../hooks/use-action.js";
 import { rowItem } from "../components/row-item.js";
-import { fairnessNote, flaggedRows, summaryOf } from "../features/scan.js";
+import { fairnessNote, fairnessTests, flaggedRows, summaryOf } from "../features/scan.js";
 import { openFix } from "./fix.js";
 
 // Results show up: the summary, the color legend and the rows to check.
@@ -22,6 +22,9 @@ export function renderResults(rows, s, fair) {
   const note = fairnessNote(fair);
   show("fairness-note", !!note);
   $("fairness-note").textContent = note;
+  const tests = note ? fairnessTests(fair) : [];
+  show("fairness-more", tests.length > 0);
+  $("fairness-list").replaceChildren(...tests.map((t) => Object.assign(document.createElement("li"), { textContent: t.text })));
   show("cut-note", !!s.cut);
   if (s.cut) $("cut-note").textContent = cutNote(s.cut);
   listRows();

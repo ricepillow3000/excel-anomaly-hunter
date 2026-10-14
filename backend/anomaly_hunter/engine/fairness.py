@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 from scipy.stats import chi2_contingency
 
+from anomaly_hunter.engine.load import PLACEHOLDER
+
 PROXY = "location (can stand in for race or income)"
 DEMOGRAPHIC = {"age", "dob", "birth", "birthday", "birthdate", "gender", "sex", "race", "ethnicity", "ethnic", "religion",
                "marital", "nationality", "citizenship", "disability", "disabled", "pregnancy", "pregnant", "veteran"}
@@ -47,8 +49,8 @@ def _groups(df, col, types):
         labels = pd.cut(x, edges, right=False, duplicates="drop")  # [30, 45) = "30-44"
         return labels.map(lambda b: None if pd.isna(b) else _band(b))
     if types.get(col) == "text":
-        v = s.astype(str).str.strip()
-        return v.where(v != "", None) if v[v != ""].nunique() <= 20 else None
+        v = s.astype(str).str.strip().where(~_missing(s))  # "?" is no group: a blank is not a kind of person
+        return v.where(v.notna(), None) if v.nunique() <= 50 else None  # category-like: groups under 20 rows drop out
     return None
 
 
@@ -62,15 +64,30 @@ def _band(b):
 
 
 def _outcomes(df, types, skip):
-    """Yes/no columns (only 0 and 1, both present) that are not protected: delinquent, defaulted, churned..."""
+    """Yes/no columns that are not protected -> {test name: (rate of the "yes" per row, what "yes" is in words)}: 0/1
+    numbers (delinquent, defaulted, churned), and text with exactly two labels (census income "<=50K" / ">50K": the
+    rarer label is the one counted)."""
     out = {}
     for c, t in types.items():
-        if c in skip or t != "number":
+        if c in skip:
             continue
-        x = pd.to_numeric(df[c], errors="coerce").dropna()
-        if len(x) and set(x.unique()) == {0, 1}:
-            out[c] = x.reindex(df.index)
+        if t == "number":
+            x = pd.to_numeric(df[c], errors="coerce")
+            if x.notna().any() and set(x.dropna().unique()) == {0, 1}:
+                out[f"{c} rate"] = (x.eq(1).where(x.notna()), f"{c} = 1")
+        elif t == "text":
+            v = df[c].astype(str).str.strip().where(~_missing(df[c]))
+            counts = v.value_counts()
+            if len(counts) == 2:
+                yes = counts.index[-1]
+                out[f"{c} {yes} rate"] = (v.eq(yes).where(v.notna()), f"{c} {yes}")
     return out
+
+
+def _missing(s):
+    """Blank, or a stand-in for blank ("?", "N/A", "unknown"): census rows give "?" for an unknown occupation."""
+    v = s.astype(str).str.strip()
+    return s.isna() | (v == "") | v.str.fullmatch(PLACEHOLDER)
 
 
 def report(df, types, rows):
@@ -78,30 +95,31 @@ def report(df, types, rows):
     verdict "gap" = one subgroup's rate is 1.25x another's (four-fifths rule) AND the difference is significant."""
     prot = {c: why for c, why in protected(types).items() if c in df.columns}
     flagged = pd.Series([r["severity"] in ("High", "Medium", "Low") for r in rows], index=df.index)
-    blanks = {c: df[c].isna() | (df[c].astype(str).str.strip() == "") for c in df.columns if c not in prot}
-    measures = {"flag rate": flagged, **{f"blank {c}": b for c, b in blanks.items() if b.sum() >= 5},
-                **{f"{c} rate": v.eq(1).where(v.notna()) for c, v in _outcomes(df, types, prot).items()}}
+    missing = {c: _missing(df[c]) for c in df.columns if c not in prot}
+    measures = {"flag rate": (flagged, "rows flagged"),
+                **{f"missing {c}": (b, f"missing {c}") for c, b in missing.items() if b.sum() >= 5},
+                **_outcomes(df, types, prot)}
     tests = []
     for col, why in prot.items():
         g = _groups(df, col, types)
         if g is None:
             continue
-        for name, hit in measures.items():
+        for name, (hit, what) in measures.items():
             ok = g.notna() & hit.notna()
             table = pd.crosstab(g[ok], hit[ok].astype(bool))
             table = table[table.sum(axis=1) >= MIN_GROUP]
             if len(table) < 2 or table.shape[1] < 2:
                 continue
             rates = table[True] / table.sum(axis=1)
-            tests.append({"column": col, "kind": why, "test": name, "p": float(chi2_contingency(table)[1]),
+            tests.append({"column": col, "kind": why, "test": name, "what": what, "p": float(chi2_contingency(table)[1]),
                           "groups": {str(k): [int(table.loc[k].sum()), round(float(v), 4)] for k, v in rates.items()}})
     for t in tests:
-        rates = {k: v[1] for k, v in t["groups"].items()}
+        rates, what = {k: v[1] for k, v in t["groups"].items()}, t.pop("what")
         hi, lo = max(rates, key=rates.get), min(rates, key=rates.get)
-        big = rates[hi] >= RATIO * rates[lo] and rates[hi] - rates[lo] >= 0.05
-        t["verdict"] = "gap" if big and t["p"] * len(tests) < ALPHA else "even"
-        what = "rows flagged" if t["test"] == "flag rate" else t["test"] if t["test"].startswith("blank ") else t["test"][:-5] + " = 1"
-        t["text"] = (f"{t['column']} {hi}: {rates[hi]:.0%} {what} vs {rates[lo]:.0%} for {lo} - a real gap, check why"
-                     if t["verdict"] == "gap" else
-                     f"{t['column']}: {what} even across groups ({rates[lo]:.0%} to {rates[hi]:.0%}, within normal variation)")
+        big, real = rates[hi] >= RATIO * rates[lo] and rates[hi] - rates[lo] >= 0.05, t["p"] * len(tests) < ALPHA
+        t["verdict"] = "gap" if big and real else "even"
+        span = f"{rates[lo]:.0%} to {rates[hi]:.0%}"
+        t["text"] = (f"{t['column']} {hi}: {rates[hi]:.0%} {what} vs {rates[lo]:.0%} for {lo} - a real gap, check why" if big and real
+                     else f"{t['column']}: {what} close across groups ({span} - a real difference, but small)" if real
+                     else f"{t['column']}: {what} even across groups ({span}, within normal variation)")
     return {"protected": prot, "tests": tests}

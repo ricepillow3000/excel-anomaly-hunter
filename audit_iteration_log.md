@@ -118,3 +118,86 @@ These are deliberately **not** anomalies:
 | Human oversight for severe actions | Fairness findings are advisory, never auto-fixed. Short-form and lowercase fixes are guesses the user confirms |
 | Monthly bias tests on demographic subgroups | Run on **every** scan, by subgroup, with significance |
 | Monitor false positive rates | The flag-rate test: if one group gets flagged more often, it is reported |
+
+# Backtest 2026-10-14: a new user, real Excel, and wild data
+
+Three phases, each scored 0-10 by a strict non-technical user. Below 8 means fix, rebuild and test again.
+
+## Phase 3: wild data, the UCI Adult census
+- **Dataset:** 48,842 people and 15 columns, the original UCI file (train + test, via a GitHub mirror because archive.ics.uci.edu is blocked here). It is kept out of the repo; `backend/tests/test_wild_census.py` rebuilds its shapes.
+- **Ground truth:**
+  - `?` for unknown workclass (2,799), occupation (2,809) and native-country (857).
+  - capital-gain `99999`, a "too big to record" code: 244. The next highest value is 41,310.
+  - Exact duplicate rows: 52.
+  - **Total: 6,761 cells in 3,896 rows.**
+- **Not defects:** hours 1-99 around a usual 40; capital losses in a 96%-zero column; survey weights (fnlwgt) up to 8x the median; age 90; the income gaps between groups (real; reported, never "fixed").
+
+### Iteration 6: baseline
+- **Result:** caught **3,896 / 3,896** on both paths, but **1,490 false flags** (1,488 Medium), 28% of all flags. Pane scan 9.0 s, CLI 14.4 s.
+- The false flags are all the limits check:
+  - capital-loss 876, because 96% zeros make the median 0;
+  - hours-per-week 355, because 47% of people work exactly 40, so the spread is tiny;
+  - capital-gain 176;
+  - fnlwgt 81.
+- **Fairness found the tool's own bias:** people 60 and over were flagged 27% of the time vs 8% for 30-44, partly by those hours false alarms (part-timers, retirees).
+- Fairness also missed the income gap: `income` is text, `<=50K` / `>50K`, and only 0/1 numbers counted as outcomes.
+
+### Iteration 7: a slip stands alone, a tail is crowded
+- **Hypothesis:** a real error sits far from the other values. A long tail has other people all the way back to the median.
+- **Change:**
+  - `limits_detector`: a value past the weird limit is weird only when fewer than 5 other values (or 0.05% of rows) lie between it and halfway back to the median. Copies of itself don't count.
+  - "Halfway" is the nearer of the two midpoints. A low positive value uses the ratio scale: Sq Ft 19 for 1915 is 100x small, and 600 sq ft flats in between don't make it normal.
+- **Result:** false flags 1,490 -> 15. Bench 51/51 (the first try, without the ratio-scale midpoint, lost the Sq Ft case: 50/51).
+  - A strict-xfail "known limitation" now passes: two product price clusters no longer flood. The test was made a normal test.
+
+### Iteration 8: a mostly-zero column, and the all-9s code
+- **Change:**
+  - In `_limits`, a column that is 50%+ zero is judged on its non-zero amounts (log scale), like a long right tail. This removed the last 8 Medium false flags (capital losses of $700-1,100).
+  - That also stopped 99999 from crossing the limit, so a dedicated check, `pipeline.codes`, was added: a column's top value is all 9s, has 3+ digits and is over twice the next one. It reads "capital-gain 99999 looks like a code, not a real value (all 9s, over twice the next highest, 41310)" (Medium).
+- **Result:** **3,896 / 3,896 rows, 6,761 / 6,761 cells with the right reason, 0 Medium+ false flags**, and 7 Low "worth a check" (0.016% of clean rows: a 71-year-old working 2 hours with a capital loss; 99-hour weeks).
+
+### Iteration 9: fairness on real data
+- **Change:**
+  - A two-label text column is an outcome; the rarer label is counted (`income >50K`).
+  - `?`, N/A and unknown count as missing, and are never a group.
+  - Category columns with up to 50 labels are tested (was 20; groups under 20 rows still drop out).
+  - "Significant but under the four-fifths line" now says "a real difference, but small". Before, it said "within normal variation" at p = 6.5e-19, which was wrong.
+- **Result:** every well-known Adult disparity is reported as a gap, for example:
+  - sex: Male 30% vs Female 11% earn >50K;
+  - race: Asian-Pac-Islander 27% vs Amer-Indian-Eskimo 12%;
+  - age: 45-59 38% vs under 30 5%;
+  - marital status: married 45% vs never-married 5%;
+  - age 60 and over: 18% missing occupation vs 2% for 30-44.
+- The flag-rate gap for 60+ is now 21% vs 5%. It is driven by real missing occupations (retirees), not by false alarms.
+- The pane names the 3 widest gaps and lists every test under "All fairness checks".
+
+### Iteration 10: audit finding #1 (sign flips on returns) closed
+- **Found:** a regression run on Online Retail (250k rows) showed the tail rule correctly dropped 85 return rows, but 81 bigger returns (-144, -192) were still offered "likely 144". That would turn a refund into a sale.
+- **Change:** a sign flip is offered only where negatives are under 1% of the column (was 5%). Retail has 2.1%.
+- **Result:** 0 flips offered on retail. The famous 74,215 / -74,215 order is still flagged. Scan 29 s for 250k rows, unchanged.
+
+### All gates after Phase 3
+- pytest **218 passed** (0 xfail).
+- Bench GATES pass (51/51, restored 44, harm 0, Medium+ false alarms 0 of 2,724).
+- Delinquency sheet still 279/279 with 0 false flags.
+- Selfcheck passes. Browser e2e flow/ai/nokey: 62 checks. The planted e2e outlier changed from 9999 to 7777: an all-9s 9999 is now rightly a "missing" code, a basic, not a plain outlier.
+- ruff -S clean.
+
+## Phase 1: download and install
+- **Before:**
+  - The only download was an Actions artifact: it needs a GitHub login, comes zipped, expires in 90 days, and sits 4 pages deep.
+  - The CI test skipped the internet-zone warning every real download gets.
+- **Change:**
+  - A `release` job publishes AnomalyHunter.exe as the latest GitHub Release, on main only and only after the fresh-PC job installed and used that exact file. The README's step 1 is now one direct link.
+  - The fresh-PC job puts the Mark of the Web on the file. The clicker answers "Open File - Security Warning" -> Run and SmartScreen -> More info -> Run anyway, and logs every window that appears.
+- **Still there:** the exe is unsigned, so Windows warns once and Edge may ask to "Keep". Only code signing removes that; it is a cost decision for John.
+
+## Phase 2: Excel integration
+- **Before:** Excel opened blank. The 5 Add clicks were in a message box that was gone after one click.
+- **Change:** the installer writes and opens `Start here.xlsx`:
+  - the 5 Add steps stay on screen;
+  - a Practice sheet holds 5 planted problems, and a test checks exactly those 5 rows are found;
+  - it is checked in the fresh-PC job.
+- **Still there:**
+  - The 5 Add clicks remain. Only an admin-deployed or store add-in skips them.
+  - CI has no Excel: the pane runs in Edge against the installed engine, and the ribbon and the Add dialog are checked on John's laptop.

@@ -1,13 +1,11 @@
 """Score a loaded DataFrame: 3 detector votes + hygiene facts -> severity, bucket, reason per row.
 Shared by CLI and server."""
-import re
-
 import numpy as np
 import pandas as pd
 
 from anomaly_hunter.engine import fairness
 from anomaly_hunter.engine.detectors import _result, isolation_detector, limits_detector, sequence_detector
-from anomaly_hunter.engine.load import EXCEL_ERROR, _blank, numbers
+from anomaly_hunter.engine.load import EXCEL_ERROR, PLACEHOLDER, _blank, numbers
 
 def summary_rows(df):
     """Rows that summarise the data instead of being data -> bool array: fully blank rows, rows labelled
@@ -63,10 +61,6 @@ def type_errors(n, errors_log, column_types):
         raw = _short(raw)
         out[i].append(f"Excel error {raw} in {col}" if EXCEL_ERROR.match(str(raw).strip()) else f'Text "{raw}" in {kind} column {col}')
     return out
-
-
-# stand-ins for a missing value. Not "NA" (a ticker, a country) or "None" (a real category)
-PLACEHOLDER = re.compile(r"error|unknown|n/a|null|\?|-", re.I)
 
 
 def placeholders(df, column_types, skip):
@@ -234,6 +228,23 @@ def fractions(df, column_types, skip):
     return out
 
 
+def codes(df, column_types, skip):
+    """A column's top value is all 9s (999, 9999, 99999) and over twice the next one: a code for "missing" or "too big to
+    record" (census capital gains stop at 41,310, then 244 people have 99999), not an amount - it wrecks every average.
+    Repeats don't hide it: the code is typed the same way each time."""
+    out = [[] for _ in range(len(df))]
+    for col in numbers(column_types):
+        x = df[col][~skip].dropna().astype(float)
+        top = np.sort(x.unique())[-2:]
+        if len(x) < 20 or len(top) < 2 or not top[1].is_integer() or top[1] < 999 or set(str(int(top[1]))) != {"9"} \
+                or top[1] < 2 * top[0]:
+            continue
+        for i in x.index[x == top[1]]:
+            out[i].append(f"{col} {top[1]:g} looks like a code, not a real value (all 9s, over twice the next "
+                          f"highest, {top[0]:g})")
+    return out
+
+
 def shifted(df, column_types, skip):
     """A text value typed into the wrong column ("East" in Item): once in its own column, 3+ times in another one, and
     the two columns otherwise share under 20% of their values (Origin/Destination, Home/Away share most: left alone).
@@ -289,6 +300,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5):
     ran = [d for d in dets.values() if d["ran"]]
     dup, typ, blank = duplicates(df), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
     hole, far, add = placeholders(df, column_types, skip), far_dates(df, column_types, skip), sums(df, column_types, skip)
+    code = codes(df, column_types, skip)
     spell, spell_fix, missed, spell_maybe, spell_exact = spellings(df, column_types, skip)
     missed = [m + s + f for m, s, f in zip(missed, shifted(df, column_types, skip), fractions(df, column_types, skip),
                                           strict=True)]  # all "worth a check" (Low)
@@ -299,7 +311,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5):
                          "magnitude": 0.0})
             continue
         voted = [d for d in ran if d["votes"][i]]
-        hygiene = dup[i] + typ[i] + blank[i] + hole[i] + far[i] + add[i] + spell[i]
+        hygiene = dup[i] + typ[i] + blank[i] + hole[i] + code[i] + far[i] + add[i] + spell[i]
         if not voted and not hygiene and not missed[i]:
             noted = lim["noted_reasons"][i]
             rows.append({"severity": "Noted" if noted else None, "bucket": None,
@@ -308,7 +320,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5):
         v, weird = len(voted), bool(lim["votes"][i])
         rows.append({  # a possible misspelling alone is "worth a check" (Low): it may be a real name
             "severity": "High" if v >= 3 else "Medium" if v == 2 or weird or hygiene else "Low",
-            "bucket": "Duplicates" if dup[i] else "Irregularities" if weird or typ[i] or blank[i] or hole[i] or far[i] or add[i] or spell[i] or missed[i] else "Behavioral",
+            "bucket": "Duplicates" if dup[i] else "Irregularities" if weird or typ[i] or blank[i] or hole[i] or code[i] or far[i] or add[i] or spell[i] or missed[i] else "Behavioral",
             "reason": (f"Flagged by {v} of {len(ran)}: " if v else "") + "; ".join(dict.fromkeys(hygiene + missed[i] + [r for d in voted for r in d["reasons"][i]])),  # dedupe, keep order
             "magnitude": float(max((d["magnitude"][i] for d in voted), default=0.0)),
             "likely": {**lim["likely"][i], **spell_fix[i]},

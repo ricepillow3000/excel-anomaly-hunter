@@ -115,7 +115,7 @@ def test_bias_tests_report_each_protected_column_and_stay_quiet_on_noise(scanned
     cols = {t["column"] for t in fair["tests"]}
     assert {"Age", "Location"} <= cols and fair["protected"] == {"Age": "demographic",
                                                                 "Location": "location (can stand in for race or income)"}
-    assert {t["test"] for t in fair["tests"]} >= {"flag rate", "blank Income", "Delinquent_Account rate"}
+    assert {t["test"] for t in fair["tests"]} >= {"flag rate", "missing Income", "Delinquent_Account rate"}
     assert all(t["verdict"] == "even" for t in fair["tests"]), [t for t in fair["tests"] if t["verdict"] != "even"]
 
 
@@ -125,7 +125,7 @@ def test_a_real_subgroup_gap_is_reported():
     for i, row in enumerate(rows):
         row[2] = "" if row[5] == "Phoenix" and i % 3 else (row[2] or 50000)
     df, out, *_, fair = scan_agent.scan(COLS, rows)
-    gap = [t for t in fair["tests"] if t["column"] == "Location" and t["test"] == "blank Income"]
+    gap = [t for t in fair["tests"] if t["column"] == "Location" and t["test"] == "missing Income"]
     assert gap and gap[0]["verdict"] == "gap" and "Phoenix" in gap[0]["text"]
 
 
