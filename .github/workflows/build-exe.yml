@@ -109,17 +109,27 @@ jobs:
           if ($left) { throw "Python still reachable: $($left.Source)" }
           "Downloads: $((Get-ChildItem "$env:USERPROFILE\Downloads").Name -join ', ')  |  python: not found"
 
+      # Explorer opens it, as a double-click does: Start-Process launches with Windows' "no UI" flag, so the warning for a
+      # file from the internet can't show and Windows reports "canceled by the user" (the first try of this test)
       - name: Double-click it
         shell: pwsh
         run: |
-          $proof = "$env:RUNNER_TEMP\proof"
+          $proof = "$env:RUNNER_TEMP\proof"; $exe = "$env:USERPROFILE\Downloads\AnomalyHunter.exe"
           $hand = Start-Process powershell -PassThru -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
             "$env:GITHUB_WORKSPACE\tests\packaging\click-like-a-user.ps1", $proof, '8'
-          $t = Measure-Command { $p = Start-Process "$env:USERPROFILE\Downloads\AnomalyHunter.exe" -PassThru; $p.WaitForExit(300000) | Out-Null }
+          for ($i = 0; $i -lt 120 -and -not (Select-String -Quiet 'ready' "$proof\clicks.log" -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 500 }
+          $t = [Diagnostics.Stopwatch]::StartNew()
+          Start-Process explorer.exe -ArgumentList "`"$exe`""
+          $p = $null   # the first AnomalyHunter.exe from Downloads (one-file apps start a second copy of themselves)
+          while (-not $p -and $t.Elapsed.TotalSeconds -lt 240) {
+            Start-Sleep -Milliseconds 500
+            $p = Get-Process AnomalyHunter -ErrorAction SilentlyContinue | Where-Object Path -eq $exe | Sort-Object StartTime | Select-Object -First 1 }
+          if ($p) { $null = $p.Handle; $done = $p.WaitForExit(300000) }   # (a handle taken while it runs keeps its exit code)
           Start-Sleep 2; Stop-Process $hand -ErrorAction SilentlyContinue
           Get-Content "$proof\clicks.log" -ErrorAction SilentlyContinue
-          "install finished in {0:N0} s, exit {1}" -f $t.TotalSeconds, $p.ExitCode
-          if ($p.ExitCode -ne 0) { Get-Content "$env:LOCALAPPDATA\AnomalyHunter\server.log" -ErrorAction SilentlyContinue; throw "install failed" }
+          if (-not $p) { throw "the double-clicked file never started (a Windows warning nobody answered? see the windows: lines above)" }
+          "install finished in {0:N0} s (from the double-click, warnings included), exit {1}" -f $t.Elapsed.TotalSeconds, $p.ExitCode
+          if (-not $done -or $p.ExitCode -ne 0) { Get-Content "$env:LOCALAPPDATA\AnomalyHunter\server.log" -ErrorAction SilentlyContinue; throw "install failed" }
 
       - name: Check the install like the user's PC sees it
         shell: pwsh
@@ -152,7 +162,8 @@ jobs:
           $proof = "$env:RUNNER_TEMP\proof-uninstall"
           $hand = Start-Process powershell -PassThru -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
             "$env:GITHUB_WORKSPACE\tests\packaging\click-like-a-user.ps1", $proof, '3'
-          $p = Start-Process "$env:USERPROFILE\Downloads\AnomalyHunter.exe" -ArgumentList 'uninstall' -PassThru; $done = $p.WaitForExit(120000)
+          # typed in a terminal, as the README says (a terminal starts it directly: no internet-file warning)
+          $p = Start-Process "$env:USERPROFILE\Downloads\AnomalyHunter.exe" -ArgumentList 'uninstall' -NoNewWindow -PassThru; $done = $p.WaitForExit(120000)
           Start-Sleep 2; Stop-Process $hand -ErrorAction SilentlyContinue
           Get-Content "$proof\clicks.log" -ErrorAction SilentlyContinue
           if (-not $done -or $p.ExitCode -ne 0) { throw "uninstall did not finish (exit $($p.ExitCode))" }

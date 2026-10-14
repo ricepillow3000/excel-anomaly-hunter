@@ -84,6 +84,7 @@ function SmartScreen {  # its window title names it; the words inside say "Windo
   return $null
 }
 $n = 0; $end = (Get-Date).AddMinutes($Minutes); $seen = ''; $tick = 0
+"ready $(Get-Date -Format o)" | Out-File -Append -Encoding utf8 $log   # the test starts the double-click after this line
 while ((Get-Date) -lt $end) {
   if (($tick++ % 6) -eq 0 -and ($now = [Hand]::Titles()) -ne $seen) { "windows: $now" | Out-File -Append -Encoding utf8 $log; $seen = $now }
   $ss = $null; try { $ss = SmartScreen } catch { }
