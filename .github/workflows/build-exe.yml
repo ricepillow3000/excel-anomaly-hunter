@@ -109,8 +109,8 @@ jobs:
         run: |
           $proof = "$env:RUNNER_TEMP\proof"
           $hand = Start-Process powershell -PassThru -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
-            "$env:GITHUB_WORKSPACE\tests\packaging\click-like-a-user.ps1", $proof, '8'
-          $t = Measure-Command { $p = Start-Process "$env:USERPROFILE\Downloads\AnomalyHunter.exe" -PassThru; $p.WaitForExit(480000) | Out-Null }
+            "$env:GITHUB_WORKSPACE\tests\packaging\click-like-a-user.ps1", $proof, '6'
+          $t = Measure-Command { $p = Start-Process "$env:USERPROFILE\Downloads\AnomalyHunter.exe" -PassThru; $p.WaitForExit(300000) | Out-Null }
           Start-Sleep 2; Stop-Process $hand -ErrorAction SilentlyContinue
           Get-Content "$proof\clicks.log" -ErrorAction SilentlyContinue
           "install finished in {0:N0} s, exit {1}" -f $t.TotalSeconds, $p.ExitCode
