@@ -117,7 +117,8 @@ jobs:
           $proof = "$env:RUNNER_TEMP\proof"; $exe = "$env:USERPROFILE\Downloads\AnomalyHunter.exe"
           $hand = Start-Process powershell -PassThru -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
             "$env:GITHUB_WORKSPACE\tests\packaging\click-like-a-user.ps1", $proof, '8'
-          for ($i = 0; $i -lt 120 -and -not (Select-String -Quiet 'ready' "$proof\clicks.log" -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 500 }
+          $log = "$proof\clicks.log"   # (Select-String on a file not there yet stops the step, whatever -ErrorAction says)
+          for ($i = 0; $i -lt 120 -and -not ((Test-Path $log) -and (Select-String -Quiet 'ready' $log)); $i++) { Start-Sleep -Milliseconds 500 }
           $t = [Diagnostics.Stopwatch]::StartNew()
           Start-Process explorer.exe -ArgumentList "`"$exe`""
           $p = $null   # the first AnomalyHunter.exe from Downloads (one-file apps start a second copy of themselves)
