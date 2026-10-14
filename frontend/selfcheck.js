@@ -3,9 +3,17 @@ import assert from "node:assert";
 import { esc, asNumber, median } from "./utils/text.js";
 import { cutNote, tableFromGrid, isDateFormat, excelDate, rowFromAddress, colLetter, cellAt, sameRow } from "./utils/sheet.js";
 import { issuesOf, recommendFix, typoKind, spansDecade, afterFix, unusualColumn } from "./features/fix.js";
-import { plainReason, summaryOf, flaggedRows } from "./features/scan.js";
+import { plainReason, summaryOf, flaggedRows, fairnessNote } from "./features/scan.js";
 import { strengthHint, asStrength, levelAt } from "./pages/strength.js";
 import { exactFixes } from "./features/autofix.js";
+
+// fairness line: protected columns named; a real gap spelled out; nothing at all without a protected column
+assert.equal(fairnessNote({ protected: {}, tests: [] }), "");
+assert.equal(fairnessNote(undefined), "");
+assert.equal(fairnessNote({ protected: { Age: "demographic", Location: "location" }, tests: [{ verdict: "even", text: "x" }] }),
+  "Fairness: Age, Location are never used to decide which rows are unusual. Flags, blanks and outcomes are even across their groups.");
+assert.equal(fairnessNote({ protected: { Location: "location" }, tests: [{ verdict: "gap", text: "Location Phoenix: 60% blank Income vs 3% for Chicago - a real gap, check why" }] }),
+  "Fairness: Location is never used to decide which rows are unusual. Check these gaps between groups: Location Phoenix: 60% blank Income vs 3% for Chicago - a real gap, check why.");
 
 // summary: "Noted" (inside the usual range) is fine, not a problem
 assert.equal(summaryOf([{ severity: null }, { severity: "Noted" }, { severity: null }]), "No problems found in 3 rows.");

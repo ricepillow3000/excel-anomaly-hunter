@@ -3,6 +3,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from anomaly_hunter.engine import fairness
 from anomaly_hunter.engine.limits import read_limits, suggest_limits
 from anomaly_hunter.engine.load import LoadError, load_inputs, numbers
 from anomaly_hunter.engine.pipeline import score
@@ -24,7 +25,8 @@ def run_scan(files, limits_path, order_by, out_path):
         print(f"No limits file found. Suggested limits written to {limits_path}. Review it and run again.")
         return 2
     limits, more = read_limits(limits_path, types)
-    write_report(df, *score(df, types, errors, limits, order_by), out_path, limits_path, warnings + more)
+    rows, status = score(df, types, errors, limits, order_by)
+    write_report(df, rows, status, out_path, limits_path, warnings + more, fairness.report(df, types, rows))
     print(f"Report written to {out_path}")
     return 0
 

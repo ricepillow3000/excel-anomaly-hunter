@@ -13,7 +13,7 @@ def planted():
 
 def test_scan_agent_flags_the_planted_row():
     columns, rows = planted()
-    _, out, suggested, used, _ = scan(columns, rows)
+    _, out, suggested, used, _, _ = scan(columns, rows)
     assert out[7]["severity"] in ("Medium", "High")
     assert used == suggested  # nothing saved by the user -> limits come from the data
 

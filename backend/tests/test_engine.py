@@ -191,7 +191,7 @@ def test_unknown_limits_column_warns_not_crash(tmp_path):
 
 # ---- Report test ----
 
-def test_report_has_three_sheets_and_summary(tmp_path):
+def test_report_has_its_sheets_and_summary(tmp_path):
     csv_path = tmp_path / "data.csv"
     df = make_clean_csv(csv_path, n=40)
     limits_path = tmp_path / "limits.csv"
@@ -201,7 +201,7 @@ def test_report_has_three_sheets_and_summary(tmp_path):
     assert run_scan([str(csv_path)], str(limits_path), None, str(out_path)) == 0
 
     wb = load_workbook(out_path)
-    assert set(wb.sheetnames) == {"Data", "Anomalies", "Summary"}
+    assert set(wb.sheetnames) == {"Data", "Anomalies", "Summary", "Fairness"}
     summary_text = "\n".join(str(c.value) for row in wb["Summary"].iter_rows() for c in row if c.value is not None)
     assert "Limits file" in summary_text
     assert "K" in summary_text

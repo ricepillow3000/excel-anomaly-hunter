@@ -23,8 +23,9 @@ ID_NAME = re.compile(r"(#|(^|[^a-z])(id|no\.?|num(ber)?|code|sku|zip|postal|mrn|
 
 
 def _is_id(name, num):
-    """Whole numbers that label rows instead of measuring them: ID-like header, or >=20 near-sequential unique values."""
-    if not len(num) or (num != num.round()).any():
+    """Whole numbers that label rows instead of measuring them: ID-like header, or >=20 near-sequential unique values.
+    Only 0s and 1s is a yes/no flag, never an ID, whatever the header ("Delinquent_Account": 0/1, not an account number)."""
+    if not len(num) or (num != num.round()).any() or set(num.unique()) <= {0, 1}:
         return False
     if ID_NAME.search(str(name)):
         return True

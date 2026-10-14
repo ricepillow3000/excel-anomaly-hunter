@@ -33,7 +33,7 @@ export async function runScan(auto) { // auto === false: the re-check right afte
   state.undos = {};
   state.handled = new Set();
   $("sheet-name").textContent = s.sheet;
-  renderResults(body.rows, s);
+  renderResults(body.rows, s, body.fairness);
   await paint(body.rows, s);
   await watchSelection(s.sheet, onSelect);
   const secs = Math.max(1, Math.round((Date.now() - t0) / 1000));
@@ -63,6 +63,17 @@ export function summaryOf(rows) {
   const more = maybe ? ` ${n(maybe)}${sure ? " more" : ""} ${maybe === 1 ? "is" : "are"} worth a quick check.` : "";
   if (!sure && !maybe) return `No problems found in ${n(rows.length)} rows.`;
   return (sure ? `${n(sure)} of ${n(rows.length)} rows look wrong.` : `Nothing clearly wrong in ${n(rows.length)} rows.`) + more;
+}
+
+// Pure: the fairness line under the summary (engine/fairness.py) - which columns are protected, and any real gap
+// between their groups. "" when the sheet has no protected column.
+export function fairnessNote(fair) {
+  const cols = Object.keys(fair?.protected || {});
+  if (!cols.length) return "";
+  const gaps = (fair.tests || []).filter((t) => t.verdict === "gap");
+  const kept = `Fairness: ${cols.join(", ")} ${cols.length === 1 ? "is" : "are"} never used to decide which rows are unusual.`;
+  return gaps.length ? `${kept} Check these gaps between groups: ${gaps.map((t) => t.text).join("; ")}.`
+    : `${kept} Flags, blanks and outcomes are even across their groups.`;
 }
 
 // Pure: the engine's reason in plain words, for the list and the fix view

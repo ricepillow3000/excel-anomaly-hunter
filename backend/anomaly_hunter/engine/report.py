@@ -1,4 +1,4 @@
-"""report.xlsx: Data (every row, colored), Anomalies (flagged, worst first), Summary."""
+"""report.xlsx: Data (every row, colored), Anomalies (flagged, worst first), Summary, Fairness (protected subgroups)."""
 from collections import Counter
 
 from openpyxl import Workbook
@@ -12,7 +12,7 @@ FILL = {s: PatternFill("solid", fgColor=c) for s, c in
 RANK = {"High": 3, "Medium": 2, "Low": 1}
 
 
-def write_report(df, rows, status, out_path, limits_path, warnings):
+def write_report(df, rows, status, out_path, limits_path, warnings, fair=None):
     wb = Workbook()
     data = wb.active
     data.title = "Data"
@@ -44,6 +44,20 @@ def write_report(df, rows, status, out_path, limits_path, warnings):
     summary = wb.create_sheet("Summary")
     for line in lines:
         summary.append(line)
+
+    # Fairness: which columns are protected (never used to judge who is unusual) and one line per subgroup test
+    fairness = wb.create_sheet("Fairness")
+    prot = (fair or {}).get("protected", {})
+    fairness.append(["Protected columns - checked for typos and blanks, never used to decide who is unusual"])
+    for col, why in prot.items():
+        fairness.append([col, why])
+    if not prot:
+        fairness.append(["(none found by column name: age, gender, race, marital status, location, zip...)"])
+    fairness.append([])
+    fairness.append(["Result", "What was compared", "Finding", "Groups (rows, rate)", "p-value"])
+    for t in (fair or {}).get("tests", []):
+        fairness.append(["Gap - check why" if t["verdict"] == "gap" else "Even", f"{t['column']}: {t['test']}", t["text"],
+                         "; ".join(f"{g} ({n}, {r:.0%})" for g, (n, r) in t["groups"].items()), round(t["p"], 4)])
     for ws in wb:  # a scanned cell "=HYPERLINK(...)" or "=cmd|..." stays text: opening the report never runs it
         for row in ws.iter_rows():
             for cell in row:
