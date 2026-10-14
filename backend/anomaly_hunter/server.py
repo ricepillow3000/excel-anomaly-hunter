@@ -26,7 +26,8 @@ from anomaly_hunter.ai import client
 from anomaly_hunter.engine.detectors import K
 from anomaly_hunter.engine.load import load_from_records
 
-PANEL = Path(__file__).resolve().parents[2] / "frontend"  # the pane, served as-is
+# the pane, served as-is: beside the code in a checkout, inside the bundle in the one-file app (unpacked to _MEIPASS)
+PANEL = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2])) / "frontend"
 HOME = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local") / "AnomalyHunter"  # cert, key, log
 CERT_NAME = "Anomaly Hunter local CA"  # install.bat finds the trusted CA by this name
 PORT = 5055

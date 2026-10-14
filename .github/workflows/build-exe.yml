@@ -1,0 +1,93 @@
+# Builds the one-file Windows app, dist/AnomalyHunter.exe, then tests it on a Windows PC with Python taken away.
+# Download: Actions tab > this run > Artifacts > AnomalyHunter-exe. PyInstaller builds for the OS it runs on, so the
+# Windows file is built here, on Windows.
+name: Build AnomalyHunter.exe
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exe:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: pip install -e . pyinstaller==6.22.3 pyinstaller-hooks-contrib==2026.8 pillow==12.3.0
+
+      - name: Build the one file
+        run: python -m PyInstaller --noconfirm packaging/AnomalyHunter.spec
+
+      - name: Test workbook (made now, before Python is taken away)
+        run: python packaging/make_test_workbook.py test-sales.xlsx
+
+      - name: Smoke test with NO Python on the PC (scan a workbook, run the engine, serve the pane)
+        shell: pwsh
+        run: |
+          $py = Split-Path (Get-Command python).Source
+          Rename-Item $py "$py-hidden"                       # the runner's Python is gone...
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot;$env:SystemRoot\System32\WindowsPowerShell\v1.0"
+          Remove-Item Env:PYTHON* -ErrorAction SilentlyContinue
+          if (Get-Command python -ErrorAction SilentlyContinue) { throw "python is still reachable" }   # ...and not on PATH
+          $exe = (Resolve-Path dist\AnomalyHunter.exe).Path
+          "size: {0:N0} MB" -f ((Get-Item $exe).Length / 1MB)
+
+          # 1. no-Excel mode on a real .xlsx: run 1 suggests limits (exit 2), run 2 writes the report (exit 0)
+          $p = Start-Process $exe -ArgumentList 'scan','test-sales.xlsx','--out','report.xlsx' -Wait -PassThru -NoNewWindow
+          if ($p.ExitCode -ne 2 -or -not (Test-Path limits.csv)) { throw "scan run 1: exit $($p.ExitCode)" }
+          $t = Measure-Command { $p = Start-Process $exe -ArgumentList 'scan','test-sales.xlsx','--out','report.xlsx' -Wait -PassThru -NoNewWindow }
+          if ($p.ExitCode -ne 0 -or (Get-Item report.xlsx).Length -lt 10000) { throw "scan run 2: exit $($p.ExitCode)" }
+          "scan: report.xlsx written in {0:N1} s" -f $t.TotalSeconds
+
+          # 2. the engine Excel talks to: HTTPS on 127.0.0.1:5055, the pane served from inside the file, a real scan
+          $env:LOCALAPPDATA = "$env:RUNNER_TEMP\lad"; New-Item -ItemType Directory $env:LOCALAPPDATA | Out-Null
+          Start-Process $exe -ArgumentList 'serve'
+          $h = $null
+          for ($i = 0; $i -lt 120 -and -not $h; $i++) { try { $h = Invoke-RestMethod -SkipCertificateCheck https://127.0.0.1:5055/health } catch { Start-Sleep 1 } }
+          if (-not $h) { Get-Content "$env:LOCALAPPDATA\AnomalyHunter\server.log" -ErrorAction SilentlyContinue; throw "engine did not answer" }
+          "engine up after $i s: $($h | ConvertTo-Json -Compress)"
+          $page = Invoke-WebRequest -SkipCertificateCheck https://127.0.0.1:5055/taskpane.html
+          if ($page.StatusCode -ne 200 -or -not $page.Headers['Content-Security-Policy']) { throw "pane not served" }
+          $rows = (0..299 | ForEach-Object { $u = 5 + $_ % 7; if ($_ -eq 10) { $u = -7 }
+            $r = if ($_ % 2) { 'West' } else { 'East' }; if ($_ -eq 20) { $r = 'east ' }; "[$u, 9.99, `"$r`"]" }) -join ','
+          $out = Invoke-RestMethod -Method Post -ContentType application/json -SkipCertificateCheck https://127.0.0.1:5055/scan `
+            -Body "{`"columns`": [`"Units`", `"Price`", `"Region`"], `"rows`": [$rows]}"
+          if ($out.rows[10].severity -ne 'Medium' -or $out.rows[20].reason -notmatch 'east') { throw "scan answer wrong: $($out.rows[10] | ConvertTo-Json -Compress)" }
+          "scan via engine: row 11 $($out.rows[10].severity) - $($out.rows[10].reason)"
+          Get-Process AnomalyHunter | Stop-Process -Force
+          Rename-Item "$py-hidden" $py
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: AnomalyHunter-exe
+          path: dist/AnomalyHunter.exe
+          if-no-files-found: error
+
+      - name: Install + uninstall on this PC (what a double-click does, minus the clicks)
+        shell: pwsh
+        timeout-minutes: 5
+        env:
+          ANOMALY_HUNTER_NO_DIALOGS: "1"
+        run: |
+          $exe = (Resolve-Path dist\AnomalyHunter.exe).Path
+          $p = Start-Process $exe -Wait -PassThru -NoNewWindow
+          if ($p.ExitCode -ne 0) { Get-Content "$env:LOCALAPPDATA\AnomalyHunter\server.log" -ErrorAction SilentlyContinue; throw "install: exit $($p.ExitCode)" }
+          $home2 = "$env:LOCALAPPDATA\AnomalyHunter"
+          $cat = Get-ItemProperty 'HKCU:\Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{3f9a1c2e-7b4d-4e8a-9c61-5d2e8f0b7a13}'
+          $run = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run').AnomalyHunter
+          if (-not (Test-Path "$home2\AnomalyHunter.exe") -or -not (Test-Path (Join-Path $cat.Url manifest.xml)) -or $run -notmatch 'serve') { throw "install incomplete" }
+          if (-not (Get-ChildItem Cert:\CurrentUser\Root | Where-Object Subject -match 'Anomaly Hunter local CA')) { throw "cert not trusted" }
+          $h = Invoke-RestMethod https://127.0.0.1:5055/health   # no -SkipCertificateCheck: Windows trusts it now
+          "installed: catalog $($cat.Url), autostart $run, engine $($h.status) over trusted HTTPS"
+          $p = Start-Process $exe -ArgumentList 'uninstall' -Wait -PassThru -NoNewWindow
+          if ($p.ExitCode -ne 0 -or (Test-Path 'HKCU:\Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{3f9a1c2e-7b4d-4e8a-9c61-5d2e8f0b7a13}')) { throw "uninstall incomplete" }
+          "uninstalled"
+
