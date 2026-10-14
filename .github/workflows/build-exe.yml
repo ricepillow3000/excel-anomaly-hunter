@@ -71,23 +71,89 @@ jobs:
           path: dist/AnomalyHunter.exe
           if-no-files-found: error
 
-      - name: Install + uninstall on this PC (what a double-click does, minus the clicks)
+  # A brand-new Windows PC that never saw the build: it gets ONLY the downloaded AnomalyHunter.exe, no Python, and one
+  # double-click. A script plays the user's hand (Yes on Windows' certificate prompt, OK on the message), then the real
+  # pane runs in Edge (the browser Excel uses inside) against the engine the install started: scan, fix, undo.
+  new-user:
+    needs: exe
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7   # test tools only (e2e/ + the clicker): the app itself comes from the download
+        with:
+          sparse-checkout: |
+            e2e
+            packaging
+          path: tests
+
+      - name: Download AnomalyHunter.exe into Downloads - the one file a user gets
+        uses: actions/download-artifact@v8
+        with:
+          name: AnomalyHunter-exe
+          path: ${{ runner.temp }}/dl
+
+      - name: No Python on this PC
         shell: pwsh
-        timeout-minutes: 5
-        env:
-          ANOMALY_HUNTER_NO_DIALOGS: "1"
         run: |
-          $exe = (Resolve-Path dist\AnomalyHunter.exe).Path
-          $p = Start-Process $exe -Wait -PassThru -NoNewWindow
-          if ($p.ExitCode -ne 0) { Get-Content "$env:LOCALAPPDATA\AnomalyHunter\server.log" -ErrorAction SilentlyContinue; throw "install: exit $($p.ExitCode)" }
-          $home2 = "$env:LOCALAPPDATA\AnomalyHunter"
+          New-Item -ItemType Directory -Force "$env:USERPROFILE\Downloads" | Out-Null
+          Move-Item "$env:RUNNER_TEMP\dl\AnomalyHunter.exe" "$env:USERPROFILE\Downloads\AnomalyHunter.exe"
+          foreach ($c in Get-Command python, python3, py -All -ErrorAction SilentlyContinue) {
+            Rename-Item $c.Source "$($c.Source).hidden" -ErrorAction SilentlyContinue }
+          Rename-Item "$env:RUNNER_TOOL_CACHE\Python" "Python.hidden" -ErrorAction SilentlyContinue
+          $left = Get-Command python, python3, py -ErrorAction SilentlyContinue
+          if ($left) { throw "Python still reachable: $($left.Source)" }
+          "Downloads: $((Get-ChildItem "$env:USERPROFILE\Downloads").Name -join ', ')  |  python: not found"
+
+      - name: Double-click it
+        shell: pwsh
+        run: |
+          $proof = "$env:RUNNER_TEMP\proof"
+          $hand = Start-Process powershell -PassThru -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+            "$env:GITHUB_WORKSPACE\tests\packaging\click-like-a-user.ps1", $proof, '8'
+          $t = Measure-Command { $p = Start-Process "$env:USERPROFILE\Downloads\AnomalyHunter.exe" -PassThru; $p.WaitForExit(480000) | Out-Null }
+          Start-Sleep 2; Stop-Process $hand -ErrorAction SilentlyContinue
+          Get-Content "$proof\clicks.log" -ErrorAction SilentlyContinue
+          "install finished in {0:N0} s, exit {1}" -f $t.TotalSeconds, $p.ExitCode
+          if ($p.ExitCode -ne 0) { Get-Content "$env:LOCALAPPDATA\AnomalyHunter\server.log" -ErrorAction SilentlyContinue; throw "install failed" }
+
+      - name: Check the install like the user's PC sees it
+        shell: pwsh
+        run: |
+          $ah = "$env:LOCALAPPDATA\AnomalyHunter"
           $cat = Get-ItemProperty 'HKCU:\Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{3f9a1c2e-7b4d-4e8a-9c61-5d2e8f0b7a13}'
           $run = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run').AnomalyHunter
-          if (-not (Test-Path "$home2\AnomalyHunter.exe") -or -not (Test-Path (Join-Path $cat.Url manifest.xml)) -or $run -notmatch 'serve') { throw "install incomplete" }
-          if (-not (Get-ChildItem Cert:\CurrentUser\Root | Where-Object Subject -match 'Anomaly Hunter local CA')) { throw "cert not trusted" }
-          $h = Invoke-RestMethod https://127.0.0.1:5055/health   # no -SkipCertificateCheck: Windows trusts it now
-          "installed: catalog $($cat.Url), autostart $run, engine $($h.status) over trusted HTTPS"
-          $p = Start-Process $exe -ArgumentList 'uninstall' -Wait -PassThru -NoNewWindow
-          if ($p.ExitCode -ne 0 -or (Test-Path 'HKCU:\Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{3f9a1c2e-7b4d-4e8a-9c61-5d2e8f0b7a13}')) { throw "uninstall incomplete" }
-          "uninstalled"
+          $ca = Get-ChildItem Cert:\CurrentUser\Root | Where-Object Subject -match 'Anomaly Hunter local CA'
+          $h = Invoke-RestMethod https://127.0.0.1:5055/health   # no certificate skipping: Windows trusts the engine now
+          "app copied:      $(Test-Path "$ah\AnomalyHunter.exe")"
+          "Excel add-in:    $($cat.Url)\manifest.xml exists = $(Test-Path (Join-Path $cat.Url 'manifest.xml'))"
+          "starts at logon: $run"
+          "certificate:     $($ca.Subject), trusted by Windows"
+          "engine:          $($h | ConvertTo-Json -Compress) over trusted HTTPS"
+          if (-not ($ca -and $h.status -eq 'ok' -and $run -match 'serve' -and (Test-Path (Join-Path $cat.Url 'manifest.xml')))) { throw "install incomplete" }
 
+      - name: Use it - the real pane in Edge against the installed engine (scan, highlight, fix, undo)
+        shell: pwsh
+        run: |
+          npm install --prefix "$env:RUNNER_TEMP\pw" playwright@1.56.1 --no-save --silent
+          $env:NODE_PATH = "$env:RUNNER_TEMP\pw\node_modules"; $env:SHOTS = "$env:RUNNER_TEMP\proof"
+          Set-Location tests\e2e
+          node run.mjs flow
+          if ($LASTEXITCODE) { throw "pane flow failed" }
+
+      - name: Uninstall
+        shell: pwsh
+        run: |
+          $proof = "$env:RUNNER_TEMP\proof-uninstall"
+          $hand = Start-Process powershell -PassThru -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+            "$env:GITHUB_WORKSPACE\tests\packaging\click-like-a-user.ps1", $proof, '3'
+          $p = Start-Process "$env:USERPROFILE\Downloads\AnomalyHunter.exe" -ArgumentList 'uninstall' -PassThru; $p.WaitForExit(120000) | Out-Null
+          Stop-Process $hand -ErrorAction SilentlyContinue
+          Get-Content "$proof\clicks.log" -ErrorAction SilentlyContinue
+          if (Test-Path 'HKCU:\Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{3f9a1c2e-7b4d-4e8a-9c61-5d2e8f0b7a13}') { throw "still listed in Excel" }
+          "uninstalled: Excel listing, autostart, certificate and engine removed"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: new-user-proof
+          path: ${{ runner.temp }}/proof

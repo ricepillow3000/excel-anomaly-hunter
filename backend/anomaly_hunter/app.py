@@ -37,12 +37,9 @@ def _system32():
 WIN = _system32()  # tools run by full path: never a same-named file nearby
 
 
-QUIET_UI = bool(os.environ.get("ANOMALY_HUNTER_NO_DIALOGS"))  # CI smoke test: no one is there to click OK
-
-
 def say(text, error=False):
-    """A Windows message box - the app has no console. Elsewhere, or in CI: print."""
-    if os.name != "nt" or QUIET_UI:
+    """A Windows message box - the app has no console. Elsewhere (tests): print."""
+    if os.name != "nt":
         return print(text, file=sys.stderr if error else sys.stdout)
     import ctypes
     ctypes.windll.user32.MessageBoxW(None, text, "Anomaly Hunter", 0x10 if error else 0x40)
@@ -55,8 +52,6 @@ def fail(text):
 
 def ask(text):
     """OK / Cancel box -> True for OK."""
-    if QUIET_UI:
-        return False
     import ctypes
     return ctypes.windll.user32.MessageBoxW(None, text, "Anomaly Hunter", 0x31) == 1
 
