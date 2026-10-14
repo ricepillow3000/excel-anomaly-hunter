@@ -146,11 +146,16 @@ jobs:
           $proof = "$env:RUNNER_TEMP\proof-uninstall"
           $hand = Start-Process powershell -PassThru -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
             "$env:GITHUB_WORKSPACE\tests\packaging\click-like-a-user.ps1", $proof, '3'
-          $p = Start-Process "$env:USERPROFILE\Downloads\AnomalyHunter.exe" -ArgumentList 'uninstall' -PassThru; $p.WaitForExit(120000) | Out-Null
-          Stop-Process $hand -ErrorAction SilentlyContinue
+          $p = Start-Process "$env:USERPROFILE\Downloads\AnomalyHunter.exe" -ArgumentList 'uninstall' -PassThru; $done = $p.WaitForExit(120000)
+          Start-Sleep 2; Stop-Process $hand -ErrorAction SilentlyContinue
           Get-Content "$proof\clicks.log" -ErrorAction SilentlyContinue
+          if (-not $done -or $p.ExitCode -ne 0) { throw "uninstall did not finish (exit $($p.ExitCode))" }
           if (Test-Path 'HKCU:\Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{3f9a1c2e-7b4d-4e8a-9c61-5d2e8f0b7a13}') { throw "still listed in Excel" }
-          "uninstalled: Excel listing, autostart, certificate and engine removed"
+          if ((Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run').AnomalyHunter) { throw "still starts at logon" }
+          if (Get-ChildItem Cert:\CurrentUser\Root | Where-Object Subject -match 'Anomaly Hunter local CA') { throw "certificate still trusted" }
+          $up = try { Invoke-RestMethod -SkipCertificateCheck -TimeoutSec 3 https://127.0.0.1:5055/health } catch { $null }
+          if ($up) { throw "engine still running" }
+          "uninstalled: Excel listing, autostart, certificate and engine all gone"
 
       - uses: actions/upload-artifact@v7
         if: always()

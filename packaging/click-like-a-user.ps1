@@ -1,5 +1,5 @@
-# CI only: the user's hand. While AnomalyHunter.exe installs, answer the dialogs a person would answer - "Yes" on
-# Windows' certificate warning, "OK" on Anomaly Hunter's own message - and log each dialog's words (+ a screenshot).
+# CI only: the user's hand. While AnomalyHunter.exe installs or uninstalls, answer the dialogs a person would answer -
+# "Yes" on Windows' certificate prompts (add, and remove on uninstall), "OK" on Anomaly Hunter's own message - and log each dialog's words (+ a screenshot).
 # Clicks the button directly (BM_CLICK, what a mouse click sends a classic dialog); UI Automation's Invoke didn't land.
 # Usage (Windows PowerShell): click-like-a-user.ps1 <folder for screenshots and clicks.log> [minutes]
 param([string]$Out, [int]$Minutes = 10)
@@ -58,7 +58,7 @@ function Shot($file) {
 }
 $n = 0; $end = (Get-Date).AddMinutes($Minutes)
 while ((Get-Date) -lt $end) {
-  foreach ($d in @(@('Security Warning', 'Yes'), @('Anomaly Hunter', 'OK'))) {
+  foreach ($d in @(@('Security Warning', 'Yes'), @('Root Certificate Store', 'Yes'), @('Anomaly Hunter', 'OK'))) {
     $said = [Hand]::Find($d[0], $d[1])
     if ($null -ne $said) {
       $n++; Shot (Join-Path $Out ("dialog-{0}.png" -f $n))   # what the user sees, before the click
