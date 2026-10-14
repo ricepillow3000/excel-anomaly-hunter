@@ -206,6 +206,7 @@ if (mode === "nokey") {
   ok(keyCalls.length === 0, "empty Save asks for a key and sends nothing - " + (await text("#ai-state")));
 }
 
+if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/pane-${mode}.png`, fullPage: true }); // proof for people
 const real = errors.filter((e) => !(mode === "nokey" && e.includes("status of 400"))); // the junk key gets the engine's 400 on purpose
 ok(real.length === 0, "no page errors " + JSON.stringify(real));
 await browser.close();

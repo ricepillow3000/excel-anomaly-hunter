@@ -22,3 +22,7 @@ relay/tokens.json
 # Impeccable design hook: per-machine cache and private overrides (config.json is shared)
 .impeccable/hook.cache.json
 .impeccable/config.local.json
+
+# PyInstaller output (packaging/AnomalyHunter.spec)
+/build/
+/dist/
