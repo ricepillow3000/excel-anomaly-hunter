@@ -16,7 +16,14 @@ Windows-only per-user install (trusted shared-folder catalog), not a store add-i
 estate, insurance, manufacturing, education, energy, logistics...): it skips title rows, totals rows and ID columns
 (SKU, MRN, account no.), and names the mistakes every field makes - extra/missing zeros, % typed as 85 for 0.85, flipped
 signs, "Sales" vs "sales ", #N/A / #DIV/0! cells, blanks, duplicates - plus anything statistically out of line.
-Also: totals that don't add up (Total != Fare + Tip + Tax), dates far outside the rest (2084 in a 2018 sheet).
+Also: totals that don't add up (Total != Fare + Tip + Tax), dates far outside the rest (2084 in a 2018 sheet), one label
+written several ways ("Employed" / "employed" / "EMP", "retired" among capitalised labels), ratios above 100%.
+
+**Fairness:** columns naming a demographic (Age, Gender, Race, Marital status...) or a location that can stand in for one
+(City, State, Zip...) are checked for typos and blanks like any column, but never used to decide which rows are unusual. Every
+scan tests their groups for gaps in how often rows are flagged, in blanks, and in any yes/no outcome column (four-fifths
+rule + a significance test, so noise is not called bias). One line in the pane, a Fairness sheet in report.xlsx.
+Advisory only: it never changes a cell.
 Tested on 100k real NYC taxi trips (1.7M cells): 8 s per scan, under 1% false alarms on clean rows.
 
 **Power BI:** after a scan, double-click `powerbi\anomaly-hunter.pbids` (written by `install.bat`), Refresh after each scan.

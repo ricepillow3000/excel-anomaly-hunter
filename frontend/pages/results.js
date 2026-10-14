@@ -5,11 +5,11 @@ import { n } from "../utils/text.js";
 import { cutNote } from "../utils/sheet.js";
 import { act } from "../hooks/use-action.js";
 import { rowItem } from "../components/row-item.js";
-import { flaggedRows, summaryOf } from "../features/scan.js";
+import { fairnessNote, flaggedRows, summaryOf } from "../features/scan.js";
 import { openFix } from "./fix.js";
 
 // Results show up: the summary, the color legend and the rows to check.
-export function renderResults(rows, s) {
+export function renderResults(rows, s, fair) {
   const flagged = flaggedRows(rows);
   state.order = flagged.map((r) => r.i); // the list keeps this order while rows get fixed or dismissed
   $("summary").textContent = summaryOf(rows);
@@ -19,6 +19,9 @@ export function renderResults(rows, s) {
     li.innerHTML = `<span class="swatch sev-${k}"></span>${SEV[k]}: ${n(counts[k])}`;
     return li;
   }));
+  const note = fairnessNote(fair);
+  show("fairness-note", !!note);
+  $("fairness-note").textContent = note;
   show("cut-note", !!s.cut);
   if (s.cut) $("cut-note").textContent = cutNote(s.cut);
   listRows();

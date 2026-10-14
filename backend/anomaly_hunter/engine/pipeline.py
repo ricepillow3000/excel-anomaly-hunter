@@ -5,6 +5,7 @@ import re
 import numpy as np
 import pandas as pd
 
+from anomaly_hunter.engine import fairness
 from anomaly_hunter.engine.detectors import _result, isolation_detector, limits_detector, sequence_detector
 from anomaly_hunter.engine.load import EXCEL_ERROR, _blank, numbers
 
@@ -86,8 +87,9 @@ def placeholders(df, column_types, skip):
     return out
 
 
-def blanks(df, column_types, skip, errors_log, threshold=0.95):
-    """Blank cell in a column that is >= 95% filled (summary rows not counted)."""
+def blanks(df, column_types, skip, errors_log, threshold=0.80):
+    """Blank cell in a column that is >= 80% filled (summary rows not counted): a required field left empty. Mostly-empty
+    columns (notes, optional extras) are left alone. Was 95%: a credit sheet's Income, 92% filled, hid 39 blanks."""
     out = [[] for _ in range(len(df))]
     wrong = {}  # text/errors already named as such are not blanks
     for i, c, _ in errors_log:
@@ -155,8 +157,9 @@ def _one_edit(a, b):
 
 def spellings(df, column_types, skip):
     """Same category typed differently ("Sales" / "sales " / "SALES") - breaks SUMIFS and pivots silently.
-    Only case/space differences, only in category-like columns (<= 50 distinct), only when the usual
-    spelling is >= 3x as common. Plus possible misspellings: a rare word (1-2 times) with one letter wrong or two
+    Only case/space differences, only in category-like columns (<= 50 distinct). Every spelling but the right one is
+    flagged, however common ("employed" 77 times next to "Employed" 82): the right one is written like the column's other
+    labels (capitalised or not), then the most common. Plus possible misspellings: a rare word (1-2 times) with one letter wrong or two
     swapped vs a usual one (5+ times and 5x as common), both 5+ letters only - no digits ("A101"/"A102" are codes),
     no short names (Mark/Mary). -> (reasons, {col: usual spelling}, misspelling reasons (worth a check, not "wrong"),
     {col: usual spelling} for misspellings - a guess, never auto-fixed, {col: usual} when 5x as common - auto-fixable)."""
@@ -171,15 +174,21 @@ def spellings(df, column_types, skip):
         if s.nunique() > 50:
             continue
         keys = s.map(lambda v: " ".join(v.split()).casefold())
-        for _, grp in s.groupby(keys):
+        capital = lambda v: v.strip()[:1].isupper()
+        labels = list(s.drop_duplicates())
+        caps = sum(map(capital, labels)) >= len(labels) / 2  # the column's style: most labels start with a capital
+        rights = {}  # label -> its right spelling
+        for key, grp in s.groupby(keys):
             counts = grp.value_counts()
-            for raw, c in counts.iloc[1:].items():
-                if counts.iloc[0] >= 3 * c:
-                    for i in grp.index[grp == raw]:
-                        out[i].append(f'{col} "{_short(raw)}" looks like "{_short(counts.index[0])}" (same word, different capitals/spaces)')
-                        fix[i][col] = counts.index[0]
-                        if counts.iloc[0] >= 5 * c:
-                            exact[i][col] = counts.index[0]
+            right = rights[key] = max(counts.index, key=lambda v: (capital(v) == caps and v == " ".join(v.split()), counts[v]))
+            for raw, c in counts.items():
+                if raw == right:
+                    continue
+                for i in grp.index[grp == raw]:
+                    out[i].append(f'{col} "{_short(raw)}" looks like "{_short(right)}" (same word, different capitals/spaces)')
+                    fix[i][col] = right
+                    if counts[right] >= 5 * c:  # auto-fix only when the right spelling is plainly the usual one
+                        exact[i][col] = right
         cnt = keys.value_counts()
         word_like = lambda w: len(w) >= 5 and w.replace(" ", "").isalpha()
         for rare, c in cnt[cnt <= 2].items():
@@ -191,7 +200,38 @@ def spellings(df, column_types, skip):
             for i in keys.index[keys == rare]:
                 missed[i].append(f'{col} "{_short(s[i])}" looks like a misspelling of "{_short(word)}"')
                 maybe[i][col] = word
+        # a short form ("EMP" for "Employed"): 2-4 letters that start exactly one other label (5+ rows, 2+ letters longer)
+        for short in cnt.index:
+            longer = [u for u, m in cnt.items() if m >= 5 and len(u) >= len(short) + 2 and u.startswith(short)]
+            if 2 <= len(short) <= 4 and short.isalpha() and len(longer) == 1:
+                for i in keys.index[keys == short]:
+                    missed[i].append(f'{col} "{_short(s[i])}" looks like a short form of "{_short(rights[longer[0]])}"')
+                    maybe[i][col] = rights[longer[0]]
+        # a label written in lowercase where the column's 3+ other labels all start with a capital ("retired" next to
+        # "Employed", "Unemployed"): sorts and reads as a different label in a pivot
+        if len(cnt) >= 4:
+            for key, right in rights.items():
+                if right.islower() and right.replace(" ", "").replace("-", "").isalpha() and all(
+                        capital(r) for k, r in rights.items() if k != key):
+                    for i in keys.index[keys == key]:
+                        missed[i].append(f'{col} "{_short(s[i])}" is lowercase where the column\'s other labels are capitalised')
+                        maybe[i][col] = right[:1].upper() + right[1:]
     return out, fix, missed, maybe, exact
+
+
+def fractions(df, column_types, skip):
+    """A ratio above 100% (Credit_Utilization 1.026) in a column of fractions: 98%+ of its values between 0 and 1, most
+    of them not whole numbers (a 0/1 flag or a count is no fraction). Worth a check, not wrong: an over-limit card exists,
+    a slip is likelier. Below 0 is the limits check's (a column that never goes negative)."""
+    out = [[] for _ in range(len(df))]
+    for col in numbers(column_types):
+        x = df[col][~skip].dropna().astype(float)
+        inside = x.between(0, 1)
+        if len(x) < 20 or inside.all() or inside.mean() < 0.98 or (x[inside] == x[inside].round()).mean() > 0.5:
+            continue
+        for i in x.index[x > 1]:
+            out[i].append(f"{col} {x[i]:g} is above 100% - the rest of the column stays between 0 and 1")
+    return out
 
 
 def shifted(df, column_types, skip):
@@ -239,15 +279,19 @@ def score(df, column_types, errors_log, limits, order_by, strength=5):
     errors_log = [e for e in errors_log if not skip[e[0]]]
     s, k = knobs(strength)
     lim = limits_detector(df, column_types, limits, typos_only=s < 1)
+    # protected columns (Age, Gender, Location...) are checked for slips like any column (limits, blanks, spellings), but
+    # never used to judge whether a person is unusual: a 74-year-old is not an anomaly for being 74 (fairness blueprint)
+    judged = {c: t for c, t in column_types.items() if c not in fairness.protected(column_types)}
     dets = {"limits": lim,
-            "sequence": sequence_detector(df, column_types, order_by, k) if s >= 3 else _result(n, "strength below 3"),
-            "isolation": isolation_detector(df, column_types, k) if s >= 5 else _result(n, "strength below 5")}
+            "sequence": sequence_detector(df, judged, order_by, k) if s >= 3 else _result(n, "strength below 3"),
+            "isolation": isolation_detector(df, judged, k) if s >= 5 else _result(n, "strength below 5")}
     # DBSCAN cut 2026-10-07: 90s/100k rows, 81% false alarms, bench same without it
     ran = [d for d in dets.values() if d["ran"]]
     dup, typ, blank = duplicates(df), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
     hole, far, add = placeholders(df, column_types, skip), far_dates(df, column_types, skip), sums(df, column_types, skip)
     spell, spell_fix, missed, spell_maybe, spell_exact = spellings(df, column_types, skip)
-    missed = [m + s for m, s in zip(missed, shifted(df, column_types, skip), strict=True)]  # both "worth a check" (Low)
+    missed = [m + s + f for m, s, f in zip(missed, shifted(df, column_types, skip), fractions(df, column_types, skip),
+                                          strict=True)]  # all "worth a check" (Low)
     rows = []
     for i in range(n):
         if skip[i]:

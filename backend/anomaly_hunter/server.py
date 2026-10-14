@@ -123,7 +123,7 @@ def create_app(scan_csv=None):
         cols, rows, limits = [str(c) for c in body["columns"]], body["rows"], body.get("limits")  # a year header 2024 is "2024"
         order_by = None if body.get("order_by") is None else str(body["order_by"])
         try:  # Agent 1, one scan, no stop
-            df, out, suggested, used, status = scan_agent.scan(cols, rows, limits, order_by, _strength(body))
+            df, out, suggested, used, status, fair = scan_agent.scan(cols, rows, limits, order_by, _strength(body))
         except Exception:  # a bug in the engine: full detail to the log, not pandas internals to the user
             app.logger.exception("scan failed")
             return {"error": "Engine error - details in server.log"}, 500
@@ -139,7 +139,7 @@ def create_app(scan_csv=None):
                 os.replace(f"{scan_csv}.tmp", scan_csv)  # Power BI never reads a half-written file
             except OSError:  # file open elsewhere: the scan itself still answers
                 app.logger.exception("could not write %s", scan_csv)
-        return {"rows": out, "suggested_limits": suggested, "limits": used, "summary": {
+        return {"rows": out, "suggested_limits": suggested, "limits": used, "fairness": fair, "summary": {
             "severity_counts": Counter(r["severity"] for r in out if r["severity"]),
             "bucket_counts": Counter(r["bucket"] for r in out if r["bucket"]),
             "detectors": status, "k": K}}
