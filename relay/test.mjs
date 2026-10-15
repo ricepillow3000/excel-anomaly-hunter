@@ -121,4 +121,11 @@ const bareCall = () => worker.fetch(new Request("https://relay.example/fix", {
   method: "POST", headers: { Authorization: "Bearer inv_ana" }, body: JSON.stringify(good) }), bare);
 for (let i = 0; i < 10; i++) assert.equal((await bareCall()).status, 200, `fallback cap: call ${i + 1} of 10`);
 assert.equal((await bareCall()).status, 429, "fallback per-invite cap is 10");
+// a daily cap of 0 switches the relay off (2026-10-15 audit: `+"0" || 20` read 0 as unset and allowed 20)
+const off = { ...bare, COUNTER: namespace(), DAILY_TOTAL: "0" };
+const before = sent.length;
+const offCall = await worker.fetch(new Request("https://relay.example/fix", {
+  method: "POST", headers: { Authorization: "Bearer inv_ana" }, body: JSON.stringify(good) }), off);
+assert.equal(offCall.status, 429, "a total cap of 0 refuses");
+assert.equal(sent.length, before, "and never reaches Google");
 console.log("relay abuse tests passed");

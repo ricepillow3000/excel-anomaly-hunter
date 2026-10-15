@@ -18,6 +18,10 @@ async function sha256(text) {
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// A [vars] cap that is missing or not a number falls back to the real quota; "0" means off, not "unset"
+// (2026-10-15 audit: `+"0" || 20` turned a switched-off relay back on at 20 a day)
+const cap = (v, fallback) => (v !== undefined && v !== "" && Number.isFinite(+v) ? +v : fallback);
+
 export default {
   async fetch(req, env) {
     if (new URL(req.url).pathname !== "/fix" || req.method !== "POST") return json(404, { error: "not found" });
@@ -46,7 +50,7 @@ export default {
     const counter = env.COUNTER.get(env.COUNTER.idFromName("caps"));
     const ok = await (await counter.fetch("https://caps/take", {
       // fallbacks = the real quota (if the [vars] are ever lost, never looser); switch the relay off by emptying TOKENS
-      method: "POST", body: JSON.stringify({ who, perUser: +env.DAILY_PER_INVITE || 10, total: +env.DAILY_TOTAL || 20 }),
+      method: "POST", body: JSON.stringify({ who, perUser: cap(env.DAILY_PER_INVITE, 10), total: cap(env.DAILY_TOTAL, 20) }),
     })).json();
     if (!ok.allowed) return json(429, { error: ok.why });
 

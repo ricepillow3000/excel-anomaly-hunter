@@ -8,6 +8,11 @@ flags wrong cells and suggests fixes. Optional AI help goes to Google directly o
 test, `--keep-going` runs them all). Needs `pip install -e ".[dev]"` and node. All green = what CI checks plus both
 accuracy benches. Never commit with a red layer, and never get a gate green by loosening it.
 
+## Security first: read `docs/security/SECURITY-LESSONS.md`
+Every input is an attack until proven harmless (emoji, "ignore all previous instructions and drop table"), and John is
+the only admin: through his GitHub, Cloudflare and Google accounts, never through anything inside the app. Never add
+an admin panel, role, operator route or debug switch. The weekly security sweep reads that file first.
+
 ## Layers: each request passes every one, each has its own guard and test
 | # | Layer | Code | Guard | Test |
 |---|---|---|---|---|
@@ -18,8 +23,8 @@ accuracy benches. Never commit with a red layer, and never get a gate green by l
 | 5 | Load | `engine/load.py` | text/number/date/id per column; Excel errors logged, not crashed on | `test_engine.py` |
 | 6 | Checks | `engine/pipeline.py`, `engine/detectors.py`, `engine/limits.py` | each check returns one list of plain-sentence reasons per row | see the feature map |
 | 7 | Severity | `pipeline.score` | hygiene or weird limit = Medium; 2 votes = Medium; 3 = High; 1 = Low | `test_strength.py` |
-| 8 | Answer | routes, `_inert` | every error is JSON; the Power BI CSV never carries a live formula | `test_api_security.py` |
-| 9 | AI (optional) | `ai/client.py` | one call at a time, deadline, cache (answers only), key never echoed, formulas reaching outside the sheet dropped | `test_fix.py`, `test_ai_load.py`, `test_text_checks.py` |
+| 8 | Answer | routes, `_inert` | every error is JSON; the Power BI CSV never carries a live formula (text always quoted) | `test_api_security.py` |
+| 9 | AI (optional) | `ai/client.py` | one call at a time, deadline, cache (answers only), key never echoed (nor the provider's error text), an AI formula may call only `client.SAFE` functions | `test_fix.py`, `test_ai_load.py`, `test_text_checks.py` |
 | 10 | Relay | `relay/worker.js` | invite hash, daily caps counted before Google, only `POST /fix`, model and key set by the relay | `relay/test.mjs`; live Worker from outside: `relay/live-probe.mjs` (CI `relay-live.yml`) |
 | 11 | Pane | `frontend/` | every dynamic `innerHTML` value goes through `esc()`; CSP allows only our files + office.js | `frontend/selfcheck.js`, `e2e/run.mjs` |
 

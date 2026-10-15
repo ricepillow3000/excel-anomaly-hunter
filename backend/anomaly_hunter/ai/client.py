@@ -8,6 +8,7 @@ import random
 import re
 import threading
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -86,6 +87,35 @@ class Fix(BaseModel):
 # formulas that reach outside the workbook - a prompt-injected sheet could use them to send data out.
 # "[Book.xlsx]Sheet!" = another workbook ("]" then a sheet name and "!"); Table1[Units] is this workbook's own table
 OUTSIDE = re.compile(r"WEBSERVICE|IMAGE\s*\(|HYPERLINK|RTD\s*\(|CALL\s*\(|REGISTER|FILTERXML|://|\][^\[\]]*!|\|", re.IGNORECASE)
+# A blocklist only stops the names someone thought of: the 2026-10-15 audit got IMPORTCSV, COPILOT, a full-width "＝"
+# and INDIRECT("[Other.xlsx]...") past OUTSIDE. So an AI formula may call only these functions, all of which stay
+# inside this workbook (no web, files, other workbooks, Python, AI or live data).
+SAFE = frozenset("""
+ABS ACOS ACOSH AGGREGATE AND ASIN ASINH ATAN ATAN2 ATANH AVERAGE AVERAGEA AVERAGEIF AVERAGEIFS BYCOL BYROW CEILING
+CEILING.MATH CHAR CHOOSE CHOOSECOLS CHOOSEROWS CLEAN CODE COLUMN COLUMNS CONCAT CONCATENATE CORREL COS COSH COUNT
+COUNTA COUNTBLANK COUNTIF COUNTIFS COVARIANCE.P COVARIANCE.S DATE DATEDIF DATEVALUE DAY DAYS DEGREES DROP EDATE
+EOMONTH EVEN EXACT EXP EXPAND FALSE FILTER FIND FIXED FLOOR FLOOR.MATH FORECAST FORECAST.LINEAR FREQUENCY HLOOKUP
+HOUR HSTACK IF IFERROR IFNA IFS INDEX INT INTERCEPT ISBLANK ISERR ISERROR ISEVEN ISLOGICAL ISNA ISNONTEXT ISNUMBER
+ISODD ISOWEEKNUM ISTEXT LAMBDA LARGE LEFT LEN LET LN LOG LOG10 LOOKUP LOWER MAP MATCH MAX MAXA MAXIFS MEDIAN MID MIN
+MINA MINIFS MINUTE MOD MODE MODE.MULT MODE.SNGL MONTH MROUND N NETWORKDAYS NETWORKDAYS.INTL NOT NOW NUMBERVALUE ODD
+OR PERCENTILE PERCENTILE.EXC PERCENTILE.INC PERCENTRANK PI POWER PRODUCT PROPER QUARTILE QUARTILE.EXC QUARTILE.INC
+QUOTIENT RADIANS RANDARRAY RANK RANK.AVG RANK.EQ REDUCE REPLACE REPT RIGHT ROUND ROUNDDOWN ROUNDUP ROW ROWS SCAN
+SEARCH SECOND SEQUENCE SIGN SIN SINH SLOPE SMALL SORT SORTBY SQRT STDEV STDEV.P STDEV.S SUBSTITUTE SUBTOTAL SUM
+SUMIF SUMIFS SUMPRODUCT SUMSQ SWITCH T TAKE TAN TANH TEXT TEXTAFTER TEXTBEFORE TEXTJOIN TEXTSPLIT TIME TIMEVALUE
+TOCOL TODAY TOROW TRANSPOSE TRIM TRIMMEAN TRUE TRUNC TYPE UNICHAR UNICODE UNIQUE UPPER VALUE VAR VAR.P VAR.S VLOOKUP
+VSTACK WEEKDAY WEEKNUM WORKDAY WORKDAY.INTL WRAPCOLS WRAPROWS XLOOKUP XMATCH XOR YEAR YEARFRAC
+""".split())
+CALLS = re.compile(r"([A-Z_][A-Z0-9_.]*)\s*\(")
+
+
+def unsafe_call(text):
+    """Does this cell text, typed into Excel, call a function off the SAFE list? NFKC first, so the full-width "＝"
+    and look-alike letters are read the way the check needs to see them."""
+    text = unicodedata.normalize("NFKC", text).lstrip()
+    if text[:1] not in "=+-@":
+        return False  # a plain value is never a call
+    names = CALLS.findall(re.sub(r'"[^"]*"', '""', text.upper()))  # ignore "text in quotes"
+    return any(n.removeprefix("_XLFN.").removeprefix("_XLWS.") not in SAFE for n in names)
 
 
 def refers_to_itself(cell, text):
@@ -352,10 +382,12 @@ def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent, 
     changes = [c for c in changes if CELL.fullmatch(c["cell"])][:MAX_CHANGES]
     loops = [c["cell"] for c in changes if refers_to_itself(c["cell"], c["new"])]
     outside = [c["cell"] for c in changes if c["new"].lstrip()[:1] in "=+-@" and OUTSIDE.search(c["new"])]
+    unknown = [c["cell"] for c in changes if c["cell"] not in outside and unsafe_call(c["new"])]
     away = [c["cell"] for c in changes if not _in_table(c["cell"], start_row, start_col, len(rows), len(columns))]
     part = [c["cell"] for c in changes if c["cell"] in cut]  # it saw only the start of that cell: a rewrite could lose text
     note = "".join(f" (Left out {', '.join(cells)}: {why}.)" for cells, why in (
         (loops, "the formula referred to its own cell, which Excel can't calculate"), (outside, "the formula reached outside this workbook"),
+        (unknown, "the formula used a function that is not on this add-in's safe list"),
         (away, "outside the table"), (part, "only part of that cell could be sent to the AI, so it is left as it is")) if cells)
-    drop = set(loops + outside + away + part)
+    drop = set(loops + outside + unknown + away + part)
     return {"explanation": fix.explanation + note, "changes": [c for c in changes if c["cell"] not in drop]}
