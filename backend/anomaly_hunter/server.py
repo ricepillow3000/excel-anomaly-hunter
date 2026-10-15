@@ -6,6 +6,7 @@ import math
 import os
 import re
 import ssl
+import subprocess
 import sys
 import urllib.request
 from collections import Counter
@@ -125,9 +126,11 @@ def create_app(scan_csv=None):
     def json_error(e):  # 404, 405, 413...: JSON like every other answer, not Werkzeug's HTML page (ZAP active scan)
         return {"error": e.description}, e.code
 
+    built = version()
+
     @app.get("/health")
     def health():
-        return {"status": "ok", "ai_available": client.api_key_configured(), "ai_provider": client.provider()}
+        return {"status": "ok", "version": built, "ai_available": client.api_key_configured(), "ai_provider": client.provider()}
 
     @app.post("/scan")
     def scan():
@@ -337,6 +340,21 @@ def make_cert(folder=HOME, days=5 * 365):
     (folder / "ca.pem").write_bytes(ca.public_bytes(pem))
     (folder / "cert.pem").write_bytes(leaf.public_bytes(pem))
     return True
+
+
+def version(panel=PANEL):
+    """Which engine answers, shown in the pane: 2026-10-15 a laptop still ran a 3-day-old engine, scored a credit sheet
+    2 of 279 rows, and nothing on screen said it was old. The exe build writes frontend/version.txt; a checkout asks git."""
+    try:
+        return (panel / "version.txt").read_text(encoding="utf-8").strip()
+    except OSError:
+        pass
+    try:  # no console flashing up from the hidden (pythonw) engine
+        out = subprocess.run(["git", "-C", str(panel.parent), "log", "-1", "--format=%h (%cs)"],  # noqa: S603, S607
+                             capture_output=True, text=True, timeout=5, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.SubprocessError):
+        return "dev"
+    return f"dev {out.stdout.strip()}" if out.returncode == 0 and out.stdout.strip() else "dev"
 
 
 def _already_running(folder=HOME, port=PORT):

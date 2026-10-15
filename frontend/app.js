@@ -62,7 +62,10 @@ if (typeof Office !== "undefined") {
 
 async function checkHealth() {
   try {
-    setAi((await getHealth()).ai_available);
+    const h = await getHealth();
+    setAi(h.ai_available);
+    // which engine answers: an old one gave 2 of 279 on a credit sheet and looked just like a new one (2026-10-15)
+    $("engine-version").textContent = `Engine ${h.version || "from before 2026-10-15: update it"}`;
     show("main-ui");
     show("server-down", false);
   } catch {

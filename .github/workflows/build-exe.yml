@@ -24,8 +24,10 @@ jobs:
           cache-dependency-path: pyproject.toml
       - run: pip install -e . pyinstaller==6.22.3 pyinstaller-hooks-contrib==2026.8 pillow==12.3.0
 
-      - name: Build the one file
-        run: python -m PyInstaller --noconfirm packaging/AnomalyHunter.spec
+      - name: Build the one file (stamped with its release tag: the pane shows which engine answers)
+        run: |
+          "v0.1.${{ github.run_number }} ($(Get-Date -Format yyyy-MM-dd))" | Set-Content frontend/version.txt
+          python -m PyInstaller --noconfirm packaging/AnomalyHunter.spec
 
       - name: Test workbook (made now, before Python is taken away)
         run: python packaging/make_test_workbook.py test-sales.xlsx
@@ -55,6 +57,7 @@ jobs:
           for ($i = 0; $i -lt 120 -and -not $h; $i++) { try { $h = Invoke-RestMethod -SkipCertificateCheck https://127.0.0.1:5055/health } catch { Start-Sleep 1 } }
           if (-not $h) { Get-Content "$env:LOCALAPPDATA\AnomalyHunter\server.log" -ErrorAction SilentlyContinue; throw "engine did not answer" }
           "engine up after $i s: $($h | ConvertTo-Json -Compress)"
+          if ($h.version -notlike "v0.1.${{ github.run_number }} (*)") { throw "engine version: $($h.version)" }
           $page = Invoke-WebRequest -SkipCertificateCheck https://127.0.0.1:5055/taskpane.html
           if ($page.StatusCode -ne 200 -or -not $page.Headers['Content-Security-Policy']) { throw "pane not served" }
           $rows = (0..299 | ForEach-Object { $u = 5 + $_ % 7; if ($_ -eq 10) { $u = -7 }

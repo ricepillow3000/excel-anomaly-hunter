@@ -26,3 +26,4 @@ relay/tokens.json
 # PyInstaller output (packaging/AnomalyHunter.spec)
 /build/
 /dist/
+frontend/version.txt
