@@ -207,9 +207,10 @@ def _short_for(short, label):
         return len(w) == len(v) and all(b.startswith(a) for a, b in zip(w, v))
     if label.startswith(short):
         return len(short) <= 4
+    # a contraction keeps the word's first and last letters (Std, Mgmt, Dept, Bldg): "Iran" is not one of "Ireland"
     rest = iter(label[1:])
-    return (len(short) <= 4 and short[0] == label[0] and sum(ch in "aeiou" for ch in short[1:]) <= 1
-            and all(ch in rest for ch in short[1:]))
+    return (len(short) <= 4 and short[0] == label[0] and short[-1] == label[-1]
+            and sum(ch in "aeiou" for ch in short[1:]) <= 1 and all(ch in rest for ch in short[1:]))
 
 
 def spellings(df, column_types, skip):

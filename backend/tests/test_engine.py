@@ -782,6 +782,23 @@ def test_a_short_form_of_several_words_or_a_contraction_is_worth_a_check():
     assert '"Std" looks like a short form of "Standard"' in out[20]["reason"] and out[20]["severity"] == "Low"
 
 
+def test_a_country_is_not_a_contraction_of_another_country():
+    """Census native-country (UCI Adult, 2026-10-15): "Iran" was called a short form of "Ireland" in 56 rows - its
+    letters appear in order inside it. A contraction keeps the word's first AND last letter (Std, Mgmt, Dept, Bldg)."""
+    r = np.random.default_rng(26)
+    rows = [[f"p{i}", str(r.choice(["United-States", "Mexico", "Iran", "Ireland", "Peru", "Portugal"]))] for i in range(240)]
+    _, out = _scan(["Id", "Country"], rows)
+    assert not any("short form" in o["reason"] for o in out)
+
+
+def test_common_contractions_keep_first_and_last_letters():
+    from anomaly_hunter.engine.pipeline import _short_for
+    for short, long in (("std", "standard"), ("mgmt", "management"), ("dept", "department"), ("bldg", "building"),
+                        ("acct", "account"), ("govt", "government")):
+        assert _short_for(short, long), short
+    assert not _short_for("iran", "ireland")
+
+
 def test_two_real_labels_are_not_called_short_forms():
     r = np.random.default_rng(25)
     rows = [[f"x{i}", str(r.choice(["Fee", "Free", "Paid", "Trial"]))] for i in range(120)]
