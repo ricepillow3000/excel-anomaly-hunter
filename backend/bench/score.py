@@ -6,7 +6,7 @@ whose true values are known. Usage: python backend/bench/score.py . [--detail] [
 e-commerce, ads, fleet, agriculture, telecom...) written by a separate author WITHOUT reading the detector
 (datasets3.py, seeds 21,22,23). Prints a per-kind summary; --detail also lists every miss and Medium+ false alarm.
 Exit 1 when a gate fails: a crash, a harmful fix (writes into an ID/formula column or "corrects" a real outlier),
-a flagged totals row, a misread header, or Medium+ false alarms above 1% of clean rows."""
+a flagged totals row, a misread header, or a Medium+ false alarm not in KNOWN_FA (any new one fails, however few)."""
 import json, os, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__))  # works with \ paths on Windows too
 sys.path.insert(0, sys.argv[1]); sys.path.insert(0, HERE)
@@ -45,6 +45,11 @@ def close(a, b):
     return abs(a - b) <= max(1e-9, 0.01 * abs(b))
 
 
+# Every Medium+ false alarm the default seeds already raise, by sheet and grid row. The gate was "<= 1% of clean
+# rows": 26 new Medium alarms (an autoencoder, 2026-10-15) still passed. Now any alarm not listed here fails;
+# one that is gone is reported so it can be removed. Other --seeds have no list: every alarm there is new.
+KNOWN_FA = {"ad_campaigns_s23:7"} if BLIND else set()  # blind: Impressions 936,763 past a weird limit of 630,000
+fa_seen = set()
 tot = {"harm": 0, "planted": 0, "caught": 0, "restored": 0, "fa_med": 0, "fa_low": 0, "clean": 0, "totals_flagged": 0, "totals": 0,
        "hdr_ok": 0, "sheets": 0, "crash": 0, "id_flags": 0}
 bykind, missed, alarms = collections.defaultdict(lambda: [0, 0, 0]), [], []  # kind -> planted, caught, fixed
@@ -116,6 +121,7 @@ for d in make():
                 fa_low += 1
             else:
                 fa_med += 1
+                fa_seen.add(f"{d['name']}:{g}")
                 alarms.append(f"{d['name']:22s} grid row {g}: {rows[k]['reason']}")
     tf = sum(1 for g in d["totals"] if g in g2i and flag(rows[g2i[g]]))
     idf = sum(1 for r in rows if r["reason"] and any(f"{c} " in r["reason"] or f"mainly {c}" in r["reason"] for c in d["idcols"]))
@@ -131,7 +137,12 @@ print("TOTAL", json.dumps(tot))
 print("BY KIND (planted, caught, fixed):", json.dumps(dict(sorted(bykind.items()))))
 if DETAIL:
     print(f"MISSED ({len(missed)}):", *missed, f"MEDIUM+ FALSE ALARMS ({len(alarms)}):", *alarms, sep="\n  ")
+new_fa, gone_fa = sorted(fa_seen - KNOWN_FA), sorted(KNOWN_FA - fa_seen)
+if new_fa:
+    print("NEW MEDIUM+ FALSE ALARMS:", *(a for a in alarms if any(a.startswith(f"{n.split(':')[0]:22s} grid row {n.split(':')[1]}:") for n in new_fa)), sep="\n  ")
+if gone_fa and SEEDS == ([21, 22, 23] if BLIND else [11, 12, 13]):
+    print("known false alarms no longer raised (remove from KNOWN_FA):", ", ".join(gone_fa))
 gates = {"no crash": not tot["crash"], "no harmful fix": not tot["harm"], "no totals flagged": not tot["totals_flagged"],
-         "headers read": tot["hdr_ok"] == tot["sheets"], "false alarms <= 1%": tot["fa_med"] <= 0.01 * tot["clean"]}
+         "headers read": tot["hdr_ok"] == tot["sheets"], "no new Medium+ false alarm": not new_fa}
 print("GATES", "pass" if all(gates.values()) else "FAIL: " + ", ".join(k for k, ok in gates.items() if not ok))
 sys.exit(0 if all(gates.values()) else 1)

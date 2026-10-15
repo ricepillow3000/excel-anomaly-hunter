@@ -1,6 +1,6 @@
 """Every gate, in layers, fastest first - run before every commit: python tools/check.py [--e2e] [--keep-going]
 0 CI workflows parse  1 security lint (ruff, Bandit rules)  2 pane self-check  3 relay abuse tests  4 engine tests + API fuzzing
-5 accuracy: the industry bench and the blind 14-domain bench (gates: no crash, no harmful fix, false alarms <= 1%)
+5 accuracy: the industry bench and the blind 14-domain bench (gates: no crash, no harmful fix, no new Medium+ false alarm)
 6 dependencies with known vulnerabilities (needs the internet)  7 browser e2e, with --e2e (needs .venv + playwright)
 Stops at the first red layer (a broken base hides the real failure); --keep-going runs them all. Exit 1 = a red layer."""
 import subprocess
