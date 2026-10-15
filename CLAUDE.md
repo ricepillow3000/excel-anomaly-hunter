@@ -36,7 +36,7 @@ accuracy benches. Never commit with a red layer, and never get a gate green by l
 | Same label typed differently, misspellings, short forms, lowercase label | `pipeline.spellings` | `test_blindspots.py`, `test_a_short_form_of_several_words_or_a_contraction_is_worth_a_check` |
 | A fraction above 100% | `pipeline.fractions` | `test_blindspots.py` |
 | A value typed into the wrong column | `pipeline.shifted` | `test_text_checks.py` |
-| Values past their column's limits; the typo behind them (x10, %, sign) | `detectors.limits_detector`, `likely_value`, `limits._limits` | `test_engine.py` |
+| Values past their column's limits; the typo behind them (x10, %, sign); a lone slip with an exact x10/x100 behind it past even the usual limit; a stray minus sign never excused as a tail | `detectors.limits_detector`, `likely_value`, `limits._limits` | `test_engine.py`, `test_a_x100_slip_in_a_skewed_column_stands_alone_and_votes`, `test_a_minus_sign_in_a_count_column_is_not_excused_as_its_tail` |
 | Jumps in a dated series (cycles excluded) | `detectors.sequence_detector` | `test_a_repeating_cycle_is_not_a_jump` |
 | Odd combinations across columns | `detectors.isolation_detector` | `test_engine.py` |
 | A top value that is all 9s and over twice the next one (99999 = "missing" / "too big") | `pipeline.codes` | `test_an_all_nines_top_value_is_a_code` |

@@ -823,3 +823,29 @@ def test_two_real_labels_are_not_called_short_forms():
     rows = [[f"x{i}", str(r.choice(["Fee", "Free", "Paid", "Trial"]))] for i in range(120)]
     _, out = _scan(["Id", "Kind"], rows)
     assert not any("short form" in o["reason"] for o in out)
+
+
+def test_a_minus_sign_in_a_count_column_is_not_excused_as_its_tail():
+    # blind bench, On Hand -26 (median 69): stock 0-21 lies between it and halfway back, so the long-tail rule called
+    # it "the column's own tail" and only noted it. A negative where under 1% of the column is negative is a slip
+    r = np.random.default_rng(41)
+    rows = [[f"SKU-{i}", int(r.integers(0, 230))] for i in range(220)]
+    rows[60][1] = -26
+    _, out = _scan(["SKU", "On Hand"], rows)
+    assert "On Hand weird limit is 0; this is -26" in out[60]["reason"] and out[60]["severity"] not in (None, "Noted")
+    assert out[60]["likely"] == {"On Hand": 26}
+
+
+def test_a_x100_slip_in_a_skewed_column_stands_alone_and_votes():
+    # blind bench, First Response 430 hrs for 4.3: response times mixed by priority are skewed, the log-scale weird
+    # limit sat above the slip, and it was only noted. Past the usual limit, alone, with an exact /100 behind it: a typo
+    r = np.random.default_rng(43)
+    med = {"Low": 10, "Normal": 5, "High": 2, "Urgent": 0.6}
+    rows = []
+    for i in range(260):
+        pr = str(r.choice(list(med), p=[.3, .45, .2, .05]))
+        rows.append([f"T-{i}", pr, max(0.1, round(float(r.lognormal(np.log(med[pr]), 0.5)), 1))])
+    rows[33][2] = 510.0  # 5.1 typed x100
+    _, out = _scan(["Ticket", "Priority", "First Response (hrs)"], rows)
+    assert out[33]["severity"] not in (None, "Noted") and out[33]["likely"] == {"First Response (hrs)": 5.1}
+    assert [i for i, o in enumerate(out) if o["severity"] not in (None, "Noted")] == [33]  # the skewed tail stays quiet
