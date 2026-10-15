@@ -18,6 +18,8 @@ public static class Hand {
   [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
   [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h);
   static string Text(IntPtr h) { var s = new StringBuilder(2048); GetWindowText(h, s, 2048); return s.ToString(); }
   static string Cls(IntPtr h) { var s = new StringBuilder(256); GetClassName(h, s, 256); return s.ToString(); }
   static IntPtr found;
@@ -47,6 +49,18 @@ public static class Hand {
     var all = new List<string>();
     EnumWindows((w, l) => { if (IsWindowVisible(w) && Text(w).Trim().Length > 0) all.Add(Text(w)); return true; }, IntPtr.Zero);
     all.Sort(); return string.Join(" | ", all);
+  }
+  // Visible titled top-level windows, and one window described: title, class, process id and the words inside it
+  public static IntPtr[] Tops() {
+    var all = new List<IntPtr>();
+    EnumWindows((w, l) => { if (IsWindowVisible(w) && Text(w).Trim().Length > 0) all.Add(w); return true; }, IntPtr.Zero);
+    return all.ToArray();
+  }
+  public static string Info(IntPtr w) {
+    uint pid; GetWindowThreadProcessId(w, out pid);
+    var words = new List<string>();
+    EnumChildWindows(w, (c, l2) => { string t = Text(c); if (t.Trim().Length > 0) words.Add(Cls(c) + ": " + t.Replace("\r", " ").Replace("\n", " ")); return true; }, IntPtr.Zero);
+    return "'" + Text(w) + "' class " + Cls(w) + " pid " + pid + " | " + string.Join(" | ", words);
   }
   public static bool Front(string title) {
     bool up = false;
@@ -83,10 +97,36 @@ function SmartScreen {  # its window title names it; the words inside say "Windo
   }
   return $null
 }
+# Any window that appears after this script starts (a warning nobody planned for): described once in clicks.log with a
+# screenshot, and watched for Windows' own "Run anyway" / "Run" / "More info" - what a person would press to go on
+$known = @{}; foreach ($h in [Hand]::Tops()) { $known["$h"] = 1 }
+$watch = New-Object System.Collections.ArrayList
+function Describe($h) {
+  $names = ''
+  try {
+    $all = $ua::FromHandle($h).FindAll($tree::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+    $names = (@($all | ForEach-Object { "$($_.Current.ControlType.ProgrammaticName -replace '^ControlType\.', '')=$($_.Current.Name)" } |
+      Where-Object { $_ -notmatch '=$' } | Select-Object -First 40) -join ' | ')
+  } catch { }
+  "process $(try { (Get-Process -Id ([Hand]::Info($h) -replace '^.* pid (\d+) .*$', '$1') -ErrorAction Stop).Path } catch { '?' }) || $([Hand]::Info($h)) || ui: $names"
+}
 $n = 0; $end = (Get-Date).AddMinutes($Minutes); $seen = ''; $tick = 0
 "ready $(Get-Date -Format o)" | Out-File -Append -Encoding utf8 $log   # the test starts the double-click after this line
 while ((Get-Date) -lt $end) {
   if (($tick++ % 6) -eq 0 -and ($now = [Hand]::Titles()) -ne $seen) { "windows: $now" | Out-File -Append -Encoding utf8 $log; $seen = $now }
+  foreach ($h in [Hand]::Tops()) {
+    if ($known["$h"]) { continue }
+    $known["$h"] = 1; $n++; Shot (Join-Path $Out ("window-{0}.png" -f $n))
+    "new window $n - $(Describe $h)" | Out-File -Append -Encoding utf8 $log
+    [void]$watch.Add($h)
+  }
+  foreach ($h in @($watch)) {
+    if (-not [Hand]::IsWindow($h)) { $watch.Remove($h); continue }
+    foreach ($b in 'Run anyway', 'Run', 'More info') {
+      $hit = $false; try { $hit = Press ($ua::FromHandle($h)) $b } catch { }
+      if ($hit) { $n++; "dialog $n (new window $h): pressed $b" | Out-File -Append -Encoding utf8 $log; Start-Sleep -Milliseconds 1500; break }
+    }
+  }
   $ss = $null; try { $ss = SmartScreen } catch { }
   if ($ss) {
     $n++; Shot (Join-Path $Out ("dialog-{0}.png" -f $n))
