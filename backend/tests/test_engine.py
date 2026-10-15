@@ -680,3 +680,28 @@ def test_a_common_value_is_never_weird_but_a_rare_one_is():
     _, out = _scan(["Trip", "RateCode", "Fare"], rows)
     weird = {i for i, o in enumerate(out) if "RateCode weird limit" in o["reason"]}
     assert weird == {7}, sorted(weird)[:10]
+
+
+# ---- 2026-10-15: e2e sheet got 71 Low "UnitCost jumped sharply" flags, one per reset of its 4-day price cycle ----
+
+def _e2e_sales():
+    # e2e/run.mjs: 300 daily orders, UnitCost cycles 1.99..4.99, plus 5 planted problems
+    rows = []
+    for i in range(300):
+        u, c = 40 + (i * 7) % 23, 1.99 + i % 4
+        rows.append([str(np.datetime64("2026-01-06") + np.timedelta64(i, "D")), ["East", "West", "Central"][i % 3], u, c, round(u * c, 2)])
+    rows[10][2], rows[21][2], rows[50], rows[80][1], rows[120][2] = -5, 9999, list(rows[49]), "east ", ""
+    return ["OrderDate", "Region", "Units", "UnitCost", "Total"], rows
+
+
+def test_a_repeating_cycle_is_not_a_jump():
+    _, out = _scan(*_e2e_sales())
+    assert {i for i, o in enumerate(out) if o["severity"]} == {10, 21, 50, 80, 120}
+
+
+def test_a_one_off_spike_inside_a_cycle_is_still_a_jump():
+    cols, rows = _e2e_sales()
+    rows = [r[:4] for r in rows[150:]]  # no planted problems, no Total
+    rows[60][3] = 49.9
+    _, out = _scan(cols[:4], rows)
+    assert "UnitCost jumped sharply" in out[60]["reason"]

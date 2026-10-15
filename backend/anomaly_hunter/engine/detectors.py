@@ -15,7 +15,7 @@ def spread(v):
     if not len(v):
         return 0.0
     d = np.abs(v - np.median(v))
-    if np.median(d) > 0:
+    if np.median(d) > 1e-9 * np.median(np.abs(v)):  # 2.99 - 1.99 != 1 exactly: float noise is not spread
         return 1.4826 * np.median(d)
     return 1.2533 * d.mean() if d.mean() > 0 else 0.0
 
@@ -116,6 +116,14 @@ def limits_detector(df, column_types, limits, typos_only=False):
     return r
 
 
+def _beat(x, p):
+    """x[p] is one beat of a regular cycle: the same value recurs 3+ times, mostly at one spacing (a price that
+    resets every 4 days). A one-off jump does not recur."""
+    q = np.flatnonzero(np.isclose(x, x[p], rtol=1e-9, atol=0))
+    g = np.diff(q)
+    return len(q) >= 3 and (g == np.median(g)).mean() >= 0.5
+
+
 def sequence_detector(df, column_types, order_by=None, k=K):
     """Rows sorted by order column. Vote on spikes vs rolling-median trend and on 1st/2nd/3rd differences."""
     n = len(df)
@@ -151,12 +159,15 @@ def sequence_detector(df, column_types, order_by=None, k=K):
         trend = (s - s.rolling(7, center=True, min_periods=1).median()).to_numpy()
         votes, mag = robust_vote(trend, k)
         for p in np.where(votes)[0]:
-            hit(p, mag[p], f"{col} is unusual relative to its local trend")
+            if not _beat(trend, p):
+                hit(p, mag[p], f"{col} is unusual relative to its local trend")
         d = s
         for _ in (1, 2, 3):
             d = d.diff()
             votes, mag = robust_vote(d.to_numpy(), k)
             for p in np.where(votes)[0]:
+                if _beat(d.to_numpy(), p):  # the cycle's own reset, not a jump
+                    continue
                 # blame biggest trend gap in last 4 rows, not the diff's own row
                 w = trend[max(0, p - 3):p + 1]
                 b = p if np.isnan(w).all() else max(0, p - 3) + int(np.nanargmax(np.abs(w)))
