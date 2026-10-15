@@ -705,3 +705,68 @@ def test_a_one_off_spike_inside_a_cycle_is_still_a_jump():
     rows[60][3] = 49.9
     _, out = _scan(cols[:4], rows)
     assert "UnitCost jumped sharply" in out[60]["reason"]
+
+
+# ---- 2026-10-15 blind cross-domain bench (backend/bench/datasets3.py): what it exposed ----
+
+def test_a_line_total_that_is_not_qty_times_price_is_flagged():
+    # purchase orders, invoices, stock value: the commonest computed column is a product, and nothing checked it
+    r = np.random.default_rng(21)
+    rows = []
+    for i in range(150):
+        qty, price = int(r.choice([10, 20, 25, 50, 100])), round(float(r.uniform(1.8, 85)), 2)
+        rows.append([f"PO-{i}", qty, price, round(qty * price, 2)])
+    for i in (7, 70):
+        rows[i][3] = round(rows[i][3] * 1.37, 2)
+    _, out = _scan(["PO", "Qty", "Unit Price", "Line Total"], rows)
+    hit = {i for i, o in enumerate(out) if "does not add up" in o["reason"]}
+    assert hit == {7, 70}, hit
+    assert "Qty × Unit Price" in out[7]["reason"] and out[7]["severity"] in ("Medium", "High")
+
+
+def test_a_two_part_sum_is_checked_even_on_a_small_sheet_with_a_typo_elsewhere():
+    # 48 months x 5 number columns: under sums' 20-rows-per-column floor "Net New = New + Churned" was never checked,
+    # and a x10 typo in New MRR bends its least squares away from 0/1 weights anyway
+    r = np.random.default_rng(22)
+    rows, mrr = [], 118000.0
+    for m in range(48):
+        new, ch = round(mrr * float(r.uniform(0.045, 0.06))), -round(mrr * float(r.uniform(0.015, 0.03)))
+        rate, mrr = round(-ch / mrr, 4), mrr + new + ch
+        rows.append([f"{2022 + m // 12}-{m % 12 + 1:02d}-01", round(mrr), new, ch, new + ch, rate])
+    rows[30][4] = round(rows[30][4] * 1.37)
+    rows[12][2] *= 10  # a typo in a part: its row doesn't add up either
+    _, out = _scan(["Month", "MRR", "New MRR", "Churned MRR", "Net New MRR", "Churn %"], rows)
+    hit = {i for i, o in enumerate(out) if "does not add up" in o["reason"]}
+    assert hit == {12, 30}, hit
+    assert "Net New MRR" in out[30]["reason"] and "New MRR + Churned MRR" in out[30]["reason"]
+
+
+def test_two_honest_clusters_in_a_signed_column_are_not_weird():
+    # bank Amount: mostly small withdrawals, a quarter deposits spread up to +3200 - "weird" landed at 2500, inside the
+    # deposits (17 Medium false alarms here, 16 in the blind bench). A deposit typed x100 is still caught.
+    r = np.random.default_rng(28)
+    kinds = r.choice(["Deposit", "Withdrawal", "Transfer", "Fee", "Card"], 240, p=[.25, .4, .15, .05, .15])
+    amt = {"Deposit": lambda: r.uniform(250, 3200), "Withdrawal": lambda: -r.uniform(20, 900), "Transfer": lambda: -r.uniform(100, 1500),
+           "Fee": lambda: -float(r.choice([2.5, 5, 12, 35])), "Card": lambda: -r.uniform(5, 250)}
+    rows = [[f"T{i}", str(k), round(float(amt[k]()), 2)] for i, k in enumerate(kinds)]
+    dep = next(i for i, k in enumerate(kinds) if k == "Deposit" and rows[i][2] > 1000)
+    rows[dep][2] = round(rows[dep][2] * 100, 2)
+    _, out = _scan(["Txn", "Type", "Amount"], rows)
+    assert {i for i, o in enumerate(out) if o["severity"] in ("Medium", "High")} == {dep}
+
+
+def test_a_short_form_of_several_words_or_a_contraction_is_worth_a_check():
+    r = np.random.default_rng(24)
+    rows = [[f"P{i}", str(r.choice(["Backlog", "In Progress", "In Review", "Done"])), str(r.choice(["Basic", "Standard", "Premium"]))]
+            for i in range(120)]
+    rows[10][1], rows[20][2] = "In Prog", "Std"
+    _, out = _scan(["Ticket", "Status", "Plan"], rows)
+    assert '"In Prog" looks like a short form of "In Progress"' in out[10]["reason"] and out[10]["severity"] == "Low"
+    assert '"Std" looks like a short form of "Standard"' in out[20]["reason"] and out[20]["severity"] == "Low"
+
+
+def test_two_real_labels_are_not_called_short_forms():
+    r = np.random.default_rng(25)
+    rows = [[f"x{i}", str(r.choice(["Fee", "Free", "Paid", "Trial"]))] for i in range(120)]
+    _, out = _scan(["Id", "Kind"], rows)
+    assert not any("short form" in o["reason"] for o in out)

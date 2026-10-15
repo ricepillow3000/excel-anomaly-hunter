@@ -1,4 +1,5 @@
 import ipaddress
+import socket
 import ssl
 import threading
 
@@ -9,7 +10,7 @@ from cryptography.x509 import DNSName, IPAddress
 from cryptography.x509.verification import PolicyBuilder, Store, VerificationError
 from werkzeug.serving import make_server
 
-from anomaly_hunter.server import _already_running, create_app, make_cert
+from anomaly_hunter.server import _already_running, create_app, make_cert, tls_context
 
 
 def test_cert_chain_only_vouches_for_localhost(tmp_path):
@@ -42,6 +43,21 @@ def test_already_running_trusts_only_our_engine(tmp_path):
         make_cert(tmp_path / "other")
         assert not _already_running(tmp_path / "other", srv.server_port)  # different CA = not us
     finally:
+        srv.shutdown()
+
+
+def test_one_silent_connection_does_not_freeze_the_engine(tmp_path):
+    # TLS handshakes ran in Werkzeug's one accept loop: a client that connected and never said hello (a port scan,
+    # a stuck probe) hung every scan until it hung up
+    make_cert(tmp_path)
+    srv = make_server("127.0.0.1", 0, create_app(), threaded=True,  # threaded, like app.run
+                      ssl_context=tls_context(tmp_path / "cert.pem", tmp_path / "key.pem"))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    silent = socket.create_connection(("127.0.0.1", srv.server_port))
+    try:
+        assert _already_running(tmp_path, srv.server_port)  # answers within its 2 s timeout
+    finally:
+        silent.close()
         srv.shutdown()
 
 
@@ -191,6 +207,12 @@ def scan(body, raw=None):
 def test_bad_input_is_a_clear_400(raw):
     r = scan(None, raw)
     assert r.status_code == 400 and r.get_json()["error"] and "pandas" not in r.get_json()["error"]
+
+
+def test_a_body_nested_too_deep_is_a_clear_400():
+    # too deep for Python's JSON parser: a RecursionError, which Flask's silent=True did not catch -> 500
+    r = scan(None, '{"columns":["A"],"rows":[' + "[" * 100000 + "]" * 100000 + "]}")
+    assert r.status_code == 400 and r.get_json()["error"]
 
 
 @pytest.mark.parametrize("cols,rows", [

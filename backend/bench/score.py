@@ -2,16 +2,21 @@
 supply chain, healthcare, construction, HR, marketing, sales, real estate, insurance, manufacturing, education, energy,
 logistics) + held-out traps (signed P&L, heavy-tailed claims, ID look-alikes, year headers), with planted problems
 whose true values are known. Usage: python backend/bench/score.py . [--detail] [--main-seed N] [--seeds a,b,c]
+--blind: instead, 14 more domains (web analytics, product backlog, procurement, SaaS, support, banking, clinical,
+e-commerce, ads, fleet, agriculture, telecom...) written by a separate author WITHOUT reading the detector
+(datasets3.py, seeds 21,22,23). Prints a per-kind summary; --detail also lists every miss and Medium+ false alarm.
 Exit 1 when a gate fails: a crash, a harmful fix (writes into an ID/formula column or "corrects" a real outlier),
 a flagged totals row, a misread header, or Medium+ false alarms above 1% of clean rows."""
 import json, os, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__))  # works with \ paths on Windows too
 sys.path.insert(0, sys.argv[1]); sys.path.insert(0, HERE)
 from anomaly_hunter.server import create_app
-import datasets, datasets2
+import collections, datasets, datasets2, datasets3
 arg = lambda k, dflt: next((sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == k), dflt)
-SEEDS = [int(x) for x in arg("--seeds", "11,12,13").split(",")]
-make = lambda: datasets.make(int(arg("--main-seed", 7))) + [d for sd in SEEDS for d in datasets2.make(sd)]
+BLIND = "--blind" in sys.argv
+SEEDS = [int(x) for x in arg("--seeds", "21,22,23" if BLIND else "11,12,13").split(",")]
+make = (lambda: [d for sd in SEEDS for d in datasets3.make(sd)]) if BLIND else \
+    (lambda: datasets.make(int(arg("--main-seed", 7))) + [d for sd in SEEDS for d in datasets2.make(sd)])
 
 REPO, DETAIL = __import__("os").path.abspath(sys.argv[1]), "--detail" in sys.argv
 BRIDGE = os.path.join(HERE, "bridge.js")
@@ -35,13 +40,14 @@ def colname(t, cell):
 def close(a, b):
     try:
         a, b = float(a), float(b)
-    except (TypeError, ValueError):
-        return False
+    except (TypeError, ValueError):  # a date or a label: right only when it is the very same text
+        return a is not None and b is not None and str(a).strip() == str(b).strip()
     return abs(a - b) <= max(1e-9, 0.01 * abs(b))
 
 
 tot = {"harm": 0, "planted": 0, "caught": 0, "restored": 0, "fa_med": 0, "fa_low": 0, "clean": 0, "totals_flagged": 0, "totals": 0,
        "hdr_ok": 0, "sheets": 0, "crash": 0, "id_flags": 0}
+bykind, missed, alarms = collections.defaultdict(lambda: [0, 0, 0]), [], []  # kind -> planted, caught, fixed
 for d in make():
     tot["sheets"] += 1
     try:
@@ -95,11 +101,14 @@ for d in make():
             if col in d["idcols"] or col in d.get("protect", []) or p["kind"] == "real_outlier":
                 harm.append(f"{d['name']}:{ch['cell']}({col})")
         caught += c; restored += bool(ok)
+        bk = bykind[p["kind"]]; bk[0] += 1; bk[1] += bool(c); bk[2] += bool(ok)
+        if not c:
+            missed.append(f"{d['name']:22s} {p['kind']:16s} {p['col']:22s} true={p['true']!r} severity={rows[i]['severity']}")
         lines.append(f"    {p['kind']:15s} {p['col']:18s} flagged={rows[i]['severity']!s:6s} fix_ok={bool(ok)!s:5s} "
                      f"true={p['true']!r} rec={[ch['new'] for ch in cell_changes]} | {rec['explanation'][:90]}")
     fa_med = fa_low = clean = 0
     for k, g in enumerate(t["gridRows"]):
-        if g in planted or g in d["totals"]:
+        if g in planted or g in d["totals"] or g in d.get("dup_sources", ()):  # a duplicate's original is not clean
             continue
         clean += 1
         if flag(rows[k]):
@@ -107,6 +116,7 @@ for d in make():
                 fa_low += 1
             else:
                 fa_med += 1
+                alarms.append(f"{d['name']:22s} grid row {g}: {rows[k]['reason']}")
     tf = sum(1 for g in d["totals"] if g in g2i and flag(rows[g2i[g]]))
     idf = sum(1 for r in rows if r["reason"] and any(f"{c} " in r["reason"] or f"mainly {c}" in r["reason"] for c in d["idcols"]))
     for k, v in (("harm", len(harm)), ("planted", len(d["planted"])), ("caught", caught), ("restored", restored), ("fa_med", fa_med), ("fa_low", fa_low),
@@ -118,6 +128,9 @@ for d in make():
     if DETAIL:
         print("\n".join(lines))
 print("TOTAL", json.dumps(tot))
+print("BY KIND (planted, caught, fixed):", json.dumps(dict(sorted(bykind.items()))))
+if DETAIL:
+    print(f"MISSED ({len(missed)}):", *missed, f"MEDIUM+ FALSE ALARMS ({len(alarms)}):", *alarms, sep="\n  ")
 gates = {"no crash": not tot["crash"], "no harmful fix": not tot["harm"], "no totals flagged": not tot["totals_flagged"],
          "headers read": tot["hdr_ok"] == tot["sheets"], "false alarms <= 1%": tot["fa_med"] <= 0.01 * tot["clean"]}
 print("GATES", "pass" if all(gates.values()) else "FAIL: " + ", ".join(k for k, ok in gates.items() if not ok))

@@ -89,6 +89,13 @@ def test_an_odd_character_never_turns_a_scan_into_a_500(tmp_path):
     assert r.status_code == 200
 
 
+def test_a_number_too_big_for_a_float_never_turns_a_scan_into_a_500(tmp_path):
+    # a 309-digit whole number is a valid (flagged) value, but the Power BI CSV's DataFrame can't hold it as a float
+    rows = SHEET["rows"] + [["Pen", 10 ** 309]]
+    r = create_app(scan_csv=tmp_path / "s.csv").test_client().post("/scan", json={**SHEET, "rows": rows})
+    assert r.status_code == 200
+
+
 def test_a_huge_body_is_refused_before_it_is_read():
     app = create_app()
     app.config["MAX_CONTENT_LENGTH"] = 1000

@@ -1,5 +1,6 @@
 """Score a loaded DataFrame: 3 detector votes + hygiene facts -> severity, bucket, reason per row.
 Shared by CLI and server."""
+import itertools
 import re
 
 import numpy as np
@@ -146,6 +147,35 @@ def sums(df, column_types, skip):
     return out
 
 
+def pairs(df, column_types, skip):
+    """A column that is two others multiplied or added in >= 95% of rows (Line Total = Qty x Unit Price, Net New =
+    New + Churned): the other rows don't add up. Tried pair by pair, so a x10 typo elsewhere can't bend it the way it
+    bends sums' least squares, and small sheets (48 months) are checked too. To the cent, like sums; both columns must
+    vary (x 1, or x a 0/1 flag, is no rule). Pairs are tried on a 64-row sample first, so a 50-column sheet stays fast."""
+    out = [[] for _ in range(len(df))]
+    cols = numbers(column_types)
+    a = df[cols][~skip].to_numpy(dtype=float)
+    index = df.index[~skip]
+    if len(cols) < 3 or len(a) < 20:
+        return out
+    vary = [j for j in range(len(cols)) if len(np.unique(a[:, j][~np.isnan(a[:, j])])) >= 3]
+    near = lambda y, got: np.abs(y - got) <= np.maximum(0.011, 1e-6 * np.abs(y))  # 1 cent + float slack
+    sample = a[:64]
+    for (p, q), (sign, op) in itertools.product(itertools.combinations(vary, 2), (("×", np.multiply), ("+", np.add))):
+        hits = near(sample, op(sample[:, p], sample[:, q])[:, None]).mean(axis=0)
+        for t in np.flatnonzero(hits >= 0.8):
+            if t in (p, q):
+                continue
+            y, got = a[:, t], op(a[:, p], a[:, q])
+            ok = ~np.isnan(y) & ~np.isnan(got)
+            good = ok & near(y, got)
+            if (good & (y != 0)).sum() < 20 or good.sum() < 0.95 * ok.sum():
+                continue
+            for i in np.flatnonzero(ok & ~good):
+                out[index[i]].append(f"{cols[t]} {y[i]:g} does not add up: {cols[p]} {sign} {cols[q]} = {got[i]:.10g}")
+    return out
+
+
 def _one_edit(a, b):
     """a and b are the same length and differ by one wrong letter or two neighbours swapped. An added or dropped
     letter is left out on purpose: too often a different word (Laptop/Laptops, Sara/Sarah, Jon/John)."""
@@ -153,6 +183,18 @@ def _one_edit(a, b):
         return False
     d = [k for k in range(len(a)) if a[k] != b[k]]
     return len(d) == 1 or (len(d) == 2 and d[1] == d[0] + 1 and a[d[0]] == b[d[1]] and a[d[1]] == b[d[0]])
+
+
+def _short_for(short, label):
+    """Is short a short form of label (both casefolded)? See spellings()."""
+    w, v = short.split(), label.split()
+    if len(w) > 1:
+        return len(w) == len(v) and all(b.startswith(a) for a, b in zip(w, v))
+    if label.startswith(short):
+        return len(short) <= 4
+    rest = iter(label[1:])
+    return (len(short) <= 4 and short[0] == label[0] and sum(ch in "aeiou" for ch in short[1:]) <= 1
+            and all(ch in rest for ch in short[1:]))
 
 
 def spellings(df, column_types, skip):
@@ -200,10 +242,12 @@ def spellings(df, column_types, skip):
             for i in keys.index[keys == rare]:
                 missed[i].append(f'{col} "{_short(s[i])}" looks like a misspelling of "{_short(word)}"')
                 maybe[i][col] = word
-        # a short form ("EMP" for "Employed"): 2-4 letters that start exactly one other label (5+ rows, 2+ letters longer)
+        # a short form of exactly one other label (5+ rows, 2+ letters longer): its start ("EMP" for "Employed"), each
+        # word's start ("In Prog" for "In Progress"), or a contraction ("Std" for "Standard": same first letter, the rest
+        # in order, at most one vowel - "Fee" is not short for "Free")
         for short in cnt.index:
-            longer = [u for u, m in cnt.items() if m >= 5 and len(u) >= len(short) + 2 and u.startswith(short)]
-            if 2 <= len(short) <= 4 and short.isalpha() and len(longer) == 1:
+            longer = [u for u, m in cnt.items() if m >= 5 and len(u) >= len(short) + 2 and _short_for(short, u)]
+            if 2 <= len(short.replace(" ", "")) <= 6 and short.replace(" ", "").isalpha() and len(longer) == 1:
                 for i in keys.index[keys == short]:
                     missed[i].append(f'{col} "{_short(s[i])}" looks like a short form of "{_short(rights[longer[0]])}"')
                     maybe[i][col] = rights[longer[0]]
@@ -288,7 +332,8 @@ def score(df, column_types, errors_log, limits, order_by, strength=5):
     # DBSCAN cut 2026-10-07: 90s/100k rows, 81% false alarms, bench same without it
     ran = [d for d in dets.values() if d["ran"]]
     dup, typ, blank = duplicates(df), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
-    hole, far, add = placeholders(df, column_types, skip), far_dates(df, column_types, skip), sums(df, column_types, skip)
+    hole, far = placeholders(df, column_types, skip), far_dates(df, column_types, skip)
+    add = [list(dict.fromkeys(s + m)) for s, m in zip(sums(df, column_types, skip), pairs(df, column_types, skip), strict=True)]
     spell, spell_fix, missed, spell_maybe, spell_exact = spellings(df, column_types, skip)
     missed = [m + s + f for m, s, f in zip(missed, shifted(df, column_types, skip), fractions(df, column_types, skip),
                                           strict=True)]  # all "worth a check" (Low)

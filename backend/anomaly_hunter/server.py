@@ -18,6 +18,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 from flask import Flask, request
+from flask.json.provider import DefaultJSONProvider
 from werkzeug.exceptions import HTTPException
 from werkzeug.serving import WSGIRequestHandler
 
@@ -39,6 +40,9 @@ CSP = ("default-src 'self'; script-src 'self' https://appsforoffice.microsoft.co
        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 # http.server writes its own "Server: Werkzeug/x Python/y" before any app header: no versions to look up CVEs for
 WSGIRequestHandler.version_string = lambda self: "Anomaly Hunter"
+# a connection that goes quiet mid-handshake or mid-upload is dropped, not kept a thread forever. Every answer closes
+# its connection (no keep-alive), so this never cuts off a scan, however long it runs.
+WSGIRequestHandler.timeout = 60
 MAX_CELLS = 2_000_000  # same as the pane's maxCells (frontend/utils/sheet.js): it never sends more in one scan
 # OWASP CSV injection: text starting with these runs as a formula when the Power BI CSV is opened in Excel
 FORMULA_START = tuple("=+-@\t\r\n＝＋－＠")
@@ -80,6 +84,15 @@ def _bad(body):
     return None
 
 
+class _JSON(DefaultJSONProvider):
+    def loads(self, s, **kw):
+        """A body nested too deep for Python's parser is a bad body like any other (400), not a RecursionError (500)."""
+        try:
+            return super().loads(s, **kw)
+        except RecursionError:
+            raise ValueError("JSON nested too deeply") from None
+
+
 def _strength(body):
     """The slider's 0-10 (checked by _bad); none sent = 5, the tuned default. (Not `or 5`: 0 is a real choice.)"""
     return 5 if body.get("strength") is None else body["strength"]
@@ -88,6 +101,7 @@ def _strength(body):
 def create_app(scan_csv=None):
     """scan_csv: file every scan overwrites for Power BI (powerbi/anomaly-hunter.pbids). None = off (tests)."""
     app = Flask(__name__, static_folder=str(PANEL), static_url_path="")
+    app.json = _JSON(app)
     # Werkzeug reads a body into memory only safely with a cap; 256 MB is far above a 2M-cell sheet (~20 MB measured)
     app.config["MAX_CONTENT_LENGTH"] = 256 * 1024 * 1024
 
@@ -137,7 +151,7 @@ def create_app(scan_csv=None):
                 # errors="replace": one odd character (a lone surrogate) becomes "?" instead of failing the scan
                 flat.to_csv(f"{scan_csv}.tmp", index=False, encoding="utf-8-sig", errors="replace")
                 os.replace(f"{scan_csv}.tmp", scan_csv)  # Power BI never reads a half-written file
-            except OSError:  # file open elsewhere: the scan itself still answers
+            except (OSError, OverflowError):  # file open elsewhere, or a 309-digit number: the scan still answers
                 app.logger.exception("could not write %s", scan_csv)
         return {"rows": out, "suggested_limits": suggested, "limits": used, "fairness": fair, "summary": {
             "severity_counts": Counter(r["severity"] for r in out if r["severity"]),
@@ -191,7 +205,8 @@ def create_app(scan_csv=None):
         if err := _bad(body):
             return {"error": err}, 400
         nat = lambda k, hi=None: type(body.get(k)) is int and 0 <= body[k] and (hi is None or body[k] < hi)
-        if not (nat("row_index", len(body["rows"])) and nat("start_row") and nat("start_col")):
+        # Excel's last column is XFD (16384): further right is no sheet address
+        if not (nat("row_index", len(body["rows"])) and nat("start_row") and nat("start_col", 16384 - len(body["columns"]) + 1)):
             return {"error": "'row_index', 'start_row', 'start_col' must be whole numbers inside the sheet"}, 400
         intent = body.get("intent") or ""
         if not isinstance(intent, str) or len(intent) > 2000:
@@ -264,6 +279,21 @@ def _ku(**on):
     return x509.KeyUsage(**{n: n in on for n in names})
 
 
+class _HandshakeInThread(ssl.SSLContext):
+    """Werkzeug wraps the LISTENING socket, so each TLS handshake ran in its one accept loop: a single connection that
+    never said hello (a port scan, a stuck probe) froze every scan until it hung up. Handshake lazily instead: on the
+    first read, in that request's own thread, bounded by WSGIRequestHandler.timeout."""
+
+    def wrap_socket(self, sock, server_side=False, do_handshake_on_connect=True, *args, **kwargs):
+        return super().wrap_socket(sock, server_side, False, *args, **kwargs)
+
+
+def tls_context(crt, key):
+    ctx = _HandshakeInThread(ssl.PROTOCOL_TLS_SERVER)  # TLS 1.2+ only, like Werkzeug's own
+    ctx.load_cert_chain(crt, key)
+    return ctx
+
+
 def make_cert(folder=HOME, days=5 * 365):
     """HTTPS chain good for 127.0.0.1/localhost ONLY:
     ca.pem   = throwaway CA (Windows trusts this one), name-constrained to localhost/127.0.0.1.
@@ -332,7 +362,7 @@ def main():
     crt, key = HOME / "cert.pem", HOME / "key.pem"
     if not (crt.exists() and key.exists()):
         sys.exit(f"No HTTPS cert in {HOME}. Run install.bat.")
-    create_app(HOME / "latest-scan.csv").run(host="127.0.0.1", port=PORT, ssl_context=(str(crt), str(key)))
+    create_app(HOME / "latest-scan.csv").run(host="127.0.0.1", port=PORT, ssl_context=tls_context(crt, key))
 
 
 if __name__ == "__main__":
