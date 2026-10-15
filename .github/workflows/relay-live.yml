@@ -1,0 +1,27 @@
+# Attack the LIVE AI relay from outside (the dev sandbox can't reach workers.dev): a dozen stranger requests - no
+# invite code, path/method/size/CORS tricks - each must be refused before the invite check, so none reaches Google
+# or counts against the daily caps. Runs when the relay changes, every day, and from the "Run workflow" button.
+name: Relay live probe
+
+on:
+  push:
+    paths: ["relay/**", ".github/workflows/relay-live.yml"]
+  pull_request:
+    paths: ["relay/**", ".github/workflows/relay-live.yml"]
+  schedule:
+    - cron: "41 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: relay
+      - name: Stranger requests to the live relay - all must be refused
+        run: node relay/live-probe.mjs

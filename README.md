@@ -1,5 +1,7 @@
 # excel-anomaly-hunter
 Excel add-in that flags abnormal rows and tells useful-weird from broken-weird. Never deletes data.
+Your sheet is checked on your own PC; nothing leaves it unless you turn on AI help - see [What leaves your PC](PRIVACY.md).
+Questions or problems: [open an issue](https://github.com/ricepillow3000/excel-anomaly-hunter/issues).
 
 ## Install (Windows + desktop Excel, nothing else needed)
 1. **[Download AnomalyHunter.exe](https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest/download/AnomalyHunter.exe)**

@@ -20,7 +20,7 @@ accuracy benches. Never commit with a red layer, and never get a gate green by l
 | 7 | Severity | `pipeline.score` | hygiene or weird limit = Medium; 2 votes = Medium; 3 = High; 1 = Low | `test_strength.py` |
 | 8 | Answer | routes, `_inert` | every error is JSON; the Power BI CSV never carries a live formula | `test_api_security.py` |
 | 9 | AI (optional) | `ai/client.py` | one call at a time, deadline, cache (answers only), key never echoed, formulas reaching outside the sheet dropped | `test_fix.py`, `test_ai_load.py`, `test_text_checks.py` |
-| 10 | Relay | `relay/worker.js` | invite hash, daily caps counted before Google, only `POST /fix`, model and key set by the relay | `relay/test.mjs` |
+| 10 | Relay | `relay/worker.js` | invite hash, daily caps counted before Google, only `POST /fix`, model and key set by the relay | `relay/test.mjs`; live Worker from outside: `relay/live-probe.mjs` (CI `relay-live.yml`) |
 | 11 | Pane | `frontend/` | every dynamic `innerHTML` value goes through `esc()`; CSP allows only our files + office.js | `frontend/selfcheck.js`, `e2e/run.mjs` |
 
 ## Feature map: what the scan finds, where, and its test
@@ -39,7 +39,8 @@ accuracy benches. Never commit with a red layer, and never get a gate green by l
 | Values past their column's limits; the typo behind them (x10, %, sign) | `detectors.limits_detector`, `likely_value`, `limits._limits` | `test_engine.py` |
 | Jumps in a dated series (cycles excluded) | `detectors.sequence_detector` | `test_a_repeating_cycle_is_not_a_jump` |
 | Odd combinations across columns | `detectors.isolation_detector` | `test_engine.py` |
-| Fairness gaps by demographic group | `engine/fairness.py` | `test_blindspots.py` |
+| A top value that is all 9s and over twice the next one (99999 = "missing" / "too big") | `pipeline.codes` | `test_an_all_nines_top_value_is_a_code` |
+| Fairness gaps by demographic group, incl. 2-label text outcomes; `?` counts as missing, never a group | `engine/fairness.py` | `test_blindspots.py`, `test_wild_census.py` |
 Adding or removing a check: update this table in the same commit.
 
 ## Patterns to copy
@@ -62,5 +63,11 @@ Adding or removing a check: update this table in the same commit.
   column, 0 and "15x below typical" stay hard bounds.
 - A new detection changes what the pane shows (a reason, a fix card, what strength 0 lists): after a detector change
   run `python tools/check.py --e2e`, not just pytest. CI's Windows `new-user` job caught one that pytest couldn't.
+- A real slip stands alone; a long tail is crowded (census hours 1-99, survey weights): a value past the weird limit
+  votes only when few other values lie between it and halfway back to the median (`limits_detector.in_tail`), and a
+  50%+ zero column is judged on its amounts (`limits._limits`). `test_wild_census.py`.
+- A contraction keeps the word's first and last letters (Std, Mgmt): "Iran" is not one of "Ireland" (`_short_for`).
+- The installer starts Excel by its App Paths path, never "open this .xlsx": with no Excel, Windows' "Pick an app"
+  held the install (`app.excel_exe`, `test_the_installer_finds_desktop_excel_or_says_none`).
 - The 2-of-500 failure: thresholds tuned to avoid false alarms hid real defects. Any threshold change must keep
   `test_blindspots.py` (279/279 rows) and both bench gates green.
