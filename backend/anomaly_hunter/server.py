@@ -1,4 +1,5 @@
 """Local HTTPS server, 127.0.0.1 only. Engine API + serves panel/ at same origin (no CORS, no build)."""
+import csv
 import datetime
 import ipaddress
 import json
@@ -151,8 +152,10 @@ def create_app(scan_csv=None):
                     (k.capitalize() if k.capitalize() not in taken else f"Anomaly Hunter {k.capitalize()}"): [r[k] for r in out]
                     for k in ("severity", "bucket", "reason", "magnitude")})
                 flat = flat.map(_inert).rename(columns=_inert)
-                # errors="replace": one odd character (a lone surrogate) becomes "?" instead of failing the scan
-                flat.to_csv(f"{scan_csv}.tmp", index=False, encoding="utf-8-sig", errors="replace")
+                # errors="replace": one odd character (a lone surrogate) becomes "?" instead of failing the scan.
+                # Text is always quoted: Excel in a ";" locale splits an unquoted "Pen;=cmd|..." into a live formula
+                flat.to_csv(f"{scan_csv}.tmp", index=False, encoding="utf-8-sig", errors="replace",
+                            quoting=csv.QUOTE_NONNUMERIC)
                 os.replace(f"{scan_csv}.tmp", scan_csv)  # Power BI never reads a half-written file
             except (OSError, OverflowError):  # file open elsewhere, or a 309-digit number: the scan still answers
                 app.logger.exception("could not write %s", scan_csv)
@@ -169,10 +172,13 @@ def create_app(scan_csv=None):
             return call()
         except anthropic.AuthenticationError:
             return {"error": "Invalid ANTHROPIC_API_KEY."}, 503
-        except (anthropic.RateLimitError, anthropic.APIConnectionError) as e:
-            return {"error": f"Claude API busy or unreachable - try again shortly. ({e})"}, 503
+        # Our own words only, never the provider's text (2026-10-15 audit): details go to server.log
+        except (anthropic.RateLimitError, anthropic.APIConnectionError):
+            app.logger.exception("Claude busy or unreachable")
+            return {"error": "Claude API busy or unreachable - try again shortly."}, 503
         except anthropic.APIError as e:
-            return {"error": f"Claude API error: {e}"}, 502
+            app.logger.exception("Claude API error")
+            return {"error": f"Claude API error{f' (HTTP {e.status_code})' if getattr(e, 'status_code', None) else ''} - details in server.log"}, 502
         except ValueError as e:
             return {"error": str(e)}, 502
 
