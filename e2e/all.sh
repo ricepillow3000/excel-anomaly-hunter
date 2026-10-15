@@ -16,6 +16,7 @@ rm -f "$D/claude.log"; (exec "$PY" "$D/stub_claude.py" "$D/claude.log" &> "$D/st
 fail=0
 engine ANTHROPIC_API_KEY=test ANTHROPIC_BASE_URL=http://127.0.0.1:5099 GEMINI_API_KEY=
 for m in ${MODES:-flow ai}; do echo "== $m"; (cd "$D" && timeout 150 node run.mjs $m) || fail=1; done
+echo "== launch"; (cd "$D" && timeout 60 node launch.mjs) || fail=1
 end "$ENGINE"; sleep 1; engine -u ANTHROPIC_API_KEY GEMINI_API_KEY=
 echo "== nokey"; (cd "$D" && timeout 150 node run.mjs nokey) || fail=1
 stop

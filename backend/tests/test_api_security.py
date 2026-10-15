@@ -23,6 +23,21 @@ def test_every_route_refuses_other_websites(path, method):
         assert c.open(path, method=method, headers=h, json={}).status_code == 403, h
 
 
+# shapes the fuzzer can't generate (it sends well-formed JSON): not JSON, the wrong JSON type, nested past Python's
+# parser (was a 500 on every route), a number past Python's 4300-digit limit
+HOSTILE = ["{bad", "[]", "null", '"x"', "[" * 100000 + "]" * 100000, '{"columns":["A"],"rows":[[' + "9" * 5000 + "]]}"]
+
+
+@pytest.mark.parametrize("path", sorted({p for p, m in ROUTES if m == "POST"}))
+def test_every_post_route_answers_a_hostile_body_with_a_clear_4xx(path, monkeypatch):
+    """New routes are covered automatically, like the test above."""
+    monkeypatch.setattr(client, "api_key_configured", lambda: True)  # AI routes check the body before the key
+    c = APP.test_client()
+    for raw in HOSTILE:
+        r = c.post(path, data=raw, content_type="application/json")
+        assert 400 <= r.status_code < 500 and r.is_json, (path, raw[:20], r.status_code)
+
+
 @pytest.mark.parametrize("path", ["/../pyproject.toml", "/%2e%2e/pyproject.toml", "/..%2fpyproject.toml",
                                   "/../backend/anomaly_hunter/ai/client.py", "/C:/Windows/win.ini"])
 def test_no_file_outside_the_pane_is_served(path):

@@ -1,6 +1,5 @@
 import ipaddress
 import socket
-import ssl
 import threading
 
 import numpy as np
@@ -32,12 +31,17 @@ def test_cert_chain_only_vouches_for_localhost(tmp_path):
     assert make_cert(tmp_path / "x", days=30) is True and make_cert(tmp_path / "x") is True  # < 60 days -> renew
 
 
-def test_already_running_trusts_only_our_engine(tmp_path):
-    make_cert(tmp_path)
-    ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-    ctx.load_cert_chain(tmp_path / "cert.pem", tmp_path / "key.pem")
-    srv = make_server("127.0.0.1", 0, create_app(), ssl_context=ctx)
+def live_engine(folder):
+    """A real HTTPS engine on a free port, built like main() runs it: threaded, our TLS context. Use this, not a bare
+    make_server (single-threaded by default: one stuck client then blocks it whatever the TLS code does)."""
+    make_cert(folder)
+    srv = make_server("127.0.0.1", 0, create_app(), threaded=True, ssl_context=tls_context(folder / "cert.pem", folder / "key.pem"))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+def test_already_running_trusts_only_our_engine(tmp_path):
+    srv = live_engine(tmp_path)
     try:
         assert _already_running(tmp_path, srv.server_port)  # real TLS handshake against our CA
         make_cert(tmp_path / "other")
@@ -49,10 +53,7 @@ def test_already_running_trusts_only_our_engine(tmp_path):
 def test_one_silent_connection_does_not_freeze_the_engine(tmp_path):
     # TLS handshakes ran in Werkzeug's one accept loop: a client that connected and never said hello (a port scan,
     # a stuck probe) hung every scan until it hung up
-    make_cert(tmp_path)
-    srv = make_server("127.0.0.1", 0, create_app(), threaded=True,  # threaded, like app.run
-                      ssl_context=tls_context(tmp_path / "cert.pem", tmp_path / "key.pem"))
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    srv = live_engine(tmp_path)
     silent = socket.create_connection(("127.0.0.1", srv.server_port))
     try:
         assert _already_running(tmp_path, srv.server_port)  # answers within its 2 s timeout

@@ -147,17 +147,28 @@ def sums(df, column_types, skip):
     return out
 
 
-def pairs(df, column_types, skip):
+def _decimals(x):
+    """How many decimals a column is written with: the fewest that hold 95% of its values (0 = whole numbers)."""
+    x = x[np.isfinite(x)]
+    return next((d for d in range(7) if (np.abs(x - np.round(x, d)) < 1e-9).mean() >= 0.95), 6)
+
+
+def pairs(df, column_types, skip, limits=None):
     """A column that is two others multiplied or added in >= 95% of rows (Line Total = Qty x Unit Price, Net New =
     New + Churned): the other rows don't add up. Tried pair by pair, so a x10 typo elsewhere can't bend it the way it
     bends sums' least squares, and small sheets (48 months) are checked too. To the cent, like sums; both columns must
-    vary (x 1, or x a 0/1 flag, is no rule). Pairs are tried on a 64-row sample first, so a 50-column sheet stays fast."""
-    out = [[] for _ in range(len(df))]
+    vary (x 1, or x a 0/1 flag, is no rule). Pairs are tried on a 64-row sample first, so a 50-column sheet stays fast.
+    -> (reasons, fixes). A broken row with exactly ONE cell outside its usual range gets that cell solved from the
+    other two (Units -5 with Total 170.43 = Units x 2.99 -> 57) when the answer is a usual value written like its
+    column: exact, where the pane would otherwise offer the median. Two odd cells: the arithmetic can't say which."""
+    out, fix = [[] for _ in range(len(df))], [{} for _ in range(len(df))]
     cols = numbers(column_types)
     a = df[cols][~skip].to_numpy(dtype=float)
     index = df.index[~skip]
     if len(cols) < 3 or len(a) < 20:
-        return out
+        return out, fix
+    bounds = lambda j: (limits or {}).get(cols[j]) or (None, None, None, None)
+    usual = lambda j, v: (bounds(j)[0] is None or v >= bounds(j)[0]) and (bounds(j)[1] is None or v <= bounds(j)[1])
     vary = [j for j in range(len(cols)) if len(np.unique(a[:, j][~np.isnan(a[:, j])])) >= 3]
     near = lambda y, got: np.abs(y - got) <= np.maximum(0.011, 1e-6 * np.abs(y))  # 1 cent + float slack
     sample = a[:64]
@@ -173,7 +184,16 @@ def pairs(df, column_types, skip):
                 continue
             for i in np.flatnonzero(ok & ~good):
                 out[index[i]].append(f"{cols[t]} {y[i]:g} does not add up: {cols[p]} {sign} {cols[q]} = {got[i]:.10g}")
-    return out
+                odd = [j for j in (t, p, q) if not usual(j, a[i, j])]
+                if len(odd) != 1:
+                    continue
+                j = odd[0]
+                other = a[i, q] if j == p else a[i, p]
+                v = got[i] if j == t else y[i] - other if sign == "+" else y[i] / other if other else np.nan
+                d = _decimals(a[:, j])
+                if np.isfinite(v) and abs(v - np.round(v, d)) < 0.01 * 10.0 ** -d + 1e-9 * abs(v) and usual(j, np.round(v, d)):
+                    fix[index[i]][cols[j]] = float(f"{np.round(v, d):.10g}")
+    return out, fix
 
 
 def _one_edit(a, b):
@@ -333,7 +353,8 @@ def score(df, column_types, errors_log, limits, order_by, strength=5):
     ran = [d for d in dets.values() if d["ran"]]
     dup, typ, blank = duplicates(df), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
     hole, far = placeholders(df, column_types, skip), far_dates(df, column_types, skip)
-    add = [list(dict.fromkeys(s + m)) for s, m in zip(sums(df, column_types, skip), pairs(df, column_types, skip), strict=True)]
+    paired, solved = pairs(df, column_types, skip, limits)
+    add = [list(dict.fromkeys(s + m)) for s, m in zip(sums(df, column_types, skip), paired, strict=True)]
     spell, spell_fix, missed, spell_maybe, spell_exact = spellings(df, column_types, skip)
     missed = [m + s + f for m, s, f in zip(missed, shifted(df, column_types, skip), fractions(df, column_types, skip),
                                           strict=True)]  # all "worth a check" (Low)
@@ -356,7 +377,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5):
             "bucket": "Duplicates" if dup[i] else "Irregularities" if weird or typ[i] or blank[i] or hole[i] or far[i] or add[i] or spell[i] or missed[i] else "Behavioral",
             "reason": (f"Flagged by {v} of {len(ran)}: " if v else "") + "; ".join(dict.fromkeys(hygiene + missed[i] + [r for d in voted for r in d["reasons"][i]])),  # dedupe, keep order
             "magnitude": float(max((d["magnitude"][i] for d in voted), default=0.0)),
-            "likely": {**lim["likely"][i], **spell_fix[i]},
+            "likely": {**lim["likely"][i], **solved[i], **spell_fix[i]},  # the row's own arithmetic beats a typo pattern
             "maybe": spell_maybe[i],  # misspelling: a guess the user confirms
             "exact": spell_exact[i],  # capitals/spaces where the usual spelling is 5x as common: safe to auto-fix
         })

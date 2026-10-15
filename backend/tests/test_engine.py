@@ -724,6 +724,23 @@ def test_a_line_total_that_is_not_qty_times_price_is_flagged():
     assert "Qty × Unit Price" in out[7]["reason"] and out[7]["severity"] in ("Medium", "High")
 
 
+def test_the_rows_own_arithmetic_gives_the_fix_for_its_one_odd_cell():
+    # Units -5 and 9999 with Total intact: Total / UnitCost is the true value - exact, not a median "best guess"
+    _, out = _scan(*_e2e_sales())
+    assert out[10]["likely"] == {"Units": 41} and out[21]["likely"] == {"Units": 49}
+    r = np.random.default_rng(26)
+    rows = []
+    for i in range(150):
+        qty, price = int(r.choice([10, 20, 25, 50, 100])), round(float(r.uniform(1.8, 85)), 2)
+        rows.append([f"PO-{i}", qty, price, round(qty * price, 2)])
+    price = rows[40][2]
+    rows[40][2] = round(price * 100, 2)  # Unit Price typed x100, Line Total still right
+    rows[90][1], rows[90][2] = 9999, round(rows[90][2] * 100, 2)  # two odd cells: the arithmetic can't say which
+    _, out = _scan(["PO", "Qty", "Unit Price", "Line Total"], rows)
+    assert out[40]["likely"] == {"Unit Price": price}
+    assert "Qty" not in out[90]["likely"] and out[90]["likely"].get("Unit Price") != round(rows[90][3] / 9999, 2)
+
+
 def test_a_two_part_sum_is_checked_even_on_a_small_sheet_with_a_typo_elsewhere():
     # 48 months x 5 number columns: under sums' 20-rows-per-column floor "Net New = New + Churned" was never checked,
     # and a x10 typo in New MRR bends its least squares away from 0/1 weights anyway
