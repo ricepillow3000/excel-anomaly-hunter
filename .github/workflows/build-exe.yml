@@ -1,6 +1,7 @@
-# Builds the one-file Windows app, dist/AnomalyHunter.exe, then tests it on a Windows PC with Python taken away.
-# Download: Actions tab > this run > Artifacts > AnomalyHunter-exe. PyInstaller builds for the OS it runs on, so the
-# Windows file is built here, on Windows.
+# Builds the one-file Windows app, dist/AnomalyHunter.exe, then tests it on a Windows PC with Python taken away, then
+# (main only, once a fresh PC installed and used it) publishes it as the latest Release: the README's one download
+# link, .../releases/latest/download/AnomalyHunter.exe - no GitHub account, no zip, no 90-day expiry. PyInstaller
+# builds for the OS it runs on, so the Windows file is built here, on Windows.
 name: Build AnomalyHunter.exe
 
 on:
@@ -92,11 +93,15 @@ jobs:
           name: AnomalyHunter-exe
           path: ${{ runner.temp }}/dl
 
-      - name: No Python on this PC
+      - name: Saved like a browser saves it (marked as from the internet), and no Python on this PC
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force "$env:USERPROFILE\Downloads" | Out-Null
-          Move-Item "$env:RUNNER_TEMP\dl\AnomalyHunter.exe" "$env:USERPROFILE\Downloads\AnomalyHunter.exe"
+          $exe = "$env:USERPROFILE\Downloads\AnomalyHunter.exe"
+          Move-Item "$env:RUNNER_TEMP\dl\AnomalyHunter.exe" $exe
+          # the Mark of the Web Edge/Chrome put on a download: Windows warns before it runs, as on the user's PC
+          Set-Content -Path $exe -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3`r`nHostUrl=https://github.com/$env:GITHUB_REPOSITORY/releases/latest/download/AnomalyHunter.exe"
+          "mark of the web: $((Get-Content $exe -Stream Zone.Identifier) -join ' ')"
           foreach ($c in Get-Command python, python3, py -All -ErrorAction SilentlyContinue) {
             Rename-Item $c.Source "$($c.Source).hidden" -ErrorAction SilentlyContinue }
           Rename-Item "$env:RUNNER_TOOL_CACHE\Python" "Python.hidden" -ErrorAction SilentlyContinue
@@ -104,17 +109,28 @@ jobs:
           if ($left) { throw "Python still reachable: $($left.Source)" }
           "Downloads: $((Get-ChildItem "$env:USERPROFILE\Downloads").Name -join ', ')  |  python: not found"
 
+      # Explorer opens it, as a double-click does: Start-Process launches with Windows' "no UI" flag, so the warning for a
+      # file from the internet can't show and Windows reports "canceled by the user" (the first try of this test)
       - name: Double-click it
         shell: pwsh
         run: |
-          $proof = "$env:RUNNER_TEMP\proof"
+          $proof = "$env:RUNNER_TEMP\proof"; $exe = "$env:USERPROFILE\Downloads\AnomalyHunter.exe"
           $hand = Start-Process powershell -PassThru -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
-            "$env:GITHUB_WORKSPACE\tests\packaging\click-like-a-user.ps1", $proof, '6'
-          $t = Measure-Command { $p = Start-Process "$env:USERPROFILE\Downloads\AnomalyHunter.exe" -PassThru; $p.WaitForExit(300000) | Out-Null }
+            "$env:GITHUB_WORKSPACE\tests\packaging\click-like-a-user.ps1", $proof, '8'
+          $log = "$proof\clicks.log"   # (Select-String on a file not there yet stops the step, whatever -ErrorAction says)
+          for ($i = 0; $i -lt 120 -and -not ((Test-Path $log) -and (Select-String -Quiet 'ready' $log)); $i++) { Start-Sleep -Milliseconds 500 }
+          $t = [Diagnostics.Stopwatch]::StartNew()
+          Start-Process explorer.exe -ArgumentList "`"$exe`""
+          $p = $null   # the first AnomalyHunter.exe from Downloads (one-file apps start a second copy of themselves)
+          while (-not $p -and $t.Elapsed.TotalSeconds -lt 240) {
+            Start-Sleep -Milliseconds 500
+            $p = Get-Process AnomalyHunter -ErrorAction SilentlyContinue | Where-Object Path -eq $exe | Sort-Object StartTime | Select-Object -First 1 }
+          if ($p) { $null = $p.Handle; $done = $p.WaitForExit(300000) }   # (a handle taken while it runs keeps its exit code)
           Start-Sleep 2; Stop-Process $hand -ErrorAction SilentlyContinue
           Get-Content "$proof\clicks.log" -ErrorAction SilentlyContinue
-          "install finished in {0:N0} s, exit {1}" -f $t.TotalSeconds, $p.ExitCode
-          if ($p.ExitCode -ne 0) { Get-Content "$env:LOCALAPPDATA\AnomalyHunter\server.log" -ErrorAction SilentlyContinue; throw "install failed" }
+          if (-not $p) { throw "the double-clicked file never started (a Windows warning nobody answered? see the windows: lines above)" }
+          "install finished in {0:N0} s (from the double-click, warnings included), exit {1}" -f $t.Elapsed.TotalSeconds, $p.ExitCode
+          if (-not $done -or $p.ExitCode -ne 0) { Get-Content "$env:LOCALAPPDATA\AnomalyHunter\server.log" -ErrorAction SilentlyContinue; throw "install failed" }
 
       - name: Check the install like the user's PC sees it
         shell: pwsh
@@ -125,11 +141,15 @@ jobs:
           $ca = Get-ChildItem Cert:\CurrentUser\Root | Where-Object Subject -match 'Anomaly Hunter local CA'
           $h = Invoke-RestMethod https://127.0.0.1:5055/health   # no certificate skipping: Windows trusts the engine now
           "app copied:      $(Test-Path "$ah\AnomalyHunter.exe")"
+          "start here:      $(Test-Path "$ah\Start here.xlsx") (the workbook Excel opens on: the 5 Add steps + a Practice sheet)"
+          $mark = $null; try { $mark = Get-Item "$ah\AnomalyHunter.exe" -Stream Zone.Identifier -ErrorAction Stop } catch { }
+          "internet mark:   $(if ($mark) { 'still on the installed copy - Windows would warn at every logon' } else { 'gone from the installed copy (no warning at logon)' })"
+          if ($mark) { throw "the installed copy still carries the download's internet mark" }
           "Excel add-in:    $($cat.Url)\manifest.xml exists = $(Test-Path (Join-Path $cat.Url 'manifest.xml'))"
           "starts at logon: $run"
           "certificate:     $($ca.Subject), trusted by Windows"
           "engine:          $($h | ConvertTo-Json -Compress) over trusted HTTPS"
-          if (-not ($ca -and $h.status -eq 'ok' -and $run -match 'serve' -and (Test-Path (Join-Path $cat.Url 'manifest.xml')))) { throw "install incomplete" }
+          if (-not ($ca -and $h.status -eq 'ok' -and $run -match 'serve' -and (Test-Path (Join-Path $cat.Url 'manifest.xml')) -and (Test-Path "$ah\Start here.xlsx"))) { throw "install incomplete" }
 
       - name: Use it - the real pane in Edge against the installed engine (scan, highlight, fix, undo)
         shell: pwsh
@@ -146,7 +166,8 @@ jobs:
           $proof = "$env:RUNNER_TEMP\proof-uninstall"
           $hand = Start-Process powershell -PassThru -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
             "$env:GITHUB_WORKSPACE\tests\packaging\click-like-a-user.ps1", $proof, '3'
-          $p = Start-Process "$env:USERPROFILE\Downloads\AnomalyHunter.exe" -ArgumentList 'uninstall' -PassThru; $done = $p.WaitForExit(120000)
+          # typed in a terminal, as the README says (a terminal starts it directly: no internet-file warning)
+          $p = Start-Process "$env:USERPROFILE\Downloads\AnomalyHunter.exe" -ArgumentList 'uninstall' -NoNewWindow -PassThru; $done = $p.WaitForExit(120000)
           Start-Sleep 2; Stop-Process $hand -ErrorAction SilentlyContinue
           Get-Content "$proof\clicks.log" -ErrorAction SilentlyContinue
           if (-not $done -or $p.ExitCode -ne 0) { throw "uninstall did not finish (exit $($p.ExitCode))" }
@@ -162,3 +183,28 @@ jobs:
         with:
           name: new-user-proof
           path: ${{ runner.temp }}/proof
+
+  # The download link users get: only a build a fresh PC installed and used, only from main
+  release:
+    needs: [exe, new-user]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # this job only: create the Release
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: AnomalyHunter-exe
+          path: dist
+      - name: Publish it as the latest Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          TAG: v0.1.${{ github.run_number }}
+        run: |
+          sum=$(sha256sum dist/AnomalyHunter.exe | cut -d' ' -f1)
+          gh release create "$TAG" dist/AnomalyHunter.exe --repo "$REPO" --target "$SHA" --latest \
+            --title "Anomaly Hunter ${TAG#v}" \
+            --notes "Download AnomalyHunter.exe below and double-click it. Windows warns about files from the internet: click Run (or More info > Run anyway), then Yes on the certificate question. Tested on a fresh Windows PC before publishing. SHA-256: $sum"
+          echo "published $TAG: https://github.com/$REPO/releases/latest/download/AnomalyHunter.exe ($sum)"

@@ -65,15 +65,22 @@ export function summaryOf(rows) {
   return (sure ? `${n(sure)} of ${n(rows.length)} rows look wrong.` : `Nothing clearly wrong in ${n(rows.length)} rows.`) + more;
 }
 
-// Pure: the fairness line under the summary (engine/fairness.py) - which columns are protected, and any real gap
-// between their groups. "" when the sheet has no protected column.
+// Pure: the fairness line under the summary (engine/fairness.py) - which columns are protected, and the biggest real
+// gaps (a census sheet has 15: the line names 3, the full list sits under "All fairness checks")
 export function fairnessNote(fair) {
   const cols = Object.keys(fair?.protected || {});
   if (!cols.length) return "";
-  const gaps = (fair.tests || []).filter((t) => t.verdict === "gap");
+  const gaps = fairnessTests(fair).filter((t) => t.verdict === "gap");
   const kept = `Fairness: ${cols.join(", ")} ${cols.length === 1 ? "is" : "are"} never used to decide which rows are unusual.`;
-  return gaps.length ? `${kept} Check these gaps between groups: ${gaps.map((t) => t.text).join("; ")}.`
+  const more = gaps.length > 3 ? ` - and ${gaps.length - 3} more under "All fairness checks"` : "";
+  return gaps.length ? `${kept} Check these gaps between groups: ${gaps.slice(0, 3).map((t) => t.text).join("; ")}${more}.`
     : `${kept} Flags, blanks and outcomes are even across their groups.`;
+}
+
+// Pure: every fairness test, gaps first, the widest gap (in rate points) first
+export function fairnessTests(fair) {
+  const width = (t) => { const r = Object.values(t.groups || {}).map((g) => g[1]); return r.length ? Math.max(...r) - Math.min(...r) : 0; };
+  return [...(fair?.tests || [])].sort((a, b) => (b.verdict === "gap") - (a.verdict === "gap") || width(b) - width(a));
 }
 
 // Pure: the engine's reason in plain words, for the list and the fix view

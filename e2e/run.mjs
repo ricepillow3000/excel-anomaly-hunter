@@ -10,11 +10,11 @@ const DIR = fileURLToPath(new URL(".", import.meta.url));
 const mode = process.argv[2] || "flow";
 const ok = (c, m) => { if (!c) { console.error("FAIL:", m); process.exitCode = 1; } else console.log("ok -", m); };
 
-// 300 sales orders + planted problems: Units -5 (row 11), Units 9999 (row 22), a double entry (row 51),
+// 300 sales orders + planted problems: Units -5 (row 11), Units 7777 (row 22: a plain outlier - an all-9s 9999 would be a "missing" code, a basic), a double entry (row 51),
 // "east " (row 81), a blank Units (row 121). Row 11 also wears the user's own green fill.
 const rows = [["OrderDate", "Region", "Units", "UnitCost", "Total"]];
 for (let i = 0; i < 300; i++) { const u = 40 + ((i * 7) % 23), c = 1.99 + (i % 4); rows.push([46028 + i, ["East", "West", "Central"][i % 3], u, c, +(u * c).toFixed(2)]); }
-rows[10][2] = -5; rows[21][2] = 9999; rows[50] = [...rows[49]]; rows[80][1] = "east "; rows[120][2] = "";
+rows[10][2] = -5; rows[21][2] = 7777; rows[50] = [...rows[49]]; rows[80][1] = "east "; rows[120][2] = "";
 
 // Playwright's own Chromium if installed, else the Edge every Windows PC has
 const browser = await chromium.launch().catch(() => chromium.launch({ channel: "msedge" }));
@@ -43,6 +43,8 @@ if (mode === "flow") {
   const listed = await page.$$eval("#flagged-list button", (bs) => bs.slice(0, 5).map((b) => b.innerText.split("\n")[0]));
   ok(["11", "22", "51", "81", "121"].every((r) => listed.some((l) => l.startsWith(`Row ${r}`))), "all 5 planted problems listed first - " + listed);
   ok(!(await text("#flagged-list")).includes("weird limit"), "no jargon in the list");
+  ok((await text("#fairness-note")).startsWith("Fairness: Region is never used") && (await page.$$("#fairness-list li")).length > 0,
+    "fairness: the protected column is named, every check is listed under All fairness checks");
   const fills = await page.evaluate(() => ["A11", "A22", "A51", "A81", "A121", "A2"].map((a) => __cell("Sales", a).fill));
   ok(fills.slice(0, 5).every((f) => f === "#FFEB9C") && fills[5] === null, "flagged rows highlighted, clean rows not - " + fills);
 
@@ -80,7 +82,7 @@ if (mode === "flow") {
   ok((await text("#fix-title")).startsWith("Row 22"), "sheet click opens the row");
   await idle();
   await page.click("#fix-dismiss"); await idle();
-  ok((await cell("C22")).v === 9999 && (await cell("A22")).fill === null && (await cell("B22")).fill === "#00B0F0", "Dismiss keeps the value and removes only our highlight");
+  ok((await cell("C22")).v === 7777 && (await cell("A22")).fill === null && (await cell("B22")).fill === "#00B0F0", "Dismiss keeps the value and removes only our highlight");
   ok(/^Row \d+/.test(await text("#fix-title")) && !(await text("#fix-title")).startsWith("Row 22"), "and moves to the next row - " + (await text("#fix-title")));
 
   // 4) Remove highlights puts back exactly what was there (the user's green row 11 too)
@@ -100,18 +102,18 @@ if (mode === "flow") {
   ok(cleared[3] === "#FFC7CE", "a single cell in Excel's own 'Bad' style (same pink) is the user's, and stays");
 
   // 6) limits: plain words, bad input refused, saving rescans, "Back to automatic" resets
-  const openStrict = () => page.locator("details.more").first().evaluate((d) => (d.open = true));
+  const openStrict = () => page.locator("details.more:has(#edit-limits)").evaluate((d) => (d.open = true));
   await openStrict();
   await page.click("#edit-limits");
   const units = page.locator('#limits-rows .limits-row[data-column="Units"] input');
   await units.nth(0).fill("200"); await units.nth(1).fill("100"); await page.click("#save-limits");
   ok((await text("#limits-error")).includes('"Flag below" is bigger than "Flag above"') && (await page.isVisible("#limits-editor")), "low above high is refused");
   await units.nth(0).fill("-10"); await units.nth(1).fill("10000"); await page.click("#save-limits"); await idle();
-  ok(!(await text("#flagged-list")).includes("Units is 9999"), "saved limits are used at once");
+  ok(!(await text("#flagged-list")).includes("Units is 7777"), "saved limits are used at once");
   ok(await page.evaluate(() => Object.keys(__settings.anomalyHunterLimits).join() === "Units"), "only the changed column is saved");
   await openStrict();
   await page.click("#edit-limits"); await page.click("#auto-limits"); await idle();
-  ok(await page.evaluate(() => __settings.anomalyHunterLimits === undefined) && (await text("#flagged-list")).includes("Units is 9999"), "Back to automatic");
+  ok(await page.evaluate(() => __settings.anomalyHunterLimits === undefined) && (await text("#flagged-list")).includes("Units is 7777"), "Back to automatic");
 
   // 6b) the strength slider, driven by a real mouse: press the thumb, drag, let go -> re-check; 0 = basics only,
   // saved in the workbook; 5 brings everything back
@@ -146,7 +148,7 @@ if (mode === "flow") {
   ok(!(await page.evaluate(() => document.getElementById("auto-fix").checked)), "auto-fix is off by default");
   await page.evaluate(() => { const c = document.getElementById("auto-fix"); c.checked = true; c.dispatchEvent(new Event("change")); });
   await page.click("#scan"); await idle();
-  ok((await cell("B81")).v === "East" && (await cell("C11")).v === -5 && (await cell("C22")).v === 9999 && (await text("#notice")).startsWith("Fixed 1 "),
+  ok((await cell("B81")).v === "East" && (await cell("C11")).v === -5 && (await cell("C22")).v === 7777 && (await text("#notice")).startsWith("Fixed 1 "),
     "auto-fix: only the spelling slip, never the numbers - " + (await text("#notice")));
   ok(!(await text("#flagged-list")).includes('"east "'), "checked again: the spelling slip is gone from the list (row 81 keeps only its other, unrelated flag)");
   ok(await page.isVisible("#undo-auto"), "Undo auto-fixes offered");

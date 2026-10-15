@@ -13,7 +13,7 @@ import sys
 import time
 from pathlib import Path
 
-from anomaly_hunter import cli, server
+from anomaly_hunter import cli, practice, server
 
 APP = "AnomalyHunter.exe"
 ID = "a64b585c-34c7-4447-b3ae-9aa8b3294bcf"  # the add-in's Id in manifest.xml
@@ -93,6 +93,21 @@ def reg_delete(key, name=None):
         pass
 
 
+def excel_exe():
+    """Desktop Excel's own path, where Windows registers it (App Paths), or None. Asking Windows to "open" an .xlsx
+    instead shows "Pick an app" on a PC with no Excel and can hold the installer until someone picks one."""
+    import winreg
+    for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        try:
+            with winreg.OpenKey(root, r"Software\Microsoft\Windows\CurrentVersion\App Paths\excel.exe") as k:
+                path = Path(str(winreg.QueryValue(k, None)).strip('"'))
+        except OSError:
+            continue
+        if path.name.lower() == "excel.exe" and path.exists():
+            return path
+    return None
+
+
 def install():
     home, exe = server.HOME, server.HOME / APP
     while excel_open():  # Excel reads the add-in list when it starts
@@ -110,6 +125,10 @@ def install():
                 time.sleep(0.5)
         else:
             return fail(f"Couldn't update {exe} - restart the PC, then double-click {APP} again.")
+    try:  # the copy keeps the download's "from the internet" mark; the user said Run once - not again at every logon
+        os.remove(f"{exe}:Zone.Identifier")
+    except OSError:
+        pass  # no mark (copied from a terminal download, or not Windows)
     invite = me.with_name("invite-code.txt")  # an invite kit from John: AI help with nothing to paste
     if invite.exists():
         shutil.copy2(invite, home / "invite-code.txt")
@@ -147,12 +166,16 @@ def install():
         time.sleep(0.5)
     else:
         return fail(f"The engine didn't start. Details: {home / 'server.log'}")
-    try:
-        os.startfile("excel.exe")  # noqa: S606, S607 - Excel by the name Windows registers for it (App Paths)
-    except OSError:
-        pass  # no desktop Excel registered: the message below still says what to do
-    say("Anomaly Hunter is installed.\n\nFirst time only, in Excel: Home > Add-ins > More Add-ins > SHARED FOLDER > "
-        "Anomaly Hunter > Add.\n\nAfter that the Anomaly Hunter button is on the Home tab in every workbook.")
+    # Excel opens on "Start here": the 5 clicks that add it stay on screen while the user does them (a message box is
+    # gone after one click), and a Practice sheet shows what a scan finds
+    start = practice.make(home / "Start here.xlsx")
+    excel = excel_exe()
+    if excel:  # Excel itself, given the workbook: never a "Pick an app" question, never waits on Excel
+        subprocess.Popen([str(excel), str(start)], creationflags=0x00000008)  # noqa: S603 - DETACHED_PROCESS
+    say("Anomaly Hunter is installed.\n\n" + ("Excel is opening a \"Start here\" workbook: follow its 5 steps to add Anomaly "
+        "Hunter to Excel (first time only), then try it on the Practice sheet." if excel else
+        f"Desktop Excel wasn't found. Once it is installed, open {start}: it shows the 5 steps.") +
+        "\n\nIn Excel: Home > Add-ins > More Add-ins > SHARED FOLDER > Anomaly Hunter > Add.")
     return 0
 
 

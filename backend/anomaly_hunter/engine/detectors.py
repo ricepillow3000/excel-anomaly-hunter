@@ -69,7 +69,8 @@ def likely_value(v, st, lo, hi):
         far = m >= BEYOND * (mags[-2] if mags[-1] == m else mags[-1])
     else:
         far = m * BEYOND <= (mags[1] if mags[0] == m else mags[0])
-    flip = v < 0 and st["nonneg"] >= 0.95 * (st["n"] - 1)  # sign flip only where negatives are rare (v itself is one)
+    # sign flip only where negatives are rare (v itself is one): 2% returns (Online Retail) are refunds, not slips
+    flip = v < 0 and st["nonneg"] >= 0.99 * (st["n"] - 1)
     for c in ([v / 10 ** k] if 1 <= abs(k) <= 3 and far else []) + ([-v] if flip else []):
         if lo <= c <= hi and (c == round(c) or not st["whole"]):  # 999 in a 1-5 count column is not "likely 0.999"
             return float(f"{c:.10g}")
@@ -97,10 +98,22 @@ def limits_detector(df, column_types, limits, typos_only=False):
         # not a typo: noted, never weird. Except "missing" codes, which repeat too: 0, -1, 99, 999, 9999...
         vals, cnt = np.unique(x[~np.isnan(x)], return_counts=True)
         common = {v for v in vals[cnt >= max(5, 0.001 * len(x))] if not _sentinel(v)}
+        sv, med = np.sort(x[~np.isnan(x)]), float(np.nanmedian(x)) if len(vals) else 0.0
+        crowd = max(5, 0.0005 * len(sv))
+
+        def in_tail(v):
+            """Other values crowd the way back to the median (hours 1-99 around a usual 40, survey weights up to 8x
+            the median): the column's own long tail, not a slip. A slip stands alone; copies of itself don't count.
+            Halfway back is the nearer of the two midpoints: a low positive one on the ratio scale (Sq Ft 19 for 1915
+            is 100x small - the 600 sq ft flats between don't make it normal)."""
+            mid = np.sqrt(v * med) if 0 < v < med else (v + med) / 2
+            a, b = sorted((v, mid))
+            return np.searchsorted(sv, b, "right") - np.searchsorted(sv, a, "left") - cnt[np.searchsorted(vals, v)] >= crowd
+
         for i, v in enumerate(x):
             if np.isnan(v):
                 continue
-            if v not in common and (lim := _crossed(v, w_lo, w_hi)) is not None:
+            if v not in common and (lim := _crossed(v, w_lo, w_hi)) is not None and not in_tail(v):
                 fix = likely_value(v, st := st or column_stats(x), b_lo, b_hi)
                 negative = v < 0 and st["nonneg"] >= 0.95 * (st["n"] - 1)  # a minus sign in a column that has none
                 if typos_only and fix is None and not negative:  # basics: an obvious typo or a stray minus sign
