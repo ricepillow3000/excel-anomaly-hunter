@@ -49,11 +49,13 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
   columns.forEach((c, j) => {
     const v = rows[i][j], cell = `${colLetter(startCol + j)}${row}`;
     const lim = limits && limits[c], lo = lim && lim[2], hi = lim && lim[3];
+    const past = (a, b) => typeof v === "number" && ((a != null && v < a) || (b != null && v > b));
     const variant = likely && typeof likely[c] === "string" && typeof v === "string"; // "sales" where the column says "Sales"
     const miss = !variant && maybe && typeof maybe[c] === "string" && typeof v === "string"; // "Pencl" where it says "Pencil"
     const blank = !!lim && (v === "" || v === null) && reason.includes(`Blank cell in column ${c},`);
     // only a value the engine flagged: it never votes on a regular repeated value (a 5.76 toll), so neither do we
-    const outside = !!lim && typeof v === "number" && ((lo != null && v < lo) || (hi != null && v > hi)) && reason.includes(`${c} weird limit is`);
+    // or past the usual limit with the engine's exact typo behind it: a lone x10 in a skewed column (wide weird limit)
+    const outside = !!lim && reason.includes(`${c} weird limit is`) && (past(lo, hi) || (likely && likely[c] != null && past(lim[0], lim[1])));
     // the engine solved this cell from a total that doesn't add up (Total ÷ UnitCost): exact, not a median
     const sum = typeof v === "number" && likely && likely[c] != null ? sums.find((s) => s.cols.includes(c)) : null;
     if (!(variant || miss || blank || outside || sum)) return;

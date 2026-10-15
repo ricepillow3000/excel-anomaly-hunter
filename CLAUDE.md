@@ -41,7 +41,7 @@ an admin panel, role, operator route or debug switch. The weekly security sweep 
 | Same label typed differently, misspellings, short forms, lowercase label | `pipeline.spellings` | `test_blindspots.py`, `test_a_short_form_of_several_words_or_a_contraction_is_worth_a_check` |
 | A fraction above 100% | `pipeline.fractions` | `test_blindspots.py` |
 | A value typed into the wrong column | `pipeline.shifted` | `test_text_checks.py` |
-| Values past their column's limits; the typo behind them (x10, %, sign); a lone slip with an exact x10/x100 behind it past even the usual limit; a stray minus sign never excused as a tail | `detectors.limits_detector`, `likely_value`, `limits._limits` | `test_engine.py`, `test_a_x100_slip_in_a_skewed_column_stands_alone_and_votes`, `test_a_minus_sign_in_a_count_column_is_not_excused_as_its_tail` |
+| Values past their column's limits; the typo behind them (x10, %, sign); a lone slip with an exact x10/x100 behind it past even the usual limit; a stray minus sign never excused as a tail | `detectors.limits_detector`, `likely_value`, `limits._limits` | `test_engine.py`, `test_a_x100_slip_in_a_skewed_column_stands_alone_and_votes`, `test_a_minus_sign_in_a_count_column_is_not_excused_as_its_tail`, `test_a_mildly_skewed_column_keeps_its_honest_heavy_users_and_still_catches_a_x100_slip` |
 | Jumps in a dated series (cycles excluded) | `detectors.sequence_detector` | `test_a_repeating_cycle_is_not_a_jump` |
 | Odd combinations across columns | `detectors.isolation_detector` | `test_engine.py` |
 | A top value that is all 9s and over twice the next one (99999 = "missing" / "too big") | `pipeline.codes` | `test_an_all_nines_top_value_is_a_code` |
@@ -74,6 +74,10 @@ Adding or removing a check: update this table in the same commit.
 - A contraction keeps the word's first and last letters (Std, Mgmt): "Iran" is not one of "Ireland" (`_short_for`).
 - The installer starts Excel by its App Paths path, never "open this .xlsx": with no Excel, Windows' "Pick an app"
   held the install (`app.excel_exe`, `test_the_installer_finds_desktop_excel_or_says_none`).
+- A cliff on a measured shape is a coin flip: "upper spread > 2x lower" sits right at a log-normal's average, so 22 of
+  60 telecom sheets got even-sided limits and an honest heavy user was called wrong. A column is log-shaped when it is
+  more even on the log scale (`limits._log_shaped`). The pane must accept every limit the engine votes on: it checked
+  only the weird one, so a lone x10 flagged past the usual limit got "may be real" and no fix (`fix.recommendFix`).
 - A false-alarm budget lets false alarms in: "<= 1% of clean rows" passed an autoencoder adding 26 Medium ones. The
   bench gate now fails on any Medium+ false alarm not in `score.KNOWN_FA` (sheet:row); remove an entry once it's fixed.
 - The 2-of-500 failure: thresholds tuned to avoid false alarms hid real defects. Any threshold change must keep

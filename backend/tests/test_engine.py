@@ -849,3 +849,17 @@ def test_a_x100_slip_in_a_skewed_column_stands_alone_and_votes():
     _, out = _scan(["Ticket", "Priority", "First Response (hrs)"], rows)
     assert out[33]["severity"] not in (None, "Noted") and out[33]["likely"] == {"First Response (hrs)": 5.1}
     assert [i for i, o in enumerate(out) if o["severity"] not in (None, "Noted")] == [33]  # the skewed tail stays quiet
+
+
+def test_a_mildly_skewed_column_keeps_its_honest_heavy_users_and_still_catches_a_x100_slip():
+    # blind bench (fresh seed 33), telecom Minutes: log-normal around 408 with an honest 2,410 (6x the median). Its
+    # upper spread was 1.82x the lower one - under the old cut of 2 - so its limits were set as if symmetric (weird
+    # 1,600) and the heavy user was called wrong; on 5 other seeds the same column read 2.1-2.7 and got log limits.
+    # Same shape, 22 of 60 random sheets fell under the cut
+    r = np.random.default_rng(11)
+    rows = [[f"C-{i}", int(r.lognormal(np.log(380), 0.55))] for i in range(280)]  # upper/lower spread 1.70
+    rows[40][1] = 2346  # a real heavy user, 6x the median
+    rows[90][1] = 39100  # 391 typed x100 (the bench plants x100 here; a x10 next to a 6x-median user is not clear-cut)
+    _, out = _scan(["Customer", "Minutes"], rows)
+    assert out[40]["severity"] in (None, "Noted", "Low"), out[40]["reason"]
+    assert out[90]["severity"] not in (None, "Noted") and out[90]["likely"] == {"Minutes": 391}
