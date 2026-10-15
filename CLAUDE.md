@@ -69,5 +69,7 @@ Adding or removing a check: update this table in the same commit.
 - A contraction keeps the word's first and last letters (Std, Mgmt): "Iran" is not one of "Ireland" (`_short_for`).
 - The installer starts Excel by its App Paths path, never "open this .xlsx": with no Excel, Windows' "Pick an app"
   held the install (`app.excel_exe`, `test_the_installer_finds_desktop_excel_or_says_none`).
+- A false-alarm budget lets false alarms in: "<= 1% of clean rows" passed an autoencoder adding 26 Medium ones. The
+  bench gate now fails on any Medium+ false alarm not in `score.KNOWN_FA` (sheet:row); remove an entry once it's fixed.
 - The 2-of-500 failure: thresholds tuned to avoid false alarms hid real defects. Any threshold change must keep
   `test_blindspots.py` (279/279 rows) and both bench gates green.
