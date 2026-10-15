@@ -1,13 +1,19 @@
 # excel-anomaly-hunter
 Excel add-in that flags abnormal rows and tells useful-weird from broken-weird. Never deletes data.
 
-**Install (Windows, desktop Excel, nothing else needed):** download **AnomalyHunter.exe** (one file, Python and
-everything inside; built by the "Build AnomalyHunter.exe" action) and double-click it. Click **Yes** once when Windows
-asks to trust the local certificate (it covers only 127.0.0.1).
-Then once in Excel: **Home > Add-ins > More Add-ins > SHARED FOLDER > Anomaly Hunter > Add**. Done: the
-**Anomaly Hunter** button is on the Home tab in every workbook (survives restarts), scanned workbooks reopen with
-the panel open, and the engine starts hidden at each logon. Double-click it again to repair;
+## Install (Windows + desktop Excel, nothing else needed)
+1. **[Download AnomalyHunter.exe](https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest/download/AnomalyHunter.exe)**
+   (one file, everything inside). If your browser says it "isn't commonly downloaded": click **...** > **Keep** > **Keep anyway**.
+2. **Double-click it.** A blue "Windows protected your PC" box appears: click **More info**, then **Run anyway**. (The file
+   isn't code-signed yet, so Windows doesn't know it. Some PCs ask "Open File - Security Warning" instead: click **Run**.)
+3. Click **Yes** when Windows asks to trust the certificate (it covers only 127.0.0.1, this PC).
+4. Excel opens a **Start here** workbook. Follow its 5 clicks, once: **Home > Add-ins > More Add-ins > SHARED FOLDER >
+   Anomaly Hunter > Add**. Then try **Find problems** on its Practice sheet: it finds the 5 problems hidden there.
+
+Done: the **Anomaly Hunter** button is on the Home tab in every workbook (survives restarts), scanned workbooks reopen
+with the panel open, and the engine starts hidden at each logon. Double-click it again to repair;
 `AnomalyHunter.exe uninstall` removes it. (From a checkout with Python 3.14: `install.bat` does the same, `/u` uninstalls.)
+Every build on `main` is installed and used on a fresh Windows PC with no Python before it becomes that download link.
 Build the file: `pip install -e . pyinstaller==6.22.3 pillow` then `python -m PyInstaller packaging/AnomalyHunter.spec`
 on Windows -> `dist/AnomalyHunter.exe`.
 Windows-only per-user install (trusted shared-folder catalog), not a store add-in.
@@ -24,7 +30,9 @@ written several ways ("Employed" / "employed" / "EMP", "retired" among capitalis
 scan tests their groups for gaps in how often rows are flagged, in blanks, and in any yes/no outcome column (four-fifths
 rule + a significance test, so noise is not called bias). One line in the pane, a Fairness sheet in report.xlsx.
 Advisory only: it never changes a cell.
-Tested on 100k real NYC taxi trips (1.7M cells): 8 s per scan, under 1% false alarms on clean rows.
+Tested on 100k real NYC taxi trips (1.7M cells): 8 s per scan, under 1% false alarms on clean rows. And on the UCI Adult
+census (48,842 people): every '?' left for an unknown job, every 99999 code and every duplicate found (3,896 rows), no real
+person called wrong, in 9 s - and its well-known gaps (30% of men vs 11% of women earn over $50K) reported as gaps.
 
 **Power BI:** after a scan, double-click `powerbi\anomaly-hunter.pbids` (written by `install.bat`), Refresh after each scan.
 

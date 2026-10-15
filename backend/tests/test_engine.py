@@ -2,7 +2,6 @@ import csv
 
 import numpy as np
 import pandas as pd
-import pytest
 from openpyxl import load_workbook
 
 from anomaly_hunter.cli import run_scan
@@ -484,8 +483,9 @@ def test_weekend_zeros_are_normal_but_sentinels_are_still_caught():
         assert all(out[i]["severity"] in ("Medium", "High") for i in range(0, 200, 33)), code
 
 
-@pytest.mark.xfail(strict=True, reason="known limitation: one low/high range can't describe two clusters (two products)")
 def test_two_product_clusters_do_not_flood():
+    """Was a known limitation (one low/high range can't describe two products). Fixed 2026-10-14: 60 rows near $500
+    crowd each other - a slip stands alone."""
     rows = [[f"r{i}", 500 + i % 11 if i % 10 < 3 else 100 + i % 7] for i in range(200)]
     _, out = _scan(["Row", "Price"], rows)
     assert sum(r["severity"] in ("Medium", "High") for r in out) <= 2

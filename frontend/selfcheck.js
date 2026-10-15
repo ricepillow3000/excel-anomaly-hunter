@@ -3,7 +3,7 @@ import assert from "node:assert";
 import { esc, asNumber, median } from "./utils/text.js";
 import { cutNote, tableFromGrid, isDateFormat, excelDate, rowFromAddress, colLetter, cellAt, sameRow } from "./utils/sheet.js";
 import { issuesOf, recommendFix, typoKind, spansDecade, afterFix, unusualColumn } from "./features/fix.js";
-import { plainReason, summaryOf, flaggedRows, fairnessNote } from "./features/scan.js";
+import { plainReason, summaryOf, flaggedRows, fairnessNote, fairnessTests } from "./features/scan.js";
 import { strengthHint, asStrength, levelAt } from "./pages/strength.js";
 import { exactFixes } from "./features/autofix.js";
 
@@ -14,6 +14,12 @@ assert.equal(fairnessNote({ protected: { Age: "demographic", Location: "location
   "Fairness: Age, Location are never used to decide which rows are unusual. Flags, blanks and outcomes are even across their groups.");
 assert.equal(fairnessNote({ protected: { Location: "location" }, tests: [{ verdict: "gap", text: "Location Phoenix: 60% blank Income vs 3% for Chicago - a real gap, check why" }] }),
   "Fairness: Location is never used to decide which rows are unusual. Check these gaps between groups: Location Phoenix: 60% blank Income vs 3% for Chicago - a real gap, check why.");
+// many gaps (census: 15): the 3 widest in the line, the rest in the list; the list puts gaps first, widest first
+const gap = (w, text) => ({ verdict: "gap", text, groups: { a: [50, 0.5 + w], b: [50, 0.5] } });
+const census = { protected: { sex: "demographic" }, tests: [{ verdict: "even", text: "e", groups: { a: [9, 0.9], b: [9, 0] } }, gap(0.1, "g1"), gap(0.4, "g4"), gap(0.2, "g2"), gap(0.3, "g3")] };
+assert.equal(fairnessNote(census), 'Fairness: sex is never used to decide which rows are unusual. Check these gaps between groups: g4; g3; g2 - and 1 more under "All fairness checks".');
+assert.deepEqual(fairnessTests(census).map((t) => t.text), ["g4", "g3", "g2", "g1", "e"]);
+assert.deepEqual(fairnessTests(undefined), []);
 
 // summary: "Noted" (inside the usual range) is fine, not a problem
 assert.equal(summaryOf([{ severity: null }, { severity: "Noted" }, { severity: null }]), "No problems found in 3 rows.");
