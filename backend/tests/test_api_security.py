@@ -1,6 +1,7 @@
 """API security checks CI runs on every push: what a generic scanner (ZAP) can't know about this engine."""
 import json
 
+import anthropic
 import pytest
 from test_fix import BODY, gemini_stub
 from werkzeug.serving import WSGIRequestHandler
@@ -56,6 +57,22 @@ def test_the_key_never_comes_back_even_when_google_echoes_it(monkeypatch, tmp_pa
         assert CANARY not in r.get_data(as_text=True) and CANARY not in str(r.headers)
 
 
+def test_a_claude_error_never_echoes_the_providers_text(monkeypatch):
+    # 2026-10-15 audit: the Gemini path answers in our own words, but a Claude error went to the pane as-is
+    import httpx2
+    req = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+    errors = [anthropic.APIConnectionError(message=f"proxy said {CANARY}", request=req),
+              anthropic.APIError(f"upstream said {CANARY}", req, body={"detail": CANARY})]
+    monkeypatch.setattr(client, "api_key_configured", lambda: True)
+    for err in errors:
+        def boom(*a, **k):
+            raise err
+        monkeypatch.setattr(client, "suggest_fix", boom)
+        r = create_app().test_client().post("/fix", json=BODY)
+        assert r.status_code in (502, 503) and r.get_json()["error"]
+        assert CANARY not in r.get_data(as_text=True)
+
+
 def test_invite_code_is_only_ever_sent_over_https(monkeypatch):
     client.INVITE_FILE.write_text("inv_" + "a" * 24, encoding="utf-8")
     for url, ok in [("https://anomaly-hunter-relay.example.workers.dev", True), ("http://relay.example", False),
@@ -95,7 +112,19 @@ def test_power_bi_csv_never_carries_a_live_formula(tmp_path):
     assert r.status_code == 200
     text = out.read_text(encoding="utf-8-sig")
     assert "'=cmd" in text and "'@SUM" in text and "'＝1+1" in text and "\n=cmd" not in text
-    assert "\nPen 0,10," in text  # numbers stay numbers (no apostrophe)
+    assert '\n"Pen 0",10,' in text  # numbers stay numbers (no apostrophe, no quotes); text is quoted
+
+
+def test_a_semicolon_before_a_formula_never_splits_the_power_bi_csv(tmp_path):
+    # 2026-10-15 audit: _inert only guards the start of a field. Excel in a ";" locale (DE, FR, NL) splits an
+    # unquoted "Pen;=cmd|..." into a second cell that starts with "=" and runs. Quoted text can't be split.
+    out = tmp_path / "s.csv"
+    rows = SHEET["rows"] + [["Pen;=cmd|' /C calc'!A0", 12]]
+    r = create_app(scan_csv=out).test_client().post("/scan", json={**SHEET, "rows": rows})
+    assert r.status_code == 200
+    text = out.read_text(encoding="utf-8-sig")
+    assert "\"Pen;=cmd|' /C calc'!A0\"" in text and "\nPen;" not in text
+    assert "\"Pen;=cmd|' /C calc'!A0\",12," in text  # numbers stay numbers
 
 
 def test_an_odd_character_never_turns_a_scan_into_a_500(tmp_path):
@@ -123,3 +152,15 @@ def test_more_cells_than_the_pane_ever_sends_is_a_clear_400(monkeypatch):
     monkeypatch.setattr(server, "MAX_CELLS", 10)
     r = APP.test_client().post("/scan", json={"columns": ["a"], "rows": [[k] for k in range(11)]})
     assert r.status_code == 400 and "too many cells" in r.get_json()["error"]
+
+
+def test_every_workflow_action_is_pinned_to_a_commit():
+    # 2026-10-15 audit: the release job (contents: write) publishes the exe every new user downloads. A tag like
+    # @v8 can be moved to other code; a 40-hex commit can't. Bump one by re-resolving its tag with git ls-remote.
+    import pathlib
+    import re
+    workflows = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows"
+    uses = [(f.name, m) for f in sorted(workflows.glob("*.yml")) for m in re.findall(r"uses:\s*(\S+)", f.read_text())]
+    assert uses, "no workflow steps found"
+    loose = [(name, u) for name, u in uses if not re.fullmatch(r"[\w.-]+/[\w./-]+@[0-9a-f]{40}", u)]
+    assert not loose, loose

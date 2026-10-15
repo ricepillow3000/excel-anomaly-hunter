@@ -41,13 +41,19 @@ export async function autoFix() {
   return writes.length;
 }
 
+// The undo record lives in the workbook, so a crafted .xlsx can carry its own: only plain values go back, only into a
+// plain A1 cell (2026-10-15 audit). A real record never holds a formula - autoFix skips formula cells.
+const A1 = /^[A-Z]{1,3}[1-9][0-9]{0,6}$/;
+const typedAsFormula = (v) => typeof v === "string" && /^[=+\-@＝＋－＠\t\r]/.test(v) && !/^[+\-]?\d[\d.,]*$/.test(v);
+export const safeUndo = (writes) => writes.filter((w) => A1.test(String(w?.cell)) && !typedAsFormula(w.old));
+
 // Put the auto-fixed cells back - only where the row still looks as auto-fix left it (same record, not edited since)
 // -> [put back, left alone]
 export async function undoAutoFix() {
   const u = autoUndo();
   if (!u) return [0, 0];
   const now = await readRows(u.sheet, u.writes.map((w) => ({ row: w.row, col: w.col, width: w.expect.length })));
-  const back = u.writes.filter((w, m) => sameRow(now[m].values, w.expect, now[m].calc));
+  const back = safeUndo(u.writes.filter((w, m) => sameRow(now[m].values, w.expect, now[m].calc)));
   await writeCells(u.sheet, back.map((w) => ({ cell: w.cell, value: w.old })));
   settings().remove(UNDO_KEY);
   settings().saveAsync();
