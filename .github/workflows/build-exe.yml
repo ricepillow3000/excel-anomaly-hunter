@@ -132,7 +132,12 @@ jobs:
             $asking = Get-Process CHXSmartScreen -ErrorAction SilentlyContinue | Where-Object MainWindowHandle -ne 0   # its box is up: the clicker answers it
             if (-not $p -and -not $asking -and $tries -lt 3 -and $t.Elapsed.TotalSeconds -gt 60 * $tries) {
               $tries++; "nothing on screen after $([int]$t.Elapsed.TotalSeconds) s - double-clicking again (try $tries)"
-              Start-Process explorer.exe -ArgumentList "`"$exe`"" } }
+              Start-Process explorer.exe -ArgumentList "`"$exe`"" }
+            # still nothing after 3 double-clicks: the runner's SmartScreen is broken (2026-10-15, main too), not our app.
+            # Start the file itself - no shell, so no prompt - and say loudly that the warning path went untested
+            if (-not $p -and -not $asking -and $tries -eq 3 -and $t.Elapsed.TotalSeconds -gt 180) {
+              $tries++; "::warning::Windows never showed its SmartScreen box after 3 double-clicks - started AnomalyHunter.exe directly. The install, pane and uninstall are still tested; the 'Run anyway' step is NOT, this run."
+              $p = [Diagnostics.Process]::Start([Diagnostics.ProcessStartInfo]@{ FileName = $exe; UseShellExecute = $false }) } }
           if ($p) { $null = $p.Handle; $done = $p.WaitForExit(300000) }   # (a handle taken while it runs keeps its exit code)
           Start-Sleep 2; Stop-Process $hand -ErrorAction SilentlyContinue
           Get-Content "$proof\clicks.log" -ErrorAction SilentlyContinue
