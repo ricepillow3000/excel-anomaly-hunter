@@ -1,4 +1,5 @@
 import ipaddress
+import re
 import socket
 import threading
 
@@ -9,7 +10,7 @@ from cryptography.x509 import DNSName, IPAddress
 from cryptography.x509.verification import PolicyBuilder, Store, VerificationError
 from werkzeug.serving import make_server
 
-from anomaly_hunter.server import _already_running, create_app, make_cert, tls_context
+from anomaly_hunter.server import _already_running, create_app, make_cert, tls_context, version
 
 
 def test_cert_chain_only_vouches_for_localhost(tmp_path):
@@ -101,6 +102,14 @@ def test_health():
     body = resp.get_json()
     assert body["status"] == "ok"
     assert body["ai_available"] is False  # ANTHROPIC_API_KEY unset in the test environment
+
+
+def test_health_names_the_engine_version_and_its_date(tmp_path):
+    """2026-10-15: a laptop still ran a 3-day-old engine and scored a credit sheet 2 of 279 rows; nothing showed it."""
+    assert re.fullmatch(r"dev [0-9a-f]{7,} \(\d{4}-\d\d-\d\d\)", client().get("/health").get_json()["version"])
+    (tmp_path / "version.txt").write_text("v0.1.30 (2026-10-15)\n")  # the exe build writes the release tag
+    assert version(tmp_path) == "v0.1.30 (2026-10-15)"
+    assert version(tmp_path / "nowhere") == "dev"  # no git, no version file: still answers
 
 
 def test_scan_clean_data_no_anomalies():

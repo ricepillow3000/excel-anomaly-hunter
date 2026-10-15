@@ -741,6 +741,25 @@ def test_the_rows_own_arithmetic_gives_the_fix_for_its_one_odd_cell():
     assert "Qty" not in out[90]["likely"] and out[90]["likely"].get("Unit Price") != round(rows[90][3] / 9999, 2)
 
 
+def test_a_line_total_after_a_discount_that_does_not_add_up_is_flagged_and_its_odd_cell_solved():
+    # order sheets: Total = Units x Unit Price x (1 - Discount). Only 2-column products were checked, so a total off by
+    # 37% passed 3 of 3 blind-bench seeds, and a Discount typed 25 (for 0.25) got the median instead of 0.25
+    r = np.random.default_rng(31)
+    rows = []
+    for i in range(200):
+        u, pr = int(r.choice([1, 2, 3, 4, 5])), round(float(r.uniform(8, 600)), 2)
+        dc = float(r.choice([0, 0, 0, 0.05, 0.1, 0.15, 0.2, 0.25]))
+        rows.append([f"O-{i}", u, pr, dc, round(u * pr * (1 - dc), 2)])
+    rows[17][4] = round(rows[17][4] * 1.37, 2)
+    i = next(k for k in range(100, 200) if rows[k][3] == 0.25)
+    rows[i][3] = 25
+    _, out = _scan(["Order", "Units", "Unit Price", "Discount", "Order Total"], rows)
+    hit = {k for k, o in enumerate(out) if "does not add up" in o["reason"]}
+    assert hit == {17, i}, hit
+    assert "Units × Unit Price × (1 - Discount)" in out[17]["reason"] and out[17]["severity"] in ("Medium", "High")
+    assert out[i]["likely"] == {"Discount": 0.25}
+
+
 def test_a_two_part_sum_is_checked_even_on_a_small_sheet_with_a_typo_elsewhere():
     # 48 months x 5 number columns: under sums' 20-rows-per-column floor "Net New = New + Churned" was never checked,
     # and a x10 typo in New MRR bends its least squares away from 0/1 weights anyway
@@ -804,3 +823,29 @@ def test_two_real_labels_are_not_called_short_forms():
     rows = [[f"x{i}", str(r.choice(["Fee", "Free", "Paid", "Trial"]))] for i in range(120)]
     _, out = _scan(["Id", "Kind"], rows)
     assert not any("short form" in o["reason"] for o in out)
+
+
+def test_a_minus_sign_in_a_count_column_is_not_excused_as_its_tail():
+    # blind bench, On Hand -26 (median 69): stock 0-21 lies between it and halfway back, so the long-tail rule called
+    # it "the column's own tail" and only noted it. A negative where under 1% of the column is negative is a slip
+    r = np.random.default_rng(41)
+    rows = [[f"SKU-{i}", int(r.integers(0, 230))] for i in range(220)]
+    rows[60][1] = -26
+    _, out = _scan(["SKU", "On Hand"], rows)
+    assert "On Hand weird limit is 0; this is -26" in out[60]["reason"] and out[60]["severity"] not in (None, "Noted")
+    assert out[60]["likely"] == {"On Hand": 26}
+
+
+def test_a_x100_slip_in_a_skewed_column_stands_alone_and_votes():
+    # blind bench, First Response 430 hrs for 4.3: response times mixed by priority are skewed, the log-scale weird
+    # limit sat above the slip, and it was only noted. Past the usual limit, alone, with an exact /100 behind it: a typo
+    r = np.random.default_rng(43)
+    med = {"Low": 10, "Normal": 5, "High": 2, "Urgent": 0.6}
+    rows = []
+    for i in range(260):
+        pr = str(r.choice(list(med), p=[.3, .45, .2, .05]))
+        rows.append([f"T-{i}", pr, max(0.1, round(float(r.lognormal(np.log(med[pr]), 0.5)), 1))])
+    rows[33][2] = 510.0  # 5.1 typed x100
+    _, out = _scan(["Ticket", "Priority", "First Response (hrs)"], rows)
+    assert out[33]["severity"] not in (None, "Noted") and out[33]["likely"] == {"First Response (hrs)": 5.1}
+    assert [i for i, o in enumerate(out) if o["severity"] not in (None, "Noted")] == [33]  # the skewed tail stays quiet

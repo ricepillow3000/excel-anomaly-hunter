@@ -32,11 +32,11 @@ accuracy benches. Never commit with a red layer, and never get a gate green by l
 | N/A, ?, -, TBD placeholders | `pipeline.placeholders` | `test_text_checks.py` |
 | Dates far outside the rest (2084) | `pipeline.far_dates` | `test_a_date_far_outside_the_columns_range_is_flagged` |
 | Totals that don't add up (A + B + C) | `pipeline.sums` | `test_a_total_that_does_not_add_up_is_flagged` |
-| Two-column products and sums (Qty × Price, New + Churned), and the exact fix from the row's own arithmetic | `pipeline.pairs`, pane `fix.addUps` | `test_a_line_total_that_is_not_qty_times_price_is_flagged`, `test_the_rows_own_arithmetic_gives_the_fix_for_its_one_odd_cell` |
+| Two-column products and sums (Qty × Price, New + Churned), a product after a discount (Units × Price × (1 - Discount)), and the exact fix from the row's own arithmetic | `pipeline.pairs`, pane `fix.addUps` | `test_a_line_total_that_is_not_qty_times_price_is_flagged`, `test_the_rows_own_arithmetic_gives_the_fix_for_its_one_odd_cell`, `test_a_line_total_after_a_discount_that_does_not_add_up_is_flagged_and_its_odd_cell_solved` |
 | Same label typed differently, misspellings, short forms, lowercase label | `pipeline.spellings` | `test_blindspots.py`, `test_a_short_form_of_several_words_or_a_contraction_is_worth_a_check` |
 | A fraction above 100% | `pipeline.fractions` | `test_blindspots.py` |
 | A value typed into the wrong column | `pipeline.shifted` | `test_text_checks.py` |
-| Values past their column's limits; the typo behind them (x10, %, sign) | `detectors.limits_detector`, `likely_value`, `limits._limits` | `test_engine.py` |
+| Values past their column's limits; the typo behind them (x10, %, sign); a lone slip with an exact x10/x100 behind it past even the usual limit; a stray minus sign never excused as a tail | `detectors.limits_detector`, `likely_value`, `limits._limits` | `test_engine.py`, `test_a_x100_slip_in_a_skewed_column_stands_alone_and_votes`, `test_a_minus_sign_in_a_count_column_is_not_excused_as_its_tail` |
 | Jumps in a dated series (cycles excluded) | `detectors.sequence_detector` | `test_a_repeating_cycle_is_not_a_jump` |
 | Odd combinations across columns | `detectors.isolation_detector` | `test_engine.py` |
 | A top value that is all 9s and over twice the next one (99999 = "missing" / "too big") | `pipeline.codes` | `test_an_all_nines_top_value_is_a_code` |
