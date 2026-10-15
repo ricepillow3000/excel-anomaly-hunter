@@ -24,7 +24,7 @@ jobs:
           cache-dependency-path: pyproject.toml
       - run: pip install -e . pyinstaller==6.22.3 pyinstaller-hooks-contrib==2026.8 pillow==12.3.0
 
-      - name: Build the one file (stamped with its release tag: the pane shows which engine answers)
+      - name: Build the one file, stamped with its release tag (the pane shows which engine answers)
         run: |
           "v0.1.${{ github.run_number }} ($(Get-Date -Format yyyy-MM-dd))" | Set-Content frontend/version.txt
           python -m PyInstaller --noconfirm packaging/AnomalyHunter.spec

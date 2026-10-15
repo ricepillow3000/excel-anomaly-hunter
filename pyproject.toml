@@ -21,7 +21,7 @@ anomaly-hunter = "anomaly_hunter.cli:main"
 anomaly-hunter-server = "anomaly_hunter.server:main"
 
 [project.optional-dependencies]
-dev = ["pytest", "schemathesis==4.28.0", "ruff==0.17.0", "pip-audit==2.10.1"]  # fuzzing (test_fuzz_api.py), security lint + dependency audit (tools/check.py, CI)
+dev = ["pytest", "schemathesis==4.28.0", "ruff==0.17.0", "pip-audit==2.10.1", "pyyaml"]  # fuzzing (test_fuzz_api.py), security lint + dependency audit + workflow parse (tools/check.py, CI)
 
 [build-system]
 requires = ["setuptools>=68"]
