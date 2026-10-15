@@ -51,7 +51,8 @@ if (mode === "flow") {
   // 2) open a row's card, Accept (Agent 3 checks it again, highlight goes), Undo
   await openRow(11);
   ok((await text("#fix-title")) === "Row 11: probably wrong", "fix view titled in words");
-  ok((await text("#fix-reason")) === "Units is -5, below its usual limit of 0", "reason in plain words");
+  ok((await text("#fix-reason")) === "Total 170.43 does not add up: Units × UnitCost = -14.95 · Units is -5, below its usual limit of 0",
+    "reason in plain words - " + (await text("#fix-reason")));
   ok((await text("#fix-changes")).startsWith("C11: -5 → "), "preview old -> new");
   ok(await page.isVisible("#fix-dismiss") && !(await page.isVisible("#fix-next")), "card asks: Accept or Dismiss");
   await page.click("#fix-apply"); await idle();
@@ -123,12 +124,14 @@ if (mode === "flow") {
   const listed5 = (await page.$$("#flagged-list li")).length;
   await slide(5, 0); await idle();
   const listed0 = (await page.$$("#flagged-list li")).length;
-  ok(listed0 < listed5 && (await page.evaluate(() => __settings.anomalyHunterStrength)) === 0 && (await text("#strength-hint")).startsWith("Basics"),
+  ok(listed0 <= listed5 && (await page.evaluate(() => __settings.anomalyHunterStrength)) === 0 && (await text("#strength-hint")).startsWith("Basics"),
     `strength 0 re-checks with the basics only (${listed5} -> ${listed0} rows), saved in the workbook`);
   const basics = await text("#flagged-list");
   // nosemgrep: detect-non-literal-regexp - test code, r is a fixed row number
   const has = (r) => new RegExp(`Row ${r}(?!\\d)`).test(basics);
-  ok([11, 51, 81, 121].every(has) && !has(22), "basics: minus sign, double entry, spelling, blank - not the plain outlier");
+  // row 22's 9999 stays listed, but only because its Total no longer adds up (a basic) - the statistics are gone
+  ok([11, 22, 51, 81, 121].every(has) && basics.includes("does not add up") && !/limit of 105|pattern|jumped/.test(basics),
+    "basics: minus sign, double entry, spelling, blank, a total that doesn't add up - not the statistics");
   // the bug John hit: a check is running (the track was just clicked) and he grabs the thumb - it must still drag,
   // and the level he lets go at is the one the sheet ends up checked with
   await page.click("#scan");

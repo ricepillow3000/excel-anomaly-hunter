@@ -103,6 +103,17 @@ assert.ok(rec.explanation.includes("repeats row 6"), "duplicate row number shift
 rec = recommendFix(cols, data, 0, null, 'Flagged by 1 of 4: Duplicate of row 2; Text "12O" in number column Units', 0, 0);
 assert.ok(rec.explanation.includes("repeats row 2") && rec.explanation.includes('Units holds the text "12O"'), rec.explanation);
 assert.deepEqual(recommendFix(cols, [["a", "b", 999]], 0, lim, "Units weird limit is 120; this is 999", 0, 0).changes, [], "one data row: nothing to take a median of");
+// the row's own arithmetic gives the value (the engine solved Total ÷ UnitCost): that is the fix, and the card says why
+const ac = ["Units", "UnitCost", "Total"], ad = [[57, 2.99, 170.43], [-5, 2.99, 170.43], [49, 2.99, 146.51]];
+rec = recommendFix(ac, ad, 1, { Units: [30, 70, 0, 100] }, "Units weird limit is 0; this is -5; Total 170.43 does not add up: Units × UnitCost = -14.95", 0, 0, { Units: 57 });
+assert.deepEqual(rec.changes, [{ cell: "A3", new: "57" }]);
+assert.ok(rec.explanation.startsWith("Units is -5 - the row's own numbers say 57 (Total 170.43 = Units × UnitCost)"), rec.explanation);
+assert.equal(rec.guess, false, "arithmetic is not a guess");
+// a total that doesn't add up, no single cell out of range: say which numbers disagree, never "nothing is broken"
+rec = recommendFix(ac, ad, 0, { Units: [30, 70, 0, 100] }, "Total 200 does not add up: Units × UnitCost = 170.43", 0, 0);
+assert.deepEqual(rec.changes, []);
+assert.ok(rec.explanation.startsWith("Total 200 does not add up: Units × UnitCost = 170.43 - one of these numbers is wrong") &&
+  !rec.explanation.includes("Nothing here"), rec.explanation);
 
 // header below title rows; numeric year headers kept; dates converted using the first DATA row's format
 let tg = tableFromGrid([["Cost Report"], ["Period 9"], [""], ["Code", "Item", "Budget"], ["03-1", "Pour", 500], ["03-2", "Form", 700]],

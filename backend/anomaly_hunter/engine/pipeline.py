@@ -1,5 +1,7 @@
 """Score a loaded DataFrame: 3 detector votes + hygiene facts -> severity, bucket, reason per row.
 Shared by CLI and server."""
+import itertools
+
 import numpy as np
 import pandas as pd
 
@@ -140,6 +142,55 @@ def sums(df, column_types, skip):
     return out
 
 
+def _decimals(x):
+    """How many decimals a column is written with: the fewest that hold 95% of its values (0 = whole numbers)."""
+    x = x[np.isfinite(x)]
+    return next((d for d in range(7) if (np.abs(x - np.round(x, d)) < 1e-9).mean() >= 0.95), 6)
+
+
+def pairs(df, column_types, skip, limits=None):
+    """A column that is two others multiplied or added in >= 95% of rows (Line Total = Qty x Unit Price, Net New =
+    New + Churned): the other rows don't add up. Tried pair by pair, so a x10 typo elsewhere can't bend it the way it
+    bends sums' least squares, and small sheets (48 months) are checked too. To the cent, like sums; both columns must
+    vary (x 1, or x a 0/1 flag, is no rule). Pairs are tried on a 64-row sample first, so a 50-column sheet stays fast.
+    -> (reasons, fixes). A broken row with exactly ONE cell outside its usual range gets that cell solved from the
+    other two (Units -5 with Total 170.43 = Units x 2.99 -> 57) when the answer is a usual value written like its
+    column: exact, where the pane would otherwise offer the median. Two odd cells: the arithmetic can't say which."""
+    out, fix = [[] for _ in range(len(df))], [{} for _ in range(len(df))]
+    cols = numbers(column_types)
+    a = df[cols][~skip].to_numpy(dtype=float)
+    index = df.index[~skip]
+    if len(cols) < 3 or len(a) < 20:
+        return out, fix
+    bounds = lambda j: (limits or {}).get(cols[j]) or (None, None, None, None)
+    usual = lambda j, v: (bounds(j)[0] is None or v >= bounds(j)[0]) and (bounds(j)[1] is None or v <= bounds(j)[1])
+    vary = [j for j in range(len(cols)) if len(np.unique(a[:, j][~np.isnan(a[:, j])])) >= 3]
+    near = lambda y, got: np.abs(y - got) <= np.maximum(0.011, 1e-6 * np.abs(y))  # 1 cent + float slack
+    sample = a[:64]
+    for (p, q), (sign, op) in itertools.product(itertools.combinations(vary, 2), (("×", np.multiply), ("+", np.add))):
+        hits = near(sample, op(sample[:, p], sample[:, q])[:, None]).mean(axis=0)
+        for t in np.flatnonzero(hits >= 0.8):
+            if t in (p, q):
+                continue
+            y, got = a[:, t], op(a[:, p], a[:, q])
+            ok = ~np.isnan(y) & ~np.isnan(got)
+            good = ok & near(y, got)
+            if (good & (y != 0)).sum() < 20 or good.sum() < 0.95 * ok.sum():
+                continue
+            for i in np.flatnonzero(ok & ~good):
+                out[index[i]].append(f"{cols[t]} {y[i]:g} does not add up: {cols[p]} {sign} {cols[q]} = {got[i]:.10g}")
+                odd = [j for j in (t, p, q) if not usual(j, a[i, j])]
+                if len(odd) != 1:
+                    continue
+                j = odd[0]
+                other = a[i, q] if j == p else a[i, p]
+                v = got[i] if j == t else y[i] - other if sign == "+" else y[i] / other if other else np.nan
+                d = _decimals(a[:, j])
+                if np.isfinite(v) and abs(v - np.round(v, d)) < 0.01 * 10.0 ** -d + 1e-9 * abs(v) and usual(j, np.round(v, d)):
+                    fix[index[i]][cols[j]] = float(f"{np.round(v, d):.10g}")
+    return out, fix
+
+
 def _one_edit(a, b):
     """a and b are the same length and differ by one wrong letter or two neighbours swapped. An added or dropped
     letter is left out on purpose: too often a different word (Laptop/Laptops, Sara/Sarah, Jon/John)."""
@@ -147,6 +198,19 @@ def _one_edit(a, b):
         return False
     d = [k for k in range(len(a)) if a[k] != b[k]]
     return len(d) == 1 or (len(d) == 2 and d[1] == d[0] + 1 and a[d[0]] == b[d[1]] and a[d[1]] == b[d[0]])
+
+
+def _short_for(short, label):
+    """Is short a short form of label (both casefolded)? See spellings()."""
+    w, v = short.split(), label.split()
+    if len(w) > 1:
+        return len(w) == len(v) and all(b.startswith(a) for a, b in zip(w, v))
+    if label.startswith(short):
+        return len(short) <= 4
+    # a contraction keeps the word's first and last letters (Std, Mgmt, Dept, Bldg): "Iran" is not one of "Ireland"
+    rest = iter(label[1:])
+    return (len(short) <= 4 and short[0] == label[0] and short[-1] == label[-1]
+            and sum(ch in "aeiou" for ch in short[1:]) <= 1 and all(ch in rest for ch in short[1:]))
 
 
 def spellings(df, column_types, skip):
@@ -194,10 +258,12 @@ def spellings(df, column_types, skip):
             for i in keys.index[keys == rare]:
                 missed[i].append(f'{col} "{_short(s[i])}" looks like a misspelling of "{_short(word)}"')
                 maybe[i][col] = word
-        # a short form ("EMP" for "Employed"): 2-4 letters that start exactly one other label (5+ rows, 2+ letters longer)
+        # a short form of exactly one other label (5+ rows, 2+ letters longer): its start ("EMP" for "Employed"), each
+        # word's start ("In Prog" for "In Progress"), or a contraction ("Std" for "Standard": same first letter, the rest
+        # in order, at most one vowel - "Fee" is not short for "Free")
         for short in cnt.index:
-            longer = [u for u, m in cnt.items() if m >= 5 and len(u) >= len(short) + 2 and u.startswith(short)]
-            if 2 <= len(short) <= 4 and short.isalpha() and len(longer) == 1:
+            longer = [u for u, m in cnt.items() if m >= 5 and len(u) >= len(short) + 2 and _short_for(short, u)]
+            if 2 <= len(short.replace(" ", "")) <= 6 and short.replace(" ", "").isalpha() and len(longer) == 1:
                 for i in keys.index[keys == short]:
                     missed[i].append(f'{col} "{_short(s[i])}" looks like a short form of "{_short(rights[longer[0]])}"')
                     maybe[i][col] = rights[longer[0]]
@@ -299,7 +365,9 @@ def score(df, column_types, errors_log, limits, order_by, strength=5):
     # DBSCAN cut 2026-10-07: 90s/100k rows, 81% false alarms, bench same without it
     ran = [d for d in dets.values() if d["ran"]]
     dup, typ, blank = duplicates(df), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
-    hole, far, add = placeholders(df, column_types, skip), far_dates(df, column_types, skip), sums(df, column_types, skip)
+    hole, far = placeholders(df, column_types, skip), far_dates(df, column_types, skip)
+    paired, solved = pairs(df, column_types, skip, limits)
+    add = [list(dict.fromkeys(s + m)) for s, m in zip(sums(df, column_types, skip), paired, strict=True)]
     code = codes(df, column_types, skip)
     spell, spell_fix, missed, spell_maybe, spell_exact = spellings(df, column_types, skip)
     missed = [m + s + f for m, s, f in zip(missed, shifted(df, column_types, skip), fractions(df, column_types, skip),
@@ -323,7 +391,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5):
             "bucket": "Duplicates" if dup[i] else "Irregularities" if weird or typ[i] or blank[i] or hole[i] or code[i] or far[i] or add[i] or spell[i] or missed[i] else "Behavioral",
             "reason": (f"Flagged by {v} of {len(ran)}: " if v else "") + "; ".join(dict.fromkeys(hygiene + missed[i] + [r for d in voted for r in d["reasons"][i]])),  # dedupe, keep order
             "magnitude": float(max((d["magnitude"][i] for d in voted), default=0.0)),
-            "likely": {**lim["likely"][i], **spell_fix[i]},
+            "likely": {**lim["likely"][i], **solved[i], **spell_fix[i]},  # the row's own arithmetic beats a typo pattern
             "maybe": spell_maybe[i],  # misspelling: a guess the user confirms
             "exact": spell_exact[i],  # capitals/spaces where the usual spelling is 5x as common: safe to auto-fix
         })

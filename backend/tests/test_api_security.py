@@ -23,6 +23,21 @@ def test_every_route_refuses_other_websites(path, method):
         assert c.open(path, method=method, headers=h, json={}).status_code == 403, h
 
 
+# shapes the fuzzer can't generate (it sends well-formed JSON): not JSON, the wrong JSON type, nested past Python's
+# parser (was a 500 on every route), a number past Python's 4300-digit limit
+HOSTILE = ["{bad", "[]", "null", '"x"', "[" * 100000 + "]" * 100000, '{"columns":["A"],"rows":[[' + "9" * 5000 + "]]}"]
+
+
+@pytest.mark.parametrize("path", sorted({p for p, m in ROUTES if m == "POST"}))
+def test_every_post_route_answers_a_hostile_body_with_a_clear_4xx(path, monkeypatch):
+    """New routes are covered automatically, like the test above."""
+    monkeypatch.setattr(client, "api_key_configured", lambda: True)  # AI routes check the body before the key
+    c = APP.test_client()
+    for raw in HOSTILE:
+        r = c.post(path, data=raw, content_type="application/json")
+        assert 400 <= r.status_code < 500 and r.is_json, (path, raw[:20], r.status_code)
+
+
 @pytest.mark.parametrize("path", ["/../pyproject.toml", "/%2e%2e/pyproject.toml", "/..%2fpyproject.toml",
                                   "/../backend/anomaly_hunter/ai/client.py", "/C:/Windows/win.ini"])
 def test_no_file_outside_the_pane_is_served(path):
@@ -86,6 +101,13 @@ def test_power_bi_csv_never_carries_a_live_formula(tmp_path):
 def test_an_odd_character_never_turns_a_scan_into_a_500(tmp_path):
     raw = json.dumps({**SHEET, "rows": SHEET["rows"] + [["ab\ud800", 12]]})  # a lone surrogate, valid JSON
     r = create_app(scan_csv=tmp_path / "s.csv").test_client().post("/scan", data=raw, content_type="application/json")
+    assert r.status_code == 200
+
+
+def test_a_number_too_big_for_a_float_never_turns_a_scan_into_a_500(tmp_path):
+    # a 309-digit whole number is a valid (flagged) value, but the Power BI CSV's DataFrame can't hold it as a float
+    rows = SHEET["rows"] + [["Pen", 10 ** 309]]
+    r = create_app(scan_csv=tmp_path / "s.csv").test_client().post("/scan", json={**SHEET, "rows": rows})
     assert r.status_code == 200
 
 

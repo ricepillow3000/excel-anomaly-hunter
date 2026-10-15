@@ -37,6 +37,7 @@ def test_fix_route_validates_before_calling_claude(monkeypatch):
     monkeypatch.setattr(client, "suggest_fix", lambda *a: 1 / 0)  # must never be reached
     for bad in ({**BODY, "row_index": 3}, {**BODY, "row_index": -1}, {**BODY, "row_index": True},
                 {**BODY, "start_col": "A"}, {**BODY, "intent": "x" * 2001}, {**BODY, "intent": 5},
+                {**BODY, "start_col": 16384 - len(COLS) + 1},  # past Excel's last column XFD: was a 502
                 {**BODY, "rows": [[1]]}, [1]):
         assert post(bad).status_code == 400, bad
 

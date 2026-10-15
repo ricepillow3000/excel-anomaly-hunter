@@ -1,5 +1,7 @@
 # excel-anomaly-hunter
 Excel add-in that flags abnormal rows and tells useful-weird from broken-weird. Never deletes data.
+Your sheet is checked on your own PC; nothing leaves it unless you turn on AI help - see [What leaves your PC](PRIVACY.md).
+Questions or problems: [open an issue](https://github.com/ricepillow3000/excel-anomaly-hunter/issues).
 
 ## Install (Windows + desktop Excel, nothing else needed)
 1. **[Download AnomalyHunter.exe](https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest/download/AnomalyHunter.exe)**
@@ -66,6 +68,9 @@ No-Excel mode: `anomaly-hunter scan data.csv`.
 - `backend/anomaly_hunter/` the local server (127.0.0.1:5055): `server.py` (routes), `engine/` (detection), `ai/client.py` (Gemini / Claude); `backend/tests/`, `backend/bench/`.
 - `e2e/` browser tests · `powerbi/` Power BI source · `docs/` design notes.
 
-**Test:** `pip install -e .[dev]` then `pytest backend/tests` and `node frontend/selfcheck.js`. Industry benchmark (15 fields + held-out
-traps, real pane + engine, pass/fail gates): `python backend/bench/score.py .` Browser test (real panel + engine, fake Excel;
-needs node + playwright; stop the installed engine first, it uses port 5055): `e2e/all.sh`
+**Test:** `pip install -e .[dev]` then `python tools/check.py` - every gate in layers, fastest first: security lint, pane
+self-check, relay abuse tests, engine tests + fuzzing, both accuracy benchmarks, dependency audit (`--e2e` adds the browser
+test). Industry benchmark alone (15 fields + held-out traps, real pane + engine, pass/fail gates): `python backend/bench/score.py .`;
+`--blind` scores 14 more domains written without reading the detector. Browser test (real panel + engine, fake Excel; needs
+node + playwright; stop the installed engine first, it uses port 5055): `e2e/all.sh`. Code map, layers and patterns for the
+next change: `CLAUDE.md`. Security and launch items with evidence: `docs/security-and-launch-checklist.md`.

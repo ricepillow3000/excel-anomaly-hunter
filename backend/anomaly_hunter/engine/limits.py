@@ -44,6 +44,19 @@ def suggest_limits_dict(df, number_columns, k=6):
     return out
 
 
+def _end_of_run(x, limit, gap):
+    """A weird limit that cuts through a run of honest values (bank Amount: a quarter of rows are deposits spread up
+    to +3200, "weird" at 2700) -> the run's end: from the last value inside, step to each next one while it is within
+    gap (one spread). A typo (x10, x100) sits far past the run, so it stays weird."""
+    inside, past = x[x <= limit], np.sort(x[x > limit].to_numpy(dtype=float))
+    end = inside.max() if len(inside) else limit
+    for v in past:
+        if v - end > gap:
+            break
+        end = v
+    return max(limit, end)
+
+
 def _limits(x, k):
     """One column's (b_lo, b_hi, w_lo, w_hi) - see suggest_limits_dict."""
     med, sd = float(x.median()), spread(x)
@@ -65,6 +78,9 @@ def _limits(x, k):
         low = 10 ** (logs.median() - max(6 * spread(logs), math.log10(15)))
         v[2] = max(v[2], _round(low, 10 ** math.floor(math.log10(low)), False))  # its own scale: 57 -> 50, not 0
         v[0] = max(v[0], v[2])  # baseline is never tighter than weird
+    if (x >= 0).mean() < 0.95:  # signed columns only: in a positive one, 0 and "15x below typical" are hard bounds
+        v[3] = max(v[3], _round(_end_of_run(x, v[3], sd), step, True))
+        v[2] = min(v[2], _round(-_end_of_run(-x, -v[2], sd), step, False))
     if not all(math.isfinite(t) for t in v):  # an infinite limit can't even be sent to the pane as JSON
         raise ValueError("no usual range")
     return tuple(v)

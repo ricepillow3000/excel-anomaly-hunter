@@ -30,6 +30,11 @@ export function spansDecade(xs) {
   return v.length >= 10 && v[Math.floor(0.95 * (v.length - 1))] > 10 * v[Math.floor(0.05 * (v.length - 1))];
 }
 
+// Pure: the reason's "Total 170.43 does not add up: Units × UnitCost = -14.95" parts -> [{text, total, rule, cols}]
+export const addUps = (reason) => String(reason || "").replace(/^Flagged by \d+ of \d+: /, "").split("; ")
+  .map((s) => /^(.+) (\S+) does not add up: ((.+?) [×+] (.+)) = \S+$/.exec(s)).filter(Boolean)
+  .map((m) => ({ text: m[0], total: `${m[1]} ${m[2]}`, rule: m[3], cols: [m[1], m[4], m[5]] }));
+
 // Pure: instant fix for a flagged row, no AI. A number past its weird limits, or a blank in a mostly-filled
 // number column -> the median of the OTHER rows' values in that column, written as a plain number (a formula
 // over the column could loop back through a totals row = circular reference). Anything else -> advice only.
@@ -40,6 +45,7 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
   const changes = [], why = [], typos = [], real = [], calcCells = [], seen = new Set(); // seen: columns already explained
   let guessed = false; // a misspelling's fix is a guess too
   reason = reason || "";
+  const sums = addUps(reason), solved = new Set(); // solved: columns the row's own arithmetic fixed
   columns.forEach((c, j) => {
     const v = rows[i][j], cell = `${colLetter(startCol + j)}${row}`;
     const lim = limits && limits[c], lo = lim && lim[2], hi = lim && lim[3];
@@ -48,7 +54,9 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
     const blank = !!lim && (v === "" || v === null) && reason.includes(`Blank cell in column ${c},`);
     // only a value the engine flagged: it never votes on a regular repeated value (a 5.76 toll), so neither do we
     const outside = !!lim && typeof v === "number" && ((lo != null && v < lo) || (hi != null && v > hi)) && reason.includes(`${c} weird limit is`);
-    if (!(variant || miss || blank || outside)) return;
+    // the engine solved this cell from a total that doesn't add up (Total ÷ UnitCost): exact, not a median
+    const sum = typeof v === "number" && likely && likely[c] != null ? sums.find((s) => s.cols.includes(c)) : null;
+    if (!(variant || miss || blank || outside || sum)) return;
     seen.add(c);
     if (calc && String(calc[j]).startsWith("=")) return void calcCells.push(cell); // never type over a formula
     if (variant) {
@@ -61,6 +69,11 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
       return void typos.push(`${c} says "${v}" - probably a misspelling of "${maybe[c]}", one letter off`);
     }
     const typo = likely && likely[c];
+    if (sum) {
+      changes.push({ cell, new: String(typo) });
+      solved.add(c);
+      return void typos.push(`${c} is ${v} - the row's own numbers say ${typo} (${sum.total} = ${sum.rule})`);
+    }
     if (typo != null && outside) { // engine spotted an obvious typo: extra/missing zeros or a flipped sign
       changes.push({ cell, new: String(typo) });
       return void typos.push(`${c} is ${v} - looks like a typo for ${typo} (${typoKind(v, typo)})`);
@@ -97,6 +110,8 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
   for (const [, err, col] of reason.matchAll(/Excel error (#\S+) in ([^;]+)/g))
     notes.push(`${col} shows ${err}: ${EXCEL_ERRORS[err] || "its formula failed"}. Fix the formula or its inputs ` +
       `(or wrap it in IFERROR(...)) rather than typing a number over it.`);
+  for (const s of sums.filter((s) => !s.cols.some((c) => solved.has(c))))
+    notes.push(`${s.text} - one of these numbers is wrong. Check them against the source.`);
   if (!notes.length)
     notes.push("Nothing here is clearly broken - the values are just unusual together. Check them against the source; if they're right, leave them.");
   return { explanation: notes.join(" "), changes, guess: why.length > 0 || guessed }; // guess = a median or a misspelling's fix
