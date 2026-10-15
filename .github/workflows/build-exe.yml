@@ -125,9 +125,14 @@ jobs:
           $t = [Diagnostics.Stopwatch]::StartNew()
           Start-Process explorer.exe -ArgumentList "`"$exe`""
           $p = $null   # the first AnomalyHunter.exe from Downloads (one-file apps start a second copy of themselves)
-          while (-not $p -and $t.Elapsed.TotalSeconds -lt 240) {
+          $tries = 1   # Windows' SmartScreen app sometimes never opens on a fresh runner (2026-10-15: 3 of ~10 runs), so
+          while (-not $p -and $t.Elapsed.TotalSeconds -lt 300) {   # nothing starts and nothing asks: a person double-clicks again
             Start-Sleep -Milliseconds 500
-            $p = Get-Process AnomalyHunter -ErrorAction SilentlyContinue | Where-Object Path -eq $exe | Sort-Object StartTime | Select-Object -First 1 }
+            $p = Get-Process AnomalyHunter -ErrorAction SilentlyContinue | Where-Object Path -eq $exe | Sort-Object StartTime | Select-Object -First 1
+            $asking = Get-Process CHXSmartScreen -ErrorAction SilentlyContinue | Where-Object MainWindowHandle -ne 0   # its box is up: the clicker answers it
+            if (-not $p -and -not $asking -and $tries -lt 3 -and $t.Elapsed.TotalSeconds -gt 60 * $tries) {
+              $tries++; "nothing on screen after $([int]$t.Elapsed.TotalSeconds) s - double-clicking again (try $tries)"
+              Start-Process explorer.exe -ArgumentList "`"$exe`"" } }
           if ($p) { $null = $p.Handle; $done = $p.WaitForExit(300000) }   # (a handle taken while it runs keeps its exit code)
           Start-Sleep 2; Stop-Process $hand -ErrorAction SilentlyContinue
           Get-Content "$proof\clicks.log" -ErrorAction SilentlyContinue
