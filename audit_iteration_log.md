@@ -201,6 +201,10 @@ Three phases, each scored 0-10 by a strict non-technical user. Below 8 means fix
      - "Anomaly Hunter is installed ... Start here" (OK).
      - **37 s from the double-click to installed, warnings included.** The internet mark is gone from the installed copy. Pane flow passes in Edge. Uninstall leaves nothing.
      - "Pick an app" appeared only because the runner has no Excel to open Start here.xlsx.
+  5. **A re-run of the same app hung** (`7230c17`, a docs-only commit). That "Pick an app" was a real installer bug.
+     - Asking Windows to open an .xlsx on a PC with no Excel can hold the installer until someone picks an app. The "installed" message never came, and it timed out at 310 s.
+     - The passing run had only won the race.
+     - Fix: `app.excel_exe()` finds desktop Excel where Windows registers it (App Paths) and starts it with the workbook. With no Excel, the message says where Start here.xlsx is. It never asks Windows to guess. Tested with a stand-in registry.
 - **Found on the way and fixed:** the installed copy kept the download's internet mark. That copy runs at every logon, so Windows could warn at each boot. The installer now removes the mark from its own copy, and CI checks it.
 - **Score 8/10:** one link, then one SmartScreen box (2 clicks), then one certificate Yes, then OK, in under a minute. The README names each box before it appears.
   - Not higher, because SmartScreen's Run anyway hides behind More info, and the certificate text is scary. Only code signing removes SmartScreen (Azure Trusted Signing is about $10/month): a cost decision for John.

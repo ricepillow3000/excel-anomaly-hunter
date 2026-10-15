@@ -93,6 +93,21 @@ def reg_delete(key, name=None):
         pass
 
 
+def excel_exe():
+    """Desktop Excel's own path, where Windows registers it (App Paths), or None. Asking Windows to "open" an .xlsx
+    instead shows "Pick an app" on a PC with no Excel and can hold the installer until someone picks one."""
+    import winreg
+    for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        try:
+            with winreg.OpenKey(root, r"Software\Microsoft\Windows\CurrentVersion\App Paths\excel.exe") as k:
+                path = Path(str(winreg.QueryValue(k, None)).strip('"'))
+        except OSError:
+            continue
+        if path.name.lower() == "excel.exe" and path.exists():
+            return path
+    return None
+
+
 def install():
     home, exe = server.HOME, server.HOME / APP
     while excel_open():  # Excel reads the add-in list when it starts
@@ -154,15 +169,13 @@ def install():
     # Excel opens on "Start here": the 5 clicks that add it stay on screen while the user does them (a message box is
     # gone after one click), and a Practice sheet shows what a scan finds
     start = practice.make(home / "Start here.xlsx")
-    for target in (start, "excel.exe"):  # Excel by the name Windows registers for it (App Paths), if .xlsx isn't Excel's
-        try:
-            os.startfile(target)  # noqa: S606 - our own workbook, or Excel itself
-            break
-        except OSError:
-            continue  # no desktop Excel registered: the message below still says what to do
-    say("Anomaly Hunter is installed.\n\nExcel is opening a \"Start here\" workbook: follow its 5 steps to add Anomaly "
-        "Hunter to Excel (first time only), then try it on the Practice sheet.\n\nIn Excel: Home > Add-ins > More Add-ins "
-        "> SHARED FOLDER > Anomaly Hunter > Add.")
+    excel = excel_exe()
+    if excel:  # Excel itself, given the workbook: never a "Pick an app" question, never waits on Excel
+        subprocess.Popen([str(excel), str(start)], creationflags=0x00000008)  # noqa: S603 - DETACHED_PROCESS
+    say("Anomaly Hunter is installed.\n\n" + ("Excel is opening a \"Start here\" workbook: follow its 5 steps to add Anomaly "
+        "Hunter to Excel (first time only), then try it on the Practice sheet." if excel else
+        f"Desktop Excel wasn't found. Once it is installed, open {start}: it shows the 5 steps.") +
+        "\n\nIn Excel: Home > Add-ins > More Add-ins > SHARED FOLDER > Anomaly Hunter > Add.")
     return 0
 
 
