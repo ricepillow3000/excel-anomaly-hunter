@@ -206,5 +206,5 @@ jobs:
           sum=$(sha256sum dist/AnomalyHunter.exe | cut -d' ' -f1)
           gh release create "$TAG" dist/AnomalyHunter.exe --repo "$REPO" --target "$SHA" --latest \
             --title "Anomaly Hunter ${TAG#v}" \
-            --notes "Download AnomalyHunter.exe below and double-click it. Windows warns about files from the internet: click Run (or More info > Run anyway), then Yes on the certificate question. Tested on a fresh Windows PC before publishing. SHA-256: $sum"
+            --notes "Download AnomalyHunter.exe below and double-click it. A blue \"Windows protected your PC\" box appears: click More info, then Run anyway (some PCs ask \"Open File - Security Warning\" instead: click Run). Then click Yes on the certificate question. Tested on a fresh Windows PC before publishing. SHA-256: $sum"
           echo "published $TAG: https://github.com/$REPO/releases/latest/download/AnomalyHunter.exe ($sum)"
