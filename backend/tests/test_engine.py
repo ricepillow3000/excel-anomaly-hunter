@@ -741,6 +741,25 @@ def test_the_rows_own_arithmetic_gives_the_fix_for_its_one_odd_cell():
     assert "Qty" not in out[90]["likely"] and out[90]["likely"].get("Unit Price") != round(rows[90][3] / 9999, 2)
 
 
+def test_a_line_total_after_a_discount_that_does_not_add_up_is_flagged_and_its_odd_cell_solved():
+    # order sheets: Total = Units x Unit Price x (1 - Discount). Only 2-column products were checked, so a total off by
+    # 37% passed 3 of 3 blind-bench seeds, and a Discount typed 25 (for 0.25) got the median instead of 0.25
+    r = np.random.default_rng(31)
+    rows = []
+    for i in range(200):
+        u, pr = int(r.choice([1, 2, 3, 4, 5])), round(float(r.uniform(8, 600)), 2)
+        dc = float(r.choice([0, 0, 0, 0.05, 0.1, 0.15, 0.2, 0.25]))
+        rows.append([f"O-{i}", u, pr, dc, round(u * pr * (1 - dc), 2)])
+    rows[17][4] = round(rows[17][4] * 1.37, 2)
+    i = next(k for k in range(100, 200) if rows[k][3] == 0.25)
+    rows[i][3] = 25
+    _, out = _scan(["Order", "Units", "Unit Price", "Discount", "Order Total"], rows)
+    hit = {k for k, o in enumerate(out) if "does not add up" in o["reason"]}
+    assert hit == {17, i}, hit
+    assert "Units × Unit Price × (1 - Discount)" in out[17]["reason"] and out[17]["severity"] in ("Medium", "High")
+    assert out[i]["likely"] == {"Discount": 0.25}
+
+
 def test_a_two_part_sum_is_checked_even_on_a_small_sheet_with_a_typo_elsewhere():
     # 48 months x 5 number columns: under sums' 20-rows-per-column floor "Net New = New + Churned" was never checked,
     # and a x10 typo in New MRR bends its least squares away from 0/1 weights anyway

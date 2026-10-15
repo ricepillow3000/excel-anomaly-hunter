@@ -150,7 +150,8 @@ def _decimals(x):
 
 def pairs(df, column_types, skip, limits=None):
     """A column that is two others multiplied or added in >= 95% of rows (Line Total = Qty x Unit Price, Net New =
-    New + Churned): the other rows don't add up. Tried pair by pair, so a x10 typo elsewhere can't bend it the way it
+    New + Churned), or two multiplied after a 0-1 discount (Units x Unit Price x (1 - Discount)): the other rows don't
+    add up. Tried pair by pair, so a x10 typo elsewhere can't bend it the way it
     bends sums' least squares, and small sheets (48 months) are checked too. To the cent, like sums; both columns must
     vary (x 1, or x a 0/1 flag, is no rule). Pairs are tried on a 64-row sample first, so a 50-column sheet stays fast.
     -> (reasons, fixes). A broken row with exactly ONE cell outside its usual range gets that cell solved from the
@@ -167,24 +168,38 @@ def pairs(df, column_types, skip, limits=None):
     vary = [j for j in range(len(cols)) if len(np.unique(a[:, j][~np.isnan(a[:, j])])) >= 3]
     near = lambda y, got: np.abs(y - got) <= np.maximum(0.011, 1e-6 * np.abs(y))  # 1 cent + float slack
     sample = a[:64]
-    for (p, q), (sign, op) in itertools.product(itertools.combinations(vary, 2), (("×", np.multiply), ("+", np.add))):
-        hits = near(sample, op(sample[:, p], sample[:, q])[:, None]).mean(axis=0)
+    rules = [((p, q), f"{cols[p]} {sign} {cols[q]}", op) for (p, q), (sign, op) in
+             itertools.product(itertools.combinations(vary, 2), (("×", np.multiply), ("+", np.add)))]
+    # order sheets: Units x Unit Price x (1 - Discount). The fraction column is 0 to 1 in 99% of rows, so one
+    # Discount typed 25 for 0.25 doesn't hide the rule it breaks
+    fracs = [j for j in vary if np.nanmin(a[:, j]) >= 0 and np.nanquantile(a[:, j], 0.99) < 1]
+    rules += [((p, q, f), f"{cols[p]} × {cols[q]} × (1 - {cols[f]})", lambda x, y, z: x * y * (1 - z))
+              for p, q in itertools.combinations([j for j in vary if j not in fracs], 2) for f in fracs]
+    for cs, said, op in rules:
+        hits = near(sample, op(*(sample[:, c] for c in cs))[:, None]).mean(axis=0)
         for t in np.flatnonzero(hits >= 0.8):
-            if t in (p, q):
+            if t in cs:
                 continue
-            y, got = a[:, t], op(a[:, p], a[:, q])
+            y, got = a[:, t], op(*(a[:, c] for c in cs))
             ok = ~np.isnan(y) & ~np.isnan(got)
             good = ok & near(y, got)
             if (good & (y != 0)).sum() < 20 or good.sum() < 0.95 * ok.sum():
                 continue
             for i in np.flatnonzero(ok & ~good):
-                out[index[i]].append(f"{cols[t]} {y[i]:g} does not add up: {cols[p]} {sign} {cols[q]} = {got[i]:.10g}")
-                odd = [j for j in (t, p, q) if not usual(j, a[i, j])]
+                out[index[i]].append(f"{cols[t]} {y[i]:g} does not add up: {said} = {got[i]:.10g}")
+                odd = [j for j in (t, *cs) if not usual(j, a[i, j])]
                 if len(odd) != 1:
                     continue
                 j = odd[0]
-                other = a[i, q] if j == p else a[i, p]
-                v = got[i] if j == t else y[i] - other if sign == "+" else y[i] / other if other else np.nan
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    if j == t:
+                        v = got[i]
+                    elif op is np.add:
+                        v = y[i] - a[i, cs[1] if j == cs[0] else cs[0]]
+                    elif len(cs) == 3 and j == cs[2]:  # the fraction: 1 - Total / (Units x Price)
+                        v = 1 - y[i] / (a[i, cs[0]] * a[i, cs[1]])
+                    else:  # one factor: Total / the others
+                        v = y[i] / np.prod([a[i, c] if k < 2 else 1 - a[i, c] for k, c in enumerate(cs) if c != j])
                 d = _decimals(a[:, j])
                 if np.isfinite(v) and abs(v - np.round(v, d)) < 0.01 * 10.0 ** -d + 1e-9 * abs(v) and usual(j, np.round(v, d)):
                     fix[index[i]][cols[j]] = float(f"{np.round(v, d):.10g}")
