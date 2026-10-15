@@ -138,6 +138,10 @@ const wide = [["a", 100], ["b", 900], ["c", 15000], ["d", 2200], ["e", 400], ["f
 rec = recommendFix(["Id", "Paid"], wide, 10, { Paid: [0, 20000, 0, 40000] }, "Paid weird limit is 40000; this is 999999", 0, 0);
 assert.deepEqual(rec.changes, [], "a huge value in a naturally wide column is not overwritten");
 assert.ok(rec.explanation.includes("may be real"), rec.explanation);
+// a lone x10 slip the engine flags past the USUAL limit (inside a skewed column's wide weird one): its typo fix
+// stands - the pane checked only the weird limit, so Balance 169946 for 16994.65 got "may be real", no fix (2026-10-15)
+rec = recommendFix(["Id", "Paid"], wide, 10, { Paid: [0, 20000, 0, 2000000] }, "Paid weird limit is 20000; this is 999999 (likely 99999.9)", 0, 0, { Paid: 99999.9 });
+assert.deepEqual(rec.changes, [{ cell: "B12", new: "99999.9" }], "the engine's typo fix past the usual limit is offered");
 
 // a formula cell is never overwritten: its inputs are what's wrong
 rec = recommendFix(cols, data, 1, lim, "Units weird limit is 0; this is -5 (likely 5)", 0, 0, { Units: 5 }, ["", "", "=A3*2"]);
