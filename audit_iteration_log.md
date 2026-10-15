@@ -190,7 +190,20 @@ Three phases, each scored 0-10 by a strict non-technical user. Below 8 means fix
 - **Change:**
   - A `release` job publishes AnomalyHunter.exe as the latest GitHub Release, on main only and only after the fresh-PC job installed and used that exact file. The README's step 1 is now one direct link.
   - The fresh-PC job puts the Mark of the Web on the file. The clicker answers "Open File - Security Warning" -> Run and SmartScreen -> More info -> Run anyway, and logs every window that appears.
-- **Still there:** the exe is unsigned, so Windows warns once and Edge may ask to "Keep". Only code signing removes that; it is a cost decision for John.
+- **Getting the test to see what a user sees:** 4 CI rounds. All were test bugs, not app bugs.
+  1. `Start-Process` opens files with Windows' "no UI" flag. The internet-file warning can't show, so Windows reports "canceled by the user" in 3.6 s. Fix: double-click through Explorer.
+  2. `Select-String` on a log that doesn't exist yet stops a stop-on-error step, despite `-ErrorAction`. Fix: Test-Path first.
+  3. A window titled "Window Dialog" appeared and nobody answered it. The clicker could only press known titles. Fix: describe every new window and press Windows' own Run anyway / Run / More info.
+  4. **Pass** (`5e8d9ba`). The log shows what the user sees:
+     - Explorer's empty "Window Dialog" launcher;
+     - **Microsoft Defender SmartScreen**: "Windows protected your PC ... prevented an unrecognized app from starting", with More info and Don't run. The clicker pressed More info, then Run anyway;
+     - the certificate prompt (Yes);
+     - "Anomaly Hunter is installed ... Start here" (OK).
+     - **37 s from the double-click to installed, warnings included.** The internet mark is gone from the installed copy. Pane flow passes in Edge. Uninstall leaves nothing.
+     - "Pick an app" appeared only because the runner has no Excel to open Start here.xlsx.
+- **Found on the way and fixed:** the installed copy kept the download's internet mark. That copy runs at every logon, so Windows could warn at each boot. The installer now removes the mark from its own copy, and CI checks it.
+- **Score 8/10:** one link, then one SmartScreen box (2 clicks), then one certificate Yes, then OK, in under a minute. The README names each box before it appears.
+  - Not higher, because SmartScreen's Run anyway hides behind More info, and the certificate text is scary. Only code signing removes SmartScreen (Azure Trusted Signing is about $10/month): a cost decision for John.
 
 ## Phase 2: Excel integration
 - **Before:** Excel opened blank. The 5 Add clicks were in a message box that was gone after one click.
@@ -201,3 +214,9 @@ Three phases, each scored 0-10 by a strict non-technical user. Below 8 means fix
 - **Still there:**
   - The 5 Add clicks remain. Only an admin-deployed or store add-in skips them.
   - CI has no Excel: the pane runs in Edge against the installed engine, and the ribbon and the Add dialog are checked on John's laptop.
+- **Score 8/10:**
+  - the steps stay on screen while the user clicks;
+  - the first scan finds exactly the 5 problems the steps promise, in plain words;
+  - the fresh-PC pane flow passes (scan, fix, Undo, Dismiss, limits, strength, auto-fix, fairness list).
+  - Not higher: the 5 Add clicks are Microsoft's, and opening Start here in real Excel is confirmed on John's laptop, not in CI.
+- **Seen, not this PR's:** the e2e fixture sheet gets 71 "worth a check" flags from the trend check, the same on `main`. Its prices repeat in a 4-day sawtooth, so each drop looks like a jump. Users' Practice sheet scans to exactly 5. Left as a follow-up.

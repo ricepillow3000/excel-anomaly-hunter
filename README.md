@@ -4,8 +4,8 @@ Excel add-in that flags abnormal rows and tells useful-weird from broken-weird. 
 ## Install (Windows + desktop Excel, nothing else needed)
 1. **[Download AnomalyHunter.exe](https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest/download/AnomalyHunter.exe)**
    (one file, everything inside). If your browser says it "isn't commonly downloaded": click **...** > **Keep** > **Keep anyway**.
-2. **Double-click it.** Windows warns about files from the internet: click **Run** - or, on a blue "Windows protected your
-   PC" box, **More info** > **Run anyway**. (The file isn't code-signed yet, so Windows doesn't know it.)
+2. **Double-click it.** A blue "Windows protected your PC" box appears: click **More info**, then **Run anyway**. (The file
+   isn't code-signed yet, so Windows doesn't know it. Some PCs ask "Open File - Security Warning" instead: click **Run**.)
 3. Click **Yes** when Windows asks to trust the certificate (it covers only 127.0.0.1, this PC).
 4. Excel opens a **Start here** workbook. Follow its 5 clicks, once: **Home > Add-ins > More Add-ins > SHARED FOLDER >
    Anomaly Hunter > Add**. Then try **Find problems** on its Practice sheet: it finds the 5 problems hidden there.
