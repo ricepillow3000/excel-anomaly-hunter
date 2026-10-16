@@ -8,6 +8,9 @@ from anomaly_hunter.engine.load import numbers
 K = 6  # vote when |score - median| > K * spread
 
 
+BIG = 1e12  # spreads from the median: far past any limit, and finite (x / a subnormal spread overflows to infinity)
+
+
 def spread(v):
     """Robust spread: 1.4826*MAD, else 1.2533*mean abs dev, else 0."""
     v = np.asarray(v, dtype=float)
@@ -27,7 +30,8 @@ def robust_vote(scores, k=K):
     sd = spread(s)
     if not ok.any() or sd == 0:
         return np.zeros(len(s), bool), np.zeros(len(s))
-    dist = np.where(ok, np.abs(s - np.median(s[ok])) / sd, 0.0)
+    with np.errstate(over="ignore"):  # a subnormal spread (5e-324) makes infinity: capped, it still votes (fuzz, 2026-10-16)
+        dist = np.minimum(np.where(ok, np.abs(s - np.median(s[ok])) / sd, 0.0), BIG)
     return ok & (dist > k), dist
 
 
@@ -73,7 +77,7 @@ def likely_value(v, st, lo, hi):
     flip = v < 0 and st["nonneg"] >= 0.99 * (st["n"] - 1)
     for c in ([v / 10 ** k] if 1 <= abs(k) <= 3 and far else []) + ([-v] if flip else []):
         if lo <= c <= hi and (c == round(c) or not st["whole"]):  # 999 in a 1-5 count column is not "likely 0.999"
-            return float(f"{c:.10g}")
+            return float(c) if c == -v else float(f"{c:.10g}")  # a flipped sign is exact: rounding made it "missing zeros"
     return None
 
 
@@ -128,7 +132,8 @@ def limits_detector(df, column_types, limits, typos_only=False):
                 if typos_only and fix is None and not negative:  # basics: an obvious typo or a stray minus sign
                     continue
                 r["votes"][i] = True
-                r["magnitude"][i] = max(r["magnitude"][i], abs(v - lim) / sd)
+                with np.errstate(over="ignore"):
+                    r["magnitude"][i] = max(r["magnitude"][i], min(BIG, abs(v - lim) / sd))
                 if fix is not None:
                     r["likely"][i][col] = fix
                 r["reasons"][i].append(f"{col} weird limit is {lim:g}; this is {v:g}" + (f" (likely {fix:g})" if fix is not None else ""))
@@ -203,7 +208,8 @@ def _scaled(df, cols):
     for c in cols:
         x = df[c].to_numpy(dtype=float)
         med = np.nanmedian(x) if (~np.isnan(x)).any() else 0.0
-        out[c] = (np.where(np.isnan(x), med, x) - med) / (spread(x) or 1.0)
+        with np.errstate(over="ignore"):  # capped: sklearn refuses infinity (an engine error on a crafted sheet, 2026-10-16)
+            out[c] = np.clip((np.where(np.isnan(x), med, x) - med) / (spread(x) or 1.0), -BIG, BIG)
     return pd.DataFrame(out)
 
 

@@ -72,3 +72,31 @@ def test_check_route_rejects_bad_input(bad):
     columns, rows = planted()
     body = {"columns": columns, "rows": rows, "row_index": 7, "changes": [{"col": 1, "value": 100}], **bad}
     assert client().post("/check", json=body).status_code == 400
+
+
+def test_a_typo_hunt_that_runs_out_of_time_offers_nothing_even_if_one_slip_fitted(monkeypatch):
+    # stress test 2026-10-16: 8-12 full re-scans of ~4.7 s each kept the pane locked 37-60 s under the 300k-cell cap, and
+    # a workbook's saved limits can let all 25 candidates through. 10 s, then nothing: stopping early can't claim "the only one"
+    from anomaly_hunter.agents import checker
+    columns, rows = make_clean_payload(n=40)
+    rows[7][1] = 1300.0
+    used = scan(columns, rows)[3]
+    now, calls = [0.0], []
+    monkeypatch.setattr(checker, "_clock", lambda: now[0])
+
+    def slow_check(*a, **k):
+        calls.append(1)
+        now[0] += 6  # each re-scan takes 6 s
+        return {"clean": len(calls) == 1}  # only the first candidate fits; the hunt stops before trying them all
+    monkeypatch.setattr(checker, "check", slow_check)
+    assert checker.suggest(columns, rows, {**used, "Amount": [-1e9, 1e9, None, None]}, 7, "Amount") == {}
+    assert len(calls) <= 2
+
+
+def test_the_accept_recheck_never_runs_the_fairness_report(monkeypatch):
+    # the re-check reads one row's verdict; the fairness report it threw away cost 9 s on a 40 x 40 survey sheet
+    from anomaly_hunter.engine import fairness
+    columns, rows = planted()
+    used = scan(columns, rows)[3]
+    monkeypatch.setattr(fairness, "report", lambda *a: (_ for _ in ()).throw(AssertionError("fairness ran")))
+    assert check(columns, rows, used, 7, [{"col": 1, "value": 100}])["clean"] is True

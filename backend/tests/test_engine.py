@@ -385,7 +385,7 @@ def test_error_text_is_not_also_called_blank_and_real_blanks_are_found():
         rows[i][1] = "ERROR"
     rows[10][1] = ""
     _, out = _scan(["Name", "Amt"], rows)
-    assert all("Blank" not in out[i]["reason"] and 'Text "ERROR"' in out[i]["reason"] for i in (3, 4, 5))
+    assert all("Blank" not in out[i]["reason"] and 'Placeholder "ERROR" in column Amt' in out[i]["reason"] for i in (3, 4, 5))
     assert "Blank cell in column Amt" in out[10]["reason"]
 
 
@@ -401,7 +401,7 @@ def test_text_in_a_date_column_is_named_not_called_blank():
     rows = [[f"n{i}", f"2024-01-{1 + i % 28:02d}", 50 + i % 7] for i in range(40)]
     rows[7][1] = "UNKNOWN"
     _, out = _scan(["Name", "When", "Amt"], rows)
-    assert out[7]["reason"] == 'Text "UNKNOWN" in date column When'
+    assert out[7]["reason"] == 'Placeholder "UNKNOWN" in column When'  # a stand-in like N/A, not a mistyped date
 
 
 def test_a_fully_blank_row_says_nothing():
@@ -863,3 +863,181 @@ def test_a_mildly_skewed_column_keeps_its_honest_heavy_users_and_still_catches_a
     _, out = _scan(["Customer", "Minutes"], rows)
     assert out[40]["severity"] in (None, "Noted", "Low"), out[40]["reason"]
     assert out[90]["severity"] not in (None, "Noted") and out[90]["likely"] == {"Minutes": 391}
+
+
+def test_rows_that_differ_only_in_text_typed_into_a_number_column_are_not_duplicates():
+    # blind real-sheet test 2026-10-16 (a long-format election sheet): the PVI codes "R+33.2" and "D+6.3" were called duplicates in
+    # 513 rows - duplicates were compared after text in a number column had been turned into blanks
+    rows = [[f"race{i}", 1000 + i * 37 % 50 * 2.5, 5] for i in range(60)]
+    for i, text in enumerate(["02B", "03A", "R+33.2", "D+6.3"]):
+        rows[i] = ["statewide", text, 5]
+    rows[30] = list(rows[29])  # one real repeat
+    types, out = _scan(["Race", "Value", "Seats"], rows)
+    assert types["Value"] == "number" and [i for i, o in enumerate(out) if "Duplicate" in o["reason"]] == [30]
+
+
+def test_tbd_is_a_placeholder():
+    rows = [[f"n{i}", ["Cash", "Card", "Online"][i % 3]] for i in range(60)]
+    rows[9][1] = "TBD"
+    _, out = _scan(["Name", "Pay"], rows)
+    assert out[9]["reason"] == 'Placeholder "TBD" in column Pay'
+
+
+def test_a_whole_word_of_a_longer_label_is_not_its_short_form():
+    # blind real-sheet test 2026-10-16: Periode "II" was called a short form of "II-III?" in 123 rows, and the pane's card
+    # wrote "II-III?" over a correct period. A whole word of another label is a label of its own
+    r = np.random.default_rng(28)
+    rows = [[f"s{i}", str(r.choice(["I", "II", "II-III?", "III", "IV"]))] for i in range(150)]
+    _, out = _scan(["Sample", "Periode"], rows)
+    assert not any("short form" in o["reason"] for o in out)
+
+
+def test_a_letter_typed_twice_is_worth_a_check():
+    # blind real-sheet test 2026-10-16: "NOTT DONE", "itraconazolle", "trrump_2020" and "Gouurde" were all missed - only a
+    # wrong or swapped letter counted. A doubled letter is the commonest added letter, and rarely a different word
+    from anomaly_hunter.engine.pipeline import _one_edit
+    assert _one_edit("nott done", "not done") and _one_edit("itraconazole", "itraconazolle")
+    assert not _one_edit("laptops", "laptop") and not _one_edit("sarah", "sara")
+    r = np.random.default_rng(27)
+    rows = [[f"s{i}", str(r.choice(["DONE", "NOT DONE", "PENDING"]))] for i in range(90)]
+    rows[40][1] = "NOTT DONE"
+    _, out = _scan(["Id", "Status"], rows)
+    assert out[40]["reason"] == 'Status "NOTT DONE" looks like a misspelling of "NOT DONE"' and out[40]["severity"] == "Low"
+
+
+def test_labels_longer_than_60_characters_are_never_compared_as_misspellings(monkeypatch):
+    # council review 2026-10-16: a crafted column of 32,000-character labels took 58 s in the letter-typed-twice check.
+    # Text over 60 characters is a note, not a category label (the same line the AI text check draws)
+    from anomaly_hunter.engine import pipeline
+    seen = []
+    real = pipeline._one_edit
+    monkeypatch.setattr(pipeline, "_one_edit", lambda a, b: seen.append(max(len(a), len(b))) or real(a, b))
+    long = ["b" + "a" * 30000 + chr(98 + k // 5) + chr(98 + k % 5) for k in range(25)]  # letters only: word-like
+    rows = [[f"r{i}", long[i % 25]] for i in range(125)] + [[f"x{k}", "aa" + long[k][1:]] for k in range(25)]
+    _scan(["Id", "Note"], rows)
+    assert not seen or max(seen) <= 60
+
+
+def test_a_blank_that_its_whole_category_group_shares_is_the_sheets_layout():
+    # blind real-sheet test 2026-10-16: a long-format election sheet fills "value" for some metrics and "pct" for others;
+    # 17,852 rows were flagged "Blank cell ... otherwise filled" and the card wrote the median in. A blank its whole
+    # group shares is how the sheet is laid out; a blank inside a group that is otherwise filled is still a slip
+    r = np.random.default_rng(29)
+    rows = []
+    for i in range(300):
+        metric = ["votes", "votes", "votes", "votes", "share", "pop", "pop", "pop"][i % 8]
+        value = "" if metric == "share" else int(r.integers(1000, 9000))
+        pct = "" if metric == "votes" else round(float(r.uniform(5, 60)), 1)
+        rows.append([f"D{i % 30}", metric, value, pct])
+    rows[101][2] = ""  # a real slip: "pop" rows fill value everywhere else
+    _, out = _scan(["District", "Metric", "Value", "Pct"], rows)
+    assert [i for i, o in enumerate(out) if "Blank cell" in o["reason"]] == [101]
+
+
+def test_text_codes_a_number_column_uses_many_times_are_its_own_code_system():
+    # blind real-sheet test 2026-10-16: 4,409 partisan-lean codes ("R+51.5") and 3,591 district labels ("16A") were each
+    # flagged as text in a number column. A shape the column repeats 5+ times is its code system; a one-off slip is not
+    r = np.random.default_rng(30)
+    rows = [[f"r{i}", round(float(r.uniform(100, 900)), 1)] for i in range(400)]
+    for i in range(0, 30):
+        rows[i * 10 + 3][1] = f"{'RD'[i % 2]}+{r.integers(1, 40)}.{r.integers(0, 9)}"
+    rows[7][1], rows[8][1] = "12O", "NA"
+    types, out = _scan(["Row", "Value"], rows)
+    assert types["Value"] == "number"
+    assert [i for i, o in enumerate(out) if "Text" in o["reason"]] == [7, 8]
+
+
+def test_a_rare_dash_in_a_number_column_is_a_placeholder_never_a_zero():
+    # blind real-sheet test 2026-10-16: 5 of 6 missed placeholders were a "-" typed for a missing price, read as 0. Excel
+    # hands the pane an accounting-format zero as the number 0, so a "-" was typed; only a sheet-wide convention is 0
+    from anomaly_hunter.engine.load import load_from_records
+    rows = [[f"car{i}", 3000 + i * 37 % 900] for i in range(74)]
+    rows[29][1] = "-"
+    df, types, _ = load_from_records(["Car", "Price"], rows)
+    assert types["Price"] == "number" and np.isnan(df["Price"][29])
+    _, out = _scan(["Car", "Price"], rows)
+    assert out[29]["reason"] == 'Placeholder "-" in column Price' and out[29]["severity"] == "Medium"
+
+
+def test_a_lone_decimal_in_a_column_of_whole_numbers_is_worth_a_check():
+    # blind real-sheet test 2026-10-16: study day 7.3 (typed for 73) between days 72 and 74 - no limit can catch it
+    r = np.random.default_rng(31)
+    rows = [[f"s{i}", int(r.integers(1, 200))] for i in range(120)]
+    rows[40][1] = 7.3
+    _, out = _scan(["Subject", "Study day"], rows)
+    assert out[40]["reason"] == "Study day 7.3 is not a whole number - every other Study day is" and out[40]["severity"] == "Low"
+    assert sum(1 for o in out if o["severity"] not in (None, "Noted")) == 1
+
+
+def test_a_sign_flip_fix_is_the_exact_value_never_rounded():
+    # blind real-sheet test 2026-10-16: -0.0201808419078588 got "likely 0.02018084191" and the card called it
+    # "missing zeros - /1" instead of a flipped sign
+    from anomaly_hunter.engine.detectors import column_stats, likely_value
+    x = np.abs(np.random.default_rng(32).normal(0.02, 0.005, 300))
+    v = -0.0201808419078588
+    assert likely_value(v, column_stats(np.append(x, v)), 0.0, 0.05) == 0.0201808419078588
+
+
+def test_a_crafted_wide_sheet_cannot_make_the_column_pair_checks_run_for_minutes():
+    # council review 2026-10-16: checks over every pair of columns grow with the square (wrong-column) or the cube
+    # (products x fractions) of the width - 400 text columns took 30 s and 160 number columns 16 s on 50k cells.
+    # Capped in sheet order (the first 100 / 64 columns), so a scan still gives the same answer every time
+    import time
+    from anomaly_hunter.engine import pipeline
+    from anomaly_hunter.engine.load import load_from_records
+    rows = [[("x" if i % 2 else "y") if i < 74 else f"u{k}_{i}" for k in range(400)] for i in range(122)]
+    df, types, _ = load_from_records([f"T{k}" for k in range(400)], rows)
+    t = time.perf_counter()
+    pipeline.shifted(df, types, np.zeros(len(df), bool))
+    assert time.perf_counter() - t < 10
+    r = np.random.default_rng(5)
+    rows = [[float(r.uniform(0, 0.9)) if k % 2 else float(r.uniform(10, 500)) for k in range(160)] for _ in range(100)]
+    df, types, _ = load_from_records([f"N{k}" for k in range(160)], rows)
+    t = time.perf_counter()
+    pipeline.pairs(df, types, np.zeros(len(df), bool), None)
+    assert time.perf_counter() - t < 10
+
+
+def test_columns_that_are_mostly_zero_are_not_taken_for_a_product_rule():
+    # round-2 blind real sheet 2026-10-16: three TV-spot columns were 0 in 91% of weeks, so "A = B x C" held in 95% of rows
+    # (0 = 0 x anything) and the 56 weeks with real spots were called "does not add up". A rule must hold where the
+    # numbers aren't all zero: here it held in 64 of 120 such rows
+    r = np.random.default_rng(33)
+    rows = [[f"w{i}", 0.0, 0.0, 0.0, round(float(r.uniform(100, 900)), 2)] for i in range(1200)]
+    for k, i in enumerate(r.choice(1200, 120, replace=False)):
+        a_, b_ = round(float(r.uniform(0.5, 3)), 2), round(float(r.uniform(0.5, 3)), 2)
+        rows[i][1:4] = [round(a_ * b_, 4) if k < 64 else round(float(r.uniform(0.5, 9)), 2), a_, b_]  # 64 of 120 match
+    _, out = _scan(["Week", "SpotsA", "SpotsB", "SpotsC", "Sales"], rows)
+    assert not any("does not add up" in o["reason"] for o in out)
+
+
+def test_identical_answers_in_a_short_survey_are_not_duplicates():
+    # round-2 blind real sheet 2026-10-16: four agree/disagree answers from 1,529 voters - only 199 different answer sets,
+    # so 1,330 rows were "Duplicate of row N". When most rows repeat, a repeat is the data, not a double entry
+    r = np.random.default_rng(34)
+    scale = ["Strongly agree", "Agree", "Disagree", "Strongly disagree"]
+    rows = [[str(r.choice(scale)) for _ in range(4)] for _ in range(600)]
+    _, out = _scan(["Q1", "Q2", "Q3", "Q4"], rows)
+    assert not any("Duplicate" in o["reason"] for o in out)
+
+
+def test_a_common_label_is_never_called_a_short_form_of_a_rarer_one():
+    # round-2 blind judge 2026-10-16: "CAF" (51 rows) was "a short form of CONCACAF" (30 rows) and "VI" of "VIII" (20 each):
+    # 71 cards would have written over correct labels. A short form is the rarer spelling: the full label is at
+    # least twice as common (the credit sheet's 30 "EMP" next to ~80 "Employed" still are one)
+    r = np.random.default_rng(35)
+    rows = [[f"t{i}", str(r.choice(["CAF", "CAF", "CONCACAF", "UEFA", "AFC"]))] for i in range(200)]
+    rows += [[f"c{i}", str(r.choice(["VI", "VIII", "IX"]))] for i in range(60)]
+    _, out = _scan(["Team", "Group"], rows)
+    assert not any("short form" in o["reason"] for o in out)
+
+
+def test_a_measurement_headed_no_is_checked_but_a_row_number_no_stays_an_id():
+    # round-2 blind judge 2026-10-16: nitric oxide "NO" (repeating whole numbers) was read as "No." - an ID - so 6,900 among
+    # readings of 20-80 was never checked. "No" is an ID only when its numbers don't repeat
+    r = np.random.default_rng(36)
+    rows = [[i + 1, int(r.integers(20, 80)), round(float(r.uniform(5, 30)), 1)] for i in range(200)]
+    rows[50][1] = 6900
+    types, out = _scan(["No.", "NO", "PM10"], rows)
+    assert types["No."] == "id" and types["NO"] == "number"
+    assert "NO weird limit" in out[50]["reason"] and out[50]["severity"] in ("Medium", "High")

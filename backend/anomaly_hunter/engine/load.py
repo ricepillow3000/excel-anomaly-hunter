@@ -27,7 +27,8 @@ def _is_id(name, num):
     Only 0s and 1s is a yes/no flag, never an ID, whatever the header ("Delinquent_Account": 0/1, not an account number)."""
     if not len(num) or (num != num.round()).any() or set(num.unique()) <= {0, 1}:
         return False
-    if ID_NAME.search(str(name)):
+    # "No" is a row number - unless its numbers repeat: nitric oxide "NO" readings were skipped as an ID (2026-10-16)
+    if ID_NAME.search(str(name)) and not (re.search(r"(^|[^a-z])no\.?\s*$", str(name), re.I) and num.nunique() < 0.95 * len(num)):
         return True
     u = num.drop_duplicates().sort_values()
     return len(num) >= 20 and len(u) >= 0.95 * len(num) and u.diff().median() <= 2
@@ -45,7 +46,7 @@ def _dates(s):
 
 
 # stand-ins for a missing value. Not "NA" (a ticker, a country) or "None" (a real category)
-PLACEHOLDER = re.compile(r"error|unknown|n/a|null|\?|-", re.I)
+PLACEHOLDER = re.compile(r"error|unknown|n/a|null|tbd|\?|-", re.I)
 EXCEL_ERROR = re.compile(r"#(N/A|DIV/0!|REF!|VALUE!|NAME\?|NUM!|NULL!|SPILL!|CALC!)$")
 # money / percent typed as text, the WHOLE cell: "$1,234.00", "12%", "(500)" = -500. Commas must be thousands groups.
 MONEY = re.compile(r"(\()?([-+])?[$€£]?\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s*(%)?(\))?")
@@ -53,7 +54,11 @@ MONEY = re.compile(r"(\()?([-+])?[$€£]?\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s*
 
 def _num(s):
     """Cells -> numbers (NaN where not a number). Plain numbers as pandas reads them, plus money/percent text."""
-    num = pd.to_numeric(s.mask(s.astype(str).str.strip() == "-", 0), errors="coerce")  # "-" is how accounting format shows 0
+    # "-" is how accounting format shows 0 in an exported sheet - when it's the column's convention (8%+ of its cells, the
+    # placeholder rule). Excel hands the pane an accounting zero as 0, so a rarer "-" was typed for a missing value: 5 of
+    # 6 missed placeholders on 40 real sheets, each silently summed as 0 (2026-10-16)
+    dash = s.astype(str).str.strip() == "-"
+    num = pd.to_numeric(s.mask(dash, 0) if dash.sum() >= 0.08 * (~_blank(s)).sum() else s, errors="coerce")
     m = s[num.isna()].astype(str).str.strip().str.extract(f"^{MONEY.pattern}$")
     ok = m[2].notna() & (m[0].isna() == m[5].isna())  # parentheses come in pairs
     v = (m[2].str.replace(",", "") + m[3].fillna("")).astype(float)

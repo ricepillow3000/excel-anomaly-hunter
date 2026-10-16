@@ -2,6 +2,7 @@
 (ANTHROPIC_API_KEY). Key stays on this PC (never in the panel or the workbook). The AI only proposes cell writes;
 the user previews them and nothing changes until Apply."""
 import hashlib
+import http.client
 import json
 import os
 import random
@@ -59,7 +60,7 @@ def check_key(key):
         if e.code in (400, 401, 403):
             return False, "Google did not accept this key - copy the whole key again from aistudio.google.com."
         return None, f"Saved. Google answered with error {e.code} while testing it - Ask AI will tell you if it works."
-    except (OSError, ValueError, AttributeError):  # offline, timeout, or an answer that isn't the expected list
+    except (OSError, http.client.HTTPException, ValueError, AttributeError):  # offline, timeout, cut off, or not the list
         return None, "Saved. Couldn't reach Google to test the key - check the internet connection."
     if GEMINI_MODEL not in ids:
         return True, f"Saved - the key works, but it can't use {GEMINI_MODEL}, so Ask AI won't work yet. Tell the developer."
@@ -261,7 +262,7 @@ def _call(prompt, out, schema, name, deadline):
     if len(data) > BUDGET:  # the callers trim to fit; this is the last guard (the relay refuses over 8 KB)
         raise ValueError("That request was too large for the AI - try a smaller selection.")
     relay = provider() == "relay"  # same request; the relay adds John's key, picks the model and counts the caps
-    tries = 0
+    tries, slow = 0, False  # slow: a try timed out - the next may wait until the deadline (a 100 s answer never came back)
     while True:  # Google's busy spells come and go within minutes: wait and try again, up to the deadline
         req = urllib.request.Request(RELAY_URL.rstrip("/") + "/fix" if relay else GEMINI_URL, data,  # noqa: S310 - https only, see provider()
                                      {"Content-Type": "application/json", "Authorization": f"Bearer {invite_code() if relay else gemini_key()}"})
@@ -269,7 +270,7 @@ def _call(prompt, out, schema, name, deadline):
             # the relay tries Google 3 times itself and its call is already counted: let it run to the deadline
             left = max(1, deadline - time.monotonic())
             # nosemgrep: dynamic-urllib-use-detected - GEMINI_URL constant, or RELAY_URL that provider() only allows over https
-            with urllib.request.urlopen(req, timeout=left if relay else min(90, left)) as r:  # noqa: S310 - same request
+            with urllib.request.urlopen(req, timeout=left if relay or slow else min(90, left)) as r:  # noqa: S310 - same request
                 text = json.load(r)["choices"][0]["message"]["content"]
             return out.model_validate_json(text)
         except urllib.error.HTTPError as e:
@@ -294,16 +295,21 @@ def _call(prompt, out, schema, name, deadline):
                              if e.code == 404 else "That request was too large for the AI - try a smaller selection."
                              if e.code == 413 else "Google AI is busy right now - try again in a few minutes."
                              if e.code in RETRY else f"Google AI answered with error {e.code} - try again shortly.") from None
-        except OSError as e:  # no connection, timeout, connection reset mid-answer
-            # Gemini's speed swings (3.8 s to 90 s+ for the same request, 2026-10-11): a timeout is not a broken connection
-            reason = getattr(e, "reason", e)
-            passing = isinstance(e, (TimeoutError, ConnectionResetError)) or isinstance(reason, (TimeoutError, ConnectionResetError))
+        except (OSError, http.client.HTTPException) as e:  # no connection, timeout, reset or cut off mid-answer
+            # Gemini's speed swings (3.8 s to 90 s+ for the same request, 2026-10-11): a timeout is not a broken connection.
+            # IncompleteRead/BadStatusLine aren't OSErrors: they escaped as an HTTP 500 in Werkzeug's words (2026-10-16)
+            reason, cut = getattr(e, "reason", e), isinstance(e, http.client.HTTPException)
+            timed_out = isinstance(e, TimeoutError) or isinstance(reason, TimeoutError)
+            slow = slow or timed_out
+            passing = cut or timed_out or isinstance(e, ConnectionResetError) or isinstance(reason, ConnectionResetError)
             wait = _wait(tries, None, deadline) if passing and not relay else None
             if wait is not None:
                 tries += 1
                 _sleep(wait)
                 continue
-            if isinstance(e, TimeoutError) or isinstance(reason, TimeoutError):
+            if cut:
+                raise ValueError("Google AI's answer came back incomplete - try again.") from None
+            if timed_out:
                 raise ValueError("Google AI is slow right now - try again in a minute.") from None
             raise ValueError("Could not reach Google AI - check the internet connection.") from None
         except (KeyError, IndexError, TypeError, ValueError):  # no answer, or not the JSON asked for

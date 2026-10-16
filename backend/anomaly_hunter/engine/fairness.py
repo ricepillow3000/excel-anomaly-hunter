@@ -16,6 +16,7 @@ DEMOGRAPHIC = {"age", "dob", "birth", "birthday", "birthdate", "gender", "sex", 
 LOCATION = {"location", "city", "state", "zip", "zipcode", "postal", "postcode", "country", "region", "neighborhood",
             "neighbourhood", "county"}
 MIN_GROUP = 20  # smaller groups prove nothing either way
+MAX_TESTS = 400  # each test is a crosstab (~5.6 ms): a crafted 40 x 40 sheet took 9 s per scan (2026-10-16)
 ALPHA = 0.01    # after a Bonferroni correction over every test of the scan: noise is not called bias
 RATIO = 1.25    # the four-fifths rule, for a rate where higher is worse (1 / 0.8)
 
@@ -99,12 +100,13 @@ def report(df, types, rows):
     measures = {"flag rate": (flagged, "rows flagged"),
                 **{f"missing {c}": (b, f"missing {c}") for c, b in missing.items() if b.sum() >= 5},
                 **_outcomes(df, types, prot)}
-    tests = []
+    tests, left = [], MAX_TESTS
     for col, why in prot.items():
         g = _groups(df, col, types)
         if g is None:
             continue
-        for name, (hit, what) in measures.items():
+        for name, (hit, what) in list(measures.items())[:left]:
+            left -= 1
             ok = g.notna() & hit.notna()
             table = pd.crosstab(g[ok], hit[ok].astype(bool))
             table = table[table.sum(axis=1) >= MIN_GROUP]

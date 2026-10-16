@@ -279,3 +279,54 @@ def test_first_scan_uses_suggested_limits_at_once_and_saved_limits_win():
     assert body["limits"]["Amt"] == body["suggested_limits"]["Amt"]
     body = c.post("/scan", json={"columns": ["Name", "Amt"], "rows": rows, "limits": {"Amt": [None, None, None, 9999]}}).get_json()
     assert body["limits"]["Amt"] == [None, None, None, 9999] and "weird limit" not in body["rows"][60]["reason"]
+
+
+def test_a_flood_of_long_urls_leaves_the_log_small_but_engine_errors_still_reach_it(tmp_path, caplog):
+    # stress test 2026-10-16: Werkzeug logged every request line in full, a refused one too - a 60 KB URL wrote 60 KB to
+    # server.log (about 600 MB a minute at flood rate, until a restart). A web page's <img> GET carries no Origin, so it
+    # isn't refused either. Only errors are kept: the log is the engine's own error log (PRIVACY.md)
+    import logging
+    import ssl as _ssl
+    import urllib.request
+    srv = live_engine(tmp_path)
+    ctx = _ssl.create_default_context(cafile=str(tmp_path / "ca.pem"))
+    caplog.set_level(logging.DEBUG)
+    try:
+        for origin in (None, "https://evil.example"):
+            for _ in range(5):
+                req = urllib.request.Request(f"https://127.0.0.1:{srv.server_port}/health?" + "a" * 60000,
+                                             headers={"Origin": origin} if origin else {})
+                try:
+                    urllib.request.urlopen(req, context=ctx, timeout=5).read()  # noqa: S310 - our own test engine
+                except urllib.error.HTTPError:
+                    pass
+    finally:
+        srv.shutdown()
+    assert sum(len(r.getMessage()) for r in caplog.records if r.name == "werkzeug") < 2000
+    app = create_app()
+    app.logger.error("an engine error")  # the app's own errors are untouched
+    assert any(r.getMessage() == "an engine error" for r in caplog.records)
+
+
+def test_two_scans_at_once_publish_one_whole_power_bi_file_never_an_error(tmp_path, monkeypatch, caplog):
+    # stress test 2026-10-16: two workbooks scanning together shared one temp file: one replace found it gone
+    # ("could not write") and a file could mix both sheets. One write at a time
+    import time
+    import pandas as pd
+    real = pd.DataFrame.to_csv
+
+    def slow(self, *a, **k):
+        out = real(self, *a, **k)
+        time.sleep(0.3)  # both scans sit between writing the temp file and replacing the real one
+        return out
+    monkeypatch.setattr(pd.DataFrame, "to_csv", slow)
+    csv_path = tmp_path / "latest-scan.csv"
+    app = create_app(csv_path)
+    sheets = [make_clean_payload(n=40, seed=s) for s in (1, 2)]
+    threads = [threading.Thread(target=lambda c=c, r=r: app.test_client().post("/scan", json={"columns": c, "rows": r}))
+               for c, r in sheets]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert not any("could not write" in r.getMessage() for r in caplog.records)
+    body = csv_path.read_text(encoding="utf-8-sig")
+    assert body.count("\n") == 41 and not list(tmp_path.glob("*.tmp"))

@@ -22,9 +22,10 @@ anomaly-hunter-server = "anomaly_hunter.server:main"
 
 [project.optional-dependencies]
 dev = ["pytest", "schemathesis==4.28.0", "ruff==0.17.0", "pip-audit==2.10.1", "pyyaml"]  # fuzzing (test_fuzz_api.py), security lint + dependency audit + workflow parse (tools/check.py, CI)
+exe = ["pyinstaller==6.22.3", "pyinstaller-hooks-contrib==2026.8", "pillow==12.3.0"]  # the one-file app (build-exe.yml)
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools==84.0.0"]  # exact, like constraints.txt: the build tool ships nothing, but runs in CI
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]

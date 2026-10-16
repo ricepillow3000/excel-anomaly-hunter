@@ -16,7 +16,7 @@ Done: the **Anomaly Hunter** button is on the Home tab in every workbook (surviv
 with the panel open, and the engine starts hidden at each logon. Double-click it again to repair;
 `AnomalyHunter.exe uninstall` removes it. (From a checkout with Python 3.14: `install.bat` does the same, `/u` uninstalls.)
 Every build on `main` is installed and used on a fresh Windows PC with no Python before it becomes that download link.
-Build the file: `pip install -e . pyinstaller==6.22.3 pillow` then `python -m PyInstaller packaging/AnomalyHunter.spec`
+Build the file: `pip install -e ".[exe]" -c constraints.txt` then `python -m PyInstaller packaging/AnomalyHunter.spec`
 on Windows -> `dist/AnomalyHunter.exe`.
 Windows-only per-user install (trusted shared-folder catalog), not a store add-in.
 
@@ -68,7 +68,7 @@ No-Excel mode: `anomaly-hunter scan data.csv`.
 - `backend/anomaly_hunter/` the local server (127.0.0.1:5055): `server.py` (routes), `engine/` (detection), `ai/client.py` (Gemini / Claude); `backend/tests/`, `backend/bench/`.
 - `e2e/` browser tests · `powerbi/` Power BI source · `docs/` design notes.
 
-**Test:** `pip install -e .[dev]` then `python tools/check.py` - every gate in layers, fastest first: security lint, pane
+**Test:** `pip install -e ".[dev]" -c constraints.txt` then `python tools/check.py` - every gate in layers, fastest first: security lint, pane
 self-check, relay abuse tests, engine tests + fuzzing, both accuracy benchmarks, dependency audit (`--e2e` adds the browser
 test). Industry benchmark alone (15 fields + held-out traps, real pane + engine, pass/fail gates): `python backend/bench/score.py .`;
 `--blind` scores 14 more domains written without reading the detector. Browser test (real panel + engine, fake Excel; needs
