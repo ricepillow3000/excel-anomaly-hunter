@@ -81,6 +81,21 @@ def test_invite_code_is_only_ever_sent_over_https(monkeypatch):
         assert (client.provider() == "relay") is ok, url
 
 
+def test_a_scan_never_sends_anything_to_google_even_with_a_key_saved(monkeypatch):
+    # PRIVACY.md: "Nothing is sent anywhere unless you turn on AI help" - and then only on a click. Until 2026-10-16
+    # this held only because of how the code was laid out: every check is offline pandas, the AI is for meaning.
+    client.KEY_FILE.write_text(CANARY, encoding="utf-8")
+    client.INVITE_FILE.write_text("inv_" + "a" * 24, encoding="utf-8")
+    monkeypatch.setattr(client, "RELAY_URL", "https://relay.example")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    calls = []
+    monkeypatch.setattr(client.urllib.request, "urlopen", lambda *a, **k: calls.append(a) or 1 / 0)
+    monkeypatch.setattr(anthropic, "Anthropic", lambda *a, **k: calls.append(a) or 1 / 0)
+    rows = [["Pen", "East", 10 + k % 3, "F" if k % 2 else "M"] for k in range(60)] + [["Pen", "Londn", 500, "M"], ["Desk", "", "12O", "F"]]
+    r = APP.test_client().post("/scan", json={"columns": ["Item", "Region", "Units", "Sex"], "rows": rows, "limits": {}})
+    assert r.status_code == 200 and r.get_json()["rows"] and calls == []
+
+
 def test_safe_headers_on_every_answer():
     c = APP.test_client()
     for r in (c.get("/health"), c.get("/taskpane.html"), c.get("/assets/icon-16.png"), c.post("/scan", data="x"), c.get("/nope")):
