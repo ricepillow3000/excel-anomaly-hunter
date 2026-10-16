@@ -8,6 +8,9 @@ adding them would only add code that can break. Every verdict below was **measur
 - **Blind test:** 40 random real public tables with 206 planted mistakes, run through the real pane and engine by an
   agent that never saw the answer key. It found the accuracy bugs fixed in PR #18.
 - **Council:** three reviewers (minimal, accuracy, reliability + security) argued every item; the verdicts are below.
+- **Second blind test:** 30 more random real tables nobody had tuned against (209 planted), main vs this work:
+  planted caught 155 -> 162; Medium+ false alarms on planted sheets 1,622 -> 237 (after two more fixes it found);
+  exact fixes 55 -> 48 (the lost ones were medians that happened to land within 1% of the truth).
 
 Add a piece only when its "add it when" signal shows up in a measurement, and say which one in the commit.
 
