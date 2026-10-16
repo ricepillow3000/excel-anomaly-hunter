@@ -85,3 +85,15 @@ def test_any_well_formed_sheet_scans_checks_and_suggests(sheet, strength, data):
         assert r.status_code == 200, r.get_json()
         r = c.post("/suggest", json={**base, "row_index": i, "column": str(columns[col])})
         assert r.status_code == 200, r.get_json()
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_a_column_of_near_zero_numbers_with_one_big_value_scans_without_an_engine_error():
+    # the fuzz test found it 2026-10-16: x / spread overflowed to infinity when a column's spread was a subnormal
+    # number (5e-324), and the cross-column check (sklearn) refused the infinity -> HTTP 500
+    rows = [[f"r{i}", 5e-324 * (i % 3 + 1), 10 + i % 4] for i in range(30)] + [["x", 1e10, 11]]
+    c = APP.test_client()
+    for route, extra in (("/scan", {}), ("/check", {"row_index": 30, "changes": [{"col": 1, "value": 2e10}]})):
+        r = c.post(route, json={"columns": ["Id", "Amt", "Qty"], "rows": rows, "strength": 10, **extra})
+        assert r.status_code == 200, r.get_json()
+        assert "Infinity" not in r.get_data(as_text=True) and "NaN" not in r.get_data(as_text=True)

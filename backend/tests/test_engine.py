@@ -863,3 +863,43 @@ def test_a_mildly_skewed_column_keeps_its_honest_heavy_users_and_still_catches_a
     _, out = _scan(["Customer", "Minutes"], rows)
     assert out[40]["severity"] in (None, "Noted", "Low"), out[40]["reason"]
     assert out[90]["severity"] not in (None, "Noted") and out[90]["likely"] == {"Minutes": 391}
+
+
+def test_rows_that_differ_only_in_text_typed_into_a_number_column_are_not_duplicates():
+    # blind real-sheet test 2026-10-16 (a long-format election sheet): the PVI codes "R+33.2" and "D+6.3" were called duplicates in
+    # 513 rows - duplicates were compared after text in a number column had been turned into blanks
+    rows = [[f"race{i}", 1000 + i * 37 % 50 * 2.5, 5] for i in range(60)]
+    for i, text in enumerate(["02B", "03A", "R+33.2", "D+6.3"]):
+        rows[i] = ["statewide", text, 5]
+    rows[30] = list(rows[29])  # one real repeat
+    types, out = _scan(["Race", "Value", "Seats"], rows)
+    assert types["Value"] == "number" and [i for i, o in enumerate(out) if "Duplicate" in o["reason"]] == [30]
+
+
+def test_tbd_is_a_placeholder():
+    rows = [[f"n{i}", ["Cash", "Card", "Online"][i % 3]] for i in range(60)]
+    rows[9][1] = "TBD"
+    _, out = _scan(["Name", "Pay"], rows)
+    assert out[9]["reason"] == 'Placeholder "TBD" in column Pay'
+
+
+def test_a_whole_word_of_a_longer_label_is_not_its_short_form():
+    # blind real-sheet test 2026-10-16: Periode "II" was called a short form of "II-III?" in 123 rows, and the pane's card
+    # wrote "II-III?" over a correct period. A whole word of another label is a label of its own
+    r = np.random.default_rng(28)
+    rows = [[f"s{i}", str(r.choice(["I", "II", "II-III?", "III", "IV"]))] for i in range(150)]
+    _, out = _scan(["Sample", "Periode"], rows)
+    assert not any("short form" in o["reason"] for o in out)
+
+
+def test_a_letter_typed_twice_is_worth_a_check():
+    # blind real-sheet test 2026-10-16: "NOTT DONE", "itraconazolle", "trrump_2020" and "Gouurde" were all missed - only a
+    # wrong or swapped letter counted. A doubled letter is the commonest added letter, and rarely a different word
+    from anomaly_hunter.engine.pipeline import _one_edit
+    assert _one_edit("nott done", "not done") and _one_edit("itraconazole", "itraconazolle")
+    assert not _one_edit("laptops", "laptop") and not _one_edit("sarah", "sara")
+    r = np.random.default_rng(27)
+    rows = [[f"s{i}", str(r.choice(["DONE", "NOT DONE", "PENDING"]))] for i in range(90)]
+    rows[40][1] = "NOTT DONE"
+    _, out = _scan(["Id", "Status"], rows)
+    assert out[40]["reason"] == 'Status "NOTT DONE" looks like a misspelling of "NOT DONE"' and out[40]["severity"] == "Low"

@@ -45,7 +45,7 @@ def _dates(s):
 
 
 # stand-ins for a missing value. Not "NA" (a ticker, a country) or "None" (a real category)
-PLACEHOLDER = re.compile(r"error|unknown|n/a|null|\?|-", re.I)
+PLACEHOLDER = re.compile(r"error|unknown|n/a|null|tbd|\?|-", re.I)
 EXCEL_ERROR = re.compile(r"#(N/A|DIV/0!|REF!|VALUE!|NAME\?|NUM!|NULL!|SPILL!|CALC!)$")
 # money / percent typed as text, the WHOLE cell: "$1,234.00", "12%", "(500)" = -500. Commas must be thousands groups.
 MONEY = re.compile(r"(\()?([-+])?[$€£]?\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s*(%)?(\))?")

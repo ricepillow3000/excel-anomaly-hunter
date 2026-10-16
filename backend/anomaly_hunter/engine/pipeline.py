@@ -1,6 +1,7 @@
 """Score a loaded DataFrame: 3 detector votes + hygiene facts -> severity, bucket, reason per row.
 Shared by CLI and server."""
 import itertools
+import re
 
 import numpy as np
 import pandas as pd
@@ -39,11 +40,15 @@ def summary_rows(df):
     return mask
 
 
-def duplicates(df):
-    """Row equal to an earlier row in every column but source_file."""
+def duplicates(df, errors_log=()):
+    """Row equal to an earlier row in every column but source_file. Text typed into a number or date column is compared as
+    that text: loading had blanked it, so "R+33.2" and "D+6.3" rows looked equal (513 false duplicates, 2026-10-16)."""
     cols = [c for c in df.columns if c != "source_file"]
+    cells, at = df[cols].astype(str).to_numpy(copy=True), {c: k for k, c in enumerate(cols)}
+    for i, c, raw in errors_log:
+        cells[i, at[c]] = f"text:{raw}"
     seen, out = {}, []
-    for i, key in enumerate(map(tuple, df[cols].astype(str).to_numpy())):
+    for i, key in enumerate(map(tuple, cells)):
         j = seen.setdefault(key, i)
         src = f" ({df['source_file'].iloc[j]})" if "source_file" in df else ""  # CLI path only
         out.append([f"Duplicate of row {j + 2}{src}"] if j != i else [])
@@ -207,8 +212,12 @@ def pairs(df, column_types, skip, limits=None):
 
 
 def _one_edit(a, b):
-    """a and b are the same length and differ by one wrong letter or two neighbours swapped. An added or dropped
-    letter is left out on purpose: too often a different word (Laptop/Laptops, Sara/Sarah, Jon/John)."""
+    """a and b differ by one wrong letter, two neighbours swapped, or one letter typed twice ("NOTT DONE", "itraconazolle",
+    4 of 9 blind misspellings, 2026-10-16). Any other added or dropped letter is left out on purpose: too often a different
+    word (Laptop/Laptops, Sara/Sarah, Jon/John)."""
+    long, short = (a, b) if len(a) > len(b) else (b, a)
+    if len(long) == len(short) + 1:
+        return any(long[k] == long[k - 1] and long[:k] + long[k + 1:] == short for k in range(1, len(long)))
     if a == b or len(a) != len(b):
         return False
     d = [k for k in range(len(a)) if a[k] != b[k]]
@@ -276,9 +285,12 @@ def spellings(df, column_types, skip):
         # a short form of exactly one other label (5+ rows, 2+ letters longer): its start ("EMP" for "Employed"), each
         # word's start ("In Prog" for "In Progress"), or a contraction ("Std" for "Standard": same first letter, the rest
         # in order, at most one vowel - "Fee" is not short for "Free")
+        # A whole word of another label is a label of its own: Periode "II" next to "II-III?" (blind real sheet, 123
+        # correct cells offered "II-III?", 2026-10-16), "Pen" next to "Pen Set"
+        whole = lambda short: any(short in re.split(r"[\s/-]+", u) for u in cnt.index if u != short)
         for short in cnt.index:
             longer = [u for u, m in cnt.items() if m >= 5 and len(u) >= len(short) + 2 and _short_for(short, u)]
-            if 2 <= len(short.replace(" ", "")) <= 6 and short.replace(" ", "").isalpha() and len(longer) == 1:
+            if 2 <= len(short.replace(" ", "")) <= 6 and short.replace(" ", "").isalpha() and len(longer) == 1 and not whole(short):
                 for i in keys.index[keys == short]:
                     missed[i].append(f'{col} "{_short(s[i])}" looks like a short form of "{_short(rights[longer[0]])}"')
                     maybe[i][col] = rights[longer[0]]
@@ -379,7 +391,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5):
             "isolation": isolation_detector(df, judged, k) if s >= 5 else _result(n, "strength below 5")}
     # DBSCAN cut 2026-10-07: 90s/100k rows, 81% false alarms, bench same without it
     ran = [d for d in dets.values() if d["ran"]]
-    dup, typ, blank = duplicates(df), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
+    dup, typ, blank = duplicates(df, errors_log), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
     hole, far = placeholders(df, column_types, skip), far_dates(df, column_types, skip)
     paired, solved = pairs(df, column_types, skip, limits)
     add = [list(dict.fromkeys(s + m)) for s, m in zip(sums(df, column_types, skip), paired, strict=True)]
