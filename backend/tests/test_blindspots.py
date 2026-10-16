@@ -94,11 +94,27 @@ def test_every_planted_defect_found_and_no_clean_row_flagged(scanned):
 
 
 def test_protected_columns_are_found_by_name():
-    assert fairness.protected(["Customer_ID", "Age", "Marital_Status", "ZipCode", "home_city", "Employment_Status",
-                               "Gender", "Date of Birth", "Account_Tenure", "Location"]) == {
+    assert fairness.protected(dict.fromkeys(["Customer_ID", "Age", "Marital_Status", "ZipCode", "home_city", "Employment_Status",
+                                             "Gender", "Date of Birth", "Account_Tenure", "Location"], "text")) == {
         "Age": "demographic", "Marital_Status": "demographic", "ZipCode": "location (can stand in for race or income)",
         "home_city": "location (can stand in for race or income)", "Gender": "demographic", "Date of Birth": "demographic",
         "Location": "location (can stand in for race or income)"}
+
+
+def test_a_location_word_protects_a_column_only_when_it_can_hold_a_place():
+    # MASS Cars93 (blind real tables, 2026-10-16): "MPG.city" is miles per gallon, but "city" made it a protected
+    # location, so the fairness report banded MPG into quarters and ran bias tests on it
+    r = random.Random(8)
+    cols = ["Model", "MPG.city", "City Fuel Economy", "City", "Location", "Zip Code", "ZipCode", "Price"]
+    rows = [[f"Car {k}", r.randint(15, 46), round(r.uniform(15, 46), 1), r.choice(CITIES), r.choice(["North", "South"]),
+             r.randint(10000, 99999), r.randint(10000, 99999), r.randint(7, 62)] for k in range(80)]
+    _, types, _ = load_from_records(cols, rows)
+    # a ZIP is a code whatever the loader makes of it: "Zip Code" loads as an ID, "ZipCode" (no break before Code) as a number
+    assert (types["MPG.city"], types["City"], types["Zip Code"], types["ZipCode"]) == ("number", "text", "id", "number")
+    place = "location (can stand in for race or income)"
+    assert fairness.protected(types) == {"City": place, "Location": place, "Zip Code": place, "ZipCode": place}
+    fair = scan_agent.scan(cols, rows)[-1]
+    assert "MPG.city" not in fair["protected"] and not {"MPG.city", "City Fuel Economy"} & {t["column"] for t in fair["tests"]}
 
 
 def test_protected_columns_never_make_a_person_unusual():

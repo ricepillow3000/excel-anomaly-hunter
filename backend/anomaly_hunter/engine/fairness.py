@@ -13,8 +13,9 @@ from anomaly_hunter.engine.load import PLACEHOLDER
 PROXY = "location (can stand in for race or income)"
 DEMOGRAPHIC = {"age", "dob", "birth", "birthday", "birthdate", "gender", "sex", "race", "ethnicity", "ethnic", "religion",
                "marital", "nationality", "citizenship", "disability", "disabled", "pregnancy", "pregnant", "veteran"}
-LOCATION = {"location", "city", "state", "zip", "zipcode", "postal", "postcode", "country", "region", "neighborhood",
-            "neighbourhood", "county"}
+# a postal code names a place whatever the loader made of it: "Zip Code" loads as an ID, "ZipCode" as a number
+POSTAL = {"zip", "zipcode", "postal", "postcode"}
+LOCATION = {"location", "city", "state", "country", "region", "neighborhood", "neighbourhood", "county"} | POSTAL
 MIN_GROUP = 20  # smaller groups prove nothing either way
 MAX_TESTS = 400  # each test is a crosstab (~5.6 ms): a crafted 40 x 40 sheet took 9 s per scan (2026-10-16)
 ALPHA = 0.01    # after a Bonferroni correction over every test of the scan: noise is not called bias
@@ -26,14 +27,16 @@ def _words(name):
     return [w.lower() for w in re.findall(r"[A-Z]?[a-z]+|[A-Z]+(?![a-z])", re.sub(r"[^A-Za-z]+", " ", str(name)))]
 
 
-def protected(columns):
+def protected(types):
     """{column: why it is protected} for headers naming a demographic, or a location that can stand in for one."""
     out = {}
-    for c in columns:
+    for c, t in types.items():
         w = set(_words(c))
         if w & DEMOGRAPHIC:
             out[c] = "demographic"
-        elif w & LOCATION:
+        # a place is text or a code: MASS Cars93's "MPG.city" (miles per gallon) was banded into quarters and bias-tested
+        # as a location (blind real tables, 2026-10-16)
+        elif w & POSTAL or (w & LOCATION and t in ("text", "id")):
             out[c] = PROXY
     return out
 
