@@ -9,7 +9,7 @@ adding them would only add code that can break. Every verdict below was **measur
   agent that never saw the answer key. It found the accuracy bugs fixed in PR #18.
 - **Council:** three reviewers (minimal, accuracy, reliability + security) argued every item; the verdicts are below.
 - **Second blind test:** 30 more random real tables nobody had tuned against (209 planted), main vs this work:
-  planted caught 155 -> 162; Medium+ false alarms on planted sheets 1,622 -> 237 (after two more fixes it found);
+  planted caught 155 -> 164; Medium+ false alarms on planted sheets 1,622 -> 237 (after four more fixes it found);
   exact fixes 55 -> 48 (the lost ones were medians that happened to land within 1% of the truth).
 
 Add a piece only when its "add it when" signal shows up in a measurement, and say which one in the commit.
@@ -84,3 +84,7 @@ Add a piece only when its "add it when" signal shows up in a measurement, and sa
   take minutes of the user's own CPU. Real wide sheets (300-1,000 columns) take seconds. A column limit would refuse
   real survey exports.
 - `latest-scan.csv` is written on every scan, Power BI or not. Making it opt-in is John's call.
+- From the round-2 blind judge, left as they are: a real negative in a column with almost none gets a sign-flip card
+  (4 rows; the stray-minus rule catches far more slips than it costs); repeated trials in a tasting design read as
+  duplicates (the card says to delete only the copy that's out of place); blanks of sparse records (genuinely
+  missing); a sheet's own "NA" code in columns that rarely have it; storm days in a forecast ensemble.
