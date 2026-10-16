@@ -61,6 +61,8 @@ Adding or removing a check: update this table in the same commit.
   blind real-sheet test: one agent fetches random public tables and plants mistakes with a secret key, another runs
   the pane and engine without it (`docs/SYSTEMS-MAP.md`). Use a fresh set each time: a set you fixed against is no
   longer held out.
+- **An AI prompt, its context or the model** changes only with `backend/bench/ai_eval.py` numbers (your own key,
+  never the relay; paired wins vs losses on dev and held-out) in the commit message. No eval run, no change.
 - **Before adding a system-design piece** (a cache, queue, lock, retry, rate limit), read `docs/SYSTEMS-MAP.md`: what
   exists, where, and which measurement would justify more.
 - **Comments say why** (the incident or measurement), not what.

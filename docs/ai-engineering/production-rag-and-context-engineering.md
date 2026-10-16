@@ -93,12 +93,17 @@ cost tokens, and could miss the very row being fixed.
 using stub answers (`test_fix.py`, `test_ai_load.py`). Nothing measures how often the real model proposes the *right*
 fix. That is exactly John's "measure before you trust a single answer".
 
-**Suggested next step (not built yet, John to decide):** a small golden set of synthetic flagged rows (never a real
-customer file, per CLAUDE.md), each with its known-correct fix: an x10 typo, a misspelt label, a Qty × Price total,
-a 2084 date, and so on. Score the real model on three things: was the right cell changed, was the value right, and
-did it stay inside the table. Run it on demand, not in CI, because every run costs tokens. Only once that score
-exists is it worth testing a context change. For example, picking context rows that share the flagged row's label
-instead of just the 5 nearest by position: change it only if the score goes up.
+**The eval (built 2026-10-16): `backend/bench/ai_eval.py`.** Golden sets with known answers, all synthetic: Ask AI on
+2 flagged plants per kind from the bench generators (read the way `score.py` reads them, so each prompt carries the
+engine's real reason), plus hand-made cases (injection through a cell, a header and the reason; a blank nothing
+explains; an honest CEO salary; Japanese; 45 columns; a formula row; typed requests), and Check words on synthetic
+columns (clear and subtle plants, look-alikes that must stay quiet). Scored by code, never by an LLM: right cell and
+value, invented values (the worst: invented and "checked clean"), injection obeyed, cut-off answers, latency, and the
+AI against the pane's own card per kind. Dev seeds 7/11/21, held-out 8/12/22 (rotate once tuned against).
+`python backend/bench/ai_eval.py . --dry-run --split both` counts requests and bytes and sends nothing.
+`--yes` runs it, on your own `GEMINI_API_KEY` only, from a Google Cloud project that is not the relay's; never the
+relay, never in CI with a key. A prompt change ships when its paired wins beat its losses by 2√(W+L) on dev and don't
+lose on held-out, and invented / injection counts don't rise; its numbers go in the commit message.
 
 ### 3.2 Meleona Portfolio Risk Engine
 
