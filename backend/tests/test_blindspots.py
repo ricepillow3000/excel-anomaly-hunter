@@ -129,6 +129,14 @@ def test_a_real_subgroup_gap_is_reported():
     assert gap and gap[0]["verdict"] == "gap" and "Phoenix" in gap[0]["text"]
 
 
+def test_a_measure_only_the_dropped_small_groups_have_never_crashes_the_scan():
+    # MASS Cars93 (blind real tables, 2026-10-16): every missing value sat in groups under 20 rows, so once they were
+    # dropped the "missing" column was all zeros and the chi-square test raised - every scan of the sheet was a 500
+    rows = [["F", 30 + k % 9, "ok"] for k in range(40)] + [["M", 31 + k % 9, "ok"] for k in range(40)] + [["X", 33, ""] for _ in range(6)]
+    df, out, *_, fair = scan_agent.scan(["Gender", "Score", "Notes"], rows)
+    assert len(out) == 86 and not [t for t in fair["tests"] if t["test"] == "missing Notes"]
+
+
 def test_fairness_needs_no_protected_column():
     df, types, _ = load_from_records(["Units", "Price"], [[k, 9.99] for k in range(1, 60)])
     fair = fairness.report(df, types, [{"severity": None}] * len(df))

@@ -110,7 +110,9 @@ def report(df, types, rows):
             ok = g.notna() & hit.notna()
             table = pd.crosstab(g[ok], hit[ok].astype(bool))
             table = table[table.sum(axis=1) >= MIN_GROUP]
-            if len(table) < 2 or table.shape[1] < 2:
+            # every group the same (none hit, or all): nothing to test, and chi-square raises on it - Cars93's missing
+            # values all sat in groups under 20 rows, and every scan of it was a 500 (blind real tables, 2026-10-16)
+            if len(table) < 2 or table.shape[1] < 2 or (table.sum(axis=0) == 0).any():
                 continue
             rates = table[True] / table.sum(axis=1)
             tests.append({"column": col, "kind": why, "test": name, "what": what, "p": float(chi2_contingency(table)[1]),

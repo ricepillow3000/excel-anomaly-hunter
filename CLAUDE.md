@@ -46,6 +46,7 @@ an admin panel, role, operator route or debug switch. The weekly security sweep 
 | Odd combinations across columns | `detectors.isolation_detector` | `test_engine.py` |
 | A top value that is all 9s and over twice the next one (99999 = "missing" / "too big") | `pipeline.codes` | `test_an_all_nines_top_value_is_a_code` |
 | A lone decimal in a column of whole numbers (study day 7.3 for 73) | `pipeline.whole_numbers` | `test_a_lone_decimal_in_a_column_of_whole_numbers_is_worth_a_check` |
+| A number past what its column's name allows (Month 13, Hour 25, a 6 on "Rating (1-5)", Latitude 91.5); quiet when 1%+ break it (yyyymm months, 0-360 longitudes) | `pipeline.named_bounds` | `test_a_value_past_what_its_column_name_allows_is_worth_a_check`, `test_a_column_whose_name_means_something_else_keeps_quiet` |
 | Fairness gaps by demographic group, incl. 2-label text outcomes; `?` counts as missing, never a group | `engine/fairness.py` | `test_blindspots.py`, `test_wild_census.py` |
 Adding or removing a check: update this table in the same commit.
 
@@ -98,5 +99,9 @@ Adding or removing a check: update this table in the same commit.
 - Checks over pairs of columns grow with the width (400 crafted text columns: 30 s; 160 number columns: 16 s). Cap
   them in sheet order, never with a clock inside a scan: the same sheet must give the same answer on any PC.
   `test_a_crafted_wide_sheet_cannot_make_the_column_pair_checks_run_for_minutes`.
+- Real exports break what synthetic sheets never do: ISO timestamps ending in Z or +02:00 (with a blank) broke date
+  parsing, and a chi-square on an all-zero column broke the fairness report. Both made every scan of the sheet a 500
+  (`load._dates`, `fairness.report`; 40 random real tables, 2026-10-16). A new blind round reads every table, not only
+  the planted ones.
 - Pin every package, indirect ones too: an unpinned scikit-learn 1.9.1 broke every Windows install (2026-10-11).
   `constraints.txt` + `tools/pinned.py` (CI and the exe job); regenerate with the command in `tools/pinned.py`.
