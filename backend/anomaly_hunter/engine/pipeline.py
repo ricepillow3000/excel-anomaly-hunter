@@ -1,5 +1,6 @@
 """Score a loaded DataFrame: 3 detector votes + hygiene facts -> severity, bucket, reason per row.
 Shared by CLI and server."""
+import collections
 import itertools
 import re
 
@@ -61,12 +62,29 @@ def _short(t):
     return t if len(t) <= 60 else t[:57] + "..."
 
 
+MISSING = re.compile(r"na|nan|none|missing", re.I)
+
+
+def _shape(raw):
+    """R+51.5 -> a+9.9, 16A -> 9a: the pattern of a code, not its value."""
+    return re.sub(r"[^\W\d_]+", "a", re.sub(r"\d+", "9", str(raw).strip()))
+
+
 def type_errors(n, errors_log, column_types):
+    """Text in a number or date column. A text shape the column repeats 5+ times is its own code system (partisan lean
+    "R+51.5", district "16A": 8,000 false rows on one real sheet, 2026-10-16), not a slip; placeholders and missing-value
+    words (N/A, -, NA) never are. The cells stay in errors_log: they are text, for duplicates and blanks alike."""
     out = [[] for _ in range(n)]
+    code = lambda raw: not (EXCEL_ERROR.match(str(raw).strip()) or PLACEHOLDER.fullmatch(str(raw).strip())
+                            or MISSING.fullmatch(str(raw).strip()))
+    shapes = collections.Counter((col, _shape(raw)) for _, col, raw in errors_log if code(raw))
     for i, col, raw in errors_log:
-        kind = "date" if column_types[col] == "date" else "number"
+        kind, text = "date" if column_types[col] == "date" else "number", str(raw).strip()
+        if code(raw) and shapes[col, _shape(raw)] >= 5:
+            continue
         raw = _short(raw)
-        out[i].append(f"Excel error {raw} in {col}" if EXCEL_ERROR.match(str(raw).strip()) else f'Text "{raw}" in {kind} column {col}')
+        out[i].append(f"Excel error {raw} in {col}" if EXCEL_ERROR.match(text) else f'Placeholder "{raw}" in column {col}'
+                      if PLACEHOLDER.fullmatch(text) else f'Text "{raw}" in {kind} column {col}')
     return out
 
 
@@ -95,11 +113,37 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
     wrong = {}  # text/errors already named as such are not blanks
     for i, c, _ in errors_log:
         wrong.setdefault(c, []).append(i)
+    # a blank its whole category group shares is the sheet's layout (a long-format sheet fills "value" for some metrics,
+    # "pct" for others: 17,852 false rows on one real sheet, 2026-10-16); a blank inside an otherwise filled group is a slip
+    labels = {}
+    for g, t in column_types.items():
+        lab = df[g].astype(str).str.strip().where(~skip & ~_blank(df[g])) if t == "text" else None
+        if lab is not None and lab.nunique() <= 50 and len(labels) < 64:  # 64: a crafted 1,000-column sheet stays fast
+            labels[g] = lab
     for col in column_types:
         b = _blank(df[col]) & ~skip & ~df.index.isin(wrong.get(col, []))  # empty text cells too, not only converted ones
         if b.any() and 1 - b.sum() / max(1, (~skip).sum()) >= threshold:
+            for g, lab in labels.items():
+                if g != col and (b & lab.notna()).any():
+                    st = b[lab.notna()].groupby(lab[lab.notna()]).agg(["all", "size"])
+                    b &= ~lab.isin(st.index[st["all"] & (st["size"] >= 5)])
             for i in df.index[b]:
                 out[i].append(f"Blank cell in column {col}, which is otherwise filled")
+    return out
+
+
+def whole_numbers(df, column_types, skip):
+    """A lone decimal in a column of whole numbers: study day 7.3 typed for 73, between days 72 and 74 - no limit can
+    catch it (real clinical sheet, 2026-10-16). Worth a check (Low), no fix: the slip could be anywhere in the number."""
+    out = [[] for _ in range(len(df))]
+    for col, t in column_types.items():
+        x = df[col][~skip].dropna() if t == "number" else ()
+        if len(x) < 30 or x.nunique() < 3:
+            continue
+        odd = (x - x.round()).abs() > 1e-9 * x.abs().clip(lower=1)  # float noise (2.99 - 1.99) is still whole
+        if 1 <= odd.sum() <= max(1, 0.005 * len(x)):
+            for i in x.index[odd]:
+                out[i].append(f"{col} {x[i]:g} is not a whole number - every other {col} is")
     return out
 
 
@@ -170,7 +214,8 @@ def pairs(df, column_types, skip, limits=None):
         return out, fix
     bounds = lambda j: (limits or {}).get(cols[j]) or (None, None, None, None)
     usual = lambda j, v: (bounds(j)[0] is None or v >= bounds(j)[0]) and (bounds(j)[1] is None or v <= bounds(j)[1])
-    vary = [j for j in range(len(cols)) if len(np.unique(a[:, j][~np.isnan(a[:, j])])) >= 3]
+    # the first 64 varying columns: pairs x fractions grows with the cube of the width (160 columns took 20 s, 2026-10-16)
+    vary = [j for j in range(len(cols)) if len(np.unique(a[:, j][~np.isnan(a[:, j])])) >= 3][:64]
     near = lambda y, got: np.abs(y - got) <= np.maximum(0.011, 1e-6 * np.abs(y))  # 1 cent + float slack
     sample = a[:64]
     rules = [((p, q), f"{cols[p]} {sign} {cols[q]}", op) for (p, q), (sign, op) in
@@ -259,20 +304,22 @@ def spellings(df, column_types, skip):
         capital = lambda v: v.strip()[:1].isupper()
         labels = list(s.drop_duplicates())
         caps = sum(map(capital, labels)) >= len(labels) / 2  # the column's style: most labels start with a capital
-        rights = {}  # label -> its right spelling
-        for key, grp in s.groupby(keys):
-            counts = grp.value_counts()
-            right = rights[key] = max(counts.index, key=lambda v: (capital(v) == caps and v == " ".join(v.split()), counts[v]))
+        rights, spelt = {}, {}  # label -> its right spelling; label -> {raw spelling: rows}
+        for raw, c in s.value_counts().items():  # one count per column, not per label: 400 columns took 20 s (2026-10-16)
+            spelt.setdefault(" ".join(raw.split()).casefold(), {})[raw] = c
+        for key, counts in spelt.items():
+            right = rights[key] = max(counts, key=lambda v: (capital(v) == caps and v == " ".join(v.split()), counts[v]))
             for raw, c in counts.items():
                 if raw == right:
                     continue
-                for i in grp.index[grp == raw]:
+                for i in s.index[s == raw]:
                     out[i].append(f'{col} "{_short(raw)}" looks like "{_short(right)}" (same word, different capitals/spaces)')
                     fix[i][col] = right
                     if counts[right] >= 5 * c:  # auto-fix only when the right spelling is plainly the usual one
                         exact[i][col] = right
         cnt = keys.value_counts()
-        word_like = lambda w: len(w) >= 5 and w.replace(" ", "").isalpha()
+        # over 60 characters is a note, not a label: crafted 32,000-character labels took 58 s here (council, 2026-10-16)
+        word_like = lambda w: 5 <= len(w) <= 60 and w.replace(" ", "").isalpha()
         for rare, c in cnt[cnt <= 2].items():
             usual = next((u for u, m in cnt.items() if m >= max(5, 5 * c) and word_like(u) and word_like(rare)
                           and _one_edit(rare, u)), None)
@@ -287,7 +334,8 @@ def spellings(df, column_types, skip):
         # in order, at most one vowel - "Fee" is not short for "Free")
         # A whole word of another label is a label of its own: Periode "II" next to "II-III?" (blind real sheet, 123
         # correct cells offered "II-III?", 2026-10-16), "Pen" next to "Pen Set"
-        whole = lambda short: any(short in re.split(r"[\s/-]+", u) for u in cnt.index if u != short)
+        tokens = collections.Counter(w for u in cnt.index for w in set(re.split(r"[\s/-]+", u)))
+        whole = lambda short: tokens[short] > 1  # a word of some other label too, not only of itself
         for short in cnt.index:
             longer = [u for u, m in cnt.items() if m >= 5 and len(u) >= len(short) + 2 and _short_for(short, u)]
             if 2 <= len(short.replace(" ", "")) <= 6 and short.replace(" ", "").isalpha() and len(longer) == 1 and not whole(short):
@@ -349,7 +397,7 @@ def shifted(df, column_types, skip):
         if t == "text":
             s = df[col][~skip].map(lambda v: " ".join(str(v).split()).casefold())
             s = s[(s != "") & ~s.str[:1].isin(list("=+-@")) & ~s.str.fullmatch(PLACEHOLDER)]
-            if s.nunique() <= 50:
+            if s.nunique() <= 50 and len(keys) < 100:  # every pair of columns: 400 crafted ones took 44 s (2026-10-16)
                 keys[col] = s
     counts = {c: s.value_counts() for c, s in keys.items()}
     usual = {c: set(n.index[n >= 2]) for c, n in counts.items()}  # shared vocabulary: one-offs are suspects, not evidence
@@ -397,8 +445,8 @@ def score(df, column_types, errors_log, limits, order_by, strength=5):
     add = [list(dict.fromkeys(s + m)) for s, m in zip(sums(df, column_types, skip), paired, strict=True)]
     code = codes(df, column_types, skip)
     spell, spell_fix, missed, spell_maybe, spell_exact = spellings(df, column_types, skip)
-    missed = [m + s + f for m, s, f in zip(missed, shifted(df, column_types, skip), fractions(df, column_types, skip),
-                                          strict=True)]  # all "worth a check" (Low)
+    missed = [m + s + f + w for m, s, f, w in zip(missed, shifted(df, column_types, skip), fractions(df, column_types, skip),
+                                                  whole_numbers(df, column_types, skip), strict=True)]  # all "worth a check" (Low)
     rows = []
     for i in range(n):
         if skip[i]:

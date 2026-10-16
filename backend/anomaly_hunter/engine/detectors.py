@@ -77,7 +77,7 @@ def likely_value(v, st, lo, hi):
     flip = v < 0 and st["nonneg"] >= 0.99 * (st["n"] - 1)
     for c in ([v / 10 ** k] if 1 <= abs(k) <= 3 and far else []) + ([-v] if flip else []):
         if lo <= c <= hi and (c == round(c) or not st["whole"]):  # 999 in a 1-5 count column is not "likely 0.999"
-            return float(f"{c:.10g}")
+            return float(c) if c == -v else float(f"{c:.10g}")  # a flipped sign is exact: rounding made it "missing zeros"
     return None
 
 
