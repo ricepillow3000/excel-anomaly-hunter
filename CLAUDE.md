@@ -98,5 +98,9 @@ Adding or removing a check: update this table in the same commit.
 - Checks over pairs of columns grow with the width (400 crafted text columns: 30 s; 160 number columns: 16 s). Cap
   them in sheet order, never with a clock inside a scan: the same sheet must give the same answer on any PC.
   `test_a_crafted_wide_sheet_cannot_make_the_column_pair_checks_run_for_minutes`.
+- Real exports break what synthetic sheets never do: ISO timestamps ending in Z or +02:00 (with a blank) broke date
+  parsing, and a chi-square on an all-zero column broke the fairness report. Both made every scan of the sheet a 500
+  (`load._dates`, `fairness.report`; 40 random real tables, 2026-10-16). A new blind round reads every table, not only
+  the planted ones.
 - Pin every package, indirect ones too: an unpinned scikit-learn 1.9.1 broke every Windows install (2026-10-11).
   `constraints.txt` + `tools/pinned.py` (CI and the exe job); regenerate with the command in `tools/pinned.py`.

@@ -272,6 +272,21 @@ def test_codes_that_look_like_dates_stay_text():
     assert types == {"Cost Code": "text", "When": "date"}
 
 
+def test_timestamps_with_a_utc_or_offset_suffix_are_dates_never_a_crash():
+    # a real clinical export (ISO "2014-01-02T00:00:00Z" with blanks) made every scan of its sheet an engine error:
+    # the UTC column came back as plain objects. Mixed offsets made pandas raise outright (blind real tables, 2026-10-16)
+    from anomaly_hunter.engine.load import load_from_records
+    from anomaly_hunter.server import create_app
+    utc = [f"2014-{1 + k % 12:02}-{1 + k % 28:02}T00:00:00Z" for k in range(118)] + ["", "2084-01-02T23:59:59Z"]
+    mixed = [f"2014-02-{1 + k % 28:02}T08:30:00{'+02:00' if k % 2 else '-05:00'}" for k in range(120)]
+    df, types, _ = load_from_records(["Start", "End", "Dose"], [[a, b, 10 + k % 5] for k, (a, b) in enumerate(zip(utc, mixed))])
+    assert types == {"Start": "date", "End": "date", "Dose": "number"}
+    assert str(df["Start"][0].date()) == "2014-01-01" and str(df["End"][1].date()) == "2014-02-02"  # the date as written
+    rows = [[a, b, 10 + k % 5] for k, (a, b) in enumerate(zip(utc, mixed))]
+    r = create_app().test_client().post("/scan", json={"columns": ["Start", "End", "Dose"], "rows": rows, "limits": {}})
+    assert r.status_code == 200 and "2084-01-02" in r.get_json()["rows"][119]["reason"]
+
+
 def test_totals_rows_are_not_checked_but_a_vendor_called_total_is():
     from anomaly_hunter.engine.load import load_from_records
     from anomaly_hunter.engine.pipeline import summary_rows
