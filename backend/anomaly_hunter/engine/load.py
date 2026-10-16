@@ -27,7 +27,8 @@ def _is_id(name, num):
     Only 0s and 1s is a yes/no flag, never an ID, whatever the header ("Delinquent_Account": 0/1, not an account number)."""
     if not len(num) or (num != num.round()).any() or set(num.unique()) <= {0, 1}:
         return False
-    if ID_NAME.search(str(name)):
+    # "No" is a row number - unless its numbers repeat: nitric oxide "NO" readings were skipped as an ID (2026-10-16)
+    if ID_NAME.search(str(name)) and not (re.search(r"(^|[^a-z])no\.?\s*$", str(name), re.I) and num.nunique() < 0.95 * len(num)):
         return True
     u = num.drop_duplicates().sort_values()
     return len(num) >= 20 and len(u) >= 0.95 * len(num) and u.diff().median() <= 2

@@ -345,7 +345,9 @@ def spellings(df, column_types, skip):
         tokens = collections.Counter(w for u in cnt.index for w in set(re.split(r"[\s/-]+", u)))
         whole = lambda short: tokens[short] > 1  # a word of some other label too, not only of itself
         for short in cnt.index:
-            longer = [u for u, m in cnt.items() if m >= 5 and len(u) >= len(short) + 2 and _short_for(short, u)]
+            # a short form is the rarer spelling - the full label at least twice as common: "CAF" (51 rows) is not short
+            # for "CONCACAF" (30), nor "VI" for "VIII" - 71 cards would have overwritten correct labels (real sheets, 2026-10-16)
+            longer = [u for u, m in cnt.items() if m >= max(5, 2 * cnt[short]) and len(u) >= len(short) + 2 and _short_for(short, u)]
             if 2 <= len(short.replace(" ", "")) <= 6 and short.replace(" ", "").isalpha() and len(longer) == 1 and not whole(short):
                 for i in keys.index[keys == short]:
                     missed[i].append(f'{col} "{_short(s[i])}" looks like a short form of "{_short(rights[longer[0]])}"')

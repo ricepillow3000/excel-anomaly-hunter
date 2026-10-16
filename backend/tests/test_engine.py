@@ -1019,3 +1019,25 @@ def test_identical_answers_in_a_short_survey_are_not_duplicates():
     rows = [[str(r.choice(scale)) for _ in range(4)] for _ in range(600)]
     _, out = _scan(["Q1", "Q2", "Q3", "Q4"], rows)
     assert not any("Duplicate" in o["reason"] for o in out)
+
+
+def test_a_common_label_is_never_called_a_short_form_of_a_rarer_one():
+    # round-2 blind judge 2026-10-16: "CAF" (51 rows) was "a short form of CONCACAF" (30 rows) and "VI" of "VIII" (20 each):
+    # 71 cards would have written over correct labels. A short form is the rarer spelling: the full label is at
+    # least twice as common (the credit sheet's 30 "EMP" next to ~80 "Employed" still are one)
+    r = np.random.default_rng(35)
+    rows = [[f"t{i}", str(r.choice(["CAF", "CAF", "CONCACAF", "UEFA", "AFC"]))] for i in range(200)]
+    rows += [[f"c{i}", str(r.choice(["VI", "VIII", "IX"]))] for i in range(60)]
+    _, out = _scan(["Team", "Group"], rows)
+    assert not any("short form" in o["reason"] for o in out)
+
+
+def test_a_measurement_headed_no_is_checked_but_a_row_number_no_stays_an_id():
+    # round-2 blind judge 2026-10-16: nitric oxide "NO" (repeating whole numbers) was read as "No." - an ID - so 6,900 among
+    # readings of 20-80 was never checked. "No" is an ID only when its numbers don't repeat
+    r = np.random.default_rng(36)
+    rows = [[i + 1, int(r.integers(20, 80)), round(float(r.uniform(5, 30)), 1)] for i in range(200)]
+    rows[50][1] = 6900
+    types, out = _scan(["No.", "NO", "PM10"], rows)
+    assert types["No."] == "id" and types["NO"] == "number"
+    assert "NO weird limit" in out[50]["reason"] and out[50]["severity"] in ("Medium", "High")
