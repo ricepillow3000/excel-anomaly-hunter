@@ -1,8 +1,8 @@
 // Pane pure-logic check, no Office/fetch. Run: node frontend/selfcheck.js
 import assert from "node:assert";
-import { esc, asNumber, median } from "./utils/text.js";
+import { esc, asNumber } from "./utils/text.js";
 import { cutNote, tableFromGrid, isDateFormat, excelDate, rowFromAddress, colLetter, cellAt, sameRow } from "./utils/sheet.js";
-import { issuesOf, recommendFix, typoKind, spansDecade, afterFix, unusualColumn } from "./features/fix.js";
+import { issuesOf, recommendFix, typoKind, afterFix, unusualColumn } from "./features/fix.js";
 import { plainReason, summaryOf, flaggedRows, fairnessNote, fairnessTests } from "./features/scan.js";
 import { strengthHint, asStrength, levelAt } from "./pages/strength.js";
 import { exactFixes, safeUndo } from "./features/autofix.js";
@@ -43,9 +43,6 @@ assert.equal(rowFromAddress("C8", 3), 3, "data starting lower down");
 assert.equal(rowFromAddress("C1", 0), null, "header row");
 assert.equal(rowFromAddress("B:B", 0), null, "whole column");
 
-assert.equal(median([3, 1, "x", "", null, 2]), 2);
-assert.equal(median([4, 1, 2, 3]), 2.5);
-assert.equal(median(["a"]), null);
 assert.deepEqual([0, 25, 26, 27, 701, 702].map(colLetter), ["A", "Z", "AA", "AB", "ZZ", "AAA"]);
 for (const n of [0, 25, 26, 701, 702]) assert.deepEqual(cellAt(colLetter(n) + "12"), { col: n, row: 12 }, "cellAt undoes colLetter");
 assert.equal(cellAt("=A1"), null);
@@ -89,9 +86,10 @@ const cols = ["Date", "Region", "Units"];
 const data = [["2026-01-06", "East", 40], ["2026-01-07", "West", -5], ["2026-01-08", "East", ""], ["2026-01-09", "East", 41]];
 const lim = { Units: [10, 80, 0, 120] };
 let rec = recommendFix(cols, data, 1, lim, "Flagged by 2 of 4: Units weird limit is 0; this is -5", 0, 0);
-assert.deepEqual(rec.changes, [{ cell: "C3", new: "40.5" }], "median of the OTHER rows (40, 41; blank skipped), as a plain value");
-assert.ok(rec.explanation.startsWith("Units is -5, outside its limits (0 to 120)"), rec.explanation);
-assert.equal(rec.guess, true, "a median is a best guess, and the card says so");
+// no typo behind it: nothing is invented - a median card overwrote 169 delegates with 39 on a real sheet (2026-10-16)
+assert.deepEqual(rec.changes, [], "past a limit with no known value: advice only, never a median");
+assert.ok(rec.explanation.startsWith("Units is -5, past its limit of 0. Check it against the source; if it's right, leave it."), rec.explanation);
+assert.equal(rec.guess, false);
 assert.equal(recommendFix(cols, data, 1, lim, "Units weird limit is 0; this is -5 (likely 5)", 0, 0, { Units: 5 }).guess, false, "an obvious typo (-5 for 5) is not a guess");
 // a value past the limits that the engine did NOT flag (a regular repeated toll; the row is flagged as a duplicate) stays
 assert.deepEqual(recommendFix(cols, data, 1, lim, "Flagged by 1 of 3: Duplicate of row 2", 0, 0).changes, [], "only columns the engine flagged");
@@ -99,16 +97,16 @@ rec = recommendFix(cols, data, 0, lim, "x", 0, 0);
 assert.deepEqual(rec.changes, [], "inside limits: no change");
 assert.ok(rec.explanation.includes("Nothing here is clearly broken"));
 rec = recommendFix(cols, data, 2, lim, "Flagged by 0 of 4: Blank cell in column Units, which is otherwise filled", 0, 0);
-assert.deepEqual(rec.changes, [{ cell: "C4", new: "40" }], "blank in a filled number column: median of 40, -5, 41");
+assert.deepEqual(rec.changes, [], "a blank gets no invented value (17,000 blanks-on-purpose were median-filled on one real sheet)");
+assert.ok(rec.explanation.includes("Units is blank where the rest of the column is filled - fill it in from the source."), rec.explanation);
 assert.deepEqual(recommendFix(cols, data, 3, lim, "x", 0, 0).changes, [], "a blank elsewhere isn't touched");
-rec = recommendFix(cols, data, 0, { Units: [10, 80, 50, null] }, "Units weird limit is 50; this is 40", 4, 2); // data starts at C5
-assert.deepEqual(rec.changes, [{ cell: "E6", new: "18" }], "first row, offset data: median of -5, 41 (blank skipped)");
-assert.ok(rec.explanation.includes("(50 to no high)"));
+rec = recommendFix(cols, data, 1, lim, "Units weird limit is 0; this is -5 (likely 5)", 4, 2, { Units: 5 }); // data starts at C5
+assert.deepEqual(rec.changes, [{ cell: "E7", new: "5" }], "offset data: the fix lands in the sheet's own cell");
 rec = recommendFix(cols, data, 0, null, 'Flagged by 1 of 4: Duplicate of row 2', 4, 0); // header in row 5
 assert.ok(rec.explanation.includes("repeats row 6"), "duplicate row number shifts with the data: " + rec.explanation);
 rec = recommendFix(cols, data, 0, null, 'Flagged by 1 of 4: Duplicate of row 2; Text "12O" in number column Units', 0, 0);
 assert.ok(rec.explanation.includes("repeats row 2") && rec.explanation.includes('Units holds the text "12O"'), rec.explanation);
-assert.deepEqual(recommendFix(cols, [["a", "b", 999]], 0, lim, "Units weird limit is 120; this is 999", 0, 0).changes, [], "one data row: nothing to take a median of");
+assert.deepEqual(recommendFix(cols, [["a", "b", 999]], 0, lim, "Units weird limit is 120; this is 999", 0, 0).changes, [], "no typo behind it: nothing written");
 // the row's own arithmetic gives the value (the engine solved Total ÷ UnitCost): that is the fix, and the card says why
 const ac = ["Units", "UnitCost", "Total"], ad = [[57, 2.99, 170.43], [-5, 2.99, 170.43], [49, 2.99, 146.51]];
 rec = recommendFix(ac, ad, 1, { Units: [30, 70, 0, 100] }, "Units weird limit is 0; this is -5; Total 170.43 does not add up: Units × UnitCost = -14.95", 0, 0, { Units: 57 });
@@ -139,11 +137,27 @@ assert.equal(typoKind(-26, 26), "sign flipped");
 rec = recommendFix(cols, data, 1, lim, "Units weird limit is 0; this is -5 (likely 5)", 0, 0, { Units: 5 });
 assert.deepEqual(rec.changes, [{ cell: "C3", new: "5" }]);
 assert.ok(rec.explanation.startsWith("Units is -5 - looks like a typo for 5 (sign flipped)"), rec.explanation);
-assert.ok(spansDecade([1, 2, 5, 10, 40, 80, 120, 300, 900, 2000]) && !spansDecade([20, 22, 25, 30, 31, 33, 35, 38, 40, 41]));
 const wide = [["a", 100], ["b", 900], ["c", 15000], ["d", 2200], ["e", 400], ["f", 7000], ["g", 30000], ["h", 1300], ["i", 600], ["j", 5000], ["k", 999999]];
 rec = recommendFix(["Id", "Paid"], wide, 10, { Paid: [0, 20000, 0, 40000] }, "Paid weird limit is 40000; this is 999999", 0, 0);
 assert.deepEqual(rec.changes, [], "a huge value in a naturally wide column is not overwritten");
-assert.ok(rec.explanation.includes("may be real"), rec.explanation);
+assert.ok(rec.explanation.includes("if it's right, leave it"), rec.explanation);
+assert.equal(typoKind(-0.0201808419078588, 0.02018084191), "sign flipped", "a rounded fix still reads as a sign flip, not zeros");
+// one slip changes one cell: three columns off by the same x1000 is a real row (California's fruit added up exactly)
+const fr = ["Fresh", "Processed", "Total"], frd = [[2.1, 4.5, 6.6], [2791.8, 5944.6, 8736.4], [1.9, 3.2, 5.1]];
+rec = recommendFix(fr, frd, 1, { Fresh: [0, 5, 0, 10], Processed: [0, 9, 0, 20], Total: [0, 12, 0, 30] },
+  "Fresh weird limit is 10; this is 2791.8 (likely 2.7918); Processed weird limit is 20; this is 5944.6 (likely 5.9446); " +
+  "Total weird limit is 30; this is 8736.4 (likely 8.7364)", 0, 0, { Fresh: 2.7918, Processed: 5.9446, Total: 8.7364 });
+assert.deepEqual(rec.changes, [], "the same step in 3 cells is not 3 typos");
+assert.ok(rec.explanation.includes("probably real or entered in other units"), rec.explanation);
+// worth-a-check reasons say what to look for, never "Nothing here is clearly broken"
+rec = recommendFix(["Id", "When"], [["a", "2084-03-01"]], 0, null, "When 2084-03-01 is far outside the column's dates (2018-01-02 to 2019-12-30)", 0, 0);
+assert.ok(rec.explanation.includes("mistyped year") && !rec.explanation.includes("Nothing here"), rec.explanation);
+rec = recommendFix(["Id", "Day"], [["a", 7.3]], 0, null, "Day 7.3 is not a whole number - every other Day is", 0, 0);
+assert.ok(rec.explanation.includes("check the decimal point"), rec.explanation);
+// a guess says what kind of guess: a short form is not "a misspelling, one letter off"
+rec = recommendFix(["Id", "Plan"], [["a", "Std"]], 0, null, 'Plan "Std" looks like a short form of "Standard"', 0, 0, null, null, { Plan: "Standard" });
+assert.deepEqual(rec.changes, [{ cell: "B2", new: "Standard" }]);
+assert.ok(rec.explanation.startsWith('Plan says "Std" - probably a short form of "Standard"'), rec.explanation);
 // a lone x10 slip the engine flags past the USUAL limit (inside a skewed column's wide weird one): its typo fix
 // stands - the pane checked only the weird limit, so Balance 169946 for 16994.65 got "may be real", no fix (2026-10-15)
 rec = recommendFix(["Id", "Paid"], wide, 10, { Paid: [0, 20000, 0, 2000000] }, "Paid weird limit is 20000; this is 999999 (likely 99999.9)", 0, 0, { Paid: 99999.9 });
@@ -208,7 +222,8 @@ assert.ok(Date.now() - t0 < 500, `recommendFix took ${Date.now() - t0}ms on a cr
 
 const both = recommendFix(["Amt", "Price"], [["$1,000,000.00", 1000], ["$1,200.00", 10]], 0, { Price: [5, 20, 0, 50] },
   "Flagged by 2 of 3: Amt weird limit is 2000; this is 1000000; Price weird limit is 50; this is 1000", 0, 0, null, null);
-assert.ok(both.explanation.includes("Amt is 1000000, past its limit of 2000") && both.changes.length === 1 && !both.explanation.includes("null"), both.explanation);
+assert.ok(both.explanation.includes("Amt is 1000000, past its limit of 2000") && both.explanation.includes("Price is 1000, past its limit of 50") &&
+  both.changes.length === 0 && !both.explanation.includes("null"), both.explanation); // no typo behind either: advice for both, nothing written
 const note = recommendFix(["Name", "Notes"], [["a", ""], ["b", "x"]], 0, {}, "Blank cell in column Notes, which is otherwise filled", 0, 0, null, null);
 assert.ok(note.explanation.startsWith("Notes is blank where the rest of the column is filled"), note.explanation);
 

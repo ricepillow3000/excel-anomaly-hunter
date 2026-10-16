@@ -2,7 +2,6 @@ import { EXCEL_ERRORS } from "../constants/index.js";
 import { state } from "../hooks/use-state.js";
 import { $ } from "../utils/dom.js";
 import { cellAt, colLetter, sameRow } from "../utils/sheet.js";
-import { median } from "../utils/text.js";
 import { setApplied } from "../components/fix-preview.js";
 import { busy } from "../components/progress.js";
 import { post } from "../services/api.js";
@@ -19,15 +18,9 @@ export function issuesOf(reason) {
 
 // Pure: how a typo turned `fix` into `v`, in words: "extra zeros", "missing zeros", "sign flipped"
 export function typoKind(v, fix) {
-  if (v === -fix) return "sign flipped";
+  if (v * fix < 0) return "sign flipped"; // the engine's fix is one slip: a sign or zeros, never both
   const k = Math.round(Math.log10(Math.abs(v / fix)));
   return `${k > 0 ? "extra" : "missing"} zeros - ${k > 0 ? "x" : "÷"}${10 ** Math.abs(k)}`;
-}
-
-// Pure: do the positive numbers span more than 10x between their 5th and 95th percentile? (claims, deal sizes)
-export function spansDecade(xs) {
-  const v = xs.filter((x) => typeof x === "number" && x > 0).sort((a, b) => a - b);
-  return v.length >= 10 && v[Math.floor(0.95 * (v.length - 1))] > 10 * v[Math.floor(0.05 * (v.length - 1))];
 }
 
 // Pure: the reason's "Total 170.43 does not add up: Units × UnitCost = -14.95" parts -> [{text, total, rule, cols}]
@@ -35,14 +28,15 @@ export const addUps = (reason) => String(reason || "").replace(/^Flagged by \d+ 
   .map((s) => /^(.+) (\S+) does not add up: ((.+?) [×+] (.+)) = \S+$/.exec(s)).filter(Boolean)
   .map((m) => ({ text: m[0], total: `${m[1]} ${m[2]}`, rule: m[3], cols: [m[1], m[4], m[5]] }));
 
-// Pure: instant fix for a flagged row, no AI. A number past its weird limits, or a blank in a mostly-filled
-// number column -> the median of the OTHER rows' values in that column, written as a plain number (a formula
-// over the column could loop back through a totals row = circular reference). Anything else -> advice only.
+// Pure: instant fix for a flagged row, no AI. A cell is written only when its value is known: an obvious typo the engine
+// spotted, the row's own arithmetic, the column's usual spelling. Never a median: on 40 real sheets (2026-10-16) the
+// median card filled 17,000 cells that were blank on purpose and overwrote real values (169 delegates -> 39); 3 of
+// ~24 bench medians happened to land near the truth. A blank or an unexplained extreme value gets advice only.
 // limits = {col: [baseLo, baseHi, weirdLo, weirdHi]}.
 // calc = this row's formulas: a cell holding a formula is never overwritten - its inputs are what's wrong.
 export function recommendFix(columns, rows, i, limits, reason, startRow, startCol, likely, calc, maybe) {
   const row = startRow + 2 + i;
-  const changes = [], why = [], typos = [], real = [], calcCells = [], seen = new Set(); // seen: columns already explained
+  const changes = [], typos = [], slips = [], calcCells = [], seen = new Set(); // seen: columns already explained
   let guessed = false; // a misspelling's fix is a guess too
   reason = reason || "";
   const sums = addUps(reason), solved = new Set(); // solved: columns the row's own arithmetic fixed
@@ -68,7 +62,10 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
     if (miss) {
       changes.push({ cell, new: maybe[c] });
       guessed = true;
-      return void typos.push(`${c} says "${v}" - probably a misspelling of "${maybe[c]}", one letter off`);
+      const said = reason.includes(`"${v}" looks like a short form of`) ? `probably a short form of "${maybe[c]}"`
+        : reason.includes(`"${v}" is lowercase where`) ? `lowercase where the column's other labels are capitalised ("${maybe[c]}")`
+          : `probably a misspelling of "${maybe[c]}", one letter off`;
+      return void typos.push(`${c} says "${v}" - ${said}`);
     }
     const typo = likely && likely[c];
     if (sum) {
@@ -78,27 +75,28 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
     }
     if (typo != null && outside) { // engine spotted an obvious typo: extra/missing zeros or a flipped sign
       changes.push({ cell, new: String(typo) });
-      return void typos.push(`${c} is ${v} - looks like a typo for ${typo} (${typoKind(v, typo)})`);
+      slips.push({ c, kind: typoKind(v, typo), change: changes[changes.length - 1], text: `${c} is ${v} - looks like a typo for ${typo} (${typoKind(v, typo)})` });
+      return void typos.push(slips[slips.length - 1].text);
     }
-    const others = rows.filter((_, k) => k !== i).map((r) => r[j]);
-    if (outside && spansDecade(others)) // wide column (claims, deal sizes): a huge value can be real - don't overwrite it
-      return void real.push(`${c} is ${v}, far outside its usual range - but ${c} naturally varies more than 10x, so this may be real`);
-    const med = median(others);
-    if (med === null) return void seen.delete(c);
-    changes.push({ cell, new: String(+med.toPrecision(10)) });
-    why.push(blank ? `${c} is blank` : `${c} is ${v}, outside its limits (${lo ?? "no low"} to ${hi ?? "no high"})`);
+    seen.delete(c); // no value known (a blank, an extreme value): the advice below says what to check
   });
+  // one slip changes one cell: 2+ typed cells of a row off by the same factor say the row is real or in other units
+  // (California's fruit, all three columns "likely /1000", added up exactly - real sheet, 2026-10-16)
+  for (const kind of new Set(slips.map((s) => s.kind))) {
+    const same = slips.filter((s) => s.kind === kind);
+    if (same.length < 2) continue;
+    same.forEach((s) => (changes.splice(changes.indexOf(s.change), 1), typos.splice(typos.indexOf(s.text), 1)));
+    typos.push(`${same.map((s) => s.c).join(", ")} are all off by the same step (${kind}) - one typing slip changes one cell, ` +
+      "so this row is probably real or entered in other units");
+  }
   const notes = [];
   if (calcCells.length) notes.push(`${calcCells.join(", ")} ${calcCells.length > 1 ? "are" : "is"} calculated by a formula - ` +
     "fix the cells it uses rather than typing over it.");
   if (typos.length) notes.push(`${typos.join("; ")}. Check it against the source before applying.`);
-  if (real.length) notes.push(`${real.join("; ")}. Check it against the source; if it's right, leave it.`);
-  if (why.length) {
-    const how = why.length > 1 ? "them each with the median of the rest of its column" : "it with the median of the rest of the column";
-    notes.push(`${why.join("; ")}. Replace ${how} - a typical value that ignores outliers.`);
-  }
   const dup = /Duplicate of row (\d+)/.exec(reason); // engine counts from a header in row 1
-  if (dup) notes.push(`This row repeats row ${+dup[1] + startRow}. If it's a double entry, delete it: right-click the row number > Delete.`);
+  // which copy is the stray one the sheet's order says, not the engine: 5 of 14 blind pairs had the copy first
+  if (dup) notes.push(`This row repeats row ${+dup[1] + startRow} in every column. If one of them is a double entry, delete ` +
+    "the one that's out of place in the sheet's order: right-click its row number > Delete.");
   for (const [, raw, kind, col] of reason.matchAll(/Text "([^"]*)" in (number|date) column ([^;]+)/g))
     notes.push(`${col} holds the text "${raw}" where a ${kind} belongs - retype it as a ${kind}.`);
   for (const [, raw, col] of reason.matchAll(/Placeholder "([^"]*)" in column ([^;]+)/g))
@@ -114,10 +112,21 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
       `(or wrap it in IFERROR(...)) rather than typing a number over it.`);
   for (const s of sums.filter((s) => !s.cols.some((c) => solved.has(c))))
     notes.push(`${s.text} - one of these numbers is wrong. Check them against the source.`);
+  for (const { text } of issuesOf(reason)) // worth-a-check reasons with no value to write: say what to look for
+    for (const [rx, hint] of HINTS) if (rx.test(text)) notes.push(`${text} - ${hint}. Check it against the source.`);
   if (!notes.length)
     notes.push("Nothing here is clearly broken - the values are just unusual together. Check them against the source; if they're right, leave them.");
-  return { explanation: notes.join(" "), changes, guess: why.length > 0 || guessed }; // guess = a median or a misspelling's fix
+  return { explanation: notes.join(" "), changes, guess: guessed }; // guess = a misspelling's fix
 }
+
+// a far-off date got "Nothing here is clearly broken" (12 of 12 on 40 real sheets, 2026-10-16)
+const HINTS = [
+  [/ is far outside the column's dates /, "a mistyped year (2084 for 2024) is the usual cause"],
+  [/ looks like a code, not a real value/, 'a code like 99999 often stands for "missing": put the real value or leave the cell empty'],
+  [/ is above 100% - /, "it may be a whole percent typed where a fraction belongs (85 for 0.85)"],
+  [/ looks like an? .+ value$/, "it may have been typed into the wrong column"],
+  [/ is not a whole number - /, "check the decimal point"],
+];
 
 // Pure: the column an "only unusual" reason points at (an odd mix across columns, or a break in a series), else null
 export function unusualColumn(reason, columns) {
@@ -161,7 +170,7 @@ export async function checkFix(f, changes) {
   const off = (a) => a.row !== startRow + 2 + f.i || a.col < startCol || a.col >= startCol + columns.length || String(a.value).startsWith("=");
   if (!at.length || at.some(off)) return null;
   return post("/check", { columns, rows, limits: state.lastLimits, strength: state.lastStrength, row_index: f.i,
-    changes: at.map((a) => ({ col: a.col - startCol, value: a.value })) });
+    changes: at.map((a) => ({ col: a.col - startCol, value: a.value })) }, 300); // a full re-scan: as long as /scan gets
 }
 
 export async function applyFix(f, changes, sheet) { // the fix, its changes and sheet as they were when Accept was clicked
