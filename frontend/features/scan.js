@@ -1,4 +1,4 @@
-import { SEV, RANK } from "../constants/index.js";
+import { POWER_BI_KEY, SEV, RANK } from "../constants/index.js";
 import { state } from "../hooks/use-state.js";
 import { $, only, show } from "../utils/dom.js";
 import { n } from "../utils/text.js";
@@ -10,6 +10,10 @@ import { renderResults } from "../pages/results.js";
 import { onSelect } from "../pages/fix.js";
 import { strength } from "../pages/strength.js";
 import { autoFix, autoOn, autoUndo } from "./autofix.js";
+
+// Keep each scan for Power BI (a plain-text copy of the sheet on this PC): off unless turned on, like auto-fix
+export const powerBiOn = () => { try { return localStorage.getItem(POWER_BI_KEY) === "1"; } catch { return false; } };
+export const setPowerBi = (on) => { try { localStorage.setItem(POWER_BI_KEY, on ? "1" : "0"); } catch { /* private mode: stays off */ } };
 
 // Agent 2 in the workflow: read the sheet, have the engine check it, deliver the results to the pane.
 // ---- Find problems: read, check, list, highlight ----
@@ -25,7 +29,8 @@ export async function runScan(auto) { // auto === false: the re-check right afte
   }
   busy(`Step 2 of 3: checking ${n(s.rows.length)} rows…`);
   const level = strength();
-  const body = await post("/scan", { columns: s.columns, rows: s.rows, limits: await getLimits(), order_by: null, strength: level }, 300);
+  const body = await post("/scan", { columns: s.columns, rows: s.rows, limits: await getLimits(), order_by: null, strength: level,
+    power_bi: powerBiOn() }, 300);
   state.lastStrength = level; // Agent 3 judges fixes at the level this scan used
   state.lastScan = s;
   state.lastRows = body.rows;

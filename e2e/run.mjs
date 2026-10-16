@@ -149,6 +149,7 @@ if (mode === "flow") {
 
   // 6c) auto-fix (step 3): off by default; on = only the capitals/spaces slip, never numbers; Undo auto-fixes puts it back
   ok(!(await page.evaluate(() => document.getElementById("auto-fix").checked)), "auto-fix is off by default");
+  ok(!(await page.evaluate(() => document.getElementById("power-bi").checked)), "the Power BI copy is off by default: no copy of the sheet is kept");
   await page.evaluate(() => { const c = document.getElementById("auto-fix"); c.checked = true; c.dispatchEvent(new Event("change")); });
   await page.click("#scan"); await idle();
   ok((await cell("B81")).v === "East" && (await cell("C11")).v === -5 && (await cell("C22")).v === 7777 && (await text("#notice")).startsWith("Fixed 1 "),

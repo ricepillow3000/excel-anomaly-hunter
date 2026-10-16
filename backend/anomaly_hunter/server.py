@@ -90,6 +90,8 @@ def _bad(body):
         return "'order_by' must be one of the columns"
     if body.get("strength") is not None and not (type(body["strength"]) is int and 0 <= body["strength"] <= 10):
         return "'strength' must be a whole number from 0 to 10"
+    if body.get("power_bi") is not None and type(body["power_bi"]) is not bool:
+        return "'power_bi' must be true or false"
     return None
 
 
@@ -108,7 +110,8 @@ def _strength(body):
 
 
 def create_app(scan_csv=None):
-    """scan_csv: file every scan overwrites for Power BI (powerbi/anomaly-hunter.pbids). None = off (tests)."""
+    """scan_csv: the Power BI file (powerbi/anomaly-hunter.pbids). A scan writes it only when the pane says power_bi
+    (off unless the user turns it on) and removes it otherwise. None = no file at all (tests)."""
     app = Flask(__name__, static_folder=str(PANEL), static_url_path="")
     app.json = _JSON(app)
     # Werkzeug reads a body into memory only safely with a cap; 256 MB is far above a 2M-cell sheet (~20 MB measured)
@@ -152,7 +155,10 @@ def create_app(scan_csv=None):
         except Exception:  # a bug in the engine: full detail to the log, not pandas internals to the user
             app.logger.exception("scan failed")
             return {"error": "Engine error - details in server.log"}, 500
-        if scan_csv:  # Power BI reads this file: no HTTPS/cert in its way, survives engine restarts
+        if scan_csv and body.get("power_bi") is not True:  # opt-in (2026-10-16): no plain-text copy of the sheet unasked
+            with _CSV_LOCK:
+                Path(scan_csv).unlink(missing_ok=True)
+        elif scan_csv:  # Power BI reads this file: no HTTPS/cert in its way, survives engine restarts
             try:
                 taken = set(df.columns)  # a sheet's own "Severity" or "Reason" column is never overwritten
                 flat = pd.DataFrame(rows, columns=df.columns).assign(**{

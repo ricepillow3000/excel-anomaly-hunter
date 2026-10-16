@@ -19,7 +19,7 @@ Add a piece only when its "add it when" signal shows up in a measurement, and sa
 |---|---|---|---|
 | Timeouts | pane: 300 s for a scan, an Accept re-check, AI; 120 s otherwise. Engine: an idle socket is dropped at 60 s; an AI request has 240 s in all | `services/api.js`, `server.py`, `ai/client.py` | a measured call takes over half its timeout on a slow PC |
 | Retries + exponential backoff + jitter | own-key Google calls: 2, 4, 8, 16, 30 s plus up to 1 s; `Retry-After` honoured; a "per day" 429 stops at once. After a timeout, the next try may wait until the deadline | `client._wait`, `client._call` | never for the relay (each call counts toward the invite's day) |
-| Idempotency | a scan has no side effects except replacing `latest-scan.csv`. A repeated AI question is answered from the cache, never asked again | `client._ask` | an action that charges or writes twice |
+| Idempotency | a scan has no side effects except replacing `latest-scan.csv` (only when "Save each scan for Power BI" is on). A repeated AI question is answered from the cache, never asked again | `client._ask` | an action that charges or writes twice |
 | Circuit breaker | not needed: one AI call at a time, each with a deadline | | many calls per second to a dependency that's down |
 | Health check | `/health` (status, version, AI); the installer waits for it; the pane checks it at start; CI smoke-tests it | `server.py`, `app.py`, `build-exe.yml` | |
 | Back pressure | the pane sends one action at a time; one AI call at a time (a second gets "still working"); size caps (2M cells, 256 MB). No scan lock: concurrent scans give no throughput but are correct (24/24 identical), and need two workbooks | `hooks/use-action.js`, `client._LOCK`, `server.MAX_CELLS` | users report "busy" or memory errors with two workbooks |
@@ -61,7 +61,7 @@ Add a piece only when its "add it when" signal shows up in a measurement, and sa
 | Piece | Here | Where |
 |---|---|---|
 | Encryption in transit | TLS 1.2+ only (ECDHE suites), a certificate good only for localhost/127.0.0.1; HTTPS to Google and the relay | `server.tls_context`, `make_cert` |
-| Encryption at rest | not added: the files live in the user's own Windows profile (`PRIVACY.md` lists them, including the plain-text Power BI copy of the last sheet) | `PRIVACY.md` |
+| Encryption at rest | not added: the files live in the user's own Windows profile (`PRIVACY.md` lists them, including the plain-text Power BI copy of the last sheet, made only when the user turns it on) | `PRIVACY.md` |
 | SQL injection's relatives | no SQL; formula injection (CSV text always quoted, AI formulas allow-listed) and prompt injection are guarded | `server._inert`, `client.SAFE` |
 | DDoS | the engine listens on 127.0.0.1 only and refuses other websites; the relay sits behind Cloudflare with daily caps | `own_panel_only`, `relay/worker.js` |
 | DNS | DNS rebinding refused (Host must be localhost) | `own_panel_only` |
@@ -83,7 +83,6 @@ Add a piece only when its "add it when" signal shows up in a measurement, and sa
 - A crafted workbook can still make a scan slow through per-column overhead (~25 ms per column): 16,000 columns would
   take minutes of the user's own CPU. Real wide sheets (300-1,000 columns) take seconds. A column limit would refuse
   real survey exports.
-- `latest-scan.csv` is written on every scan, Power BI or not. Making it opt-in is John's call.
 - From the round-2 blind judge, left as they are: a real negative in a column with almost none gets a sign-flip card
   (4 rows; the stray-minus rule catches far more slips than it costs); repeated trials in a tasting design read as
   duplicates (the card says to delete only the copy that's out of place); blanks of sparse records (genuinely

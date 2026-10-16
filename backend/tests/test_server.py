@@ -182,13 +182,13 @@ def test_each_scan_overwrites_the_power_bi_csv(tmp_path):
     c = create_app(out).test_client()
     columns, rows = make_clean_payload(n=40)
     for n in (40, 30):  # second scan replaces the first, never appends
-        assert c.post("/scan", json={"columns": columns, "rows": rows[:n]}).status_code == 200
+        assert c.post("/scan", json={"columns": columns, "rows": rows[:n], "power_bi": True}).status_code == 200
         got = pd.read_csv(out, encoding="utf-8-sig")
         assert len(got) == n and list(got.columns) == [*columns, "Severity", "Bucket", "Reason", "Magnitude"]
     assert not (tmp_path / "latest-scan.csv.tmp").exists()
     # the user's own "Severity" column is kept; ours gets a clear name instead of overwriting it
     rows = [[f"T{i}", 10 + i % 5, "Open"] for i in range(40)]
-    assert c.post("/scan", json={"columns": ["Ticket", "Amount", "Severity"], "rows": rows}).status_code == 200
+    assert c.post("/scan", json={"columns": ["Ticket", "Amount", "Severity"], "rows": rows, "power_bi": True}).status_code == 200
     got = pd.read_csv(out, encoding="utf-8-sig")
     assert (got["Severity"] == "Open").all() and "Anomaly Hunter Severity" in got.columns
 
@@ -323,10 +323,24 @@ def test_two_scans_at_once_publish_one_whole_power_bi_file_never_an_error(tmp_pa
     csv_path = tmp_path / "latest-scan.csv"
     app = create_app(csv_path)
     sheets = [make_clean_payload(n=40, seed=s) for s in (1, 2)]
-    threads = [threading.Thread(target=lambda c=c, r=r: app.test_client().post("/scan", json={"columns": c, "rows": r}))
+    threads = [threading.Thread(target=lambda c=c, r=r: app.test_client().post("/scan", json={"columns": c, "rows": r, "power_bi": True}))
                for c, r in sheets]
     [t.start() for t in threads]
     [t.join() for t in threads]
     assert not any("could not write" in r.getMessage() for r in caplog.records)
     body = csv_path.read_text(encoding="utf-8-sig")
     assert body.count("\n") == 41 and not list(tmp_path.glob("*.tmp"))
+
+
+def test_the_power_bi_copy_is_kept_only_when_turned_on_and_removed_when_turned_off(tmp_path):
+    # John, 2026-10-16: the plain-text copy of the whole sheet was written on every scan, Power BI or not. Opt-in now:
+    # the pane's "Save each scan for Power BI" (off unless turned on) sends power_bi; off removes an old copy too
+    out = tmp_path / "latest-scan.csv"
+    out.write_text("an old copy of a sheet", encoding="utf-8")
+    c = create_app(out).test_client()
+    columns, rows = make_clean_payload(n=40)
+    assert c.post("/scan", json={"columns": columns, "rows": rows}).status_code == 200
+    assert not out.exists()
+    assert c.post("/scan", json={"columns": columns, "rows": rows, "power_bi": True}).status_code == 200 and out.exists()
+    assert c.post("/scan", json={"columns": columns, "rows": rows, "power_bi": False}).status_code == 200 and not out.exists()
+    assert c.post("/scan", json={"columns": columns, "rows": rows, "power_bi": "yes"}).status_code == 400

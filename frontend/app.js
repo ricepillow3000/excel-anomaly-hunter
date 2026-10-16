@@ -6,7 +6,7 @@ import { $, show, only } from "./utils/dom.js";
 import { act } from "./hooks/use-action.js";
 import { getHealth } from "./services/api.js";
 import { saveLimits } from "./services/excel.js";
-import { runScan } from "./features/scan.js";
+import { powerBiOn, runScan, setPowerBi } from "./features/scan.js";
 import { clearHighlights } from "./features/highlight.js";
 import { applyFix, undoFix } from "./features/fix.js";
 import { setAi, askFix, checkWords } from "./features/ai.js";
@@ -44,6 +44,8 @@ if (typeof Office !== "undefined") {
     initStrength(act(runScan));
     $("auto-fix").checked = autoOn(); // off unless turned on, on this PC
     $("auto-fix").onchange = () => setAuto($("auto-fix").checked);
+    $("power-bi").checked = powerBiOn(); // off unless turned on: no copy of the sheet is kept
+    $("power-bi").onchange = () => setPowerBi($("power-bi").checked);
     $("undo-auto").onclick = act(async () => {
       const [back, left] = await undoAutoFix();
       await runScan(false); // checked again, but never auto-fixed again right away
