@@ -984,6 +984,35 @@ def test_a_lone_decimal_in_a_column_of_whole_numbers_is_worth_a_check():
     assert sum(1 for o in out if o["severity"] not in (None, "Noted")) == 1
 
 
+def test_a_value_past_what_its_column_name_allows_is_worth_a_check():
+    # John's "syntactically correct but contextually impossible" (AI council 2026-10-16): Month 13, Hour 25 and a 6 on
+    # a 1-5 rating passed every check - each is just past the column's other values, so no limit can call it
+    rows = [[f"s{i}", 1 + i % 12, 1 + i % 4, i % 24, 1 + i % 5, round(-40 + (i * 7) % 80 + 0.5, 1)] for i in range(120)]
+    rows[30][1], rows[50][2], rows[70][3], rows[90][4], rows[110][5] = 13, 5, 25, 6, 91.5
+    cols = ["Order", "Month", "Quarter", "Hour", "Rating (1-5)", "Latitude"]
+    _, out = _scan(cols, rows)
+    expect = {30: "Month 13 is outside what Month can be (1 to 12)", 50: "Quarter 5 is outside what Quarter can be (1 to 4)",
+              70: "Hour 25 is outside what Hour can be (0 to 24)", 90: "Rating (1-5) 6 is outside what Rating (1-5) can be (1 to 5)",
+              110: "Latitude 91.5 is outside what Latitude can be (-90 to 90)"}
+    for i, words in expect.items():
+        assert words in out[i]["reason"] and out[i]["severity"] == "Low", (i, out[i])
+    assert {i for i, o in enumerate(out) if o["severity"] not in (None, "Noted")} == set(expect)
+
+
+def test_a_column_whose_name_means_something_else_keeps_quiet():
+    # yyyymm months, zero-based visit months, hours worked, longitudes on 0-360 (real quakes table), day-of-month counts
+    rows = [[202601 + i % 12, i % 5, 30 + (i * 7) % 31, 165 + (i * 3) % 24, 1 + i % 31, 10 + i % 400] for i in range(120)]
+    rows[5][0] = 202613  # no month can be 13 here either - but a column that's never 1-12 is not about months
+    cols = ["Month", "month", "Hours", "long", "date of month", "Study Day"]
+    _, out = _scan(cols, rows)
+    assert not [o["reason"] for o in out if "can be" in o["reason"]]
+    import time
+    from anomaly_hunter.engine import pipeline
+    t = time.perf_counter()  # a crafted header is a note, not a name: no regex gets to backtrack through it
+    assert pipeline._bounds("(" * 32000 + "1-5)") is None and pipeline._bounds("Month" + " (" * 99) is None
+    assert time.perf_counter() - t < 0.5
+
+
 def test_a_sign_flip_fix_is_the_exact_value_never_rounded():
     # blind real-sheet test 2026-10-16: -0.0201808419078588 got "likely 0.02018084191" and the card called it
     # "missing zeros - /1" instead of a flipped sign

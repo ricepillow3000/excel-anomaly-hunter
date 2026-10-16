@@ -152,6 +152,39 @@ def whole_numbers(df, column_types, skip):
     return out
 
 
+BOUNDED = [(r"month", 1, 12), (r"quarter|qtr", 1, 4), (r"hour", 0, 24), (r"minute|second", 0, 59),
+           (r"weekday|day of week", 0, 7), (r"lat|latitude", -90, 90), (r"lon|lng|long|longitude", -180, 180)]
+SCALE = re.compile(r"\(\s*(\d+)\s*(?:-|–|to)\s*(\d+)\s*\)|\bout of (\d+)\b", re.I)
+
+
+def _bounds(col):
+    """What a column's name says its numbers can be: the header IS the name ("date of month" and "count per hour" are
+    not), or it writes its own scale ("Rating (1-5)", "out of 10"). Long headers are questions or notes, not names."""
+    h = " ".join(re.sub(r"[_.]+", " ", str(col)).split()).lower()
+    if len(h) > 200:
+        return None
+    if m := SCALE.search(h):
+        return (float(m[1]), float(m[2])) if m[1] else (0.0, float(m[3]))
+    whole = re.sub(r"\([^()]*\)", "", h).strip()  # "Month (number)" is still Month
+    return next(((float(lo), float(hi)) for pat, lo, hi in BOUNDED if re.fullmatch(pat, whole)), None)
+
+
+def named_bounds(df, column_types, skip):
+    """A number past what its column's name allows: Month 13, Hour 25, a 6 on "Rating (1-5)" - each just past the other
+    values, so no limit can call it (John's "syntactically correct but contextually impossible", AI council 2026-10-16).
+    Quiet when more than max(2, 1%) break the bound: then the name means something else (yyyymm months, visit month 0,
+    longitudes on 0-360). 40 random real tables: 13 such columns, 0 flags. Worth a check (Low), no fix."""
+    out = [[] for _ in range(len(df))]
+    for col, t in column_types.items():
+        b = _bounds(col) if t == "number" else None
+        x = df[col][~skip].dropna() if b else ()
+        bad = x[(x < b[0]) | (x > b[1])] if b else ()
+        if 1 <= len(bad) <= max(2, 0.01 * len(x)):
+            for i in bad.index:
+                out[i].append(f"{col} {x[i]:g} is outside what {col} can be ({b[0]:g} to {b[1]:g})")
+    return out
+
+
 def far_dates(df, column_types, skip):
     """Date more than the column's whole 1%-99% span away from it (a 2018 sheet with 2084 in it). Birthdates spread
     over decades widen the span themselves. ponytail: misses a near miss like 2019 in a 2018 sheet - no rule knows that."""
@@ -455,8 +488,9 @@ def score(df, column_types, errors_log, limits, order_by, strength=5):
     add = [list(dict.fromkeys(s + m)) for s, m in zip(sums(df, column_types, skip), paired, strict=True)]
     code = codes(df, column_types, skip)
     spell, spell_fix, missed, spell_maybe, spell_exact = spellings(df, column_types, skip)
-    missed = [m + s + f + w for m, s, f, w in zip(missed, shifted(df, column_types, skip), fractions(df, column_types, skip),
-                                                  whole_numbers(df, column_types, skip), strict=True)]  # all "worth a check" (Low)
+    missed = [m + s + f + w + b for m, s, f, w, b in zip(missed, shifted(df, column_types, skip), fractions(df, column_types, skip),
+                                                          whole_numbers(df, column_types, skip), named_bounds(df, column_types, skip),
+                                                          strict=True)]  # all "worth a check" (Low)
     rows = []
     for i in range(n):
         if skip[i]:
