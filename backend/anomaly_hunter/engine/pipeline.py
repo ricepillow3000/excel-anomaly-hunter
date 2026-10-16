@@ -49,7 +49,12 @@ def duplicates(df, errors_log=()):
     for i, c, raw in errors_log:
         cells[i, at[c]] = f"text:{raw}"
     seen, out = {}, []
-    for i, key in enumerate(map(tuple, cells)):
+    keys = list(map(tuple, cells))
+    # when most rows repeat, a repeat is the data: 4 agree/disagree answers from 1,529 voters gave 199 different rows,
+    # and 1,330 were "Duplicate of row N" (real survey, 2026-10-16). A double entry repeats a row that is otherwise unique
+    if len(set(keys)) < 0.5 * len(keys):
+        return [[] for _ in keys]
+    for i, key in enumerate(keys):
         j = seen.setdefault(key, i)
         src = f" ({df['source_file'].iloc[j]})" if "source_file" in df else ""  # CLI path only
         out.append([f"Duplicate of row {j + 2}{src}"] if j != i else [])
@@ -233,7 +238,10 @@ def pairs(df, column_types, skip, limits=None):
             y, got = a[:, t], op(*(a[:, c] for c in cs))
             ok = ~np.isnan(y) & ~np.isnan(got)
             good = ok & near(y, got)
-            if (good & (y != 0)).sum() < 20 or good.sum() < 0.95 * ok.sum():
+            # judged where the numbers aren't all zero: 0 = 0 x anything made a rule of three TV-spot columns that were 0
+            # in 91% of weeks - it held in 64 of the 120 weeks with spots (real sheet, 2026-10-16)
+            live = ok & ((y != 0) | (got != 0))
+            if (good & (y != 0)).sum() < 20 or (good & live).sum() < 0.95 * live.sum():
                 continue
             for i in np.flatnonzero(ok & ~good):
                 out[index[i]].append(f"{cols[t]} {y[i]:g} does not add up: {said} = {got[i]:.10g}")

@@ -996,3 +996,26 @@ def test_a_crafted_wide_sheet_cannot_make_the_column_pair_checks_run_for_minutes
     t = time.perf_counter()
     pipeline.pairs(df, types, np.zeros(len(df), bool), None)
     assert time.perf_counter() - t < 10
+
+
+def test_columns_that_are_mostly_zero_are_not_taken_for_a_product_rule():
+    # round-2 blind real sheet 2026-10-16: three TV-spot columns were 0 in 91% of weeks, so "A = B x C" held in 95% of rows
+    # (0 = 0 x anything) and the 56 weeks with real spots were called "does not add up". A rule must hold where the
+    # numbers aren't all zero: here it held in 64 of 120 such rows
+    r = np.random.default_rng(33)
+    rows = [[f"w{i}", 0.0, 0.0, 0.0, round(float(r.uniform(100, 900)), 2)] for i in range(1200)]
+    for k, i in enumerate(r.choice(1200, 120, replace=False)):
+        a_, b_ = round(float(r.uniform(0.5, 3)), 2), round(float(r.uniform(0.5, 3)), 2)
+        rows[i][1:4] = [round(a_ * b_, 4) if k < 64 else round(float(r.uniform(0.5, 9)), 2), a_, b_]  # 64 of 120 match
+    _, out = _scan(["Week", "SpotsA", "SpotsB", "SpotsC", "Sales"], rows)
+    assert not any("does not add up" in o["reason"] for o in out)
+
+
+def test_identical_answers_in_a_short_survey_are_not_duplicates():
+    # round-2 blind real sheet 2026-10-16: four agree/disagree answers from 1,529 voters - only 199 different answer sets,
+    # so 1,330 rows were "Duplicate of row N". When most rows repeat, a repeat is the data, not a double entry
+    r = np.random.default_rng(34)
+    scale = ["Strongly agree", "Agree", "Disagree", "Strongly disagree"]
+    rows = [[str(r.choice(scale)) for _ in range(4)] for _ in range(600)]
+    _, out = _scan(["Q1", "Q2", "Q3", "Q4"], rows)
+    assert not any("Duplicate" in o["reason"] for o in out)
