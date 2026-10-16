@@ -11,6 +11,24 @@
         ],
         "createdAt": "2026-10-12T01:48:13.155Z",
         "reason": "Claude: #busy-bar.unknown is an indeterminate progress bar, shown only while a scan runs, with a prefers-reduced-motion fallback (components.css)"
+      },
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": [
+          "frontend/styles/global.css"
+        ],
+        "createdAt": "2026-10-16T22:34:40.708Z",
+        "reason": "user confirmed: keep shipped suggestion-card design as is"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "frontend/styles/components.css"
+        ],
+        "createdAt": "2026-10-16T22:34:40.846Z",
+        "reason": "user confirmed: keep shipped suggestion-card design as is"
       }
     ]
   }

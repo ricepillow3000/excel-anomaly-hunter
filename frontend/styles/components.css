@@ -16,7 +16,7 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); transition: transform 0.12s ease-out;
 }
 .slider:hover .slider-thumb, .slider:active .slider-thumb { transform: scale(1.15); }
-.slider:focus-visible .slider-thumb { box-shadow: 0 0 0 3px #cfe4fa, 0 1px 3px rgba(0, 0, 0, 0.25); }
+.slider:focus-visible .slider-thumb { box-shadow: 0 0 0 3px #ece0bc, 0 1px 3px rgba(0, 0, 0, 0.25); }
 @media (prefers-reduced-motion: reduce) { .slider-thumb { transition: none; } }
 .slider-scale { display: flex; justify-content: space-between; margin: 0 2px; font-size: 11px; color: var(--muted); }
 #strength-hint { min-height: 2.9em; margin: 4px 0 0; } /* the words change length; the layout under them doesn't jump */
