@@ -108,7 +108,7 @@ def test_power_bi_csv_never_carries_a_live_formula(tmp_path):
     CSV is opened in Excel. Partial protection: OWASP notes the apostrophe may not survive a save and reopen."""
     out = tmp_path / "s.csv"
     rows = SHEET["rows"] + [["=cmd|' /C calc'!A0", 12], ["@SUM(1)", 11], ["＝1+1", 10], ["-5 items", 13]]
-    r = create_app(scan_csv=out).test_client().post("/scan", json={**SHEET, "rows": rows})
+    r = create_app(scan_csv=out).test_client().post("/scan", json={**SHEET, "rows": rows, "power_bi": True})
     assert r.status_code == 200
     text = out.read_text(encoding="utf-8-sig")
     assert "'=cmd" in text and "'@SUM" in text and "'＝1+1" in text and "\n=cmd" not in text
@@ -120,7 +120,7 @@ def test_a_semicolon_before_a_formula_never_splits_the_power_bi_csv(tmp_path):
     # unquoted "Pen;=cmd|..." into a second cell that starts with "=" and runs. Quoted text can't be split.
     out = tmp_path / "s.csv"
     rows = SHEET["rows"] + [["Pen;=cmd|' /C calc'!A0", 12]]
-    r = create_app(scan_csv=out).test_client().post("/scan", json={**SHEET, "rows": rows})
+    r = create_app(scan_csv=out).test_client().post("/scan", json={**SHEET, "rows": rows, "power_bi": True})
     assert r.status_code == 200
     text = out.read_text(encoding="utf-8-sig")
     assert "\"Pen;=cmd|' /C calc'!A0\"" in text and "\nPen;" not in text
@@ -128,7 +128,7 @@ def test_a_semicolon_before_a_formula_never_splits_the_power_bi_csv(tmp_path):
 
 
 def test_an_odd_character_never_turns_a_scan_into_a_500(tmp_path):
-    raw = json.dumps({**SHEET, "rows": SHEET["rows"] + [["ab\ud800", 12]]})  # a lone surrogate, valid JSON
+    raw = json.dumps({**SHEET, "rows": SHEET["rows"] + [["ab\ud800", 12]], "power_bi": True})  # a lone surrogate, valid JSON
     r = create_app(scan_csv=tmp_path / "s.csv").test_client().post("/scan", data=raw, content_type="application/json")
     assert r.status_code == 200
 
@@ -136,7 +136,7 @@ def test_an_odd_character_never_turns_a_scan_into_a_500(tmp_path):
 def test_a_number_too_big_for_a_float_never_turns_a_scan_into_a_500(tmp_path):
     # a 309-digit whole number is a valid (flagged) value, but the Power BI CSV's DataFrame can't hold it as a float
     rows = SHEET["rows"] + [["Pen", 10 ** 309]]
-    r = create_app(scan_csv=tmp_path / "s.csv").test_client().post("/scan", json={**SHEET, "rows": rows})
+    r = create_app(scan_csv=tmp_path / "s.csv").test_client().post("/scan", json={**SHEET, "rows": rows, "power_bi": True})
     assert r.status_code == 200
 
 

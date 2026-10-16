@@ -118,6 +118,12 @@
         <p class="hint">Only capitals/spaces slips, like "east " where the column says "East" - and only when one spelling is clearly the usual one. Never numbers, never guesses. After it fixes something, "Undo auto-fixes" puts it back.</p>
       </details>
 
+      <details class="more">
+        <summary>Power BI (optional)</summary>
+        <label class="check"><input type="checkbox" id="power-bi" /> Save each scan for Power BI</label>
+        <p class="hint">Off: no copy of your sheet is kept. On: each scan saves a plain-text copy of the sheet and its results on this PC (latest-scan.csv in your AnomalyHunter folder), which Power BI opens. Turning it off deletes that copy at the next scan.</p>
+      </details>
+
       <details id="settings" class="more">
         <summary>AI help (optional, free)</summary>
         <p id="ai-state" class="hint"></p>

@@ -36,7 +36,7 @@ Tested on 100k real NYC taxi trips (1.7M cells): 8 s per scan, under 1% false al
 census (48,842 people): every '?' left for an unknown job, every 99999 code and every duplicate found (3,896 rows), no real
 person called wrong, in 9 s - and its well-known gaps (30% of men vs 11% of women earn over $50K) reported as gaps.
 
-**Power BI:** after a scan, double-click `powerbi\anomaly-hunter.pbids` (written by `install.bat`), Refresh after each scan.
+**Power BI:** in the pane, turn on **Power BI (optional) > Save each scan for Power BI** (off by default), scan, then double-click `powerbi\anomaly-hunter.pbids` (written by `install.bat`); Refresh after each scan.
 
 **Use it:** click **Find problems in this sheet**. A progress line shows each step; rows to check are highlighted
 (orange = probably wrong, pale yellow = worth a quick check) and listed worst first. Click a row (in the list or the
