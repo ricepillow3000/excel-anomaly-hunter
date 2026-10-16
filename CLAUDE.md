@@ -47,7 +47,7 @@ an admin panel, role, operator route or debug switch. The weekly security sweep 
 | A top value that is all 9s and over twice the next one (99999 = "missing" / "too big") | `pipeline.codes` | `test_an_all_nines_top_value_is_a_code` |
 | A lone decimal in a column of whole numbers (study day 7.3 for 73) | `pipeline.whole_numbers` | `test_a_lone_decimal_in_a_column_of_whole_numbers_is_worth_a_check` |
 | A number past what its column's name allows (Month 13, Hour 25, a 6 on "Rating (1-5)", Latitude 91.5); quiet when 1%+ break it (yyyymm months, 0-360 longitudes) | `pipeline.named_bounds` | `test_a_value_past_what_its_column_name_allows_is_worth_a_check`, `test_a_column_whose_name_means_something_else_keeps_quiet` |
-| Fairness gaps by demographic group, incl. 2-label text outcomes; `?` counts as missing, never a group | `engine/fairness.py` | `test_blindspots.py`, `test_wild_census.py` |
+| Fairness gaps by demographic group, incl. 2-label text outcomes; `?` counts as missing, never a group; a place word protects a text or code column (City, ZIP), never a measured number (MPG.city) | `engine/fairness.py` | `test_blindspots.py`, `test_wild_census.py`, `test_a_location_word_protects_a_column_only_when_it_can_hold_a_place` |
 Adding or removing a check: update this table in the same commit.
 
 ## Patterns to copy
