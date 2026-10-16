@@ -209,8 +209,15 @@ def _body(prompt, schema=FIX_SCHEMA, name="fix"):
             "response_format": {"type": "json_schema", "json_schema": {"name": name, "schema": schema}}}
 
 
+def _wire(prompt, schema=FIX_SCHEMA, name="fix"):
+    """The request's bytes as sent. UTF-8, not \\uXXXX escapes: each Japanese letter cost 6 bytes instead of 3, and a
+    12-column Japanese word check took 4 requests instead of 3 (2026-10-16). "replace": a lone surrogate (valid JSON
+    from the pane) goes as "?" instead of failing the encode."""
+    return json.dumps(_body(prompt, schema, name), ensure_ascii=False).encode("utf-8", "replace")
+
+
 def _fits(prompt, schema=FIX_SCHEMA, name="fix"):
-    return len(json.dumps(_body(prompt, schema, name)).encode()) <= BUDGET
+    return len(_wire(prompt, schema, name)) <= BUDGET
 
 
 def _cache_dir():
@@ -264,10 +271,10 @@ def _call(prompt, out, schema, name, deadline):
         if resp.parsed_output is None:  # refusal
             raise ValueError(f"Claude gave no usable answer (stop_reason={resp.stop_reason}).")
         return resp.parsed_output
-    data = json.dumps(_body(prompt, schema, name)).encode()
+    data = _wire(prompt, schema, name)
     if len(data) > BUDGET:  # the callers trim to fit; this is the last guard (the relay refuses over 8 KB)
         raise ValueError("That request was too large for the AI - try a smaller selection.")
-    relay = provider() == "relay"  # same request; the relay adds John's key, picks the model and counts the caps
+    relay = provider() == "relay"  # same prompt; the relay rebuilds the body (John's key, its model, max_tokens 4096) and counts the caps
     tries, slow = 0, False  # slow: a try timed out - the next may wait until the deadline (a 100 s answer never came back)
     while True:  # Google's busy spells come and go within minutes: wait and try again, up to the deadline
         req = urllib.request.Request(RELAY_URL.rstrip("/") + "/fix" if relay else GEMINI_URL, data,  # noqa: S310 - https only, see provider()
@@ -352,15 +359,33 @@ def odd_text(values):
     checks can't know that. Sent in batches that each fit one request; finished batches are kept (_ask), so asking
     again only sends what is left. partial = Google gave out before the last batch. Only values really sent in that
     column survive: the AI can't add text, rows or columns. Words over 60 characters are notes, not categories."""
-    batches, cur = [], {}
-    for col, vs in values.items():
-        for v in (v for v in vs if len(v) <= 60):
-            more = {**cur, col: cur.get(col, []) + [v]}
-            if cur and not _fits(_odd_prompt(more), ODD_SCHEMA, "odd"):
-                batches.append(cur)
-                more = {col: [v]}
-            cur = more
-    batches += [cur] if cur else []
+    cols = {c: vs for c, vs in ((c, [v for v in vs if len(v) <= 60]) for c, vs in values.items()) if vs}
+    # Whole columns, largest first, each into the first request with room (then sheet order inside each): a column
+    # split across requests was judged without the rest of its values (299 split columns on 150 random sheets, same
+    # request count; 2026-10-16). A request's size adds up - the empty prompt, each column's '"name": [...]', ", "
+    # between them - so packing never re-measures a whole request (a crafted sheet can have thousands of columns).
+    base, room = len(_wire("", ODD_SCHEMA, "odd")), BUDGET - len(_wire(_odd_prompt({}), ODD_SCHEMA, "odd"))
+    size = lambda c, vs: len(_wire(f"{json.dumps(c, ensure_ascii=False)}: {json.dumps(vs, ensure_ascii=False)}", ODD_SCHEMA, "odd")) - base
+    pieces = []
+    for c, vs in cols.items():
+        if size(c, vs) <= room:
+            pieces.append((c, vs))
+            continue
+        part = []  # only a column too big for any request goes in parts
+        for v in vs:
+            if part and size(c, part + [v]) > room:
+                pieces.append((c, part))
+                part = []
+            part.append(v)
+        pieces.append((c, part))
+    batches = []  # [bytes used, {column: values}]
+    for c, vs, s in sorted(((c, vs, size(c, vs)) for c, vs in pieces), key=lambda p: -p[2]):  # stable: ties keep sheet order
+        b = next((b for b in batches if c not in b[1] and b[0] + 2 + s <= room), None)
+        if b:
+            b[0], b[1][c] = b[0] + 2 + s, vs
+        else:
+            batches.append([s, {c: vs}])
+    batches = [{c: b[c] for c in cols if c in b} for _, b in batches]
     keep, deadline = {}, time.monotonic() + DEADLINE
     for k, batch in enumerate(batches):
         try:
