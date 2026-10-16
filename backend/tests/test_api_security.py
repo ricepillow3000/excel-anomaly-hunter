@@ -164,3 +164,42 @@ def test_every_workflow_action_is_pinned_to_a_commit():
     assert uses, "no workflow steps found"
     loose = [(name, u) for name, u in uses if not re.fullmatch(r"[\w.-]+/[\w./-]+@[0-9a-f]{40}", u)]
     assert not loose, loose
+
+
+def test_every_gate_tools_check_runs_also_runs_in_ci():
+    # council review 2026-10-16: main's ruleset needs 0 approvals and the accuracy benches (no harmful fix, no new
+    # Medium+ false alarm) ran only in tools/check.py on a PC - an agent's PR could merge fixes that overwrite good cells
+    import pathlib
+    import sys
+    root = pathlib.Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(root / "tools"))
+    import check
+    ci = " ".join(" ".join(f.read_text().split()) for f in (root / ".github" / "workflows").glob("*.yml"))
+    words = {"-m pytest": "pytest", "-m ruff": "ruff", "-m pip_audit": "pip-audit"}
+    missing = []
+    for name, cmd in check.LAYERS:
+        if name == "CI workflows parse":  # GitHub parses them itself: a broken file shows as a failed run
+            continue
+        step = " ".join(cmd[1:] if cmd[0] == check.PY else cmd)
+        for a, b in words.items():
+            step = step.replace(a, b)
+        if step not in ci:
+            missing.append(step)
+    assert not missing, missing
+
+
+def test_every_installed_package_is_pinned_by_constraints_txt(tmp_path, monkeypatch):
+    # council review 2026-10-16: ~45 indirect packages were unpinned - scikit-learn 1.9.1, pulled in by pyod, broke every
+    # Windows install (2026-10-11), and any new release (or a hijacked one) would ship to every user unreviewed
+    import pathlib
+    import shutil
+    import sys
+    root = pathlib.Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(root / "tools"))
+    import pinned
+    assert pinned.problems() == []
+    shutil.copy(root / "pyproject.toml", tmp_path)
+    (tmp_path / "constraints.txt").write_text("\n".join(line for line in (root / "constraints.txt").read_text().splitlines()
+                                                         if not line.startswith("numpy==")))
+    monkeypatch.setattr(pinned, "ROOT", tmp_path)
+    assert any(p.startswith("numpy ") and "not pinned" in p for p in pinned.problems())

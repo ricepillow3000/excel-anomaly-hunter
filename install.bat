@@ -22,7 +22,7 @@ echo [1/5] Engine: Python 3.14 + packages (first run takes a few minutes)...
 if exist "%PY%" ("%PY%" -c "import sys; sys.exit(sys.version_info[:2] != (3, 14))" || rd /s /q .venv)
 if not exist "%PY%" py -3.14 -m venv .venv
 if not exist "%PY%" (echo Python 3.14 not found. Install it from python.org, then run this again. & pause & exit /b 1)
-"%PY%" -m pip install -q --disable-pip-version-check -e . || (echo Package install failed - see above. & pause & exit /b 1)
+"%PY%" -m pip install -q --disable-pip-version-check -e . -c constraints.txt || (echo Package install failed - see above. & pause & exit /b 1)
 
 echo [2/5] HTTPS certificate that only works for 127.0.0.1. Windows asks once - click Yes.
 "%PY%" -m anomaly_hunter.server --cert

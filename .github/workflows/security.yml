@@ -20,8 +20,10 @@ jobs:
         with:
           python-version: "3.14"
           cache: pip
-          cache-dependency-path: pyproject.toml
-      - run: pip install -e ".[dev]"  # pins in pyproject.toml, shared with tools/check.py
+          cache-dependency-path: |
+            pyproject.toml
+            constraints.txt
+      - run: pip install -e ".[dev]" -c constraints.txt  # every package pinned (tools/pinned.py), shared with tools/check.py
 
       - name: Engine API tests + fuzzing (other websites refused, key never leaks, no input crashes the engine)
         run: pytest -q backend/tests
@@ -36,6 +38,11 @@ jobs:
         run: node relay/test.mjs
       - name: Pane logic self-check
         run: node frontend/selfcheck.js
+      # main's ruleset needs no approval: nothing else in CI stops a change that writes harmful fixes (2026-10-16)
+      - name: Accuracy benches (no crash, no harmful fix, no new Medium+ false alarm)
+        run: |
+          python backend/bench/score.py .
+          python backend/bench/score.py . --blind
       - name: Security lint (Bandit rules)
         run: ruff check --select S --ignore S101 backend/anomaly_hunter tools
       - name: Dependencies with known vulnerabilities
@@ -50,8 +57,10 @@ jobs:
         with:
           python-version: "3.14"
           cache: pip
-          cache-dependency-path: pyproject.toml
-      - run: pip install -e .
+          cache-dependency-path: |
+            pyproject.toml
+            constraints.txt
+      - run: pip install -e . -c constraints.txt
 
       - name: Start the real engine (throwaway cert, no keys)
         run: |
