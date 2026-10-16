@@ -207,3 +207,41 @@ def test_a_claude_call_is_bounded_by_the_deadline_and_not_retried_by_the_sdk(mon
     assert client.provider() == "claude"
     client._ask("fix it")
     assert made.get("max_retries") == 0 and 0 < made.get("timeout", 0) <= client.DEADLINE
+
+
+def test_a_cut_off_google_answer_is_retried_then_answers(monkeypatch):
+    # stress test 2026-10-16: http.client.IncompleteRead is neither an OSError nor a ValueError - it escaped as an HTTP
+    # 500 in Werkzeug's words. A connection cut mid-answer is like a reset: tried again with the user's own key
+    import http.client
+    monkeypatch.setattr(client, "_sleep", lambda s: None)
+    sent = fake_google(monkeypatch, http.client.IncompleteRead(b"x", 980), 200)
+    assert client._ask("fix it").explanation == "Use 50." and len(sent) == 2
+
+
+def test_a_cut_off_relay_answer_is_never_retried_and_says_so_in_our_words(monkeypatch):
+    import http.client
+    sent = fake_google(monkeypatch, http.client.IncompleteRead(b"x", 980))
+    client.KEY_FILE.unlink()
+    monkeypatch.setattr(client, "RELAY_URL", "https://relay.example")
+    client.INVITE_FILE.write_text("inv_" + "a" * 24, encoding="utf-8")
+    with pytest.raises(ValueError, match="came back incomplete"):
+        client._ask("fix it")
+    assert len(sent) == 1  # the invite's fix was counted once already
+
+
+def test_after_a_timeout_the_next_try_may_wait_until_the_deadline(monkeypatch):
+    # stress test 2026-10-16: every own-key try was cut at 90 s, so a 100 s answer never came back - 3 requests reached
+    # Google (each one counts against the free quota) and the user got nothing
+    clock, seen = [0.0], []
+    monkeypatch.setattr(client.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(client, "_sleep", lambda s: clock.__setitem__(0, clock[0] + s))
+    fake_google(monkeypatch, TimeoutError(), 200)
+    wrapped = client.urllib.request.urlopen
+
+    def timed(req, timeout=None, **kw):
+        seen.append(timeout)
+        clock[0] += timeout if len(seen) == 1 else 100  # the first try times out; the second answers after 100 s
+        return wrapped(req, timeout)
+    monkeypatch.setattr(client.urllib.request, "urlopen", timed)
+    assert client._ask("fix it").explanation == "Use 50."
+    assert seen[0] == 90 and seen[1] > 100

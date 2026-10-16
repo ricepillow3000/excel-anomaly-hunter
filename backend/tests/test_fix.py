@@ -341,3 +341,16 @@ def test_a_slow_google_is_not_called_a_broken_connection(monkeypatch, error, wor
     monkeypatch.setattr(client.urllib.request, "urlopen", fail)
     with pytest.raises(ValueError, match=words):
         client._ask("x")
+
+
+def test_any_unexpected_ai_failure_is_our_own_json_502(monkeypatch):
+    # no new exception class can reach the pane in Werkzeug's or the provider's words (stress test 2026-10-16)
+    import http.client
+    monkeypatch.setattr(client, "api_key_configured", lambda: True)
+    for err in (RuntimeError("CANARY-7f3"), http.client.BadStatusLine("CANARY-7f3")):
+        def boom(*a, err=err, **k):
+            raise err
+        monkeypatch.setattr(client, "suggest_fix", boom)
+        r = post(BODY)
+        assert r.status_code == 502 and r.is_json and "CANARY" not in r.get_data(as_text=True), r.get_data(as_text=True)
+        assert r.get_json()["error"] == "AI error - details in server.log"

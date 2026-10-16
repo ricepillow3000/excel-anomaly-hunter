@@ -7,11 +7,11 @@ from anomaly_hunter.engine.load import load_from_records, numbers
 from anomaly_hunter.engine.pipeline import knobs, score
 
 
-def scan(columns, rows, limits=None, order_by=None, strength=5):
+def scan(columns, rows, limits=None, order_by=None, strength=5, fair=True):
     """-> (DataFrame, verdict per row, suggested limits, limits used, detector status, fairness report).
     strength 0-10, see knobs(). The fairness report tests protected subgroups on this scan's own flags (engine/fairness)."""
     df, types, errors = load_from_records(columns, rows)
     suggested = suggest_limits_dict(df, numbers(types), knobs(strength)[1])
     used = {**suggested, **(limits or {})}
     out, status = score(df, types, errors, used, order_by, strength)
-    return df, out, suggested, used, status, fairness.report(df, types, out)
+    return df, out, suggested, used, status, fairness.report(df, types, out) if fair else None

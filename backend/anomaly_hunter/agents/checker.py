@@ -1,6 +1,10 @@
 """Agent 3: check a fix. Put it into a copy of the table and scan again with the SAME limits, so the row is judged
 exactly like the first time - by every check, not only the one that flagged it."""
+import time
+
 from anomaly_hunter.agents.scan_agent import scan
+
+_clock = time.monotonic  # tests replace it
 
 
 def check(columns, rows, limits, i, changes, strength=5):
@@ -10,7 +14,7 @@ def check(columns, rows, limits, i, changes, strength=5):
     rows[i] = list(rows[i])  # the caller's table is never touched
     for c in changes:
         rows[i][c["col"]] = c["value"]
-    verdict = scan(columns, rows, limits, strength=strength)[1][i]
+    verdict = scan(columns, rows, limits, strength=strength, fair=False)[1][i]  # one row's verdict: no fairness report
     return {"clean": verdict["severity"] in (None, "Noted"), "severity": verdict["severity"], "reason": verdict["reason"]}
 
 
@@ -39,7 +43,8 @@ def slips(v):
     return out
 
 
-MAX_CELLS = 300_000  # ponytail: every candidate costs a full re-scan (~1 s at this size); bigger sheets get no typo hunt
+MAX_CELLS = 300_000  # every candidate costs a full re-scan (4.7 s at this size, measured 2026-10-16); bigger: no typo hunt
+BUDGET = 10  # seconds of re-scans per typo hunt; the pane's buttons wait on it (8-12 re-scans took 37-60 s)
 
 
 def suggest(columns, rows, limits, i, col, strength=5):
@@ -54,6 +59,14 @@ def suggest(columns, rows, limits, i, col, strength=5):
         return {}
     nums = [r[j] for r in rows if type(r[j]) in (int, float)]
     whole = sum(float(x).is_integer() for x in nums) >= 0.95 * len(nums)  # counts: 1.2 units is no fix
-    ok = [(c, kind) for c, kind in slips(v).items() if lim[0] <= c <= lim[1] and (not whole or c.is_integer())
-          and check(columns, rows, limits, i, [{"col": j, "value": c}], strength)["clean"]]
-    return {"value": ok[0][0], "kind": ok[0][1]} if len(ok) == 1 else {}
+    ok, end = [], _clock() + BUDGET
+    for c, kind in slips(v).items():
+        if not (lim[0] <= c <= lim[1] and (not whole or c.is_integer())):
+            continue
+        if _clock() > end:  # out of time: an untried candidate might also pass, so none is "the only one"
+            return {}
+        if check(columns, rows, limits, i, [{"col": j, "value": c}], strength)["clean"]:
+            ok.append((c, kind))
+            if len(ok) > 1:
+                return {}
+    return {"value": ok[0][0], "kind": ok[0][1]} if ok else {}

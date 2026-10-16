@@ -3,12 +3,14 @@ import csv
 import datetime
 import ipaddress
 import json
+import logging
 import math
 import os
 import re
 import ssl
 import subprocess
 import sys
+import threading
 import urllib.request
 from collections import Counter
 from pathlib import Path
@@ -42,12 +44,17 @@ CSP = ("default-src 'self'; script-src 'self' https://appsforoffice.microsoft.co
        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 # http.server writes its own "Server: Werkzeug/x Python/y" before any app header: no versions to look up CVEs for
 WSGIRequestHandler.version_string = lambda self: "Anomaly Hunter"
+# Werkzeug logged every request line in full, refused or not: a 60 KB URL wrote 60 KB, about 600 MB a minute at flood
+# rate until a restart (stress test 2026-10-16). Its warnings and errors stay; the engine's own errors go to app.logger
+logging.getLogger("werkzeug").setLevel(logging.WARNING)
 # a connection that goes quiet mid-handshake or mid-upload is dropped, not kept a thread forever. Every answer closes
 # its connection (no keep-alive), so this never cuts off a scan, however long it runs.
 WSGIRequestHandler.timeout = 60
 MAX_CELLS = 2_000_000  # same as the pane's maxCells (frontend/utils/sheet.js): it never sends more in one scan
 # OWASP CSV injection: text starting with these runs as a formula when the Power BI CSV is opened in Excel
 FORMULA_START = tuple("=+-@\t\r\n＝＋－＠")
+# two workbooks scanning at once shared one temp file: a replace found it gone and a file could mix both (2026-10-16)
+_CSV_LOCK = threading.Lock()
 
 
 def _inert(v):
@@ -154,9 +161,10 @@ def create_app(scan_csv=None):
                 flat = flat.map(_inert).rename(columns=_inert)
                 # errors="replace": one odd character (a lone surrogate) becomes "?" instead of failing the scan.
                 # Text is always quoted: Excel in a ";" locale splits an unquoted "Pen;=cmd|..." into a live formula
-                flat.to_csv(f"{scan_csv}.tmp", index=False, encoding="utf-8-sig", errors="replace",
-                            quoting=csv.QUOTE_NONNUMERIC)
-                os.replace(f"{scan_csv}.tmp", scan_csv)  # Power BI never reads a half-written file
+                with _CSV_LOCK:
+                    flat.to_csv(f"{scan_csv}.tmp", index=False, encoding="utf-8-sig", errors="replace",
+                                quoting=csv.QUOTE_NONNUMERIC)
+                    os.replace(f"{scan_csv}.tmp", scan_csv)  # Power BI never reads a half-written file
             except (OSError, OverflowError):  # file open elsewhere, or a 309-digit number: the scan still answers
                 app.logger.exception("could not write %s", scan_csv)
         return {"rows": out, "suggested_limits": suggested, "limits": used, "fairness": fair, "summary": {
@@ -181,6 +189,9 @@ def create_app(scan_csv=None):
             return {"error": f"Claude API error{f' (HTTP {e.status_code})' if getattr(e, 'status_code', None) else ''} - details in server.log"}, 502
         except ValueError as e:
             return {"error": str(e)}, 502
+        except Exception:  # anything new still answers in our words, never Werkzeug's or the provider's (2026-10-16)
+            app.logger.exception("AI call failed")
+            return {"error": "AI error - details in server.log"}, 502
 
     @app.post("/key")
     def key_route():

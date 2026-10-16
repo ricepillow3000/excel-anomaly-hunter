@@ -8,7 +8,7 @@ Anomaly Hunter checks your sheet on your own computer. Nothing is sent anywhere 
 
   | File | What it holds |
   |---|---|
-  | `latest-scan.csv` | the last scan's results, for the Power BI file |
+  | `latest-scan.csv` | a plain-text copy of every cell of the last sheet you scanned, plus each row's result, for the Power BI file. Each scan replaces it; uninstalling deletes it |
   | `server.log` | the engine's own error log |
   | `ai-cache` | up to 500 finished AI answers, so the same question isn't asked twice |
   | `gemini-key.txt`, `invite-code.txt` | your AI key or invite code, if you added one |
