@@ -24,7 +24,7 @@ an admin panel, role, operator route or debug switch. The weekly security sweep 
 | 6 | Checks | `engine/pipeline.py`, `engine/detectors.py`, `engine/limits.py` | each check returns one list of plain-sentence reasons per row | see the feature map |
 | 7 | Severity | `pipeline.score` | hygiene or weird limit = Medium; 2 votes = Medium; 3 = High; 1 = Low | `test_strength.py` |
 | 8 | Answer | routes, `_inert` | every error is JSON; the Power BI CSV never carries a live formula (text always quoted) | `test_api_security.py` |
-| 9 | AI (optional) | `ai/client.py` | one call at a time, deadline, cache (answers only), key never echoed (nor the provider's error text), an AI formula may call only `client.SAFE` functions | `test_fix.py`, `test_ai_load.py`, `test_text_checks.py` |
+| 9 | AI (optional) | `ai/client.py` | one call at a time, deadline, cache (answers only), key never echoed (nor the provider's error text), an AI formula may call only `client.SAFE` functions, headers and the reason go in one line each, no typed request = the flagged row only | `test_fix.py`, `test_ai_load.py`, `test_text_checks.py` |
 | 10 | Relay | `relay/worker.js` | invite hash, daily caps counted before Google, only `POST /fix`, model and key set by the relay | `relay/test.mjs`; live Worker from outside: `relay/live-probe.mjs` (CI `relay-live.yml`) |
 | 11 | Pane | `frontend/` | every dynamic `innerHTML` value goes through `esc()`; CSP allows only our files + office.js | `frontend/selfcheck.js`, `e2e/run.mjs` |
 
@@ -61,6 +61,8 @@ Adding or removing a check: update this table in the same commit.
   blind real-sheet test: one agent fetches random public tables and plants mistakes with a secret key, another runs
   the pane and engine without it (`docs/SYSTEMS-MAP.md`). Use a fresh set each time: a set you fixed against is no
   longer held out.
+- **An AI prompt, its context or the model** changes only with `backend/bench/ai_eval.py` numbers (your own key,
+  never the relay; paired wins vs losses on dev and held-out) in the commit message. No eval run, no change.
 - **Before adding a system-design piece** (a cache, queue, lock, retry, rate limit), read `docs/SYSTEMS-MAP.md`: what
   exists, where, and which measurement would justify more.
 - **Comments say why** (the incident or measurement), not what.

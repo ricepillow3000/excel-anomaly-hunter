@@ -29,12 +29,12 @@ class H(BaseHTTPRequestHandler):
         flagged = re.search(r"Flagged row (\d+):", prompt).group(1)
         rng = re.search(r"Data range: (\S+)", prompt).group(1)
         last = rng.split(":")[1][1:]
-        if "slow" in prompt.split("User's request:")[1].split("\n")[0].lower():
+        req = re.search(r"^User's request: (.*)$", prompt, re.M).group(1).lower()  # its own line: sheet text can't forge one
+        if "slow" in req:
             import time; time.sleep(3)  # an AI answer that arrives late
-        if "delete" in prompt.split("User's request:")[1].split("\n")[0].lower():
+        if "delete" in req:
             ans = {"explanation": "Deleting rows can't be done by writing cells: right-click the row number > Delete.", "changes": []}
         else:
-            req = prompt.split("User's request:")[1].split("\n")[0].lower()
             n = int(flagged)
             if "circular" in req:  # a careless answer: the guard must drop it
                 ans = {"explanation": "Median.", "changes": [{"cell": f"C{n}", "new": f"=MEDIAN(C2:C{last})"}]}

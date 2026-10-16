@@ -10,14 +10,17 @@ import pytest
 from anomaly_hunter.ai import client
 
 FIX = {"explanation": "Use 50.", "changes": [{"cell": "C3", "new": "50"}]}
+WIRE = []  # the raw bytes of each request fake_google received: what the relay's 8 KB limit counts
 
 
 def fake_google(monkeypatch, *answers, fix=FIX):
     """Stand-in for urlopen: each call takes the next answer - 200, an HTTP status, (status, body, headers) or an
     exception. -> list of the request bodies sent."""
     sent, todo = [], list(answers)
+    WIRE.clear()
 
     def urlopen(req, timeout=None, **kw):
+        WIRE.append(req.data)
         sent.append(json.loads(req.data))
         a = todo.pop(0) if todo else 200
         if isinstance(a, Exception):
@@ -75,9 +78,23 @@ def test_every_request_fits_the_relay_and_the_flagged_cell_is_sent_whole(monkeyp
     wide = [f"Column {j}" for j in range(60)]
     client.suggest_fix(wide, [[f"value {j}-{k}" for j in range(60)] for k in range(40)], 20, 0, 0, "Column 31 too high", "")
     client.suggest_fix(["Notes", "Units"], [["word " * 6000, k] for k in range(40)], 20, 0, 0, "Units too high", "")
-    for body in sent:
-        assert len(json.dumps(body).encode()) <= client.BUDGET
+    assert len(WIRE) == len(sent) == 2 and all(len(raw) <= client.BUDGET for raw in WIRE)
     assert "value 31-20" in sent[0]["messages"][0]["content"]
+
+
+def test_a_japanese_word_check_is_sent_as_utf8_and_needs_fewer_requests(monkeypatch):
+    # every non-ASCII letter went out as a 6-byte \uXXXX escape: this sheet took 4 requests (2026-10-16)
+    fake_google(monkeypatch, fix={"odd": []})
+    hits, partial = client.odd_text({f"列{j}": [f"東京都の支店{k}号" for k in range(40)] for j in range(12)})
+    assert hits == [] and not partial and 1 <= len(WIRE) < 4
+    assert all(len(raw) <= client.BUDGET and b"\\u" not in raw and "東京都".encode() in raw for raw in WIRE)
+
+
+def test_a_lone_surrogate_is_sent_as_a_question_mark_not_an_error(monkeypatch):
+    # valid JSON from the pane can hold one ("\ud800"); a strict UTF-8 encode would turn it into a 502
+    fake_google(monkeypatch, fix={"odd": []})
+    assert client.odd_text({"Item": ["Pen", "Desk\ud800"]}) == ([], False)
+    assert b"Desk?" in WIRE[0] and WIRE[0].decode("utf-8")
 
 
 def test_the_ai_may_not_rewrite_a_cell_it_only_saw_part_of(monkeypatch):
@@ -96,9 +113,7 @@ def test_a_flagged_cell_too_big_for_any_request_says_so(monkeypatch):
 def _odd_ask(log, fail_after=None):
     def ask(prompt, out, schema, name, deadline=None):
         log.append(prompt)
-        body = {"model": client.GEMINI_MODEL, "messages": [{"role": "user", "content": prompt}],
-                "response_format": {"type": "json_schema", "json_schema": {"name": name, "schema": schema}}}
-        assert len(json.dumps(body).encode()) <= client.BUDGET
+        assert len(client._wire(prompt, schema, name)) <= client.BUDGET
         if fail_after is not None and len(log) > fail_after:
             raise ValueError("Google AI is busy right now - try again in a few minutes.")
         cols = [c for c in VALUES if f'"{c}"' in prompt]
@@ -114,6 +129,40 @@ def test_a_big_word_check_goes_in_batches_and_merges(monkeypatch):
     monkeypatch.setattr(client, "_ask", _odd_ask(log))
     hits, partial = client.odd_text(VALUES)
     assert len(log) > 1 and not partial and {h["column"] for h in hits} == set(VALUES)
+
+
+def _sent(prompt):
+    """The {column: values} a word-check prompt carries."""
+    return json.loads(prompt.split("\n")[1])
+
+
+def test_a_word_check_never_splits_a_column_that_fits_one_request(monkeypatch):
+    # a column split across requests was judged without the rest of its values: "different from the rest of that
+    # column" can't be answered from 5 of its 50 (299 split columns on 150 random sheets, 2026-10-16 council)
+    log = []
+    monkeypatch.setattr(client, "_ask", _odd_ask(log))
+    client.odd_text(VALUES)
+    seen = [c for p in log for c in _sent(p)]
+    assert sorted(seen) == sorted(VALUES) and len(log) <= 6
+    assert all(list(_sent(p)) == [c for c in VALUES if c in _sent(p)] for p in log)  # sheet order inside each
+
+
+def test_a_sheet_that_fits_one_request_sends_todays_exact_prompt(monkeypatch):
+    log = []
+    monkeypatch.setattr(client, "_ask", _odd_ask(log))
+    small = {"Item": ["Pen", "Desk", "London", "x" * 61], "Region": ["East", "West"], "Notes": ["y" * 70]}
+    client.odd_text(small)
+    assert log == [client._odd_prompt({"Item": ["Pen", "Desk", "London"], "Region": ["East", "West"]})]
+
+
+def test_a_column_too_big_for_one_request_is_still_checked_in_parts(monkeypatch):
+    log = []
+    monkeypatch.setattr(client, "_ask", _odd_ask(log))
+    big = {"Small": ["a", "b"], "Big": [f"{'w' * 50} {k}" for k in range(300)], "Tail": ["c", "d"]}
+    client.odd_text(big)
+    parts = [v for p in log for v in _sent(p).get("Big", [])]
+    assert sorted(parts) == sorted(big["Big"]) and len(log) > 1
+    assert sum("Small" in _sent(p) for p in log) == sum("Tail" in _sent(p) for p in log) == 1
 
 
 def test_a_word_check_cut_short_by_google_keeps_what_was_finished(monkeypatch):

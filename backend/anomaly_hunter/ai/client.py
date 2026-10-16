@@ -138,6 +138,12 @@ def refers_to_itself(cell, text):
 CELL_CAP = 200  # characters of one cell a prompt carries; the flagged cell always goes whole
 
 
+def _one_line(text):
+    """Header names and the engine's reason (it quotes cells) go into the prompt as one line each: a line break in
+    them forged its own "User's request:" line (2026-10-16). Cells go through repr, which escapes every break."""
+    return " ".join(str(text).splitlines())
+
+
 def _fix_prompt(columns, rows, i, start_row, start_col, reason, intent, formulas=None, ctx=5, keep=None, cut=None, flagged=None):
     """keep = column indexes to show (default all), ctx = rows shown above/below. Cells longer than CELL_CAP are cut
     (their addresses go into `cut`: the AI may not rewrite a cell it only saw part of) - never the flagged cell."""
@@ -161,11 +167,11 @@ def _fix_prompt(columns, rows, i, start_row, start_col, reason, intent, formulas
         "The user could be in any field - finance, healthcare, supply chain, construction, research... Infer it from "
         "the headers and values and follow that field's conventions and units.\n"
         f"Data range: {first}{top}:{last}{top + len(rows)} (row {top} = headers).\n"
-        "Columns: " + ", ".join(f"{letters[j]}={str(columns[j])[:100]}" for j in keep)
+        "Columns: " + ", ".join(f"{letters[j]}={_one_line(columns[j])[:100]}" for j in keep)
         + (" (only the columns nearest the flagged cell are shown)" if len(keep) < len(columns) else "") + "\n"
         f"Flagged {line(i)}\n"
         + (f"Formulas in that row: {'; '.join(calc)} - fix their inputs rather than overwrite them, unless asked.\n" if calc else "")
-        + f"Why it was flagged: {(reason or 'unknown')[:500]}\n"
+        + f"Why it was flagged: {_one_line(reason or 'unknown')[:500]}\n"
         "Nearby rows for context:\n" + ("\n".join(near) or "(left out to keep the request small)") + "\n\n"
         f"User's request: {intent.strip() or 'Recommend the single best fix for this flagged row.'}\n\n"
         "Rules: each change is one cell (A1 style, e.g. D7) and the exact text to enter in it - an Excel formula "
@@ -203,8 +209,15 @@ def _body(prompt, schema=FIX_SCHEMA, name="fix"):
             "response_format": {"type": "json_schema", "json_schema": {"name": name, "schema": schema}}}
 
 
+def _wire(prompt, schema=FIX_SCHEMA, name="fix"):
+    """The request's bytes as sent. UTF-8, not \\uXXXX escapes: each Japanese letter cost 6 bytes instead of 3, and a
+    12-column Japanese word check took 4 requests instead of 3 (2026-10-16). "replace": a lone surrogate (valid JSON
+    from the pane) goes as "?" instead of failing the encode."""
+    return json.dumps(_body(prompt, schema, name), ensure_ascii=False).encode("utf-8", "replace")
+
+
 def _fits(prompt, schema=FIX_SCHEMA, name="fix"):
-    return len(json.dumps(_body(prompt, schema, name)).encode()) <= BUDGET
+    return len(_wire(prompt, schema, name)) <= BUDGET
 
 
 def _cache_dir():
@@ -258,10 +271,10 @@ def _call(prompt, out, schema, name, deadline):
         if resp.parsed_output is None:  # refusal
             raise ValueError(f"Claude gave no usable answer (stop_reason={resp.stop_reason}).")
         return resp.parsed_output
-    data = json.dumps(_body(prompt, schema, name)).encode()
+    data = _wire(prompt, schema, name)
     if len(data) > BUDGET:  # the callers trim to fit; this is the last guard (the relay refuses over 8 KB)
         raise ValueError("That request was too large for the AI - try a smaller selection.")
-    relay = provider() == "relay"  # same request; the relay adds John's key, picks the model and counts the caps
+    relay = provider() == "relay"  # same prompt; the relay rebuilds the body (John's key, its model, max_tokens 4096) and counts the caps
     tries, slow = 0, False  # slow: a try timed out - the next may wait until the deadline (a 100 s answer never came back)
     while True:  # Google's busy spells come and go within minutes: wait and try again, up to the deadline
         req = urllib.request.Request(RELAY_URL.rstrip("/") + "/fix" if relay else GEMINI_URL, data,  # noqa: S310 - https only, see provider()
@@ -346,15 +359,33 @@ def odd_text(values):
     checks can't know that. Sent in batches that each fit one request; finished batches are kept (_ask), so asking
     again only sends what is left. partial = Google gave out before the last batch. Only values really sent in that
     column survive: the AI can't add text, rows or columns. Words over 60 characters are notes, not categories."""
-    batches, cur = [], {}
-    for col, vs in values.items():
-        for v in (v for v in vs if len(v) <= 60):
-            more = {**cur, col: cur.get(col, []) + [v]}
-            if cur and not _fits(_odd_prompt(more), ODD_SCHEMA, "odd"):
-                batches.append(cur)
-                more = {col: [v]}
-            cur = more
-    batches += [cur] if cur else []
+    cols = {c: vs for c, vs in ((c, [v for v in vs if len(v) <= 60]) for c, vs in values.items()) if vs}
+    # Whole columns, largest first, each into the first request with room (then sheet order inside each): a column
+    # split across requests was judged without the rest of its values (299 split columns on 150 random sheets, same
+    # request count; 2026-10-16). A request's size adds up - the empty prompt, each column's '"name": [...]', ", "
+    # between them - so packing never re-measures a whole request (a crafted sheet can have thousands of columns).
+    base, room = len(_wire("", ODD_SCHEMA, "odd")), BUDGET - len(_wire(_odd_prompt({}), ODD_SCHEMA, "odd"))
+    size = lambda c, vs: len(_wire(f"{json.dumps(c, ensure_ascii=False)}: {json.dumps(vs, ensure_ascii=False)}", ODD_SCHEMA, "odd")) - base
+    pieces = []
+    for c, vs in cols.items():
+        if size(c, vs) <= room:
+            pieces.append((c, vs))
+            continue
+        part = []  # only a column too big for any request goes in parts
+        for v in vs:
+            if part and size(c, part + [v]) > room:
+                pieces.append((c, part))
+                part = []
+            part.append(v)
+        pieces.append((c, part))
+    batches = []  # [bytes used, {column: values}]
+    for c, vs, s in sorted(((c, vs, size(c, vs)) for c, vs in pieces), key=lambda p: -p[2]):  # stable: ties keep sheet order
+        b = next((b for b in batches if c not in b[1] and b[0] + 2 + s <= room), None)
+        if b:
+            b[0], b[1][c] = b[0] + 2 + s, vs
+        else:
+            batches.append([s, {c: vs}])
+    batches = [{c: b[c] for c in cols if c in b} for _, b in batches]
     keep, deadline = {}, time.monotonic() + DEADLINE
     for k, batch in enumerate(batches):
         try:
@@ -391,9 +422,16 @@ def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent, 
     unknown = [c["cell"] for c in changes if c["cell"] not in outside and unsafe_call(c["new"])]
     away = [c["cell"] for c in changes if not _in_table(c["cell"], start_row, start_col, len(rows), len(columns))]
     part = [c["cell"] for c in changes if c["cell"] in cut]  # it saw only the start of that cell: a rewrite could lose text
+    # John, 2026-10-16: with no typed request, only the flagged row. An injected cell could talk a default Ask AI into
+    # plain writes all over the table, and the pane's re-check looks at the flagged row only. A typed request may.
+    row = str(start_row + 2 + row_index)
+    seen = set(loops + outside + unknown + away + part)
+    others = [] if intent.strip() else [c["cell"] for c in changes
+                                        if c["cell"] not in seen and re.fullmatch(r"[A-Z]+(\d+)", c["cell"]).group(1) != row]
     note = "".join(f" (Left out {', '.join(cells)}: {why}.)" for cells, why in (
         (loops, "the formula referred to its own cell, which Excel can't calculate"), (outside, "the formula reached outside this workbook"),
         (unknown, "the formula used a function that is not on this add-in's safe list"),
-        (away, "outside the table"), (part, "only part of that cell could be sent to the AI, so it is left as it is")) if cells)
-    drop = set(loops + outside + unknown + away + part)
+        (away, "outside the table"), (part, "only part of that cell could be sent to the AI, so it is left as it is"),
+        (others, "not in the flagged row - to change other rows, type what you want, e.g. 'fix this typo in every row'")) if cells)
+    drop = seen | set(others)
     return {"explanation": fix.explanation + note, "changes": [c for c in changes if c["cell"] not in drop]}
