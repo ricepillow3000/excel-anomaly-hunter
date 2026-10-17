@@ -98,6 +98,42 @@
         ],
         "createdAt": "2026-10-17T05:20:57.918Z",
         "reason": "same user-confirmed warm brand surface as the pane/privacy"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "frontend/privacy.html"
+        ],
+        "createdAt": "2026-10-17T05:45:13.999Z",
+        "reason": "user-provided reference mockup uses side-accent cards; asked to match it"
+      },
+      {
+        "rule": "icon-tile-stack",
+        "value": "*",
+        "files": [
+          "frontend/privacy.html"
+        ],
+        "createdAt": "2026-10-17T05:45:14.113Z",
+        "reason": "user-provided reference mockup (EduPlatform) uses icon-tiled section headers; asked to replicate that layout"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "frontend/support.html"
+        ],
+        "createdAt": "2026-10-17T05:45:14.246Z",
+        "reason": "user-provided reference mockup uses side-accent cards; asked to match it"
+      },
+      {
+        "rule": "icon-tile-stack",
+        "value": "*",
+        "files": [
+          "frontend/support.html"
+        ],
+        "createdAt": "2026-10-17T05:45:14.355Z",
+        "reason": "user-provided reference mockup (EduPlatform) uses icon-tiled section headers; asked to replicate that layout"
       }
     ]
   }
