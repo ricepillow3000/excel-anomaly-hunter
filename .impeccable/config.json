@@ -29,6 +29,30 @@
         ],
         "createdAt": "2026-10-16T22:34:40.846Z",
         "reason": "user confirmed: keep shipped suggestion-card design as is"
+      },
+      {
+        "rule": "italic-serif-display",
+        "value": "*",
+        "files": [
+          "site/index.html"
+        ],
+        "createdAt": "2026-10-17T01:07:52.643Z",
+        "reason": "user confirmed: explicitly requested an editorial business-template look; reference People.png is an italic-serif hero (Powering Your Business ... Support). Intentional register, not slop."
+      },
+      {
+        "rule": "hero-eyebrow-chip",
+        "value": "*",
+        "files": [
+          "site/index.html"
+        ],
+        "createdAt": "2026-10-17T01:07:52.746Z",
+        "reason": "user confirmed: wants eyebrow labels like the reference (BUSINESS TEMPLATE / ABOUT US); already de-pilled to a minimal red-dash label, not a chip."
+      },
+      {
+        "rule": "overused-font",
+        "value": "plus jakarta sans",
+        "createdAt": "2026-10-17T04:27:16.815Z",
+        "reason": "user explicitly requested Plus Jakarta Sans by name for a modern startup look across the site + pane"
       }
     ]
   }
