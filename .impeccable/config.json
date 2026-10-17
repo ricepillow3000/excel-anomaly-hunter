@@ -53,6 +53,15 @@
         "value": "plus jakarta sans",
         "createdAt": "2026-10-17T04:27:16.815Z",
         "reason": "user explicitly requested Plus Jakarta Sans by name for a modern startup look across the site + pane"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "frontend/taskpane.html"
+        ],
+        "createdAt": "2026-10-17T04:47:03.509Z",
+        "reason": "user explicitly wants a warm Trees.png-inspired earthy/sunlit palette for the pane; warm paper is the intended brand surface, not a reflex default"
       }
     ]
   }
