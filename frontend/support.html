@@ -5,91 +5,30 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Anomaly Hunter — Support</title>
 <link href="assets/icon-32.png" rel="icon" />
-<style>
-  @font-face{font-family:'Plus Jakarta Sans';font-style:normal;font-weight:400 800;font-display:swap;src:url('assets/plus-jakarta-sans.woff2') format('woff2')}
-  :root{ interpolate-size: allow-keywords;
-    --navy:#101f33; --ink:#1c160d; --paper:#f4f1ea; --card:#fffdf8; --muted:#5e5443;
-    --line:rgba(28,22,13,.12); --gold:#bf9638; --gold-soft:#e2c277; --gold-ink:#8a6a1f; --red:#b1342a; --red-deep:#7f1f16;
-    --sans:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif; }
-  *{box-sizing:border-box;margin:0;padding:0}
-  html{scroll-behavior:smooth}
-  body{font-family:var(--sans);background:var(--paper);color:var(--ink);line-height:1.65;-webkit-font-smoothing:antialiased}
-  a{color:var(--red);font-weight:600;text-underline-offset:2px}
-
-  .hero{position:relative;overflow:hidden;text-align:center;color:#fff;padding:60px 24px 68px;
-    background:radial-gradient(120% 140% at 85% -40%,#2a2f44 0%,var(--navy) 45%),var(--navy)}
-  .hero .shield{width:76px;height:76px;margin:0 auto 22px;border-radius:50%;background:rgba(226,194,119,.14);
-    border:1px solid rgba(226,194,119,.35);display:grid;place-items:center}
-  .hero .shield svg{width:34px;height:34px;stroke:#e2c277;stroke-width:1.8;fill:none}
-  .hero h1{font-size:clamp(32px,6vw,50px);font-weight:800;letter-spacing:-.025em}
-  .hero p{max-width:600px;margin:14px auto 0;font-size:16.5px;color:rgba(239,229,206,.88)}
-
-  .shell{max-width:860px;margin:-28px auto 0;padding:0 24px 40px;position:relative;z-index:2}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 20px 50px -34px rgba(20,10,4,.4);padding:30px 32px;margin-bottom:22px}
-  .eyebrow{display:flex;align-items:center;gap:10px;font-size:11px;letter-spacing:.18em;text-transform:uppercase;font-weight:700;color:var(--gold-ink);margin-bottom:16px}
-  .eyebrow::before{content:"";width:18px;height:2px;background:var(--red)}
-  h2{font-size:21px;font-weight:800;letter-spacing:-.02em;color:var(--navy);margin-bottom:6px}
-  p{margin:0 0 12px;font-size:15px} code{background:#f1ead9;padding:1px 5px;border-radius:3px;font-size:13px}
-  b,strong{font-weight:700}
-
-  details{border-top:1px solid var(--line)}
-  details summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 2px;font-size:15.5px;font-weight:700;color:var(--navy)}
-  details summary::-webkit-details-marker{display:none}
-  details summary .pm{position:relative;width:16px;height:16px;flex:none}
-  details summary .pm::before,details summary .pm::after{content:"";position:absolute;left:50%;top:50%;background:var(--red);transition:transform .35s cubic-bezier(.22,.61,.17,1)}
-  details summary .pm::before{width:12px;height:2px;transform:translate(-50%,-50%)}
-  details summary .pm::after{width:2px;height:12px;transform:translate(-50%,-50%)}
-  details[open] summary .pm::after{transform:translate(-50%,-50%) scaleY(0)}
-  details::details-content{height:0;overflow:hidden;transition:height .34s cubic-bezier(.22,.61,.17,1),content-visibility .34s;transition-behavior:allow-discrete}
-  details[open]::details-content{height:auto}
-  details .a{padding:0 2px 18px;font-size:14.5px;color:var(--muted);line-height:1.6}
-
-  .btn{display:inline-flex;align-items:center;gap:9px;padding:14px 24px;border-radius:3px;font-weight:700;font-size:14.5px;text-decoration:none;transition:background .3s,transform .3s}
-  .btn svg{width:17px;height:17px;stroke:currentColor;stroke-width:2;fill:none}
-  .btn-red{background:var(--red);color:#fff} .btn-red:hover{background:var(--red-deep)}
-  .btn-ghost{background:transparent;color:var(--navy);border:1px solid var(--line)} .btn-ghost:hover{background:#f1ead9}
-  .btn:active{transform:translateY(1px)}
-  .ch{display:flex;gap:14px;align-items:flex-start;padding:16px 0;border-top:1px solid var(--line)}
-  .ch .ic{width:40px;height:40px;border-radius:8px;background:#fbf4e4;display:grid;place-items:center;flex:none}
-  .ch .ic svg{width:20px;height:20px;stroke:var(--red);stroke-width:1.8;fill:none}
-  .ch b{display:block;font-size:15px;color:var(--navy)} .ch p{margin:3px 0 10px;font-size:13.5px;color:var(--muted)}
-
-  table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13.5px}
-  th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line)}
-  th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700}
-  td b{color:var(--navy)}
-  .pill{display:inline-block;padding:3px 10px;border-radius:100px;font-size:12px;font-weight:700;background:#eaf3ea;color:#2f6a37}
-
-  .res{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px}
-  .res a{display:block;text-decoration:none;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:16px;transition:border-color .25s}
-  .res a:hover{border-color:var(--gold)}
-  .res b{display:block;font-size:14.5px;color:var(--navy)} .res span{font-size:12.5px;color:var(--muted)}
-  footer{max-width:860px;margin:0 auto;padding:0 24px 56px;color:var(--muted);font-size:13px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
-  @media(max-width:620px){.res{grid-template-columns:1fr}.card{padding:24px 20px}}
-</style>
+<link href="legal.css" rel="stylesheet" />
 </head>
 <body>
-  <div class="hero">
-    <div class="shield"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></div>
-    <h1>How can we help?</h1>
-    <p>Most answers are a scroll away. If you are still stuck, reaching a human takes one click — and no email account on your end.</p>
-  </div>
+  <header class="hero">
+    <span class="mark"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#e2c277" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
+    <h1>Get in touch</h1>
+    <p class="lead">Most answers are a scroll away. If you are still stuck, reaching a human takes one click — and no email account on your end.</p>
+  </header>
 
-  <div class="shell">
-    <div class="card">
-      <div class="eyebrow">Frequently asked questions</div>
-      <h2 style="margin-bottom:10px">Quick answers</h2>
+  <div class="stack">
+    <section class="card">
+      <div class="kicker">Frequently asked</div>
+      <h2>Quick answers</h2>
       <details open>
         <summary>The pane says "the checker isn't running" <span class="pm"></span></summary>
-        <div class="a">The local engine hasn't started. Double-click <code>install.bat</code> in your Anomaly Hunter folder, then press <b>Try again</b> in the pane. After any update, close Excel first and run <code>install.bat</code> again so the engine restarts.</div>
+        <div class="a">The local engine hasn't started. Double-click <code>install.bat</code> in your Anomaly Hunter folder, then press <strong>Try again</strong> in the pane. After any update, close Excel first and run <code>install.bat</code> again so the engine restarts.</div>
       </details>
       <details>
         <summary>How do I turn on AI help? <span class="pm"></span></summary>
-        <div class="a">Open <b>AI help (optional, free)</b> at the bottom of the pane, create a free Google AI key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> (no credit card), paste it, and click Save. It is stored only on your PC and can be removed anytime.</div>
+        <div class="a">Open <strong>AI help (optional, free)</strong> at the bottom of the pane, create a free Google AI key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> (no credit card), paste it, and click Save. It is stored only on your PC and can be removed anytime.</div>
       </details>
       <details>
         <summary>It flagged a value that's correct, or missed one <span class="pm"></span></summary>
-        <div class="a">Anomaly Hunter is a helper, not a guarantee, so a few false alarms and misses are normal. Use the <b>How hard to look</b> slider: lower it for fewer, higher-confidence flags; raise it to cast a wider net. Nothing in your sheet changes until you review a suggestion and click Apply.</div>
+        <div class="a">Anomaly Hunter is a helper, not a guarantee, so a few false alarms and misses are normal. Use the <strong>How hard to look</strong> slider: lower it for fewer, higher-confidence flags; raise it to cast a wider net. Nothing in your sheet changes until you review a suggestion and click Apply.</div>
       </details>
       <details>
         <summary>Is my spreadsheet data private? <span class="pm"></span></summary>
@@ -97,63 +36,60 @@
       </details>
       <details>
         <summary>How do I update or uninstall? <span class="pm"></span></summary>
-        <div class="a">To update, pull the latest release and re-run <code>install.bat</code> (close Excel first). To uninstall, run <code>AnomalyHunter.exe uninstall</code> or remove it from Windows "Installed apps" — this also deletes the local files listed on the Privacy page.</div>
+        <div class="a">To update, get the latest release and re-run <code>install.bat</code> (close Excel first). To uninstall, run <code>AnomalyHunter.exe uninstall</code> or remove it from Windows "Installed apps" — this also deletes the local files listed on the Privacy page.</div>
       </details>
-    </div>
+    </section>
 
-    <div class="card">
-      <div class="eyebrow">Contact support</div>
+    <section class="card">
+      <div class="kicker">Contact support</div>
       <h2>Reach a human</h2>
-      <p>We keep one honest, working channel instead of a mailbox that might bounce. Pick whichever fits.</p>
+      <p>One honest, working channel instead of a mailbox that might bounce.</p>
 
-      <div class="ch">
-        <span class="ic"><svg viewBox="0 0 24 24"><path d="M9 18l-6-6 6-6"/><rect x="3" y="4" width="18" height="16" rx="2" fill="none"/><path d="M8 8h8M8 12h5"/></svg></span>
+      <div class="opt">
+        <span class="n">1</span>
         <div>
-          <b>Submit a support ticket</b>
-          <p>A short structured form on GitHub. This is our ticketing system — public, tracked, and it needs no email address from you.</p>
-          <a class="btn btn-red" href="https://github.com/ricepillow3000/excel-anomaly-hunter/issues/new?template=support_request.yml" target="_blank" rel="noopener">Open a ticket <svg viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8"/></svg></a>
+          <strong>Send us a message</strong>
+          <p>A short form that opens in your browser. It goes straight to the maintainer — public, tracked, and no email address needed from you.</p>
+          <a class="btn btn-red" href="https://github.com/ricepillow3000/excel-anomaly-hunter/issues/new?template=support_request.yml" target="_blank" rel="noopener">Open the form <svg viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8"/></svg></a>
+          <!-- MAINTAINER: the button above opens the structured GitHub ticket form (works today, no email). To offer a
+               channel that needs NO account at all, make a free Microsoft Form (you already have an Office/Microsoft
+               account via Excel - no new Google, email, or phone required): go to forms.office.com, add Name / Message
+               fields, publish, copy the share link, and paste it as this button's href. Responses then land in your
+               Forms dashboard / an Excel workbook - nothing to check in an inbox. -->
         </div>
       </div>
 
-      <div class="ch">
-        <span class="ic"><svg viewBox="0 0 24 24"><path d="M4 5h16v12H8l-4 4z"/></svg></span>
+      <div class="opt">
+        <span class="n">2</span>
         <div>
-          <b>Prefer not to use GitHub? Use the contact form</b>
-          <p>A simple form you fill out in your browser. Your message lands in our private intake queue — no account needed to send it.</p>
-          <a class="btn btn-ghost" href="CONTACT_FORM_URL" target="_blank" rel="noopener">Open contact form <svg viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8"/></svg></a>
-          <!-- SETUP (John, ~2 min, NO email account needed): create a free Google Form (forms.new) with fields
-               Name / Email (optional) / Message. Responses land in a Google Sheet you check - you never need a
-               support mailbox. Click Send, copy the form's share link, and replace CONTACT_FORM_URL above with it.
-               (Tally.so works the same way if you prefer.) Until then, the GitHub ticket above is the live channel. -->
+          <strong>Browse what others asked</strong>
+          <p>Someone may have already hit the same thing. The question log is public.</p>
+          <a class="btn btn-line" href="https://github.com/ricepillow3000/excel-anomaly-hunter/issues" target="_blank" rel="noopener">View past questions <svg viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8"/></svg></a>
         </div>
       </div>
 
-      <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:22px 0 4px">What to expect</h3>
       <table>
-        <tr><th>Channel</th><th>Best for</th><th>Typical response</th></tr>
-        <tr><td><b>FAQ &amp; Privacy page</b></td><td>Setup, privacy, common fixes</td><td><span class="pill">Instant</span></td></tr>
-        <tr><td><b>Support ticket</b></td><td>Bugs, questions, feature requests</td><td>Within 2 business days</td></tr>
-        <tr><td><b>Contact form</b></td><td>General &amp; privacy requests</td><td>Within 3 business days</td></tr>
+        <tr><th>Where</th><th>Best for</th><th>Typical response</th></tr>
+        <tr><td><strong>FAQ &amp; Privacy page</strong></td><td>Setup, privacy, common fixes</td><td><span class="pill">Instant</span></td></tr>
+        <tr><td><strong>Send a message</strong></td><td>Bugs, questions, feature ideas</td><td>Within 2 business days</td></tr>
       </table>
-      <p style="font-size:12.5px;color:var(--muted);margin-top:12px">Anomaly Hunter is a free, independent project maintained in spare time; these are best-effort targets, not a service-level guarantee. Please do not include private or sensitive spreadsheet data in a message.</p>
-    </div>
+      <div class="callout">Anomaly Hunter is a free, independent project maintained in spare time; these are best-effort targets, not a service-level guarantee. Please don't include private or sensitive spreadsheet data in a message.</div>
+    </section>
 
-    <div class="card">
-      <div class="eyebrow">Self-service resources</div>
+    <section class="card">
+      <div class="kicker">Self-service</div>
       <h2>Help yourself, anytime</h2>
       <div class="res">
-        <a href="privacy.html"><b>Privacy &amp; Terms</b><span>Exactly what stays on your PC, and your rights.</span></a>
-        <a href="https://github.com/ricepillow3000/excel-anomaly-hunter#readme" target="_blank" rel="noopener"><b>Knowledge base</b><span>Install guide, features, and how it works.</span></a>
-        <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/issues" target="_blank" rel="noopener"><b>Community &amp; known issues</b><span>See what others have asked and reported.</span></a>
-        <a href="#status"><b>System status</b><span>The engine runs on your PC — see below.</span></a>
+        <a href="privacy.html"><strong>Privacy &amp; data</strong><span>Exactly what stays on your PC, and your rights.</span></a>
+        <a href="https://github.com/ricepillow3000/excel-anomaly-hunter#readme" target="_blank" rel="noopener"><strong>Setup guide</strong><span>Install, features, and how it works.</span></a>
+        <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/issues" target="_blank" rel="noopener"><strong>Known issues</strong><span>See what's been reported and fixed.</span></a>
+        <a href="privacy.html#security"><strong>Security</strong><span>How the local engine protects your data.</span></a>
       </div>
-      <div class="note" id="status" style="font-size:13.5px;color:var(--muted);background:#f6f1e6;border-left:3px solid var(--gold);padding:12px 14px;border-radius:4px;margin-top:14px">
-        <b>Status.</b> There is no cloud service to go down — Anomaly Hunter runs entirely on your own computer. If the pane shows "the checker isn't running", that is a local engine that simply needs starting (see the first FAQ above), not an outage.
-      </div>
-    </div>
+      <div class="callout"><strong>System status.</strong> There is no cloud service to go down — Anomaly Hunter runs entirely on your own computer. If the pane shows "the checker isn't running", that is a local engine that simply needs starting (see the first question above), not an outage.</div>
+    </section>
   </div>
 
-  <footer>
+  <footer class="pg">
     <span>© 2026 Anomaly Hunter · Runs locally · Private by design</span>
     <span><a href="privacy.html">Privacy Policy</a></span>
   </footer>

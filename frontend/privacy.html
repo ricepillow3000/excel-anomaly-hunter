@@ -5,168 +5,98 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Anomaly Hunter — Privacy Policy</title>
 <link href="assets/icon-32.png" rel="icon" />
-<style>
-  @font-face{font-family:'Plus Jakarta Sans';font-style:normal;font-weight:400 800;font-display:swap;src:url('assets/plus-jakarta-sans.woff2') format('woff2')}
-  :root{ --navy:#101f33; --navy-2:#0a1424; --ink:#1c160d; --paper:#f4f1ea; --card:#fffdf8; --muted:#5e5443;
-    --line:rgba(28,22,13,.12); --gold:#bf9638; --gold-soft:#e2c277; --gold-ink:#8a6a1f; --red:#b1342a; --red-deep:#7f1f16;
-    --sans:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif; }
-  *{box-sizing:border-box;margin:0;padding:0}
-  html{scroll-behavior:smooth;scroll-padding-top:24px}
-  body{font-family:var(--sans);background:var(--paper);color:var(--ink);line-height:1.65;-webkit-font-smoothing:antialiased}
-  a{color:var(--red);font-weight:600;text-underline-offset:2px}
-
-  /* hero */
-  .hero{position:relative;overflow:hidden;text-align:center;color:#fff;padding:64px 24px 72px;
-    background:radial-gradient(120% 140% at 85% -40%,#2a2f44 0%,var(--navy) 45%),var(--navy)}
-  .hero .shield{width:76px;height:76px;margin:0 auto 24px;border-radius:50%;background:rgba(226,194,119,.14);
-    border:1px solid rgba(226,194,119,.35);display:grid;place-items:center}
-  .hero .shield svg{width:36px;height:36px}
-  .hero h1{font-size:clamp(34px,6vw,52px);font-weight:800;letter-spacing:-.025em}
-  .hero p{max-width:620px;margin:14px auto 0;font-size:16.5px;line-height:1.6;color:rgba(239,229,206,.88)}
-  .hero .upd{margin-top:26px;font-size:13px;color:rgba(239,229,206,.6)}
-
-  .shell{max-width:1120px;margin:-28px auto 0;padding:0 24px 80px;position:relative;z-index:2;
-    display:grid;grid-template-columns:260px 1fr;gap:26px;align-items:start}
-
-  /* quick nav */
-  .sidenav{position:sticky;top:24px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 14px;
-    box-shadow:0 20px 50px -34px rgba(20,10,4,.4)}
-  .sidenav h2{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:4px 10px 12px}
-  .sidenav a{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:6px;font-size:13.5px;font-weight:600;
-    color:var(--ink);text-decoration:none;transition:background .25s,color .25s}
-  .sidenav a svg{width:16px;height:16px;flex:none;stroke:var(--muted);stroke-width:1.8;fill:none}
-  .sidenav a:hover{background:#f1ead9}
-  /* :target-driven active state (click a link -> that section highlights) */
-  .sidenav a.on,
-  body:has(#intro:target) a[href="#intro"],
-  body:has(#collect:target) a[href="#collect"],
-  body:has(#use:target) a[href="#use"],
-  body:has(#share:target) a[href="#share"],
-  body:has(#rights:target) a[href="#rights"],
-  body:has(#security:target) a[href="#security"],
-  body:has(#changes:target) a[href="#changes"]{background:var(--red);color:#fff}
-  body:has(#intro:target) a[href="#intro"] svg, body:has(#collect:target) a[href="#collect"] svg,
-  body:has(#use:target) a[href="#use"] svg, body:has(#share:target) a[href="#share"] svg,
-  body:has(#rights:target) a[href="#rights"] svg, body:has(#security:target) a[href="#security"] svg,
-  body:has(#changes:target) a[href="#changes"] svg, .sidenav a.on svg{stroke:#fff}
-  body:has(:target) a.on{background:none;color:var(--ink)} body:has(:target) a.on svg{stroke:var(--muted)}
-
-  /* content */
-  .content{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 34px 40px;
-    box-shadow:0 20px 50px -34px rgba(20,10,4,.4)}
-  .tldr{margin:24px 0 10px;padding:18px 20px;border-radius:8px;background:#fbf4e4;border:1px solid rgba(191,150,56,.3)}
-  .tldr b{color:var(--gold-ink)}
-  section{padding:30px 0;border-top:1px solid var(--line)}
-  section:first-of-type{border-top:0}
-  .sh{display:flex;align-items:center;gap:12px;margin-bottom:12px}
-  .sh .ic{width:38px;height:38px;border-radius:8px;background:#fbf4e4;display:grid;place-items:center;flex:none}
-  .sh .ic svg{width:20px;height:20px;stroke:var(--red);stroke-width:1.8;fill:none}
-  h2.t{font-size:22px;font-weight:800;letter-spacing:-.02em;color:var(--navy)}
-  h3{font-size:15px;font-weight:700;color:var(--navy);margin:18px 0 6px}
-  p{margin:0 0 12px;font-size:15px}
-  ul{margin:0 0 12px;padding-left:20px} li{margin-bottom:7px;font-size:14.5px}
-  b,strong{font-weight:700}
-  code{background:#f1ead9;padding:1px 5px;border-radius:3px;font-size:13px}
-  .note{font-size:13.5px;color:var(--muted);background:#f6f1e6;border-left:3px solid var(--gold);padding:12px 14px;border-radius:4px;margin:12px 0}
-  footer{max-width:1120px;margin:0 auto;padding:0 24px 56px;color:var(--muted);font-size:13px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
-
-  @media(max-width:820px){
-    .shell{grid-template-columns:1fr;margin-top:-20px}
-    .sidenav{position:static;order:-1}
-    .content{padding:14px 20px 32px}
-  }
-</style>
+<link href="legal.css" rel="stylesheet" />
 </head>
 <body>
-  <div class="hero">
-    <div class="shield"><svg viewBox="0 0 24 24" fill="none" stroke="#e2c277" stroke-width="1.8" stroke-linejoin="round"><path d="M12 2.5 L20 6 V12 C20 17 16.5 20 12 21.5 C7.5 20 4 17 4 12 V6 Z"/><path d="M9 12 l2 2 l4 -4.5" stroke-linecap="round"/></svg></div>
+  <header class="hero">
+    <span class="mark"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#e2c277" stroke-width="1.8" stroke-linejoin="round"><path d="M12 2.5 L20 6 V12 C20 17 16.5 20 12 21.5 C7.5 20 4 17 4 12 V6 Z"/><path d="M9 12l2 2 4-4.5" stroke-linecap="round"/></svg></span>
     <h1>Privacy Policy</h1>
-    <p>We are committed to protecting your privacy. Anomaly Hunter was built so that your spreadsheets stay on your own computer — here is exactly what that means.</p>
-    <div class="upd">Last updated: 17 October 2026</div>
-  </div>
+    <p class="lead">Anomaly Hunter was built so your spreadsheets stay on your own computer. Here is exactly what that means for your data.</p>
+    <p class="meta">Last updated 17 October 2026</p>
+  </header>
 
   <div class="shell">
     <nav class="sidenav">
-      <h2>Quick Navigation</h2>
-      <a href="#intro" class="on"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M8 13h8M8 17h5"/></svg>Introduction</a>
-      <a href="#collect"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v14c0 1.7 3.1 3 7 3s7-1.3 7-3V5M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg>Information We Collect</a>
-      <a href="#use"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H1a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 2.6 7"/></svg>How We Use Data</a>
-      <a href="#share"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.6l6.8-4M8.6 13.4l6.8 4"/></svg>Data Sharing</a>
-      <a href="#rights"><svg viewBox="0 0 24 24"><path d="M12 2.5 L20 6 V12 C20 17 16.5 20 12 21.5 C7.5 20 4 17 4 12 V6 Z"/><path d="M12 8v5M12 16v.5"/></svg>Your Rights</a>
-      <a href="#security"><svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>Security &amp; Retention</a>
-      <a href="#changes"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>Changes &amp; Contact</a>
+      <div class="lbl">On this page</div>
+      <a href="#intro" class="on"><svg width="15" height="15" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M8 13h8M8 17h5"/></svg>Introduction</a>
+      <a href="#collect"><svg width="15" height="15" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v14c0 1.7 3.1 3 7 3s7-1.3 7-3V5M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg>Information We Collect</a>
+      <a href="#use"><svg width="15" height="15" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>How We Use Data</a>
+      <a href="#share"><svg width="15" height="15" viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.4 10.7l7.2-4.3M8.4 13.3l7.2 4.3"/></svg>Data Sharing</a>
+      <a href="#rights"><svg width="15" height="15" viewBox="0 0 24 24"><path d="M12 2.5 L20 6 V12 C20 17 16.5 20 12 21.5 C7.5 20 4 17 4 12 V6 Z"/></svg>Your Rights</a>
+      <a href="#security"><svg width="15" height="15" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>Security &amp; Retention</a>
+      <a href="#changes"><svg width="15" height="15" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>Changes &amp; Contact</a>
     </nav>
 
-    <div class="content">
-      <div class="tldr"><b>The short version.</b> Anomaly Hunter runs entirely on your computer. We do not collect, store, sell, or share your personal information, and your spreadsheets never leave your PC — unless you choose to turn on the optional AI help, which sends only a small, clearly-described slice to Google. There are no accounts, no cookies, and no tracking.</div>
+    <main class="doc">
+      <div class="tldr"><strong>The short version.</strong> Anomaly Hunter runs entirely on your computer. We do not collect, store, sell, or share your personal information, and your spreadsheets never leave your PC — unless you choose to turn on the optional AI help, which sends only a small, clearly described slice to Google. There are no accounts, no cookies, and no tracking.</div>
 
       <section id="intro">
-        <div class="sh"><span class="ic"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M8 13h8M8 17h5"/></svg></span><h2 class="t">Introduction</h2></div>
-        <p>Welcome to Anomaly Hunter, a free Microsoft Excel add-in that scans your spreadsheet for likely data problems and suggests fixes. This Privacy Policy explains what information is and is not involved when you use it.</p>
-        <p>Anomaly Hunter is an independent project and is <b>not affiliated with Microsoft or Google</b>. By installing or using it, you agree to this policy. It was designed around a single principle: <b>your data stays with you</b>.</p>
+        <h2>Introduction</h2>
+        <p>Welcome to Anomaly Hunter, a free Microsoft Excel add-in that scans your spreadsheet for likely data problems and suggests fixes. This Privacy Policy explains what information is, and is not, involved when you use it.</p>
+        <p>Anomaly Hunter is an independent project and is <strong>not affiliated with Microsoft or Google</strong>. By installing or using it, you agree to this policy. It was designed around a single principle: your data stays with you.</p>
       </section>
 
       <section id="collect">
-        <div class="sh"><span class="ic"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v14c0 1.7 3.1 3 7 3s7-1.3 7-3V5M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg></span><h2 class="t">Information We Collect</h2></div>
+        <h2>Information We Collect</h2>
         <h3>Information you provide</h3>
-        <p>Almost nothing. There is no sign-up and no account. The only data you may provide is an <b>optional AI key or invite code</b>, which you paste into the pane. It is stored <b>only on your own PC</b> (in <code>%LOCALAPPDATA%\AnomalyHunter</code>) and is never transmitted to us. If you contact Support, you provide whatever you choose to include in that message.</p>
+        <p>Almost nothing. There is no sign-up and no account. The only data you may provide is an <strong>optional AI key or invite code</strong>, which you paste into the pane. It is stored <strong>only on your own PC</strong> (in <code>%LOCALAPPDATA%\AnomalyHunter</code>) and is never transmitted to us. If you contact support, you provide whatever you choose to include in that message.</p>
         <h3>Information collected automatically</h3>
-        <p><b>None.</b> Anomaly Hunter has <b>no analytics, no cookies, no tracking pixels, and no telemetry.</b> The pane loads only its own files plus Microsoft's Office script, and its Content Security Policy blocks everything else. Your spreadsheet contents are processed in memory by a local engine at <code>https://127.0.0.1:5055</code> that only your own computer can reach.</p>
+        <p><strong>None.</strong> Anomaly Hunter has no analytics, no cookies, no tracking pixels, and no telemetry. The pane loads only its own files plus Microsoft's Office script, and its Content Security Policy blocks everything else. Your spreadsheet is processed in memory by a local engine at <code>https://127.0.0.1:5055</code> that only your own computer can reach.</p>
         <h3>Third-party data</h3>
-        <p>Only if you deliberately turn on <b>AI help</b>. In that case a minimal slice of the flagged row (or the distinct words of your text columns) is sent to <b>Google's Gemini API</b>, governed by Google's own privacy terms. Nothing is sent to any other third party, ever.</p>
+        <p>Only if you deliberately turn on <strong>AI help</strong>. In that case a minimal slice of the flagged row, or the distinct words of your text columns, is sent to <strong>Google's Gemini API</strong>, governed by Google's own privacy terms. Nothing is sent to any other third party.</p>
       </section>
 
       <section id="use">
-        <div class="sh"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8M4.6 9a1.6 1.6 0 0 0-.3-1.8"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></span><h2 class="t">How We Use Your Information</h2></div>
+        <h2>How We Use Your Information</h2>
         <p>Because the work happens on your machine, the limited data involved is used only to make the tool function:</p>
         <ul>
-          <li><b>Scanning</b> — your sheet is checked for anomalies locally and the results shown in the pane.</li>
-          <li><b>Suggesting fixes</b> — proposed corrections are computed from your own data; nothing changes until you click Apply.</li>
-          <li><b>Optional AI fixes</b> — if enabled, the minimum context is sent to Google to draft a suggested fix.</li>
-          <li><b>Your AI key</b> — used solely to authenticate your own requests to Google, from your PC.</li>
+          <li><strong>Scanning</strong> — your sheet is checked for anomalies locally and the results shown in the pane.</li>
+          <li><strong>Suggesting fixes</strong> — proposed corrections are computed from your own data; nothing changes until you click Apply.</li>
+          <li><strong>Optional AI fixes</strong> — if enabled, the minimum context is sent to Google to draft a suggested fix.</li>
+          <li><strong>Your AI key</strong> — used solely to authenticate your own requests to Google, from your PC.</li>
         </ul>
-        <p>We do <b>not</b> use your information for advertising, marketing, profiling, model training, or resale. There is no behavioural tracking of any kind.</p>
+        <p>We do not use your information for advertising, marketing, profiling, model training, or resale. There is no behavioural tracking of any kind.</p>
       </section>
 
       <section id="share">
-        <div class="sh"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.6l6.8-4M8.6 13.4l6.8 4"/></svg></span><h2 class="t">Data Sharing &amp; Disclosure</h2></div>
-        <p><b>We do not sell, rent, or trade your personal information. Full stop.</b> We also do not share it with advertisers, data brokers, or analytics companies, because we never collect it in the first place.</p>
+        <h2>Data Sharing &amp; Disclosure</h2>
+        <p><strong>We do not sell, rent, or trade your personal information.</strong> We also do not share it with advertisers, data brokers, or analytics companies, because we never collect it in the first place.</p>
         <p>The only circumstances in which any data leaves your PC are:</p>
         <ul>
-          <li><b>Optional AI help you enable</b> — sent to Google (with your own key) or through the project's Cloudflare relay (with an invite code). The relay keeps only a daily usage count and stores none of your content.</li>
-          <li><b>Legal requirement</b> — if we were ever legally compelled, we could only disclose what we hold, which is nothing about you.</li>
+          <li><strong>Optional AI help you enable</strong> — sent to Google (with your own key) or through the project's Cloudflare relay (with an invite code). The relay keeps only a daily usage count and stores none of your content.</li>
+          <li><strong>Legal requirement</strong> — if we were ever legally compelled, we could only disclose what we hold, which is nothing about you.</li>
         </ul>
       </section>
 
       <section id="rights">
-        <div class="sh"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 2.5 L20 6 V12 C20 17 16.5 20 12 21.5 C7.5 20 4 17 4 12 V6 Z"/><path d="M9 12l2 2 4-4.5" stroke-linecap="round"/></svg></span><h2 class="t">Your Privacy Rights (GDPR &amp; CCPA)</h2></div>
-        <p>If you are in the European Economic Area, the United Kingdom, or California, you have rights to <b>access</b>, <b>correct</b>, <b>delete</b>, and <b>opt out of the sale</b> of your personal data, and to not be discriminated against for exercising them.</p>
-        <p>Anomaly Hunter makes these straightforward, because <b>we hold no personal data about you on any server</b>:</p>
+        <h2>Your Privacy Rights (GDPR &amp; CCPA)</h2>
+        <p>If you are in the European Economic Area, the United Kingdom, or California, you have rights to <strong>access</strong>, <strong>correct</strong>, <strong>delete</strong>, and <strong>opt out of the sale</strong> of your personal data, and to not be discriminated against for exercising them.</p>
+        <p>Anomaly Hunter makes these straightforward, because we hold no personal data about you on any server:</p>
         <ul>
-          <li><b>Access &amp; portability</b> — all data lives on your own PC; you can open it directly in <code>%LOCALAPPDATA%\AnomalyHunter</code>.</li>
-          <li><b>Deletion</b> — click <b>Remove key</b> in the pane, or run <code>AnomalyHunter.exe uninstall</code>, which deletes every local file.</li>
-          <li><b>Opt out of sale</b> — nothing is ever sold, so there is nothing to opt out of.</li>
-          <li><b>AI opt-out</b> — AI help is off by default and removable anytime.</li>
+          <li><strong>Access &amp; portability</strong> — all data lives on your own PC; open it directly in <code>%LOCALAPPDATA%\AnomalyHunter</code>.</li>
+          <li><strong>Deletion</strong> — click <strong>Remove key</strong> in the pane, or run <code>AnomalyHunter.exe uninstall</code>, which deletes every local file.</li>
+          <li><strong>Opt out of sale</strong> — nothing is ever sold, so there is nothing to opt out of.</li>
+          <li><strong>AI opt-out</strong> — AI help is off by default and removable anytime.</li>
         </ul>
-        <p>To ask a question or make a formal request, use the <a href="support.html">Support page</a>.</p>
+        <p>To ask a question or make a formal request, use the <a href="support.html">support page</a>.</p>
       </section>
 
       <section id="security">
-        <div class="sh"><span class="ic"><svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><h2 class="t">Data Security &amp; Retention</h2></div>
-        <p><b>Security.</b> The local engine is reachable only from your own computer over HTTPS, using a certificate that is valid for <code>127.0.0.1</code> only. A strict Content Security Policy blocks any outside code or connection. Because there is no central server holding user data, there is no central database to breach.</p>
-        <p><b>Retention.</b> We retain nothing. The only stored data are the local files you control: an optional AI key, a capped cache of up to 500 finished AI answers, an error log, and — only if you enable it — a single Power BI export of your last scan. Each is deleted when you remove it or uninstall.</p>
-        <div class="note">Anomaly Hunter is an independent tool provided "as is". It is a helper, not a guarantee of correctness; full terms of use are summarised on the <a href="support.html">Support page</a>. You remain responsible for verifying your own data.</div>
+        <h2>Data Security &amp; Retention</h2>
+        <p><strong>Security.</strong> The local engine is reachable only from your own computer over HTTPS, using a certificate valid for <code>127.0.0.1</code> only. A strict Content Security Policy blocks any outside code or connection. Because no central server holds user data, there is no central database to breach.</p>
+        <p><strong>Retention.</strong> We retain nothing. The only stored data are the local files you control: an optional AI key, a capped cache of up to 500 finished AI answers, an error log, and — only if you enable it — a single Power BI export of your last scan. Each is deleted when you remove it or uninstall.</p>
+        <div class="callout"><strong>Note.</strong> Anomaly Hunter is an independent tool provided "as is". It is a helper, not a guarantee of correctness. You remain responsible for verifying your own data before relying on it.</div>
       </section>
 
       <section id="changes">
-        <div class="sh"><span class="ic"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span><h2 class="t">Changes &amp; Contact</h2></div>
+        <h2>Changes &amp; Contact</h2>
         <p>We may update this policy as the tool evolves; the "Last updated" date at the top always reflects the current version. Material changes will be noted in the product's release notes. Continued use after an update means you accept the revised policy.</p>
-        <p><b>Contact.</b> Questions, concerns, or a privacy request? Reach us through the <a href="support.html">Support page</a> — no email account required on your end.</p>
+        <p><strong>Contact.</strong> Questions, concerns, or a privacy request? Reach us through the <a href="support.html">support page</a> — no email account required on your end.</p>
       </section>
-    </div>
+    </main>
   </div>
 
-  <footer>
+  <footer class="pg">
     <span>© 2026 Anomaly Hunter · Runs locally · Private by design</span>
     <span><a href="support.html">Support</a></span>
   </footer>
