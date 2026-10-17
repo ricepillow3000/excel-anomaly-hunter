@@ -80,6 +80,24 @@
         ],
         "createdAt": "2026-10-17T05:20:20.269Z",
         "reason": "same header-subtitle gradient-sampler FP; body text passes."
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "frontend/privacy.html"
+        ],
+        "createdAt": "2026-10-17T05:20:57.780Z",
+        "reason": "matches the pane's user-confirmed warm Trees-inspired brand surface"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "frontend/support.html"
+        ],
+        "createdAt": "2026-10-17T05:20:57.918Z",
+        "reason": "same user-confirmed warm brand surface as the pane/privacy"
       }
     ]
   }
