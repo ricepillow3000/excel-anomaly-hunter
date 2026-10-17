@@ -5,14 +5,14 @@
 .strength-head b { font-variant-numeric: tabular-nums; font-weight: 600; }
 .slider { --pct: 50%; position: relative; height: 28px; margin: 2px 8px 0; cursor: pointer; touch-action: none; outline: none; }
 .slider-track { position: absolute; left: 0; right: 0; top: 12px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
-.slider-fill { width: var(--pct); height: 100%; background: var(--accent); }
+.slider-fill { width: var(--pct); height: 100%; background: var(--red); }
 .slider::after { /* ticks at 0, 1, ... 10 */
   content: ""; position: absolute; left: 0; width: calc(100% + 1px); top: 20px; height: 4px;
   background: repeating-linear-gradient(90deg, #c8c6c4 0 1px, transparent 1px 10%);
 }
 .slider-thumb {
   position: absolute; top: 6px; left: var(--pct); width: 16px; height: 16px; margin-left: -8px; border-radius: 50%;
-  background: var(--card); border: 2px solid var(--accent); box-sizing: border-box;
+  background: var(--card); border: 2px solid var(--red); box-sizing: border-box;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); transition: transform 0.12s ease-out;
 }
 .slider:hover .slider-thumb, .slider:active .slider-thumb { transform: scale(1.15); }
@@ -26,7 +26,7 @@ label.check { display: flex; align-items: center; gap: 8px; font-size: 13px; mar
 /* progress: a real fraction while reading/highlighting, a moving sliver while the engine checks */
 #busy { margin: 4px 0 6px; }
 .bar { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
-#busy-bar { height: 100%; width: 0; background: var(--accent); transition: width 0.2s ease-out; }
+#busy-bar { height: 100%; width: 0; background: var(--red); transition: width 0.2s ease-out; }
 #busy-bar.unknown { width: 30%; animation: slide 1.4s ease-in-out infinite; }
 @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
 @media (prefers-reduced-motion: reduce) { #busy-bar.unknown { animation: none; width: 100%; opacity: 0.5; } }
@@ -66,7 +66,7 @@ details.more[open] summary { margin-bottom: 8px; }
 
 /* the suggestion card: what's wrong, the change (old -> new) up front, Accept / Dismiss */
 .reason-box { margin: 0 0 12px; font-size: 13px; color: var(--muted); }
-.fix-result { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 6px; padding: 12px; margin: 10px 0 16px; }
+.fix-result { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--red); border-radius: 3px; padding: 12px; margin: 10px 0 16px; }
 .fix-result h2 { margin: 0 0 4px; }
 .fix-result #fix-status { margin: 10px 0 0; }
 .fix-result #fix-status:empty { display: none; }

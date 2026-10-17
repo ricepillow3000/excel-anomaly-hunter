@@ -1,9 +1,10 @@
 :root {
-  /* corporate identity 2026-10-16: navy primary, gold accent, red alerts (brief Phase 4) */
-  --ink: #1b2330; --muted: #5c5b5a; --line: #e1dfdd; --bg: #faf9f8; --card: #fff;
-  --navy: #13294b; --gold: #c8a24b;
-  --accent: var(--navy); --accent-dark: #0b1a33; --warn: #c1272d;
+  /* corporate identity 2026-10-17: warm navy/gold/red, ledger brand. Matches site/tool-preview.html */
+  --ink: #1c160d; --muted: #6a5f4d; --line: rgba(28,22,13,.14); --bg: #fbf6ec; --card: #fffdf8;
+  --navy: #101f33; --navy-2: #0a1424; --gold: #bf9638; --gold-soft: #e2c277; --red: #b1342a; --red-deep: #7f1f16;
+  --accent: var(--navy); --accent-dark: #0b1a33; --warn: #b1342a;
   --high: #ffc7ce; --medium: #ffeb9c; --low: #ffffcc; /* the same fills the sheet gets - never recolour without the engine */
+  --serif: "Iowan Old Style","Palatino Linotype","Palatino","Book Antiqua",Georgia,serif;
 }
 [hidden] { display: none !important; }
 html, body { margin: 0; padding: 0; }
@@ -13,23 +14,30 @@ a { color: var(--accent); text-underline-offset: 2px; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 code { background: #f0efee; padding: 1px 4px; border-radius: 3px; font-size: 13px; }
 
-header { padding: 16px 16px 14px; background: var(--navy); border-bottom: 3px solid var(--gold); }
-h1 { margin: 0; font-size: 18px; font-weight: 600; color: #fff; }
-h2 { margin: 20px 0 4px; font-size: 14px; font-weight: 600; }
+header { position: relative; padding: 15px 16px 13px; overflow: hidden; border-bottom: 2px solid var(--gold-soft);
+  background: linear-gradient(90deg, rgba(8,15,28,.7) 0%, rgba(8,15,28,.22) 55%, transparent 82%),
+              radial-gradient(130% 150% at 85% -35%, #d8853a 0%, #8a2d1c 32%, #1a2238 64%, var(--navy) 100%); }
+header .brand { display: flex; align-items: center; gap: 10px; }
+header .mark { width: 28px; height: 28px; flex: none; border-radius: 3px; background: rgba(10,20,36,.42);
+  border: 1px solid rgba(226,194,119,.4); display: grid; place-items: center; }
+header .mark svg { width: 20px; height: 20px; }
+h1 { margin: 0; font-family: var(--serif); font-size: 19px; font-weight: 500; color: #fbf6ec; }
+h2 { margin: 20px 0 4px; font-family: var(--serif); font-size: 16px; font-weight: 500; color: var(--navy); }
 h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
-.sheet-name { margin: 2px 0 0; color: #c7d0e0; font-size: 12px; }
+.sheet-name { margin: 7px 0 0; color: rgba(245,236,214,.78); font-size: 12px; }
 .pad { padding: 16px; }
 .hint { margin: 0 0 10px; color: var(--muted); font-size: 12px; }
 .warn { color: var(--warn); }
 #main-ui { padding: 0 16px 24px; }
 
-button { font: inherit; cursor: pointer; border-radius: 4px; }
+button { font: inherit; cursor: pointer; border-radius: 2px; }
 button:disabled { cursor: default; opacity: 0.45; }
-.primary, .secondary { display: block; width: 100%; padding: 9px 12px; font-size: 14px; }
-.primary { margin: 14px 0 8px; border: 0; background: var(--accent); color: #fff; font-weight: 600; }
-.primary:hover:not(:disabled) { background: var(--accent-dark); }
-.secondary { margin: 8px 0; border: 1px solid #c8c6c4; background: var(--card); color: var(--ink); }
-.secondary:hover:not(:disabled) { background: #f3f2f1; }
+.primary, .secondary { display: block; width: 100%; padding: 11px 12px; font-size: 14px; border-radius: 2px; }
+.primary { margin: 14px 0 8px; border: 0; background: var(--red); color: #fff; font-weight: 600;
+  box-shadow: 0 10px 22px -14px rgba(177,52,42,.55), 0 0 0 1px rgba(226,194,119,.3) inset; }
+.primary:hover:not(:disabled) { background: var(--red-deep); }
+.secondary { margin: 8px 0; border: 1px solid #cbb; background: var(--card); color: var(--navy); }
+.secondary:hover:not(:disabled) { background: #f3ece0; }
 .row-buttons { display: flex; gap: 8px; }
 .row-buttons > * { flex: 1; margin: 8px 0 0; }
 .link-btn { border: 0; background: none; color: var(--accent); padding: 12px 0 0; font-size: 13px; }

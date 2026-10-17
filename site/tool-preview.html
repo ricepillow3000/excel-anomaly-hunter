@@ -1,0 +1,272 @@
+<title>Anomaly Hunter: Excel pane preview</title>
+<style>
+  :root{
+    --navy:#101f33; --navy-2:#0a1424; --navy-card:#15263d; --ink:#1c160d;
+    --paper:#fbf6ec; --cream:#f1e7d4; --card:#fffdf8;
+    --gold:#bf9638; --gold-soft:#e2c277; --amber:#d8853a; --gold-ink:#785a16;
+    --red:#b1342a; --red-soft:#c9553f; --red-deep:#7f1f16;
+    --line:rgba(28,22,13,.12); --muted:#6a5f4d; --muted-2:#655c4a;
+    --serif:"Iowan Old Style","Palatino Linotype","Palatino","Book Antiqua",Georgia,serif;
+    --sans:ui-sans-serif,system-ui,"Segoe UI","Helvetica Neue",sans-serif;
+    --ease:cubic-bezier(.22,.61,.17,1); --easeOut:cubic-bezier(.16,1,.3,1);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--sans);background:
+     radial-gradient(120% 80% at 50% -10%, #efe3ce 0%, #e7dcc6 60%, #e0d4bb 100%);
+     min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:40px 18px;color:var(--ink);-webkit-font-smoothing:antialiased}
+  .cap{font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;color:#574c39;font-weight:600;text-align:center}
+  .cap b{color:var(--red)}
+  .tab:focus-visible,.scan:focus-visible,.rowbtn:focus-visible,.fb:focus-visible,.field input:focus-visible{outline:2px solid var(--red);outline-offset:2px;border-radius:6px}
+
+  .pane{width:376px;max-width:100%;background:var(--paper);border-radius:8px;overflow:hidden;
+    box-shadow:0 40px 90px -36px rgba(20,10,4,.5),0 2px 0 rgba(255,255,255,.6) inset;border:1px solid rgba(28,22,13,.08)}
+
+  .ph{position:relative;padding:18px 18px 16px;color:var(--paper);overflow:hidden;
+    background:
+      linear-gradient(90deg,rgba(8,15,28,.68) 0%,rgba(8,15,28,.2) 52%,transparent 78%),
+      radial-gradient(130% 150% at 80% -30%,#d8853a 0%,#8a2d1c 30%,#1a2238 62%,var(--navy) 100%);
+    border-bottom:2px solid var(--gold-soft)}
+  .ph svg{position:absolute;inset:0;width:100%;height:100%;opacity:1}
+  .ph .row{position:relative;display:flex;align-items:center;gap:11px}
+  .ph .dot{width:30px;height:30px;border-radius:3px;background:rgba(10,20,36,.42);border:1px solid rgba(226,194,119,.4);display:grid;place-items:center;flex:none}
+  .ph .dot svg{position:static;width:20px;height:20px;opacity:1}
+  .ph .name{font-family:var(--serif);font-size:18px;font-weight:500;letter-spacing:0}
+  .ph .sheet{position:relative;margin-top:9px;font-size:11.5px;color:rgba(245,236,214,.78);letter-spacing:.02em}
+
+  .tabbar{position:relative;display:flex;gap:2px;padding:6px 10px 0;background:var(--card);border-bottom:1px solid var(--line)}
+  .tab{appearance:none;border:0;background:none;font:inherit;cursor:pointer;flex:1;padding:12px 6px 13px;font-size:13px;font-weight:600;color:var(--muted-2);letter-spacing:.01em;touch-action:manipulation;transition:color .35s var(--ease)}
+  .tab.active{color:var(--navy)}
+  .ink{position:absolute;bottom:-1px;height:2.5px;border-radius:2px;background:var(--red);transition:left .45s var(--easeOut),width .45s var(--easeOut)}
+
+  .body{position:relative;background:var(--card);min-height:318px}
+  .screen{padding:20px 18px 24px;display:none}
+  .screen.on{display:block;animation:paneIn .4s var(--ease)}
+  @keyframes paneIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+
+  .eyebrow{display:inline-block;font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;font-weight:700;color:var(--gold-ink)}
+  h3.t{font-family:var(--serif);font-weight:500;font-size:21px;letter-spacing:0;margin:7px 0 4px;color:var(--navy)}
+  p.sub{font-size:12.5px;color:var(--muted);line-height:1.55;margin-bottom:16px}
+
+  .scan{width:100%;border:0;cursor:pointer;font:inherit;font-weight:600;font-size:14.5px;color:#fff;letter-spacing:.01em;
+    background:var(--red);border-radius:2px;padding:14px;position:relative;overflow:hidden;touch-action:manipulation;
+    box-shadow:0 12px 24px -14px rgba(177,52,42,.55),0 0 0 1px rgba(226,194,119,.35) inset;transition:transform .4s var(--easeOut),background .4s var(--ease)}
+  .scan:hover{transform:translateY(-1px)} .scan:active{transform:translateY(0) scale(.99)}
+  .scan[disabled]{cursor:default;background:var(--navy);box-shadow:0 0 0 1px rgba(226,194,119,.3) inset}
+  .scan .lbl{position:relative;z-index:2;display:inline-flex;align-items:center;gap:9px}
+  .scan .prog{position:absolute;top:0;bottom:0;left:-30%;width:25%;z-index:1;
+    background:linear-gradient(90deg,transparent,rgba(255,220,150,.85),transparent)}
+  .scanning .prog{animation:sweep 1.05s var(--ease) infinite}
+  @keyframes sweep{from{left:-30%}to{left:105%}}
+
+  .summary{display:none;margin:18px 0 4px;align-items:center;gap:13px;border-top:1px solid var(--gold-soft);padding-top:16px}
+  .summary.on{display:flex;animation:fadeup .5s var(--easeOut)}
+  .summary .big{font-family:var(--serif);font-size:34px;letter-spacing:-.02em;color:var(--navy);line-height:1}
+  .summary .st{font-size:12px;color:var(--muted);line-height:1.45}
+  .summary .st b{color:var(--red);font-weight:600}
+  @keyframes fadeup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+  .results{list-style:none;margin:10px 0 0}
+  .results li{border-top:1px solid var(--line);opacity:0;transform:translateY(12px)}
+  .results.on li{animation:fadeup .55s var(--easeOut) forwards}
+  .results.on li:nth-child(1){animation-delay:.04s} .results.on li:nth-child(2){animation-delay:.12s}
+  .results.on li:nth-child(3){animation-delay:.20s} .results.on li:nth-child(4){animation-delay:.28s}
+  .rowbtn{width:100%;background:none;border:0;cursor:pointer;font:inherit;text-align:left;display:flex;align-items:flex-start;gap:10px;padding:12px 2px;touch-action:manipulation;transition:background .3s}
+  .rowbtn:hover{background:rgba(28,22,13,.03)}
+  .chip{flex:none;margin-top:2px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;line-height:1.4;border-radius:2px}
+  .chip.high{border-left:2px solid var(--red)} .chip.med{border-left:2px solid var(--gold)} .chip.low{border-left:2px solid var(--navy)}
+  .chip.high{background:rgba(177,52,42,.14);color:var(--red)}
+  .chip.med{background:rgba(191,150,56,.2);color:#6f5312}
+  .chip.low{background:rgba(16,31,51,.1);color:var(--navy)}
+  .rtext b{display:block;font-size:13px;color:var(--ink);font-weight:600}
+  .rtext span{display:block;font-size:12px;color:var(--muted);line-height:1.5;margin-top:2px}
+  .caret{margin-left:auto;color:var(--muted-2);transition:transform .4s var(--easeOut);flex:none;margin-top:2px}
+  li.open .caret{transform:rotate(90deg)}
+
+  .fix{max-height:0;overflow:hidden;transition:max-height .5s var(--ease)}
+  .fixin{margin:0 0 12px;padding:14px;border-radius:3px;background:var(--paper);border:1px solid var(--line);border-left:3px solid var(--red)}
+  .fixin .change{font-size:14px;margin-bottom:11px;display:flex;align-items:center;flex-wrap:wrap;gap:2px}
+  .fixin .change.text{display:block;font-size:12.5px;color:var(--muted)}
+  .fixin .change .old{color:var(--muted);text-decoration:line-through} .fixin .change .new{color:#0e700e;font-weight:600}
+  .arr{margin:0 7px;stroke:var(--muted-2);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+  .fixbtns{display:flex;gap:8px}
+  .fb{flex:1;border:0;cursor:pointer;font:inherit;font-weight:600;font-size:12.5px;padding:10px;border-radius:2px;touch-action:manipulation;transition:transform .35s var(--easeOut),background .3s}
+  .fb:active{transform:scale(.98)}
+  .fb.acc{background:var(--red);color:#fff} .fb.dis{background:transparent;color:var(--navy);border:1px solid var(--line)}
+
+  .slider-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}
+  .slider-head .v{font-family:var(--serif);font-size:22px;color:var(--red);font-variant-numeric:tabular-nums} .slider-head .v small{color:var(--muted);font-size:12px;font-family:var(--sans);margin-left:1px}
+  .slider{position:relative;height:30px;cursor:pointer;touch-action:none;margin:0 4px;outline:none}
+  .slider:focus-visible{outline:2px solid var(--navy);outline-offset:4px;border-radius:7px}
+  .track{position:absolute;left:0;right:0;top:13px;height:5px;border-radius:3px;background:rgba(28,22,13,.12);overflow:hidden}
+  .fill{height:100%;width:50%;background:var(--red);transition:width .25s var(--easeOut)}
+  .thumb{position:absolute;top:6px;left:50%;width:20px;height:20px;margin-left:-10px;border-radius:50%;background:#fff;border:2.5px solid var(--red);box-shadow:0 2px 8px rgba(177,52,42,.4);transition:left .25s var(--easeOut),transform .25s var(--easeOut)}
+  .slider:hover .thumb,.slider:active .thumb,.slider:focus-visible .thumb{transform:scale(1.18)}
+  .ticks{display:flex;justify-content:space-between;margin:8px 3px 0;font-size:10.5px;color:var(--muted-2)}
+  .hint{margin-top:14px;font-size:12px;color:var(--muted);line-height:1.55;height:3.3em;overflow:hidden}
+
+  .field{margin-top:16px} .field label{display:block;font-size:12px;font-weight:600;color:var(--navy);margin-bottom:6px}
+  .field input{width:100%;font:inherit;font-size:13px;padding:10px;border-radius:2px;border:1px solid var(--line);background:var(--card)}
+  .note{font-size:11.5px;color:var(--muted-2);margin-top:8px;line-height:1.5}
+
+  @media (prefers-reduced-motion:reduce){
+    *{animation-duration:.001ms!important;transition-duration:.001ms!important}
+    .screen.on{animation:fadeup .15s ease both!important}
+    .ink{transition:left .15s ease,width .15s ease!important}
+  }
+</style>
+
+<div class="cap">Interactive Excel pane preview. Try the tabs, slider, and <b>Scan</b>.</div>
+
+<div class="pane">
+  <div class="ph">
+    <svg viewBox="0 0 376 120" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <defs><radialGradient id="sun" cx="90%" cy="-8%" r="55%">
+        <stop offset="0%" stop-color="#f3c37e" stop-opacity=".42"/>
+        <stop offset="48%" stop-color="#d9823c" stop-opacity=".14"/>
+        <stop offset="100%" stop-color="#d9823c" stop-opacity="0"/>
+      </radialGradient></defs>
+      <rect width="376" height="120" fill="url(#sun)"/>
+      <path d="M0 120 V104 l18-11 11 9 13-13 12 15 15-11 12 12 16-15 12 14 15-9 14 11 17-14 13 14 15-11 15 12 18-9 17 11 V120Z" fill="#0a1626" opacity=".82"/>
+    </svg>
+    <div class="row">
+      <span class="dot"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.2" y="13" width="2.6" height="6.4" fill="#e2c277"/><rect x="7.6" y="9.5" width="2.6" height="9.9" fill="#e2c277"/><rect x="12" y="11.3" width="2.6" height="8.1" fill="#e2c277"/><rect x="16.4" y="5" width="2.6" height="14.4" fill="#b1342a"/><circle cx="17.7" cy="3.3" r="1.5" fill="#b1342a"/><rect x="2.4" y="19.9" width="17.6" height="1.2" fill="#e2c277" opacity=".7"/></svg></span>
+      <span class="name">Anomaly&nbsp;Hunter</span>
+    </div>
+    <div class="sheet">Sheet1, Q3_financials.xlsx</div>
+  </div>
+
+  <div class="tabbar">
+    <button class="tab active" data-tab="audit">Audit</button>
+    <button class="tab" data-tab="tune">Tune</button>
+    <button class="tab" data-tab="help">Help</button>
+    <span class="ink"></span>
+  </div>
+
+  <div class="body">
+    <section class="screen on" data-screen="audit">
+      <span class="eyebrow">Step one</span>
+      <h3 class="t">Audit this sheet</h3>
+      <p class="sub">Checks every cell for typos, broken formulas, and impossible values in one pass.</p>
+      <button class="scan" id="scan"><span class="prog"></span><span class="lbl">Scan this sheet</span></button>
+
+      <div class="summary" id="summary">
+        <span class="big">17</span>
+        <span class="st"><b>issues found</b><br>3 high &middot; 7 medium &middot; 7 low</span>
+      </div>
+
+      <ul class="results" id="results">
+        <li>
+          <button class="rowbtn" data-row><span class="chip high">High</span><span class="rtext"><b>Revenue, row 42</b><span>574656 looks like a typo for 5746.57.</span></span>
+            <svg class="caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6 L15 12 L9 18"/></svg></button>
+          <div class="fix"><div class="fixin"><div class="change"><span class="old">574656</span><svg class="arr" width="17" height="9" viewBox="0 0 17 9"><path d="M1 4.5 H14 M10.5 1 L14 4.5 L10.5 8"/></svg><span class="new">5746.57</span></div>
+            <div class="fixbtns"><button class="fb acc">Accept</button><button class="fb dis">Dismiss</button></div></div></div>
+        </li>
+        <li>
+          <button class="rowbtn" data-row><span class="chip high">High</span><span class="rtext"><b>Margin, row 19</b><span>112% is above 100% for a margin column.</span></span>
+            <svg class="caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6 L15 12 L9 18"/></svg></button>
+          <div class="fix"><div class="fixin"><div class="change text">Check the source figure for row 19.</div>
+            <div class="fixbtns"><button class="fb acc">Review</button><button class="fb dis">Dismiss</button></div></div></div>
+        </li>
+        <li>
+          <button class="rowbtn" data-row><span class="chip med">Medium</span><span class="rtext"><b>Units, row 7</b><span>Blank where the rest of the column is filled.</span></span>
+            <svg class="caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6 L15 12 L9 18"/></svg></button>
+          <div class="fix"><div class="fixin"><div class="change text">Fill in Units for row 7 from the source.</div>
+            <div class="fixbtns"><button class="fb acc">Review</button><button class="fb dis">Dismiss</button></div></div></div>
+        </li>
+        <li>
+          <button class="rowbtn" data-row><span class="chip low">Low</span><span class="rtext"><b>Region, row 31</b><span>"Est" may be a short form of "East".</span></span>
+            <svg class="caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6 L15 12 L9 18"/></svg></button>
+          <div class="fix"><div class="fixin"><div class="change"><span class="old">Est</span><svg class="arr" width="17" height="9" viewBox="0 0 17 9"><path d="M1 4.5 H14 M10.5 1 L14 4.5 L10.5 8"/></svg><span class="new">East</span></div>
+            <div class="fixbtns"><button class="fb acc">Accept</button><button class="fb dis">Dismiss</button></div></div></div>
+        </li>
+      </ul>
+    </section>
+
+    <section class="screen" data-screen="tune">
+      <span class="eyebrow">Precision</span>
+      <h3 class="t">How strict?</h3>
+      <p class="sub">Slide to set how hard Anomaly Hunter looks. Higher catches more, with a little more to review.</p>
+      <div class="slider-head"><span>Strength</span><span class="v" id="sval">5 <small>/10</small></span></div>
+      <div class="slider" id="slider" tabindex="0" role="slider" aria-valuemin="0" aria-valuemax="10" aria-valuenow="5" aria-valuetext="5 of 10" aria-label="Strength">
+        <div class="track"><div class="fill" id="fill"></div></div>
+        <div class="thumb" id="thumb"></div>
+      </div>
+      <div class="ticks"><span>Basics</span><span>Recommended</span><span>Strictest</span></div>
+      <p class="hint" id="hint">Recommended. A balanced sweep that catches the errors that matter without crying wolf.</p>
+    </section>
+
+    <section class="screen" data-screen="help">
+      <span class="eyebrow">About</span>
+      <h3 class="t">Private by design</h3>
+      <p class="sub">Your workbook never leaves this PC. Optional AI help for fixes runs through your own free key.</p>
+      <div class="field"><label>AI key (optional)</label><input placeholder="Paste a free Google AI key"></div>
+      <p class="note">Catches 13 error types across any sheet: finance, healthcare, supply chain, and more. Local and private.</p>
+    </section>
+  </div>
+</div>
+
+<div class="cap" style="color:#6b6150">Preview only. Ports to the live pane once approved.</div>
+
+<script>
+  const tabs=[...document.querySelectorAll('.tab')], ink=document.querySelector('.ink'),
+        screens=[...document.querySelectorAll('.screen')];
+  function moveInk(t){ink.style.left=(t.offsetLeft+6)+'px';ink.style.width=(t.offsetWidth-12)+'px';}
+  function select(t){tabs.forEach(x=>x.classList.toggle('active',x===t));
+    const name=t.dataset.tab; screens.forEach(s=>s.classList.toggle('on',s.dataset.screen===name));
+    moveInk(t);}
+  tabs.forEach(t=>t.addEventListener('click',()=>select(t)));
+  requestAnimationFrame(()=>moveInk(document.querySelector('.tab.active')));
+
+  const scan=document.getElementById('scan'),summary=document.getElementById('summary'),results=document.getElementById('results');
+  scan.addEventListener('click',()=>{
+    if(scan.classList.contains('again')){
+      summary.classList.remove('on');results.classList.remove('on');scan.classList.remove('again');
+      scan.querySelector('.lbl').textContent='Scan this sheet';
+      requestAnimationFrame(()=>requestAnimationFrame(run));return;
+    }
+    run();
+  });
+  function run(){
+    scan.disabled=true;scan.classList.add('scanning');
+    scan.querySelector('.lbl').textContent='Scanning the sheet...';
+    setTimeout(()=>{
+      scan.classList.remove('scanning');scan.disabled=false;scan.classList.add('again');
+      scan.querySelector('.lbl').textContent='Scan again';
+      summary.classList.add('on');
+      results.classList.remove('on');void results.offsetWidth;results.classList.add('on');
+    },1650);
+  }
+
+  document.querySelectorAll('[data-row]').forEach(b=>b.addEventListener('click',()=>{
+    const li=b.closest('li'),fix=li.querySelector('.fix'),open=li.classList.contains('open');
+    document.querySelectorAll('#results li').forEach(x=>{x.classList.remove('open');x.querySelector('.fix').style.maxHeight=null;});
+    if(!open){li.classList.add('open');fix.style.maxHeight=fix.scrollHeight+'px';}
+  }));
+
+  const slider=document.getElementById('slider'),fill=document.getElementById('fill'),thumb=document.getElementById('thumb'),
+        sval=document.getElementById('sval'),hint=document.getElementById('hint');
+  const hints=["Basics only. Flags just the clear breakages: errors, blanks, broken formulas.",
+    "Light touch. Obvious problems surface; subtle ones stay quiet.",
+    "Light touch. Obvious problems surface; subtle ones stay quiet.",
+    "Leaning careful. A few more borderline values get a look.",
+    "Leaning careful. A few more borderline values get a look.",
+    "Recommended. A balanced sweep that catches the errors that matter without crying wolf.",
+    "A bit stricter. More borderline values are raised for review.",
+    "A bit stricter. More borderline values are raised for review.",
+    "Strict. Casts a wide net, so expect a few more to check by hand.",
+    "Strict. Casts a wide net, so expect a few more to check by hand.",
+    "Strictest. Nothing unusual slips past. Review the extra flags."];
+  let val=5;
+  function setVal(v){v=Math.max(0,Math.min(10,Math.round(v)));val=v;
+    const pct=v/10*100;fill.style.width=pct+'%';thumb.style.left=pct+'%';
+    sval.innerHTML=v+' <small>/10</small>';hint.textContent=hints[v];
+    slider.setAttribute('aria-valuenow',v);slider.setAttribute('aria-valuetext',v+' of 10');}
+  setVal(5);
+  let drag=false;
+  function fromX(x){const r=slider.getBoundingClientRect();setVal((x-r.left)/r.width*10);}
+  slider.addEventListener('pointerdown',e=>{drag=true;slider.setPointerCapture(e.pointerId);fromX(e.clientX);});
+  slider.addEventListener('pointermove',e=>{if(drag)fromX(e.clientX);});
+  slider.addEventListener('pointerup',()=>drag=false);
+  slider.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowUp'){setVal(val+1);e.preventDefault();}
+    if(e.key==='ArrowLeft'||e.key==='ArrowDown'){setVal(val-1);e.preventDefault();}});
+</script>
