@@ -1,34 +1,101 @@
 :root {
-  --ink: #242424; --muted: #5c5b5a; --line: #e1dfdd; --bg: #faf9f8; --card: #fff;
-  --accent: #0f6cbd; --accent-dark: #0a5a9e; --warn: #a4262c;
-  --high: #ffc7ce; --medium: #ffeb9c; --low: #ffffcc; /* the same fills the sheet gets */
+  /* corporate identity 2026-10-17: warm navy/gold/red, ledger brand. Matches site/tool-preview.html */
+  --ink: #1c160d; --muted: #6a5f4d; --line: rgba(28,22,13,.14); --bg: #fbf6ec; --card: #fffdf8; --paper: #fbf6ec;
+  --navy: #101f33; --navy-2: #0a1424; --gold: #bf9638; --gold-soft: #e2c277; --red: #b1342a; --red-deep: #7f1f16;
+  --accent: var(--navy); --accent-dark: #0b1a33; --warn: #b1342a;
+  --high: #ffc7ce; --medium: #ffeb9c; --low: #ffffcc; /* the same fills the sheet gets - never recolour without the engine */
+  --serif: "Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;
 }
+@font-face{font-family:'Plus Jakarta Sans';font-style:normal;font-weight:400 800;font-display:swap;src:url('../assets/plus-jakarta-sans.woff2') format('woff2')}
 [hidden] { display: none !important; }
 html, body { margin: 0; padding: 0; }
-body { font: 14px/1.45 "Segoe UI", -apple-system, Arial, sans-serif; color: var(--ink); background: var(--bg); }
-::selection { background: #cfe4fa; }
+body { font: 14px/1.45 "Plus Jakarta Sans", ui-sans-serif, system-ui, "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); }
+::selection { background: #ece0bc; }
 a { color: var(--accent); text-underline-offset: 2px; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 code { background: #f0efee; padding: 1px 4px; border-radius: 3px; font-size: 13px; }
 
-header { padding: 16px 16px 0; }
-h1 { margin: 0; font-size: 18px; font-weight: 600; }
-h2 { margin: 20px 0 4px; font-size: 14px; font-weight: 600; }
+header { position: relative; padding: 15px 16px 13px; overflow: hidden; border-bottom: 2px solid var(--gold-soft);
+  background: linear-gradient(90deg, rgba(8,15,28,.7) 0%, rgba(8,15,28,.22) 55%, transparent 82%),
+              radial-gradient(140% 160% at 92% -45%, #f0b457 0%, #d8853a 22%, #9c3f22 44%, #2a2f44 70%, var(--navy) 100%); }
+header .brand { display: flex; align-items: center; gap: 10px; }
+header .mark { width: 28px; height: 28px; flex: none; border-radius: 3px; background: rgba(10,20,36,.42);
+  border: 1px solid rgba(226,194,119,.4); display: grid; place-items: center; }
+header .mark svg { width: 20px; height: 20px; }
+h1 { margin: 0; font-family: var(--serif); font-size: 19px; font-weight: 500; color: #fbf6ec; }
+h2 { margin: 20px 0 4px; font-family: var(--serif); font-size: 16px; font-weight: 500; color: var(--navy); }
 h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
-.sheet-name { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+.sheet-name { margin: 7px 0 0; color: rgba(245,236,214,.78); font-size: 12px; }
 .pad { padding: 16px; }
 .hint { margin: 0 0 10px; color: var(--muted); font-size: 12px; }
 .warn { color: var(--warn); }
 #main-ui { padding: 0 16px 24px; }
 
-button { font: inherit; cursor: pointer; border-radius: 4px; }
+button { font: inherit; cursor: pointer; border-radius: 2px; }
 button:disabled { cursor: default; opacity: 0.45; }
-.primary, .secondary { display: block; width: 100%; padding: 9px 12px; font-size: 14px; }
-.primary { margin: 14px 0 8px; border: 0; background: var(--accent); color: #fff; font-weight: 600; }
-.primary:hover:not(:disabled) { background: var(--accent-dark); }
-.secondary { margin: 8px 0; border: 1px solid #c8c6c4; background: var(--card); color: var(--ink); }
-.secondary:hover:not(:disabled) { background: #f3f2f1; }
+.primary, .secondary { display: block; width: 100%; padding: 11px 12px; font-size: 14px; border-radius: 2px; }
+.primary { margin: 14px 0 8px; border: 0; background: var(--red); color: #fff; font-weight: 600;
+  box-shadow: 0 10px 22px -14px rgba(177,52,42,.55), 0 0 0 1px rgba(226,194,119,.3) inset; }
+.primary:hover:not(:disabled) { background: var(--red-deep); }
+.secondary { margin: 8px 0; border: 1px solid #cbb; background: var(--card); color: var(--navy); }
+.secondary:hover:not(:disabled) { background: #f3ece0; }
 .row-buttons { display: flex; gap: 8px; }
 .row-buttons > * { flex: 1; margin: 8px 0 0; }
 .link-btn { border: 0; background: none; color: var(--accent); padding: 12px 0 0; font-size: 13px; }
+
+/* ---- skeleton loader: matches the pane's shape, shown while Office + engine load.
+   :has() hides it the moment real content (main-ui) or the server-down notice appears. ---- */
+#skeleton { padding: 18px 16px 8px; }
+#app-body:has(#main-ui:not([hidden])) #skeleton,
+#app-body:has(#server-down:not([hidden])) #skeleton { display: none; }
+.sk-btn, .sk-track, .sk-row, .sk-line, .sk-scale, .sk-hint, .sk-foot {
+  background: linear-gradient(90deg, #efe6d4 25%, #f8f1e2 37%, #efe6d4 63%);
+  background-size: 400% 100%; animation: sk-shimmer 1.4s ease infinite; border-radius: 3px; }
+.sk-btn { height: 46px; margin: 10px 0 18px; }
+.sk-line { height: 11px; width: 52%; margin-bottom: 12px; }
+.sk-track { height: 5px; }
+.sk-scale { height: 8px; width: 92%; margin: 9px auto 0; opacity: .55; }
+.sk-hint { height: 32px; margin-top: 18px; }
+.sk-row { height: 44px; margin-top: 10px; }
+.sk-foot { height: 96px; margin: 28px -16px 0; border-radius: 0; }
+@keyframes sk-shimmer { from { background-position: 100% 0 } to { background-position: 0 0 } }
+
+/* ---- "building into place": each part settles in from its own direction, once, as it first renders ---- */
+@keyframes ah-down { from { opacity: 0; transform: translateY(-14px) } to { opacity: 1; transform: none } }
+@keyframes ah-up { from { opacity: 0; transform: translateY(16px) } to { opacity: 1; transform: none } }
+@keyframes ah-left { from { opacity: 0; transform: translateX(-18px) } to { opacity: 1; transform: none } }
+@keyframes ah-scale { from { opacity: 0; transform: scale(.96) } to { opacity: 1; transform: none } }
+header { animation: ah-down .5s cubic-bezier(.16,1,.3,1) both; }
+#main-ui > #scan { animation: ah-scale .55s cubic-bezier(.16,1,.3,1) both .10s; }
+#main-ui > .strength { animation: ah-left .55s cubic-bezier(.16,1,.3,1) both .22s; }
+#main-ui > #empty-state { animation: ah-up .55s cubic-bezier(.16,1,.3,1) both .34s; }
+/* tabs (details.more) get NO entrance transform - it would fight their ::details-content open animation */
+#pane-footer { animation: ah-up .55s cubic-bezier(.16,1,.3,1) both .46s; }
+
+/* ---- optional tabs (Auto-fix / Power BI / AI help) open smoothly, like a page turning ---- */
+:root { interpolate-size: allow-keywords; }
+details.more::details-content { height: 0; overflow: hidden;
+  transition: height .36s cubic-bezier(.22,.61,.17,1), content-visibility .36s; transition-behavior: allow-discrete; }
+details.more[open]::details-content { height: auto; }
+
+/* ---- footer fills the bottom; warm sun-through-trees band (Trees.png inspiration) ---- */
+#pane-footer { position: relative; margin: 28px -16px 0; padding: 20px 16px 16px; overflow: hidden;
+  background: linear-gradient(180deg, rgba(8,15,28,.55), rgba(8,15,28,.08) 46%, transparent),
+              radial-gradient(135% 165% at 10% 140%, #e0a24e 0%, #a83f22 30%, #2a2f44 66%, var(--navy) 100%);
+  color: var(--paper); border-top: 2px solid var(--gold-soft); }
+#pane-footer .pf-tree { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .55; }
+#pane-footer .pf-brand { position: relative; display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 14px; color: var(--paper, #fbf6ec); text-shadow: 0 1px 2px rgba(0,0,0,.4); }
+#pane-footer .pf-brand .mk { width: 22px; height: 22px; flex: none; }
+#pane-footer .pf-brand .mk svg { width: 100%; height: 100%; display: block; }
+#pane-footer .pf-tag { position: relative; margin: 9px 0 13px; font-size: 11.5px; color: rgba(245,236,214,.8); line-height: 1.5; max-width: 92%; }
+#pane-footer .pf-links { position: relative; display: flex; gap: 10px; }
+#pane-footer .pf-links a { color: var(--navy); background: var(--gold-soft); padding: 7px 14px; border-radius: 2px; font-size: 12px; font-weight: 600; text-decoration: none; transition: background .3s; }
+#pane-footer .pf-links a:hover { background: #fff; }
+#pane-footer .pf-links a:focus-visible { outline: 2px solid #fbf6ec; outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  header, #main-ui > #scan, #main-ui > .strength, #main-ui > #empty-state, #main-ui > details.more, #pane-footer { animation: none !important; }
+  .sk-btn, .sk-track, .sk-row, .sk-line { animation: none !important; }
+  details.more::details-content { transition: none !important; }
+}
 

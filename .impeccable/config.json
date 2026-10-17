@@ -11,6 +11,129 @@
         ],
         "createdAt": "2026-10-12T01:48:13.155Z",
         "reason": "Claude: #busy-bar.unknown is an indeterminate progress bar, shown only while a scan runs, with a prefers-reduced-motion fallback (components.css)"
+      },
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": [
+          "frontend/styles/global.css"
+        ],
+        "createdAt": "2026-10-16T22:34:40.708Z",
+        "reason": "user confirmed: keep shipped suggestion-card design as is"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "frontend/styles/components.css"
+        ],
+        "createdAt": "2026-10-16T22:34:40.846Z",
+        "reason": "user confirmed: keep shipped suggestion-card design as is"
+      },
+      {
+        "rule": "italic-serif-display",
+        "value": "*",
+        "files": [
+          "site/index.html"
+        ],
+        "createdAt": "2026-10-17T01:07:52.643Z",
+        "reason": "user confirmed: explicitly requested an editorial business-template look; reference People.png is an italic-serif hero (Powering Your Business ... Support). Intentional register, not slop."
+      },
+      {
+        "rule": "hero-eyebrow-chip",
+        "value": "*",
+        "files": [
+          "site/index.html"
+        ],
+        "createdAt": "2026-10-17T01:07:52.746Z",
+        "reason": "user confirmed: wants eyebrow labels like the reference (BUSINESS TEMPLATE / ABOUT US); already de-pilled to a minimal red-dash label, not a chip."
+      },
+      {
+        "rule": "overused-font",
+        "value": "plus jakarta sans",
+        "createdAt": "2026-10-17T04:27:16.815Z",
+        "reason": "user explicitly requested Plus Jakarta Sans by name for a modern startup look across the site + pane"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "frontend/taskpane.html"
+        ],
+        "createdAt": "2026-10-17T04:47:03.509Z",
+        "reason": "user explicitly wants a warm Trees.png-inspired earthy/sunlit palette for the pane; warm paper is the intended brand surface, not a reflex default"
+      },
+      {
+        "rule": "low-contrast",
+        "value": "*",
+        "files": [
+          "frontend/privacy.html"
+        ],
+        "createdAt": "2026-10-17T05:20:20.156Z",
+        "reason": "header subtitle sits on the dark-navy left of the gradient (readable); checker samples the bright amber side. Body legal text is dark-on-paper ~15:1."
+      },
+      {
+        "rule": "low-contrast",
+        "value": "*",
+        "files": [
+          "frontend/support.html"
+        ],
+        "createdAt": "2026-10-17T05:20:20.269Z",
+        "reason": "same header-subtitle gradient-sampler FP; body text passes."
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "frontend/privacy.html"
+        ],
+        "createdAt": "2026-10-17T05:20:57.780Z",
+        "reason": "matches the pane's user-confirmed warm Trees-inspired brand surface"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "frontend/support.html"
+        ],
+        "createdAt": "2026-10-17T05:20:57.918Z",
+        "reason": "same user-confirmed warm brand surface as the pane/privacy"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "frontend/privacy.html"
+        ],
+        "createdAt": "2026-10-17T05:45:13.999Z",
+        "reason": "user-provided reference mockup uses side-accent cards; asked to match it"
+      },
+      {
+        "rule": "icon-tile-stack",
+        "value": "*",
+        "files": [
+          "frontend/privacy.html"
+        ],
+        "createdAt": "2026-10-17T05:45:14.113Z",
+        "reason": "user-provided reference mockup (EduPlatform) uses icon-tiled section headers; asked to replicate that layout"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "frontend/support.html"
+        ],
+        "createdAt": "2026-10-17T05:45:14.246Z",
+        "reason": "user-provided reference mockup uses side-accent cards; asked to match it"
+      },
+      {
+        "rule": "icon-tile-stack",
+        "value": "*",
+        "files": [
+          "frontend/support.html"
+        ],
+        "createdAt": "2026-10-17T05:45:14.355Z",
+        "reason": "user-provided reference mockup (EduPlatform) uses icon-tiled section headers; asked to replicate that layout"
       }
     ]
   }
