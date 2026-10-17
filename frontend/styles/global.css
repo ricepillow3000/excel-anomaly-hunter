@@ -4,11 +4,12 @@
   --navy: #101f33; --navy-2: #0a1424; --gold: #bf9638; --gold-soft: #e2c277; --red: #b1342a; --red-deep: #7f1f16;
   --accent: var(--navy); --accent-dark: #0b1a33; --warn: #b1342a;
   --high: #ffc7ce; --medium: #ffeb9c; --low: #ffffcc; /* the same fills the sheet gets - never recolour without the engine */
-  --serif: "Iowan Old Style","Palatino Linotype","Palatino","Book Antiqua",Georgia,serif;
+  --serif: "Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;
 }
+@font-face{font-family:'Plus Jakarta Sans';font-style:normal;font-weight:400 800;font-display:swap;src:url('../assets/plus-jakarta-sans.woff2') format('woff2')}
 [hidden] { display: none !important; }
 html, body { margin: 0; padding: 0; }
-body { font: 14px/1.45 "Segoe UI", -apple-system, Arial, sans-serif; color: var(--ink); background: var(--bg); }
+body { font: 14px/1.45 "Plus Jakarta Sans", ui-sans-serif, system-ui, "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); }
 ::selection { background: #ece0bc; }
 a { color: var(--accent); text-underline-offset: 2px; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
