@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Anomaly Hunter — Support</title>
+<link href="assets/icon-32.png" rel="icon" />
+<style>
+  @font-face{font-family:'Plus Jakarta Sans';font-style:normal;font-weight:400 800;font-display:swap;src:url('assets/plus-jakarta-sans.woff2') format('woff2')}
+  :root{ --navy:#101f33; --ink:#1c160d; --paper:#fbf6ec; --card:#fffdf8; --muted:#5e5443; --line:rgba(28,22,13,.14);
+    --gold:#bf9638; --gold-soft:#e2c277; --gold-ink:#8a6a1f; --red:#b1342a; --red-deep:#7f1f16;
+    --sans:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--sans);background:var(--paper);color:var(--ink);line-height:1.6;-webkit-font-smoothing:antialiased}
+  .top{position:relative;overflow:hidden;color:var(--paper);padding:34px 24px 26px;border-bottom:2px solid var(--gold-soft);
+    background:linear-gradient(90deg,rgba(8,15,28,.66),rgba(8,15,28,.18) 55%,transparent 82%),
+      radial-gradient(140% 170% at 92% -55%,#f0b457 0%,#d8853a 22%,#9c3f22 44%,#2a2f44 70%,var(--navy) 100%)}
+  .wrap{max-width:720px;margin:0 auto;padding:0 24px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:16px}
+  .brand .mk{width:26px;height:26px;border-radius:3px;background:rgba(10,20,36,.42);border:1px solid rgba(226,194,119,.4);display:grid;place-items:center}
+  .brand .mk svg{width:18px;height:18px}
+  h1{font-size:clamp(26px,5vw,38px);font-weight:800;letter-spacing:-.02em;margin:16px 0 6px}
+  .sub{color:rgba(245,236,214,.85);font-size:13px}
+  main{max-width:720px;margin:0 auto;padding:34px 24px 70px}
+  h2{font-size:12px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--gold-ink);margin:36px 0 14px;display:flex;align-items:center;gap:10px}
+  h2::before{content:"";width:18px;height:2px;background:var(--red)}
+  .q{font-size:16px;font-weight:700;margin:20px 0 4px;color:var(--navy)}
+  p{margin:0 0 10px;font-size:14.5px}
+  a{color:var(--red);font-weight:600;text-underline-offset:2px}
+  code{background:#f0ebdf;padding:1px 5px;border-radius:3px;font-size:13px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:3px;padding:22px}
+  label{display:block;font-size:13px;font-weight:700;color:var(--navy);margin:14px 0 5px}
+  input,textarea{width:100%;font:inherit;font-size:14px;padding:11px 12px;border:1px solid var(--line);border-radius:2px;background:var(--paper);color:var(--ink)}
+  textarea{resize:vertical;min-height:110px}
+  input:focus,textarea:focus{outline:2px solid var(--gold-soft);outline-offset:1px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;margin-top:16px;padding:13px 26px;border:0;border-radius:2px;background:var(--red);color:#fff;font:inherit;font-weight:700;font-size:14.5px;cursor:pointer;text-decoration:none;transition:background .3s}
+  .btn:hover{background:var(--red-deep)}
+  .btn.ghost{background:transparent;color:var(--navy);border:1px solid var(--line)}
+  .btn.ghost:hover{background:#f3ece0}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .muted{color:var(--muted);font-size:13px}
+  footer{border-top:1px solid var(--line);margin-top:40px;padding-top:18px;color:var(--muted);font-size:13px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+</style>
+</head>
+<body>
+  <div class="top">
+    <div class="wrap">
+      <div class="brand"><span class="mk"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.2" y="13" width="2.6" height="6.4" fill="#e2c277"/><rect x="7.6" y="9.5" width="2.6" height="9.9" fill="#e2c277"/><rect x="12" y="11.3" width="2.6" height="8.1" fill="#e2c277"/><rect x="16.4" y="5" width="2.6" height="14.4" fill="#b1342a"/><circle cx="17.7" cy="2.9" r="2.1" fill="#b1342a"/><circle cx="17.7" cy="2.9" r="2.1" fill="none" stroke="#e2c277" stroke-width=".7"/><rect x="2.4" y="19.9" width="17.6" height="1.2" fill="#e2c277" opacity=".7"/></svg></span>Anomaly Hunter</div>
+      <h1>Support</h1>
+      <p class="sub">Most answers are below. Still stuck? Send us a message — it goes straight to the maintainer.</p>
+    </div>
+  </div>
+
+  <main>
+    <h2>Common questions</h2>
+
+    <div class="q">"The checker isn't running"</div>
+    <p>The local engine isn't started. Double-click <code>install.bat</code> in your Anomaly Hunter folder, then press <b>Try again</b> in the pane. After any update, close Excel first and run <code>install.bat</code> again so the engine restarts.</p>
+
+    <div class="q">How do I turn on AI help?</div>
+    <p>Open <b>AI help (optional, free)</b> at the bottom of the pane, create a free Google AI key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> (no credit card), paste it, and click Save. You can remove it anytime.</p>
+
+    <div class="q">It flagged a value that's actually fine (or missed one)</div>
+    <p>Anomaly Hunter is a helper, not a guarantee — some false alarms and misses are normal. Use the <b>How hard to look</b> slider: lower it for fewer, higher-confidence flags; raise it to cast a wider net. Nothing changes in your sheet until you review a suggestion and click Apply.</p>
+
+    <div class="q">Is my data private?</div>
+    <p>Yes. Everything runs on your own PC and nothing is sent anywhere unless you turn on AI help. Full detail is on the <a href="privacy.html">Privacy &amp; Terms</a> page.</p>
+
+    <div class="q">How do I uninstall?</div>
+    <p>Run <code>AnomalyHunter.exe uninstall</code> (or remove it from Windows "Installed apps"). That also deletes the local files listed on the <a href="privacy.html">Privacy</a> page.</p>
+
+    <div class="q">I still see the old version after updating</div>
+    <p>Close Excel completely, re-run <code>install.bat</code>, then reopen the pane. If a style looks stale, reopen the task pane to clear the cache.</p>
+
+    <h2>Message us</h2>
+    <div class="card">
+      <!-- SETUP (John, ~60 sec, no new email/phone): go to web3forms.com, enter your existing Gmail
+           (john4000.nguyen@gmail.com); it emails you a free Access Key. Paste that key as the value of the
+           hidden "access_key" input below. Messages then arrive in your Gmail inbox and your address stays
+           hidden from this page. No account, no phone, no sending domain needed. Until the key is set, the
+           GitHub option below is the working channel. -->
+      <form action="https://api.web3forms.com/submit" method="POST">
+        <input type="hidden" name="access_key" value="REPLACE_WITH_WEB3FORMS_ACCESS_KEY" />
+        <input type="hidden" name="subject" value="Anomaly Hunter support request" />
+        <input type="hidden" name="from_name" value="Anomaly Hunter Support" />
+        <label for="name">Your name</label>
+        <input id="name" type="text" name="name" autocomplete="name" required />
+        <label for="email">Your email (so we can reply)</label>
+        <input id="email" type="email" name="email" autocomplete="email" required />
+        <label for="message">How can we help?</label>
+        <textarea id="message" name="message" placeholder="Describe what happened, and what you expected." required></textarea>
+        <button class="btn" type="submit">Send message</button>
+      </form>
+      <p class="muted" style="margin-top:14px">We read every message and reply by email. Please don't include private or sensitive spreadsheet data.</p>
+    </div>
+
+    <h2>Report a bug or request a feature</h2>
+    <p>Technical issue or an idea? Open a ticket on GitHub — it's public and tracked:</p>
+    <div class="row">
+      <a class="btn ghost" href="https://github.com/ricepillow3000/excel-anomaly-hunter/issues/new" target="_blank" rel="noopener">Open a GitHub ticket</a>
+      <a class="btn ghost" href="https://github.com/ricepillow3000/excel-anomaly-hunter/issues" target="_blank" rel="noopener">Browse known issues</a>
+    </div>
+
+    <footer>
+      <span>© 2026 Anomaly Hunter · Local &amp; private</span>
+      <span><a href="privacy.html">Privacy &amp; Terms</a></span>
+    </footer>
+  </main>
+</body>
+</html>

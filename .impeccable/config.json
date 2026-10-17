@@ -62,6 +62,24 @@
         ],
         "createdAt": "2026-10-17T04:47:03.509Z",
         "reason": "user explicitly wants a warm Trees.png-inspired earthy/sunlit palette for the pane; warm paper is the intended brand surface, not a reflex default"
+      },
+      {
+        "rule": "low-contrast",
+        "value": "*",
+        "files": [
+          "frontend/privacy.html"
+        ],
+        "createdAt": "2026-10-17T05:20:20.156Z",
+        "reason": "header subtitle sits on the dark-navy left of the gradient (readable); checker samples the bright amber side. Body legal text is dark-on-paper ~15:1."
+      },
+      {
+        "rule": "low-contrast",
+        "value": "*",
+        "files": [
+          "frontend/support.html"
+        ],
+        "createdAt": "2026-10-17T05:20:20.269Z",
+        "reason": "same header-subtitle gradient-sampler FP; body text passes."
       }
     ]
   }
