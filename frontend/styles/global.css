@@ -43,3 +43,58 @@ button:disabled { cursor: default; opacity: 0.45; }
 .row-buttons > * { flex: 1; margin: 8px 0 0; }
 .link-btn { border: 0; background: none; color: var(--accent); padding: 12px 0 0; font-size: 13px; }
 
+/* ---- skeleton loader: matches the pane's shape, shown while Office + engine load.
+   :has() hides it the moment real content (main-ui) or the server-down notice appears. ---- */
+#skeleton { padding: 18px 16px 8px; }
+#app-body:has(#main-ui:not([hidden])) #skeleton,
+#app-body:has(#server-down:not([hidden])) #skeleton { display: none; }
+.sk-btn, .sk-track, .sk-row, .sk-line {
+  background: linear-gradient(90deg, #efe6d4 25%, #f8f1e2 37%, #efe6d4 63%);
+  background-size: 400% 100%; animation: sk-shimmer 1.4s ease infinite; border-radius: 3px; }
+.sk-btn { height: 46px; margin: 10px 0 20px; }
+.sk-line { height: 11px; width: 52%; margin-bottom: 12px; }
+.sk-track { height: 5px; }
+.sk-row { height: 42px; margin-top: 10px; }
+@keyframes sk-shimmer { from { background-position: 100% 0 } to { background-position: 0 0 } }
+
+/* ---- "building into place": each part settles in from its own direction, once, as it first renders ---- */
+@keyframes ah-down { from { opacity: 0; transform: translateY(-14px) } to { opacity: 1; transform: none } }
+@keyframes ah-up { from { opacity: 0; transform: translateY(16px) } to { opacity: 1; transform: none } }
+@keyframes ah-left { from { opacity: 0; transform: translateX(-18px) } to { opacity: 1; transform: none } }
+@keyframes ah-scale { from { opacity: 0; transform: scale(.96) } to { opacity: 1; transform: none } }
+header { animation: ah-down .5s cubic-bezier(.16,1,.3,1) both; }
+#main-ui > #scan { animation: ah-scale .55s cubic-bezier(.16,1,.3,1) both .10s; }
+#main-ui > .strength { animation: ah-left .55s cubic-bezier(.16,1,.3,1) both .22s; }
+#main-ui > #empty-state { animation: ah-up .55s cubic-bezier(.16,1,.3,1) both .34s; }
+#main-ui > details.more { animation: ah-up .5s cubic-bezier(.16,1,.3,1) both; }
+#main-ui > details.more:nth-of-type(1) { animation-delay: .42s }
+#main-ui > details.more:nth-of-type(2) { animation-delay: .5s }
+#main-ui > details.more:nth-of-type(3) { animation-delay: .58s }
+#pane-footer { animation: ah-up .55s cubic-bezier(.16,1,.3,1) both .64s; }
+
+/* ---- optional tabs (Auto-fix / Power BI / AI help) open smoothly, like a page turning ---- */
+:root { interpolate-size: allow-keywords; }
+details.more::details-content { height: 0; overflow: hidden;
+  transition: height .36s cubic-bezier(.22,.61,.17,1), content-visibility .36s; transition-behavior: allow-discrete; }
+details.more[open]::details-content { height: auto; }
+
+/* ---- footer fills the bottom; warm sun-through-trees band (Trees.png inspiration) ---- */
+#pane-footer { position: relative; margin: 28px -16px 0; padding: 20px 16px 16px; overflow: hidden;
+  background: linear-gradient(90deg, rgba(8,15,28,.72), rgba(8,15,28,.22) 60%, transparent),
+              radial-gradient(120% 150% at 88% -35%, #d8853a 0%, #8a2d1c 32%, var(--navy) 70%);
+  color: var(--paper); border-top: 2px solid var(--gold-soft); }
+#pane-footer .pf-tree { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .55; }
+#pane-footer .pf-brand { position: relative; display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 14px; color: var(--paper); }
+#pane-footer .pf-brand .mk { width: 22px; height: 22px; flex: none; }
+#pane-footer .pf-brand .mk svg { width: 100%; height: 100%; display: block; }
+#pane-footer .pf-tag { position: relative; margin: 9px 0 13px; font-size: 11.5px; color: rgba(245,236,214,.8); line-height: 1.5; max-width: 92%; }
+#pane-footer .pf-links { position: relative; display: flex; gap: 10px; }
+#pane-footer .pf-links a { color: var(--navy); background: var(--gold-soft); padding: 7px 14px; border-radius: 2px; font-size: 12px; font-weight: 600; text-decoration: none; transition: background .3s; }
+#pane-footer .pf-links a:hover { background: #fff; }
+
+@media (prefers-reduced-motion: reduce) {
+  header, #main-ui > #scan, #main-ui > .strength, #main-ui > #empty-state, #main-ui > details.more, #pane-footer { animation: none !important; }
+  .sk-btn, .sk-track, .sk-row, .sk-line { animation: none !important; }
+  details.more::details-content { transition: none !important; }
+}
+
