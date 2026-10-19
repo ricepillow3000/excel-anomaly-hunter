@@ -7,6 +7,8 @@ e2e/*.log
 e2e/*.out
 e2e/*.txt
 e2e/*.png
+# AI eval answers (backend/bench/ai_eval.py --out): local measurements, not part of the app
+ai-eval-results*.jsonl
 powerbi/*.pbids
 
 # AI relay invites: codes, kits and the TOKENS list never go in git (the repo is public)

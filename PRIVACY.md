@@ -19,7 +19,7 @@ Anomaly Hunter checks your sheet on your own computer. Nothing is sent anywhere 
 
 ## Only if you turn on AI help
 AI help is off until you paste a Google AI key or an invite code under **AI help (optional, free)**.
-- **Ask AI (fix a row):** sends the column names, the row you asked about, up to 5 rows around it, and the reason it was flagged.
+- **Ask AI (fix a row):** sends the column names, the row you asked about, up to 5 rows above and 5 below it, and the reason it was flagged.
 - **Check words with AI:** sends only the distinct words in your text columns. It never sends rows or numbers.
 - **Where it goes:**
   - With your own key, it goes straight to Google's Gemini API.

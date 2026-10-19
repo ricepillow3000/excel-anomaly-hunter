@@ -24,7 +24,7 @@ an admin panel, role, operator route or debug switch. The weekly security sweep 
 | 6 | Checks | `engine/pipeline.py`, `engine/detectors.py`, `engine/limits.py` | each check returns one list of plain-sentence reasons per row | see the feature map |
 | 7 | Severity | `pipeline.score` | hygiene or weird limit = Medium; 2 votes = Medium; 3 = High; 1 = Low | `test_strength.py` |
 | 8 | Answer | routes, `_inert` | every error is JSON; the Power BI CSV never carries a live formula (text always quoted) | `test_api_security.py` |
-| 9 | AI (optional) | `ai/client.py` | one call at a time, deadline, cache (answers only), key never echoed (nor the provider's error text), an AI formula may call only `client.SAFE` functions | `test_fix.py`, `test_ai_load.py`, `test_text_checks.py` |
+| 9 | AI (optional) | `ai/client.py` | one call at a time, deadline, cache (answers only), key never echoed (nor the provider's error text), an AI formula may call only `client.SAFE` functions, headers and the reason go in one line each, no typed request = the flagged row only | `test_fix.py`, `test_ai_load.py`, `test_text_checks.py` |
 | 10 | Relay | `relay/worker.js` | invite hash, daily caps counted before Google, only `POST /fix`, model and key set by the relay | `relay/test.mjs`; live Worker from outside: `relay/live-probe.mjs` (CI `relay-live.yml`) |
 | 11 | Pane | `frontend/` | every dynamic `innerHTML` value goes through `esc()`; CSP allows only our files + office.js | `frontend/selfcheck.js`, `e2e/run.mjs` |
 
@@ -46,6 +46,7 @@ an admin panel, role, operator route or debug switch. The weekly security sweep 
 | Odd combinations across columns | `detectors.isolation_detector` | `test_engine.py` |
 | A top value that is all 9s and over twice the next one (99999 = "missing" / "too big") | `pipeline.codes` | `test_an_all_nines_top_value_is_a_code` |
 | A lone decimal in a column of whole numbers (study day 7.3 for 73) | `pipeline.whole_numbers` | `test_a_lone_decimal_in_a_column_of_whole_numbers_is_worth_a_check` |
+| A number past what its column's name allows (Month 13, Hour 25, a 6 on "Rating (1-5)", Latitude 91.5); quiet when 1%+ break it (yyyymm months, 0-360 longitudes) | `pipeline.named_bounds` | `test_a_value_past_what_its_column_name_allows_is_worth_a_check`, `test_a_column_whose_name_means_something_else_keeps_quiet` |
 | Fairness gaps by demographic group, incl. 2-label text outcomes; `?` counts as missing, never a group | `engine/fairness.py` | `test_blindspots.py`, `test_wild_census.py` |
 Adding or removing a check: update this table in the same commit.
 
@@ -61,6 +62,8 @@ Adding or removing a check: update this table in the same commit.
   blind real-sheet test: one agent fetches random public tables and plants mistakes with a secret key, another runs
   the pane and engine without it (`docs/SYSTEMS-MAP.md`). Use a fresh set each time: a set you fixed against is no
   longer held out.
+- **An AI prompt, its context or the model** changes only with `backend/bench/ai_eval.py` numbers (your own key,
+  never the relay; paired wins vs losses on dev and held-out) in the commit message. No eval run, no change.
 - **Before adding a system-design piece** (a cache, queue, lock, retry, rate limit), read `docs/SYSTEMS-MAP.md`: what
   exists, where, and which measurement would justify more.
 - **Comments say why** (the incident or measurement), not what.
@@ -96,5 +99,9 @@ Adding or removing a check: update this table in the same commit.
 - Checks over pairs of columns grow with the width (400 crafted text columns: 30 s; 160 number columns: 16 s). Cap
   them in sheet order, never with a clock inside a scan: the same sheet must give the same answer on any PC.
   `test_a_crafted_wide_sheet_cannot_make_the_column_pair_checks_run_for_minutes`.
+- Real exports break what synthetic sheets never do: ISO timestamps ending in Z or +02:00 (with a blank) broke date
+  parsing, and a chi-square on an all-zero column broke the fairness report. Both made every scan of the sheet a 500
+  (`load._dates`, `fairness.report`; 40 random real tables, 2026-10-16). A new blind round reads every table, not only
+  the planted ones.
 - Pin every package, indirect ones too: an unpinned scikit-learn 1.9.1 broke every Windows install (2026-10-11).
   `constraints.txt` + `tools/pinned.py` (CI and the exe job); regenerate with the command in `tools/pinned.py`.

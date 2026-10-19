@@ -272,6 +272,21 @@ def test_codes_that_look_like_dates_stay_text():
     assert types == {"Cost Code": "text", "When": "date"}
 
 
+def test_timestamps_with_a_utc_or_offset_suffix_are_dates_never_a_crash():
+    # a real clinical export (ISO "2014-01-02T00:00:00Z" with blanks) made every scan of its sheet an engine error:
+    # the UTC column came back as plain objects. Mixed offsets made pandas raise outright (blind real tables, 2026-10-16)
+    from anomaly_hunter.engine.load import load_from_records
+    from anomaly_hunter.server import create_app
+    utc = [f"2014-{1 + k % 12:02}-{1 + k % 28:02}T00:00:00Z" for k in range(118)] + ["", "2084-01-02T23:59:59Z"]
+    mixed = [f"2014-02-{1 + k % 28:02}T08:30:00{'+02:00' if k % 2 else '-05:00'}" for k in range(120)]
+    df, types, _ = load_from_records(["Start", "End", "Dose"], [[a, b, 10 + k % 5] for k, (a, b) in enumerate(zip(utc, mixed))])
+    assert types == {"Start": "date", "End": "date", "Dose": "number"}
+    assert str(df["Start"][0].date()) == "2014-01-01" and str(df["End"][1].date()) == "2014-02-02"  # the date as written
+    rows = [[a, b, 10 + k % 5] for k, (a, b) in enumerate(zip(utc, mixed))]
+    r = create_app().test_client().post("/scan", json={"columns": ["Start", "End", "Dose"], "rows": rows, "limits": {}})
+    assert r.status_code == 200 and "2084-01-02" in r.get_json()["rows"][119]["reason"]
+
+
 def test_totals_rows_are_not_checked_but_a_vendor_called_total_is():
     from anomaly_hunter.engine.load import load_from_records
     from anomaly_hunter.engine.pipeline import summary_rows
@@ -967,6 +982,35 @@ def test_a_lone_decimal_in_a_column_of_whole_numbers_is_worth_a_check():
     _, out = _scan(["Subject", "Study day"], rows)
     assert out[40]["reason"] == "Study day 7.3 is not a whole number - every other Study day is" and out[40]["severity"] == "Low"
     assert sum(1 for o in out if o["severity"] not in (None, "Noted")) == 1
+
+
+def test_a_value_past_what_its_column_name_allows_is_worth_a_check():
+    # John's "syntactically correct but contextually impossible" (AI council 2026-10-16): Month 13, Hour 25 and a 6 on
+    # a 1-5 rating passed every check - each is just past the column's other values, so no limit can call it
+    rows = [[f"s{i}", 1 + i % 12, 1 + i % 4, i % 24, 1 + i % 5, round(-40 + (i * 7) % 80 + 0.5, 1)] for i in range(120)]
+    rows[30][1], rows[50][2], rows[70][3], rows[90][4], rows[110][5] = 13, 5, 25, 6, 91.5
+    cols = ["Order", "Month", "Quarter", "Hour", "Rating (1-5)", "Latitude"]
+    _, out = _scan(cols, rows)
+    expect = {30: "Month 13 is outside what Month can be (1 to 12)", 50: "Quarter 5 is outside what Quarter can be (1 to 4)",
+              70: "Hour 25 is outside what Hour can be (0 to 24)", 90: "Rating (1-5) 6 is outside what Rating (1-5) can be (1 to 5)",
+              110: "Latitude 91.5 is outside what Latitude can be (-90 to 90)"}
+    for i, words in expect.items():
+        assert words in out[i]["reason"] and out[i]["severity"] == "Low", (i, out[i])
+    assert {i for i, o in enumerate(out) if o["severity"] not in (None, "Noted")} == set(expect)
+
+
+def test_a_column_whose_name_means_something_else_keeps_quiet():
+    # yyyymm months, zero-based visit months, hours worked, longitudes on 0-360 (real quakes table), day-of-month counts
+    rows = [[202601 + i % 12, i % 5, 30 + (i * 7) % 31, 165 + (i * 3) % 24, 1 + i % 31, 10 + i % 400] for i in range(120)]
+    rows[5][0] = 202613  # no month can be 13 here either - but a column that's never 1-12 is not about months
+    cols = ["Month", "month", "Hours", "long", "date of month", "Study Day"]
+    _, out = _scan(cols, rows)
+    assert not [o["reason"] for o in out if "can be" in o["reason"]]
+    import time
+    from anomaly_hunter.engine import pipeline
+    t = time.perf_counter()  # a crafted header is a note, not a name: no regex gets to backtrack through it
+    assert pipeline._bounds("(" * 32000 + "1-5)") is None and pipeline._bounds("Month" + " (" * 99) is None
+    assert time.perf_counter() - t < 0.5
 
 
 def test_a_sign_flip_fix_is_the_exact_value_never_rounded():

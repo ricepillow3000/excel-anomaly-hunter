@@ -34,14 +34,25 @@ def _is_id(name, num):
     return len(num) >= 20 and len(u) >= 0.95 * len(num) and u.diff().median() <= 2
 
 
+TZ = re.compile(r"(\d:\d\d(?::\d\d(?:\.\d+)?)?)\s*(?:Z|[+-]\d\d:?\d\d)$")  # a time, then its zone: "08:30:00+02:00"
+
+
 def _dates(s):
     """Parse dates; years outside 1900-2200 don't count (cost code "03-100" parses as the year 100). Day-first is decided
     once for the column - a 13/01 anywhere (and no 01/13) means 01/02 is the 1st of February, not January 2nd."""
-    parts = s.astype(str).str.extract(r"^\s*(\d{1,2})[/.-](\d{1,2})[/.-]\d{2,4}").astype(float)
+    # A timestamp's own offset ("...T00:00:00Z", "+02:00") is dropped: the date as written. A UTC column with a blank came
+    # back as plain objects and mixed offsets made pandas raise: every scan of a real clinical export failed (2026-10-16).
+    # utc=True then no zone covers the rest ("GMT"): pandas never gets two kinds of timestamp to merge.
+    text = s.astype(str)
+    timed = text.str.contains(":", regex=False)  # only a time can carry a zone: the regex runs on those cells alone
+    if timed.any():
+        s = s.copy()
+        s[timed] = text[timed].str.replace(TZ, r"\1", regex=True)
+    when = lambda x, **kw: pd.to_datetime(x, errors="coerce", format="mixed", utc=True, **kw).dt.tz_localize(None)
+    parts = text.str.extract(r"^\s*(\d{1,2})[/.-](\d{1,2})[/.-]\d{2,4}").astype(float)
     dayfirst = bool((parts[0] > 12).any() and not (parts[1] > 12).any())
     dmy = parts[0].notna()  # only those cells: dayfirst would also flip ISO dates (2024-01-05 -> May 1)
-    d = pd.to_datetime(s.where(~dmy), errors="coerce", format="mixed").fillna(
-        pd.to_datetime(s.where(dmy), errors="coerce", format="mixed", dayfirst=dayfirst))
+    d = when(s.where(~dmy)).fillna(when(s.where(dmy), dayfirst=dayfirst))
     return d.where(d.dt.year.between(1900, 2200))
 
 
