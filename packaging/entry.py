@@ -5,5 +5,5 @@ import sys
 from anomaly_hunter.app import main
 
 if __name__ == "__main__":
-    multiprocessing.freeze_support()  # a frozen app that starts helper processes (joblib) must call this first
+    multiprocessing.freeze_support()  # a frozen app that starts a helper process must call this first
     sys.exit(main())

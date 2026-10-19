@@ -2,13 +2,14 @@
 <!-- Excel add-in manifest. Everything served by the local engine at https://127.0.0.1:5055 -->
 <OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0" xsi:type="TaskPaneApp">
   <Id>a64b585c-34c7-4447-b3ae-9aa8b3294bcf</Id>
-  <Version>1.0.2.0</Version>
+  <!-- a new logo needs new file names and a new Version: Office caches ribbon icons per URL (2026-10-19) -->
+  <Version>1.0.3.0</Version>
   <ProviderName>ricepillow3000</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Anomaly Hunter"/>
   <Description DefaultValue="Flags abnormal rows in a sheet. Never deletes data."/>
-  <IconUrl DefaultValue="https://127.0.0.1:5055/assets/icon-32.png"/>
-  <HighResolutionIconUrl DefaultValue="https://127.0.0.1:5055/assets/icon-64.png"/>
+  <IconUrl DefaultValue="https://127.0.0.1:5055/assets/logo-32.png"/>
+  <HighResolutionIconUrl DefaultValue="https://127.0.0.1:5055/assets/logo-64.png"/>
   <SupportUrl DefaultValue="https://github.com/ricepillow3000/excel-anomaly-hunter"/>
   <Hosts>
     <Host Name="Workbook"/>
@@ -55,9 +56,9 @@
     </Hosts>
     <Resources>
       <bt:Images>
-        <bt:Image id="Icon16" DefaultValue="https://127.0.0.1:5055/assets/icon-16.png"/>
-        <bt:Image id="Icon32" DefaultValue="https://127.0.0.1:5055/assets/icon-32.png"/>
-        <bt:Image id="Icon80" DefaultValue="https://127.0.0.1:5055/assets/icon-80.png"/>
+        <bt:Image id="Icon16" DefaultValue="https://127.0.0.1:5055/assets/logo-16.png"/>
+        <bt:Image id="Icon32" DefaultValue="https://127.0.0.1:5055/assets/logo-32.png"/>
+        <bt:Image id="Icon80" DefaultValue="https://127.0.0.1:5055/assets/logo-80.png"/>
       </bt:Images>
       <bt:Urls>
         <bt:Url id="Taskpane.Url" DefaultValue="https://127.0.0.1:5055/taskpane.html"/>
