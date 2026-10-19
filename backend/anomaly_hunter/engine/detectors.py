@@ -1,7 +1,9 @@
 """Robust cutoff + three detectors. Each returns {ran, sit_out_reason, votes, magnitude, reasons}."""
+import warnings
+
 import numpy as np
 import pandas as pd
-from pyod.models.ecod import ECOD
+from scipy.stats import skew
 
 from anomaly_hunter.engine.load import numbers
 
@@ -208,7 +210,7 @@ def _scaled(df, cols):
     for c in cols:
         x = df[c].to_numpy(dtype=float)
         med = np.nanmedian(x) if (~np.isnan(x)).any() else 0.0
-        with np.errstate(over="ignore"):  # capped: sklearn refuses infinity (an engine error on a crafted sheet, 2026-10-16)
+        with np.errstate(over="ignore"):  # capped: _ecod refuses infinity (an engine error on a crafted sheet, 2026-10-16)
             out[c] = np.clip((np.where(np.isnan(x), med, x) - med) / (spread(x) or 1.0), -BIG, BIG)
     return pd.DataFrame(out)
 
@@ -217,13 +219,33 @@ def _skip(n, cols):
     return "fewer than 30 rows" if n < 30 else None if cols else "no numeric columns"
 
 
+def _ecod(x):
+    """ECOD (Li et al. 2022), the same maths as pyod 3.6.6: per column, -log of the share of values at or past each one,
+    on the tail the column's skew points to; summed over columns. pyod brought numba, llvmlite, matplotlib and
+    scikit-learn into the exe for this alone (146 MB, minutes to download, 2026-10-19)."""
+    if not np.isfinite(x).all():  # pyod refused these too: a blank or infinity here is an engine bug, never a score
+        raise ValueError("ECOD needs finite numbers")
+    n, t = len(x), np.ascontiguousarray(x.T)  # one row per column: each sort runs on contiguous memory
+    order = np.argsort(t, axis=1)
+    s = np.take_along_axis(t, order, 1)
+    le, ge = np.empty_like(t), np.empty_like(t)  # how many values are <= / >= each value (ties count fully)
+    for j in range(len(t)):
+        le[j, order[j]] = np.searchsorted(s[j], s[j], "right")
+        ge[j, order[j]] = n - np.searchsorted(s[j], s[j], "left")
+    left, right = -np.log(le.T / n), -np.log(ge.T / n)
+    with warnings.catch_warnings():  # scipy warns on a constant column; its NaN skew means both tails, like pyod
+        warnings.simplefilter("ignore", RuntimeWarning)
+        sk = np.sign(np.nan_to_num(skew(x, axis=0)))
+    return np.maximum(np.maximum(left, right), left * -np.sign(sk - 1) + right * np.sign(sk + 1)).sum(axis=1)
+
+
 def isolation_detector(df, column_types, k=K):
     """ECOD outlier score on scaled numbers."""
     n, cols = len(df), numbers(column_types)
     if why := _skip(n, cols):
         return _result(n, why)
     x = _scaled(df, cols)
-    votes, mag = robust_vote(ECOD().fit(x.to_numpy()).decision_scores_, k)
+    votes, mag = robust_vote(_ecod(x.to_numpy()), k)
     worst = x.abs().to_numpy().argmax(axis=1)
     reasons = [[f"Unusual combination of values, mainly {cols[w]}"] if v else [] for v, w in zip(votes, worst)]
     return {**_result(n), "votes": votes, "magnitude": mag, "reasons": reasons}

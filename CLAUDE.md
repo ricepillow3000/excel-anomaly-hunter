@@ -43,7 +43,7 @@ an admin panel, role, operator route or debug switch. The weekly security sweep 
 | A value typed into the wrong column | `pipeline.shifted` | `test_text_checks.py` |
 | Values past their column's limits; the typo behind them (x10, %, sign); a lone slip with an exact x10/x100 behind it past even the usual limit; a stray minus sign never excused as a tail | `detectors.limits_detector`, `likely_value`, `limits._limits` | `test_engine.py`, `test_a_x100_slip_in_a_skewed_column_stands_alone_and_votes`, `test_a_minus_sign_in_a_count_column_is_not_excused_as_its_tail`, `test_a_mildly_skewed_column_keeps_its_honest_heavy_users_and_still_catches_a_x100_slip` |
 | Jumps in a dated series (cycles excluded) | `detectors.sequence_detector` | `test_a_repeating_cycle_is_not_a_jump` |
-| Odd combinations across columns | `detectors.isolation_detector` | `test_engine.py` |
+| Odd combinations across columns (ECOD, our own 15 lines: pyod made the exe 146 MB) | `detectors.isolation_detector`, `detectors._ecod` | `test_the_cross_column_score_keeps_the_values_recorded_from_pyod`, `test_the_cross_column_score_refuses_a_blank_or_infinite_value` |
 | A top value that is all 9s and over twice the next one (99999 = "missing" / "too big") | `pipeline.codes` | `test_an_all_nines_top_value_is_a_code` |
 | A lone decimal in a column of whole numbers (study day 7.3 for 73) | `pipeline.whole_numbers` | `test_a_lone_decimal_in_a_column_of_whole_numbers_is_worth_a_check` |
 | A number past what its column's name allows (Month 13, Hour 25, a 6 on "Rating (1-5)", Latitude 91.5); quiet when 1%+ break it (yyyymm months, 0-360 longitudes) | `pipeline.named_bounds` | `test_a_value_past_what_its_column_name_allows_is_worth_a_check`, `test_a_column_whose_name_means_something_else_keeps_quiet` |
@@ -103,5 +103,10 @@ Adding or removing a check: update this table in the same commit.
   parsing, and a chi-square on an all-zero column broke the fairness report. Both made every scan of the sheet a 500
   (`load._dates`, `fairness.report`; 40 random real tables, 2026-10-16). A new blind round reads every table, not only
   the planted ones.
+- Office caches ribbon icons per URL and the manifest per `<Version>`: the v0.1.71 logo kept the old file names and
+  Version, so an upgraded ribbon would keep the old icon. A new logo gets new file names (`assets/logo-*.png`) and a `<Version>` bump; never clear the
+  Wef cache in install (it is where Excel remembers the Add, `install.bat`).
+- One package for one function is a download cost: pyod (for ECOD) brought numba, llvmlite, matplotlib and
+  scikit-learn, half of a 146 MB exe (2026-10-19). Check what a new dependency pulls in (`uv pip tree --invert`).
 - Pin every package, indirect ones too: an unpinned scikit-learn 1.9.1 broke every Windows install (2026-10-11).
   `constraints.txt` + `tools/pinned.py` (CI and the exe job); regenerate with the command in `tools/pinned.py`.

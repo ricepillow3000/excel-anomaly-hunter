@@ -1085,3 +1085,47 @@ def test_a_measurement_headed_no_is_checked_but_a_row_number_no_stays_an_id():
     types, out = _scan(["No.", "NO", "PM10"], rows)
     assert types["No."] == "id" and types["NO"] == "number"
     assert "NO weird limit" in out[50]["reason"] and out[50]["severity"] in ("Medium", "High")
+
+
+# The cross-column score was pyod's ECOD until 2026-10-19: pyod pulled numba, llvmlite, matplotlib and scikit-learn
+# into the exe (146 MB, minutes to download) for this one score. These values were computed with pyod 3.6.6.
+def _x60():
+    rng = np.random.default_rng(60)
+    x = np.column_stack([np.round(rng.standard_normal(60), 1), np.full(60, 7.0), np.exp(rng.standard_normal(60)),
+                         rng.integers(0, 4, 60)])
+    x[17, 2] = 1e12  # detectors.BIG: a spread-capped cell
+    return x
+
+
+def test_the_cross_column_score_matches_hand_computed_ecod_values():
+    from anomaly_hunter.engine.detectors import _ecod
+    a = np.array([[0, 5], [0, 5], [1, 5], [2, 5], [10, 5]], float)  # a constant column scores 0
+    assert np.allclose(_ecod(a), np.log([2.5, 2.5, 5 / 3, 2.5, 5]), rtol=1e-12)
+    b = np.column_stack([a, [-10, -2, -1, 0, 0], [1, 2, 3, 4, 5]])  # a left-skewed and an even column
+    assert np.allclose(_ecod(b), [4.135166556742355, 2.972015746936675, 2.043302495063962, 2.972015746936675,
+                                  4.135166556742355], rtol=1e-12)
+
+
+def test_the_cross_column_score_keeps_the_values_recorded_from_pyod():
+    from anomaly_hunter.engine.detectors import _ecod
+    pyod = [4.40449949053, 3.50655789732, 4.16333743371, 3.96526751995, 4.58319127927, 5.4161004022, 4.43527114919,
+            4.74827102963, 2.26621744882, 3.04897678807, 4.13516655674, 2.65926003693, 2.77704307259, 3.50655789732,
+            6.73785624219, 4.16333743371, 2.47166142304, 6.80239476332, 6.04470906163, 6.06045741859, 2.37157796448,
+            3.82686519709, 2.25132883633, 4.21212759788, 4.22217793373, 5.04885650692, 5.44141821019, 5.83731386728,
+            3.57555076881, 5.07962816558, 5.48063892334, 2.93956200209, 4.07454193493, 2.74887219562, 2.19190541586,
+            3.42140008898, 4.90777790866, 3.45249067605, 4.93059258642, 4.78749174278, 4.83878503717, 7.60090245954,
+            3.36197666851, 3.28341434601, 3.7578723256, 5.35156188107, 2.4304184645, 5.92692602597, 3.24704670183,
+            2.65926003693, 4.78749174278, 3.80916561999, 4.18135593921, 4.26869794937, 3.37921847494, 6.87138763481,
+            3.64681378883, 2.69480497435, 5.15373613774, 2.80649027392]
+    assert np.allclose(_ecod(_x60()), pyod, rtol=1e-10)
+
+
+def test_the_cross_column_score_refuses_a_blank_or_infinite_value():
+    # pyod refused these, and that turned a subnormal-spread bug into a visible error (test_fuzz_api, 2026-10-16)
+    import pytest
+    from anomaly_hunter.engine.detectors import _ecod
+    for bad in (np.nan, np.inf, -np.inf):
+        x = _x60()
+        x[3, 0] = bad
+        with pytest.raises(ValueError):
+            _ecod(x)
