@@ -1,0 +1,49 @@
+name: Support request
+description: Ask a question, report a problem, or request a feature. No email address needed.
+title: "[Support]: "
+labels: ["support"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reaching out. This is our support ticket form — it is public and tracked.
+        **Please do not paste private or sensitive spreadsheet data here.**
+  - type: dropdown
+    id: category
+    attributes:
+      label: What is this about?
+      options:
+        - Something isn't working
+        - Question about a result or a flagged value
+        - Privacy or data request
+        - Feature idea
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Engine version
+      description: Shown at the very bottom of the Anomaly Hunter pane (e.g. "dev 47f0da9 (2026-10-16)").
+      placeholder: "dev 47f0da9 (2026-10-16)"
+  - type: textarea
+    id: details
+    attributes:
+      label: What happened, and what did you expect?
+      description: Include the steps you took, what you expected, and what you actually saw. Screenshots help.
+      placeholder: "When I clicked Find problems, ..."
+    validations:
+      required: true
+  - type: input
+    id: contact
+    attributes:
+      label: How should we reach you? (optional)
+      description: A GitHub @handle, or any contact you are comfortable sharing. Leave blank to simply follow this ticket for a reply.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you send
+      options:
+        - label: I did not include private or sensitive spreadsheet data in this ticket.
+          required: true
+        - label: I checked the FAQ on the Support page first.

@@ -47,16 +47,22 @@ def test_a_line_break_in_a_header_or_a_cell_cannot_add_its_own_line_to_the_ai_re
         assert sum(x.startswith("Rules:") for x in lines) == 1 and len(lines) == len(clean), repr(br)
 
 
-def test_ask_ai_sends_no_more_rows_than_privacy_md_says():
+def test_ask_ai_sends_no_more_rows_than_both_privacy_pages_say():
+    # The pane's Privacy page (frontend/privacy.html, 2026-10-17) said "a minimal slice of the flagged row" while
+    # PRIVACY.md said up to 5 above and 5 below: both now carry the numbers, and both are held to the code.
     import re
     from pathlib import Path
-    words = (Path(__file__).resolve().parents[2] / "PRIVACY.md").read_text(encoding="utf-8")
-    above, below = map(int, re.search(r"up to (\d+) rows above and (\d+) below it", words).groups())
+    root = Path(__file__).resolve().parents[2]
     rows = [[f"2026-01-{k:02}", "East", k] for k in range(1, 41)]
     lines = client._fix_prompt(COLS, rows, 20, 0, 0, "Units odd", "").splitlines()
     near = [int(re.match(r"row (\d+): ", x).group(1)) for x in lines if re.match(r"row \d+: ", x)]
     flagged = 22  # sheet row of rows[20] under the header in row 1
-    assert near and sum(r < flagged for r in near) <= above and sum(r > flagged for r in near) <= below
+    for page in ("PRIVACY.md", "frontend/privacy.html"):
+        words = (root / page).read_text(encoding="utf-8")
+        said = re.search(r"up to (\d+) rows above and (\d+) below it", words)
+        assert said, f"{page} must say how many nearby rows Ask AI sends"
+        above, below = map(int, said.groups())
+        assert near and sum(r < flagged for r in near) <= above and sum(r > flagged for r in near) <= below, page
 
 
 def test_fix_route_validates_before_calling_claude(monkeypatch):

@@ -16,9 +16,19 @@
 
   <main id="app-body" hidden>
     <header>
-      <h1>Anomaly Hunter</h1>
+      <div class="brand"><span class="mark"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.2" y="13" width="2.6" height="6.4" fill="#e2c277"/><rect x="7.6" y="9.5" width="2.6" height="9.9" fill="#e2c277"/><rect x="12" y="11.3" width="2.6" height="8.1" fill="#e2c277"/><rect x="16.4" y="5" width="2.6" height="14.4" fill="#b1342a"/><circle cx="17.7" cy="2.9" r="2.1" fill="#b1342a"/><circle cx="17.7" cy="2.9" r="2.1" fill="none" stroke="#e2c277" stroke-width=".7"/><rect x="2.4" y="19.9" width="17.6" height="1.2" fill="#e2c277" opacity=".7"/></svg></span><h1>Anomaly Hunter</h1></div>
       <p class="sheet-name" id="sheet-name"></p>
     </header>
+
+    <div id="skeleton" aria-hidden="true">
+      <div class="sk-btn"></div>
+      <div class="sk-line"></div>
+      <div class="sk-track"></div>
+      <div class="sk-scale"></div>
+      <div class="sk-hint"></div>
+      <div class="sk-row"></div><div class="sk-row"></div><div class="sk-row"></div>
+      <div class="sk-foot"></div>
+    </div>
 
     <section id="server-down" class="pad" hidden>
       <p><b>The checker isn't running.</b></p>
@@ -141,6 +151,13 @@
         <p class="hint">Only the row you ask about (and a few rows around it) is sent to Google. Google's free tier may use it to improve its products, so don't ask AI about private data. The key is stored only on this computer.</p>
         <p class="hint"><a href="https://github.com/ricepillow3000/excel-anomaly-hunter/blob/main/PRIVACY.md" target="_blank" rel="noopener">What leaves your PC</a> · <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/issues" target="_blank" rel="noopener">Questions or problems</a></p>
       </details>
+
+      <footer id="pane-footer">
+        <svg class="pf-tree" viewBox="0 0 376 90" preserveAspectRatio="none" aria-hidden="true"><path d="M0 90 V72 Q26 52 50 70 Q82 46 114 68 Q152 44 190 68 Q232 46 272 68 Q310 50 342 68 Q360 60 376 68 V90Z" fill="#13233b" opacity=".7"/></svg>
+        <div class="pf-brand"><span class="mk"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.2" y="13" width="2.6" height="6.4" fill="#e2c277"/><rect x="7.6" y="9.5" width="2.6" height="9.9" fill="#e2c277"/><rect x="12" y="11.3" width="2.6" height="8.1" fill="#e2c277"/><rect x="16.4" y="5" width="2.6" height="14.4" fill="#b1342a"/><circle cx="17.7" cy="2.9" r="2.1" fill="#b1342a"/><circle cx="17.7" cy="2.9" r="2.1" fill="none" stroke="#e2c277" stroke-width=".7"/><rect x="2.4" y="19.9" width="17.6" height="1.2" fill="#e2c277" opacity=".7"/></svg></span>Anomaly Hunter</div>
+        <p class="pf-tag">Audited locally. Your workbook never leaves this PC.</p>
+        <div class="pf-links"><a href="privacy.html" target="_blank" rel="noopener">Privacy</a><a href="support.html" target="_blank" rel="noopener">Support</a></div>
+      </footer>
     </section>
     <p id="engine-version" class="hint pad"></p>
   </main>
