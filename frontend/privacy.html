@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Anomaly Hunter — Privacy Policy</title>
+<title>Anomaly Hunter, Privacy Policy</title>
 <link href="assets/icon-32.png" rel="icon" />
 <link href="legal.css" rel="stylesheet" />
 </head>
@@ -28,7 +28,7 @@
     </nav>
 
     <main class="doc">
-      <div class="tldr"><strong>The short version.</strong> Anomaly Hunter runs entirely on your computer. We do not collect, store, sell, or share your personal information, and your spreadsheets never leave your PC — unless you choose to turn on the optional AI help, which sends only a small, clearly described slice to Google. There are no accounts, no cookies, and no tracking.</div>
+      <div class="tldr"><strong>The short version.</strong> Anomaly Hunter runs entirely on your computer. We do not collect, store, sell, or share your personal information, and your spreadsheets never leave your PC, unless you choose to turn on the optional AI help, which sends only a small, clearly described slice to Google. There are no accounts, no cookies, and no tracking.</div>
 
       <section id="intro">
         <h2>Introduction</h2>
@@ -43,17 +43,17 @@
         <h3>Information collected automatically</h3>
         <p><strong>None.</strong> Anomaly Hunter has no analytics, no cookies, no tracking pixels, and no telemetry. The pane loads only its own files plus Microsoft's Office script, and its Content Security Policy blocks everything else. Your spreadsheet is processed in memory by a local engine at <code>https://127.0.0.1:5055</code> that only your own computer can reach.</p>
         <h3>Third-party data</h3>
-        <p>Only if you deliberately turn on <strong>AI help</strong>. In that case a minimal slice of the flagged row, or the distinct words of your text columns, is sent to <strong>Google's Gemini API</strong>, governed by Google's own privacy terms. Nothing is sent to any other third party.</p>
+        <p>Only if you deliberately turn on <strong>AI help</strong>. In that case <strong>Ask AI</strong> sends the column names, the row you asked about, up to 5 rows above and 5 below it, and the reason it was flagged; <strong>Check words</strong> sends only the distinct words in your text columns, never rows or numbers. It goes to <strong>Google's Gemini API</strong>, governed by Google's own privacy terms. <strong>Google's free tier may use what you send to improve its products</strong>, so don't ask AI about private or personal data. Nothing is sent to any other third party.</p>
       </section>
 
       <section id="use">
         <h2>How We Use Your Information</h2>
         <p>Because the work happens on your machine, the limited data involved is used only to make the tool function:</p>
         <ul>
-          <li><strong>Scanning</strong> — your sheet is checked for anomalies locally and the results shown in the pane.</li>
-          <li><strong>Suggesting fixes</strong> — proposed corrections are computed from your own data; nothing changes until you click Apply.</li>
-          <li><strong>Optional AI fixes</strong> — if enabled, the minimum context is sent to Google to draft a suggested fix.</li>
-          <li><strong>Your AI key</strong> — used solely to authenticate your own requests to Google, from your PC.</li>
+          <li><strong>Scanning</strong>: your sheet is checked for anomalies locally and the results shown in the pane.</li>
+          <li><strong>Suggesting fixes</strong>: proposed corrections are computed from your own data; nothing changes until you click Apply.</li>
+          <li><strong>Optional AI fixes</strong>: if enabled, the row you ask about and up to 5 rows above and 5 below it are sent to Google to draft a suggested fix.</li>
+          <li><strong>Your AI key</strong>: used solely to authenticate your own requests to Google, from your PC.</li>
         </ul>
         <p>We do not use your information for advertising, marketing, profiling, model training, or resale. There is no behavioural tracking of any kind.</p>
       </section>
@@ -63,8 +63,8 @@
         <p><strong>We do not sell, rent, or trade your personal information.</strong> We also do not share it with advertisers, data brokers, or analytics companies, because we never collect it in the first place.</p>
         <p>The only circumstances in which any data leaves your PC are:</p>
         <ul>
-          <li><strong>Optional AI help you enable</strong> — sent to Google (with your own key) or through the project's Cloudflare relay (with an invite code). The relay keeps only a daily usage count and stores none of your content.</li>
-          <li><strong>Legal requirement</strong> — if we were ever legally compelled, we could only disclose what we hold, which is nothing about you.</li>
+          <li><strong>Optional AI help you enable</strong>: sent to Google (with your own key) or through the project's Cloudflare relay (with an invite code). The relay keeps only a daily usage count and stores none of your content.</li>
+          <li><strong>Legal requirement</strong>: if we were ever legally compelled, we could only disclose what we hold, which is nothing about you.</li>
         </ul>
       </section>
 
@@ -73,10 +73,10 @@
         <p>If you are in the European Economic Area, the United Kingdom, or California, you have rights to <strong>access</strong>, <strong>correct</strong>, <strong>delete</strong>, and <strong>opt out of the sale</strong> of your personal data, and to not be discriminated against for exercising them.</p>
         <p>Anomaly Hunter makes these straightforward, because we hold no personal data about you on any server:</p>
         <ul>
-          <li><strong>Access &amp; portability</strong> — all data lives on your own PC; open it directly in <code>%LOCALAPPDATA%\AnomalyHunter</code>.</li>
-          <li><strong>Deletion</strong> — click <strong>Remove key</strong> in the pane, or run <code>AnomalyHunter.exe uninstall</code>, which deletes every local file.</li>
-          <li><strong>Opt out of sale</strong> — nothing is ever sold, so there is nothing to opt out of.</li>
-          <li><strong>AI opt-out</strong> — AI help is off by default and removable anytime.</li>
+          <li><strong>Access &amp; portability</strong>: all data lives on your own PC; open it directly in <code>%LOCALAPPDATA%\AnomalyHunter</code>.</li>
+          <li><strong>Deletion</strong>: click <strong>Remove key</strong> in the pane, or run <code>AnomalyHunter.exe uninstall</code>, which deletes every local file.</li>
+          <li><strong>Opt out of sale</strong>: nothing is ever sold, so there is nothing to opt out of.</li>
+          <li><strong>AI opt-out</strong>: AI help is off by default and removable anytime.</li>
         </ul>
         <p>To ask a question or make a formal request, use the <a href="support.html">support page</a>.</p>
       </section>
@@ -84,14 +84,14 @@
       <section id="security">
         <h2>Data Security &amp; Retention</h2>
         <p><strong>Security.</strong> The local engine is reachable only from your own computer over HTTPS, using a certificate valid for <code>127.0.0.1</code> only. A strict Content Security Policy blocks any outside code or connection. Because no central server holds user data, there is no central database to breach.</p>
-        <p><strong>Retention.</strong> We retain nothing. The only stored data are the local files you control: an optional AI key, a capped cache of up to 500 finished AI answers, an error log, and — only if you enable it — a single Power BI export of your last scan. Each is deleted when you remove it or uninstall.</p>
+        <p><strong>Retention.</strong> We retain nothing. The only stored data are the local files you control: an optional AI key, a capped cache of up to 500 finished AI answers, an error log, and (only if you enable it) a single Power BI export of your last scan. Each is deleted when you remove it or uninstall.</p>
         <div class="callout"><strong>Note.</strong> Anomaly Hunter is an independent tool provided "as is". It is a helper, not a guarantee of correctness. You remain responsible for verifying your own data before relying on it.</div>
       </section>
 
       <section id="changes">
         <h2>Changes &amp; Contact</h2>
         <p>We may update this policy as the tool evolves; the "Last updated" date at the top always reflects the current version. Material changes will be noted in the product's release notes. Continued use after an update means you accept the revised policy.</p>
-        <p><strong>Contact.</strong> Questions, concerns, or a privacy request? Reach us through the <a href="support.html">support page</a> — no email account required on your end.</p>
+        <p><strong>Contact.</strong> Questions, concerns, or a privacy request? Reach us through the <a href="support.html">support page</a>, no email account required on your end.</p>
       </section>
     </main>
   </div>
