@@ -17,7 +17,8 @@ const API = "https://api.github.com/repos/ricepillow3000/excel-anomaly-hunter/re
 const read = (f) => fs.readFileSync(path.join(SITE, f), "utf8");
 const html = Object.fromEntries(PAGES.map((p) => [p, read(p)]));
 const ids = (src) => [...src.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
-const attr = (src, name) => [...src.matchAll(new RegExp(`\\s${name}="([^"]*)"`, "g"))].map((m) => m[1]);
+// one fixed pattern for every attribute, filtered by name: semgrep blocks a RegExp built from a variable (ReDoS)
+const attr = (src, name) => [...src.matchAll(/\s([a-z-]+)="([^"]*)"/g)].filter((m) => m[1] === name).map((m) => m[2]);
 
 // every page is one a visitor can reach: an old mock left in site/ (tool-preview.html) was served to anyone who guessed it
 const linked = new Set(PAGES.flatMap((p) => attr(html[p], "href")).map((h) => h.split("#")[0]).filter((h) => h && !/^[a-z]+:/.test(h)));
