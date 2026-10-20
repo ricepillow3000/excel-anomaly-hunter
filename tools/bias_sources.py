@@ -139,10 +139,8 @@ def measure(folder):
     nums["german bad credit by sex"], nums["german bad credit by age band"] = rates(g, "sex", bad), rates(g, "band", bad)
     nums["german bad credit by employment length"] = rates(g, "employment_length", bad)
     r = rates(ins, "region", ins.smoker.eq("yes")); nums["insurance smokers by region"] = r
-    hi, lo = ends(r)
-    fact = f"{costs} {pct(r[hi][1])} of people in the {hi} and {pct(r[lo][1])} in the {lo} smoke"
-    rules.append({"id": "place_outcome", "topic": "place", "kind": "outcome", "text": fact[0].upper() + fact[1:] + ": " + gap,
-                  "pane_for": "outcome", "pane": f"For comparison, {fact}, {look}"})
+    # measured, but no rule: a simulated table's smokers by region is no benchmark for a real sheet's regions (a loan book's
+    # South got it as "for comparison", 2026-10-20 review) - a place gap gets no context rather than a misleading one
     recid = c.two_year_recid == "1"
     nums["compas re-arrest within 2 years by race"], nums["compas by sex"], nums["compas by age_cat"] = \
         rates(c, "race", recid), rates(c, "sex", recid), rates(c, "age_cat", recid)
@@ -160,7 +158,7 @@ def measure(folder):
                           f"{num(y[1])} under 30 and {num(o[1])} at 60 and over: amounts that rise with age are real, not typos."})
     s = spread(ins.charges, ins.smoker); nums["insurance charges by smoker"] = s
     rules.append({"id": "smoker_spread", "topic": "smoker", "kind": "spread",
-                  "text": f"In a public medical-cost teaching table ({num(n_i)} people) smokers' median yearly cost is {num(s['yes'][1])}, "
+                  "text": f"In a public medical-cost teaching table ({num(n_i)} people, simulated from US census figures) smokers' median yearly cost is {num(s['yes'][1])}, "
                           f"{s['yes'][1] / s['no'][1]:.1f} times non-smokers' {num(s['no'][1])}: a situation can change amounts this much in real data."})
     nums["adult hours by sex"] = spread(a.hours, a.sex)
     nums["insurance charges by sex"], nums["insurance charges by region"] = spread(ins.charges, ins.sex), spread(ins.charges, ins.region)
@@ -171,14 +169,14 @@ def measure(folder):
     nums["values past their own group's 1.5 IQR fence"] = fences
     share = lambda k: pct(fences[k][0] / fences[k][1])
     rules.append({"id": "far_from_group", "topic": "any", "kind": "far",
-                  "text": f"In public tables (German credit {num(n_g)} loans, COMPAS {num(n_c)} people, medical costs {num(n_i)} people) "
+                  "text": f"In public tables (German credit {num(n_g)} loans, COMPAS {num(n_c)} people, simulated medical costs {num(n_i)} people) "
                           f"{share('german amount by sex')}, {share('compas priors by race')} and {share('insurance charges by smoker')} of values sit "
                           "past their own group's usual range (1.5 IQR) and are real records: unusual for its group is not a typo."})
     x = pd.to_numeric(ins.charges)
     move = float(((x - x.groupby(ins.smoker).transform("median")).abs() / x).median())
     nums["insurance: median move if each charge were set to its smoker group's median"] = move
     rules.append({"id": "group_median_move", "topic": "any", "kind": "far",
-                  "text": f"Setting each cost in a public medical-cost table ({num(n_i)} people) to its smoker group's median would move a typical "
+                  "text": f"Setting each cost in a public medical-cost teaching table ({num(n_i)} people, simulated) to its smoker group's median would move a typical "
                           f"real value by {move:.0%}: a group's average is never a fix for one person's value."})
 
     q = {col: int(a[col].eq("?").sum()) for col in ("workclass", "occupation", "country")}

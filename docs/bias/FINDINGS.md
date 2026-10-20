@@ -94,9 +94,12 @@ arithmetic, a clear typing slip, or the user's request.
 ## How the rules are used
 
 - Fairness report (on now, rule-based): a gap in an outcome or in blanks, on a column whose words match a rule
-  topic (sex, race, age, marital status, place), gets one sentence: "For comparison, ... so a gap like this is
+  topic (sex, race, age, marital status), gets one sentence: "For comparison, ... so a gap like this is
   common in real data: check how the rows were collected and what else differs between the groups, never change a
   value toward its group." Never on a flag-rate gap: that one is about our own checks.
+  Never on a place gap either: the only regional figure measured here (smokers by region) comes from a simulated
+  teaching table and is no benchmark for a real sheet's regions, so a place gap gets no sentence rather than a
+  misleading one.
 - Ask AI (built, off): on a sheet with a demographic column, up to 6 lines after the flagged row's reason, the
   protective rule first. If the request is too big, the measured rules leave first, then rows (the rows are the
   evidence); the protective rule never leaves. It goes in only after `backend/bench/ai_eval.py` arm `bias_context`

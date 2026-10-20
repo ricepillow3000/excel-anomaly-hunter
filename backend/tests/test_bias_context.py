@@ -96,7 +96,8 @@ def test_the_apps_ask_ai_prompt_carries_no_notes_until_the_eval_switches_them_on
 
 
 def test_every_rule_is_one_plain_measured_sentence_from_a_pinned_source():
-    assert set(DATA["topics"]) >= {"sex", "race", "age", "marital", "place"}
+    assert set(DATA["topics"]) >= {"sex", "race", "age", "marital"}
+    assert all("simulated" in r["text"] for r in DATA["rules"] if "medical" in r["text"])  # never passed off as measured people
     for r in DATA["rules"]:
         for words in [r["text"]] + ([r["pane"]] if "pane" in r else []):
             assert "\n" not in words and "—" not in words and "–" not in words and len(words.encode()) <= 400, r["id"]
@@ -125,13 +126,15 @@ def test_a_real_gap_in_an_outcome_gets_one_sentence_of_public_context_and_a_flag
     assert all("context" not in t for t in fair["tests"] if t["verdict"] != "gap" or t["test"] == "flag rate")
     rows, *_ = sheet()
     gap = next(t for t in scan_agent.scan(LOANS, rows)[-1]["tests"] if t["column"] == "Region" and t["test"] == "Delinquent Yes rate")
-    assert gap["verdict"] == "gap" and gap["context"].startswith("For comparison,") and "1,338 people" in gap["context"]
+    # no public benchmark measures a loan book's regions: a weak one (a simulated table's smokers) would mislead, so none
+    assert gap["verdict"] == "gap" and "context" not in gap
 
 
 @pytest.mark.parametrize("column, kind, has", [("Gender", "outcome", "30.4% of men"), ("Sex", "missing", "occupation is unknown"),
                                                ("Age", "missing", "people 60 and over"), ("DateOfBirth", "outcome", "under 30"),
                                                ("Race", "outcome", "UCI Adult"), ("Marital_Status", "outcome", "married"),
-                                               ("Gender", "flag", None), ("Product", "outcome", None), ("Religion", "outcome", None)])
+                                               ("Gender", "flag", None), ("Product", "outcome", None), ("Religion", "outcome", None),
+                                               ("Region", "outcome", None)])
 def test_the_fairness_sentence_comes_only_from_a_rule_for_that_column(column, kind, has):
     note = bias_context.pane_note(column, kind)
     assert (note is None) if has is None else (has in note and note in {r.get("pane") for r in DATA["rules"]})
