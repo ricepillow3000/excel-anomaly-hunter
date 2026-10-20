@@ -101,8 +101,9 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 /* hero: alabaster, centred, with the cursor light behind the text */
 .hero { position: relative; isolation: isolate; background: var(--canvas); padding-block: var(--s7) var(--s6); }
 .hero::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
-  background: radial-gradient(560px circle at var(--gx, 50%) var(--gy, 22%), rgb(12 25 56 / .07), transparent 70%),
-              radial-gradient(820px circle at var(--hx, 50%) var(--hy, 22%), rgb(153 125 58 / .10), transparent 70%); }
+  background: radial-gradient(560px circle at var(--gx, 50%) var(--gy, 22%), rgb(12 25 56 / .11), transparent 70%),
+              radial-gradient(820px circle at var(--hx, 50%) var(--hy, 22%), rgb(153 125 58 / .16), transparent 70%); }
+/* John: "make it slightly visible but not too much": navy .07 to .11, gold .10 to .16 */
 .hero .lede { display: grid; gap: var(--s3); justify-items: center; text-align: center; max-width: 760px; margin: 0 auto; }
 .hero h1 { font-size: clamp(30px, 3.6vw, 42px); text-transform: uppercase; letter-spacing: .06em; line-height: 1.25; }
 .hero h1 em { font-size: 1.15em; }
