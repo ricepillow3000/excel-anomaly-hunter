@@ -1,31 +1,36 @@
-/* Anomaly Hunter website: ledgers of warm paper laid on a gold page, with a wine band for the download.
-   Layout: a solid Crown Navy bar, then one 1120px column on an 8px grid; every module is separated by 1px rules,
-   never by shadows or gradients. On the gold page, 1px lines and panel edges are bronze; gold trim lives on navy, paper and wine. Corners are 90 degrees.
-   Weight: one font file (the sans; the serif is Georgia, already on every PC), one 1.2 KB logo, two small deferred scripts (the home
-   page's sample workspace, the support form). Crimson is a solid fill and appears only where the sheet is wrong (an outline for "worth a
-   check"), in the one wine red the download band also uses. Serif for headlines, sans for everything read or clicked. The only motion is the scan meter and the download watermark's scroll scrub. */
+/* Anomaly Hunter website: navy luxury, after the template John picked, in the house colours (navy, gold, wine red).
+   Layout: an announcement line, a navy bar with the lockup centred between the links, then one 1120px column on an
+   8px grid. The hero sits on alabaster, where a faint navy-and-gold light follows the cursor; scrolling past it, the
+   page bleeds into navy (and back on the way up). Navy sections carry cream serif titles with one italic gold word and
+   gold-ruled cells; the download is a wine band. Paper panels (the sample sheet, the legal text, the form) keep slate
+   rules that ease to gold when the pointer comes near. Corners are 90 degrees; no shadows. The only gradients are
+   the cursor light, as asked. Weight: one font file (the serif is Georgia, already on every PC), two deferred scripts. */
 @font-face { font-family: "Plus Jakarta Sans"; src: url("assets/plus-jakarta-sans.woff2") format("woff2"); font-weight: 200 800; font-display: swap; }
 :root {
   color-scheme: light;
-  --canvas: #D1AE62;   /* the gold page: the spear's gold, lightened until navy text reads 8.2:1 (#B8954A gave muted text 2.4:1) */
-  --sheet: #FBF6EA;    /* warm paper laid on the gold: the sheet, tables, legal text, the form */
-  --field: #FFFDF8;    /* inputs and notices on the paper */
-  --shade: #F0E9D8;    /* header rows on the paper */
-  --edge: #5E4719;     /* bronze: section rules and panel edges on the gold (4.2:1; #997D3A vanished there at 1.9:1) */
-  --muted-gold: #3D3527; /* secondary text straight on the gold (5.7:1) */
-  --navy: #0C1938;     /* Crown Navy: bar, headlines, primary button */
+  --canvas: #F7F5F0;   /* warm alabaster: the hero */
+  --sheet: #FBFAF6;    /* paper panels */
+  --field: #FFFEFA;    /* inputs and notices on the paper */
+  --shade: #EFECE4;    /* header rows on the paper */
+  --rule: #CBD5E1;     /* 1px slate rules on the paper */
+  --navy: #0C1938;     /* Crown Navy: the bar, the page past the hero, headlines on light */
   --navy-2: #1A2B52;   /* navy hover */
-  --gold: #997D3A;     /* Dark Antique Gold: 1px trim on navy and on the paper (4.4:1 and 3.6:1) */
+  --navy-deep: #081129;/* the announcement line */
+  --rule-navy: #2E3D63;/* 1px rules on navy, before the pointer comes near */
+  --gold: #997D3A;     /* Dark Antique Gold: trim on light (3.6:1 on alabaster) */
+  --gold-hi: #C9A85A;  /* the same gold lifted for navy: labels, numerals, trim (7.6:1) */
   --wine: #6B1E2E;     /* wine red: wrong cells and the download band (light text on it 10.4:1) */
-  --rule: #D9CDB3;     /* 1px warm rules inside the paper */
-  --ink: #1F2638;      /* body text (14:1 on the paper, 7.1:1 on the gold) */
-  --muted: #555D6E;    /* secondary text on the paper (6.1:1) */
-  --on-navy: #ECE7DB;  /* text on navy (14:1) */
-  --on-navy-2: #B9BFCC;/* secondary text on navy (8.7:1) */
+  --ink: #1F2638;      /* body text on light (15:1) */
+  --muted: #555D6E;    /* secondary text on light (6.1:1) */
+  --on-navy: #EFE6D2;  /* cream text on navy (14:1) */
+  --on-navy-2: #B9BFCC;/* secondary text on navy (9.4:1) */
   --on-wine: #FBF3F1;
   --on-wine-2: #E9D3D7; /* secondary text on wine (8.0:1) */
   --rule-wine: #934252; /* 1px rules on wine */
-  --gold-band: #B8954A; /* trim on wine: the spear's own gold (4.0:1; #997D3A is 2.9:1 there) */
+  --gold-band: #B8954A; /* trim on wine: the spear's own gold (4.0:1) */
+  --heading: var(--navy);
+  --accent: var(--gold);
+  --ease: cubic-bezier(.16, 1, .3, 1);
   --r: 0;
   --serif: Georgia, "Times New Roman", serif;
   --sans: "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif;
@@ -34,80 +39,115 @@
   --wrap: 1120px;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--canvas); color: var(--ink); font: 400 16px/1.65 var(--sans); }
+body { margin: 0; background: var(--navy); color: var(--on-navy); font: 400 16px/1.65 var(--sans); }
 img { max-width: 100%; display: block; }
-a { color: var(--navy); text-decoration-color: var(--edge); text-underline-offset: 3px; text-decoration-thickness: 1px; }
-a:hover { text-decoration-color: var(--navy); }
-:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
-h1, h2, h3 { margin: 0; color: var(--navy); text-wrap: balance; }
-h1, h2 { font-family: var(--serif); font-weight: 400; letter-spacing: -.005em; line-height: 1.15; }
+a { color: inherit; text-decoration-color: var(--accent); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+h1, h2, h3 { margin: 0; color: var(--heading); text-wrap: balance; }
+h1, h2 { font-family: var(--serif); font-weight: 400; line-height: 1.2; }
+h1 em, h2 em { font-style: italic; color: var(--accent); text-transform: none; letter-spacing: 0; }
 h3 { font: 700 15px/1.4 var(--sans); }
-code { font-family: var(--mono); font-size: .9em; background: var(--shade); border: 1px solid var(--rule); border-radius: 0; padding: 1px 5px; word-break: break-word; }
-
+code { font-family: var(--mono); font-size: .9em; background: var(--shade); border: 1px solid var(--rule); border-radius: 0; padding: 1px 5px; word-break: break-word; color: var(--ink); }
 .wrap { max-width: var(--wrap); margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
-.label { font: 700 11px/1 var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+.label { font: 700 11px/1 var(--sans); letter-spacing: .2em; text-transform: uppercase; color: var(--gold-hi); }
 
-/* the navy bar */
+/* light surfaces: the hero and every paper panel read in ink */
+.hero, .ws, .doc, .faq, .form-card, table.card { --heading: var(--navy); --accent: var(--gold); color: var(--ink); }
+.hero .label { color: var(--gold); }
+
+/* the announcement line and the navy bar, the lockup centred between the links */
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--navy); }
-.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 9; background: var(--navy); }
-.bar .wrap { display: flex; align-items: center; gap: var(--s4); min-height: 64px; flex-wrap: wrap; padding-block: var(--s1); }
-/* the lockup: the mark, a 1px Dark Gold rule, the name set in serif capitals */
+.notice-bar { background: var(--navy-deep); border-bottom: 1px solid var(--rule-navy); }
+.notice-bar p { margin: 0; padding: 10px 16px; text-align: center; font: 600 11px/1.5 var(--sans); letter-spacing: .2em; text-transform: uppercase; color: #D9CBA6; }
+.notice-bar a { color: var(--gold-hi); }
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 9; background: var(--navy); border-bottom: 1px solid var(--rule-navy); }
+.links { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--s4); min-height: 72px; }
+.links .l, .links .r { display: flex; align-items: center; gap: var(--s3); flex-wrap: nowrap; white-space: nowrap; }
+.links .r { justify-content: flex-end; }
+.links .l a, .links .r a { color: var(--on-navy-2); text-decoration: none; font: 600 11px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase;
+  padding: 10px 0; border-bottom: 1px solid transparent; transition: color .6s var(--ease), border-color .6s var(--ease); }
+.links .l a:hover, .links .r a:hover { color: var(--on-navy); border-bottom-color: var(--rule-navy); }
+.links a[aria-current="page"] { color: var(--on-navy); border-bottom-color: var(--gold-hi); }
+.links .r .btn-trim { padding: 12px 18px; border: 1px solid var(--gold-hi); color: var(--on-navy); }
+.links .r .btn-trim:hover { background: var(--navy-2); border-color: var(--gold-hi); }
+/* the lockup: the mark, a 1px gold rule, the name in serif capitals */
 .brand { display: flex; align-items: center; gap: 14px; color: var(--on-navy); text-decoration: none;
-  font: 400 14px/1 var(--serif); letter-spacing: .18em; text-transform: uppercase; }
-.brand img { width: 32px; height: 32px; }
-.brand::before { content: ""; order: 1; width: 1px; height: 24px; background: var(--gold); }
-.brand img { order: 0; } .brand span { order: 2; }
-.links { display: flex; align-items: center; gap: var(--s3); margin-left: auto; flex-wrap: wrap; }
-.links a { color: var(--on-navy-2); text-decoration: none; font: 600 14px/1 var(--sans); padding: 10px 0; border-bottom: 1px solid transparent; }
-.links a:hover { color: var(--on-navy); }
-.links a[aria-current="page"] { color: var(--on-navy); border-bottom-color: var(--gold); }
-.links .btn-trim { padding: 10px 16px; border: 1px solid var(--gold); border-radius: var(--r); color: var(--on-navy); }
-.links .btn-trim:hover { background: var(--navy-2); }
+  font: 400 14px/1 var(--serif); letter-spacing: .2em; text-transform: uppercase; white-space: nowrap; }
+.brand img { width: 32px; height: 32px; order: 0; }
+.brand::before { content: ""; order: 1; width: 1px; height: 24px; background: var(--gold-hi); }
+.brand span { order: 2; }
 
 /* buttons */
-.btn { display: inline-flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 22px; border-radius: var(--r); border: 1px solid transparent;
-  font: 600 15px/1 var(--sans); text-decoration: none; cursor: pointer; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 48px; padding: 0 22px; border-radius: var(--r); border: 1px solid transparent;
+  font: 600 15px/1 var(--sans); text-decoration: none; cursor: pointer; transition: background-color .6s var(--ease), color .6s var(--ease), border-color .6s var(--ease), outline-color .6s var(--ease); }
 .btn svg { width: 17px; height: 17px; flex: none; }
 .btn-navy { background: var(--navy); color: var(--on-navy); }
 .btn-navy:hover { background: var(--navy-2); }
 .btn-framed { outline: 1px solid var(--gold); outline-offset: 3px; border-color: var(--gold); }
-.btn-framed:focus-visible { outline: 2px solid var(--navy); outline-offset: 3px; }
 .btn-plain { background: transparent; color: var(--navy); border-color: var(--rule); }
-.btn-plain:hover { border-color: var(--navy); }
+.btn-plain:hover { border-color: var(--gold); }
+/* the template's ghost button: a thin gold line, small tracked capitals */
+.btn-ghost { background: transparent; color: var(--navy); border-color: var(--gold); min-height: 52px; padding: 0 32px; font: 700 11px/1 var(--sans); letter-spacing: .22em; text-transform: uppercase; }
+.btn-ghost:hover { background: var(--navy); color: var(--on-navy); }
 
-/* sections are ruled, not boxed */
-.section { padding-block: var(--s7); border-top: 1px solid var(--edge); }
-.section:first-of-type { border-top: 0; }
-.section-head { display: grid; gap: var(--s2); max-width: 640px; margin-bottom: var(--s5); }
-.section-head h2 { font-size: 30px; }
-.section-head p { margin: 0; color: var(--muted); font-size: 17px; }
-/* text straight on the gold gets its own secondary colour; the paper panels keep theirs */
-.hero .lede, .section-head, .page-head { --muted: var(--muted-gold); }
+/* sections: navy, centred heads, a thin gold-to-navy rule between them */
+.section { padding-block: var(--s7); }
+.section + .section { border-top: 1px solid var(--rule-navy); }
+.section-head { display: grid; gap: var(--s2); justify-items: center; text-align: center; max-width: 720px; margin: 0 auto var(--s6); }
+.section-head h2, .page-head h1 { font-size: 30px; text-transform: uppercase; letter-spacing: .06em; --heading: var(--on-navy); --accent: var(--gold-hi); color: var(--on-navy); }
+.section-head h2 em, .page-head h1 em { font-size: 1.15em; }
+.section-head p { margin: 0; color: var(--on-navy-2); font-size: 17px; }
 
-/* hero */
-.hero { padding-block: var(--s6) var(--s6); }
-.hero .lede { display: grid; gap: var(--s3); max-width: 680px; }
-.hero h1 { font-size: clamp(32px, 4.2vw, 46px); }
-.hero p { margin: 0; color: var(--muted); font-size: 18px; max-width: 34em; }
-.hero .actions { display: flex; gap: 12px; flex-wrap: wrap; }
+/* hero: alabaster, centred, with the cursor light behind the text */
+.hero { position: relative; isolation: isolate; background: var(--canvas); padding-block: var(--s7) var(--s6); }
+.hero::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(560px circle at var(--gx, 50%) var(--gy, 22%), rgb(12 25 56 / .07), transparent 70%),
+              radial-gradient(820px circle at var(--hx, 50%) var(--hy, 22%), rgb(153 125 58 / .10), transparent 70%); }
+.hero .lede { display: grid; gap: var(--s3); justify-items: center; text-align: center; max-width: 760px; margin: 0 auto; }
+.hero h1 { font-size: clamp(30px, 3.6vw, 42px); text-transform: uppercase; letter-spacing: .06em; line-height: 1.25; }
+.hero h1 em { font-size: 1.15em; }
+.hero p { margin: 0; color: var(--muted); font-size: 18px; max-width: 36em; }
 .hero .note { font-size: 13px; color: var(--muted); }
+/* the bleed: past the hero the page turns navy at the pace of the scroll, and back. Without scroll timelines the
+   hero simply stays alabaster and the rest is navy. */
+/* The same again into the download: as the wine band rises into view, the navy page melts into wine (a wine layer
+   fading in over the backdrop), and back to navy on the way up. Navy and wine are both dark, so cream text stays
+   readable all the way through (14:1 and 10.4:1). */
+@supports (animation-timeline: view()) and (timeline-scope: --hero) {
+  body { timeline-scope: --hero, --band; }
+  .hero { background: transparent; view-timeline: --hero block; }
+  .backdrop { position: fixed; inset: 0; z-index: -1; background: var(--canvas); animation: bleed linear both; animation-timeline: --hero; animation-range: exit 0% exit 30%; }
+  .backdrop::after { content: ""; position: absolute; inset: 0; background: var(--wine); opacity: 0; animation: to-wine linear both; animation-timeline: --band; animation-range: entry 0% entry 60%; }
+  body:has(> .backdrop) .band { background: transparent; } /* only the home page has the backdrop */
+  .band { view-timeline: --band block; }
+}
+@keyframes bleed { to { background-color: var(--navy); } }
+@keyframes to-wine { to { opacity: 1; } }
+
+/* lines that answer the pointer: slate (or navy) at rest, gold when it comes near */
+.ws, .num-grid li, .it-ledger > div, .faq, .form-card, table.card, .field input, .field select, .field textarea, .toc a, .prose .note {
+  transition: border-color .6s var(--ease), background-color .6s var(--ease); }
+.ws:hover, .ws:focus-within, .faq:hover, .faq:focus-within, .form-card:hover, .form-card:focus-within, table.card:hover,
+.field input:hover, .field select:hover, .field textarea:hover, .prose .note:hover { border-color: var(--gold); }
+.num-grid li:hover, .it-ledger > div:hover { border-color: var(--gold-hi); }
 
 /* the sample workspace: filters on the left, the sheet on the right, three scan states */
-.ws { position: relative; margin: var(--s5) 0 0; background: var(--sheet); border: 1px solid var(--edge); border-radius: var(--r); }
+.ws { position: relative; margin: var(--s6) 0 0; background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r); text-align: left; }
 .ws-top { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s3); align-items: center; padding: 0 var(--s3); min-height: 52px; border-bottom: 1px solid var(--rule); }
 .ws-top b { font: 700 14px/1.4 var(--sans); color: var(--navy); }
 .ws-top > span { font-size: 13px; color: var(--muted); }
 .tabs { display: flex; margin-left: auto; align-self: stretch; }
 .tabs[hidden] { display: none; }
-.tabs button { font: 600 13px/1 var(--sans); color: var(--muted); background: none; border: 0; border-bottom: 1px solid transparent; border-radius: 0; padding: 0 14px; cursor: pointer; }
+.tabs button { font: 600 13px/1 var(--sans); color: var(--muted); background: none; border: 0; border-bottom: 1px solid transparent; border-radius: 0; padding: 0 14px; cursor: pointer; transition: color .6s var(--ease), border-color .6s var(--ease); }
 .tabs button:hover { color: var(--navy); }
 .tabs button[aria-selected="true"] { color: var(--navy); border-bottom-color: var(--gold); }
 .ws-body { display: grid; grid-template-columns: 224px minmax(0, 1fr); }
 .typology { display: grid; align-content: start; border-right: 1px solid var(--rule); }
-.typology .label { padding: 16px var(--s2) 12px; }
+.typology .label { padding: 16px var(--s2) 12px; color: var(--muted); }
 .typology button { display: flex; justify-content: space-between; gap: var(--s1); text-align: left; font: 700 11px/1.3 var(--sans); letter-spacing: .1em; text-transform: uppercase;
-  color: var(--ink); background: none; border: 0; border-top: 1px solid var(--rule); border-left: 1px solid transparent; border-radius: 0; padding: 12px var(--s2); cursor: pointer; }
-.typology button:hover { color: var(--navy); background: var(--shade); }
+  color: var(--ink); background: none; border: 0; border-top: 1px solid var(--rule); border-left: 1px solid transparent; border-radius: 0; padding: 12px var(--s2); cursor: pointer;
+  transition: border-color .6s var(--ease), background-color .6s var(--ease); }
+.typology button:hover { color: var(--navy); background: var(--shade); border-left-color: var(--rule); }
 .typology button[aria-pressed="true"] { color: var(--navy); border-left-color: var(--gold); background: var(--shade); }
 .typology .n { font-variant-numeric: tabular-nums; color: var(--muted); letter-spacing: 0; }
 .typology .key { margin: 0; padding: 14px var(--s2); border-top: 1px solid var(--rule); display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
@@ -142,7 +182,7 @@ table.grid { width: 100%; border-collapse: collapse; font: 500 13px/1.3 var(--sa
 .matrix[hidden] { display: none; }
 .m-head { display: flex; justify-content: space-between; align-items: center; gap: var(--s2); padding: 8px 12px; background: var(--navy); color: var(--on-navy); }
 .m-head b { font: 700 11px/1.3 var(--sans); letter-spacing: .1em; text-transform: uppercase; }
-.m-close { font: 600 11px/1 var(--sans); color: var(--on-navy); background: none; border: 1px solid var(--gold); border-radius: 0; padding: 6px 8px; cursor: pointer; }
+.m-close { font: 600 11px/1 var(--sans); color: var(--on-navy); background: none; border: 1px solid var(--gold-hi); border-radius: 0; padding: 6px 8px; cursor: pointer; }
 .matrix dl { margin: 0; display: grid; grid-template-columns: minmax(0, 104px) minmax(0, 1fr); }
 .matrix dt, .matrix dd { margin: 0; padding: 7px 12px; border-bottom: 1px solid var(--rule); line-height: 1.45; }
 .matrix dt { color: var(--muted); font-weight: 700; letter-spacing: .04em; border-right: 1px solid var(--rule); }
@@ -161,20 +201,27 @@ table.grid { width: 100%; border-collapse: collapse; font: 500 13px/1.3 var(--sa
 .small { margin: 0; font-size: 12.5px; color: var(--muted); }
 .clean { justify-items: center; text-align: center; }
 .clean .rhombus { width: 48px; height: 48px; }
-.rhombus path, .banner path { fill: none; vector-effect: non-scaling-stroke; stroke-width: 1px; }
+.rhombus path { fill: none; vector-effect: non-scaling-stroke; stroke-width: 1px; }
 .clean .rhombus path { stroke: var(--gold); }
 .verdict { margin: 0; font: 700 13px/1.4 var(--sans); letter-spacing: .12em; color: var(--navy); }
 .ws-foot { padding: 12px var(--s3); border-top: 1px solid var(--rule); font-size: 12.5px; color: var(--muted); }
 
-/* for IT teams: one ruled strip */
-.it-ledger { margin: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--edge); background: var(--sheet); }
-.it-ledger > div { padding: var(--s3); border-left: 1px solid var(--rule); }
-.it-ledger > div:first-child { border-left: 0; }
-.it-ledger dt { font: 700 11px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
-.it-ledger dd { margin: 0; font-size: 14px; color: var(--ink); }
+/* the checks: the template's numbered cells, ruled in navy, gold when the pointer comes near */
+.num-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s3); }
+.num-grid li { display: grid; align-content: start; gap: 12px; padding: var(--s3); border: 1px solid var(--rule-navy); }
+.num-grid .no { font: italic 400 30px/1 var(--serif); color: var(--gold-hi); }
+.num-grid h3 { font: 700 12px/1.4 var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--on-navy); }
+.num-grid p { margin: 0; font-size: 14px; color: var(--on-navy-2); }
+.num-grid .eg { font: 500 12px/1.5 var(--mono); color: var(--gold-hi); padding-top: 12px; border-top: 1px solid var(--rule-navy); }
 
-/* capabilities as a scorecard */
-table.card { width: 100%; border-collapse: collapse; background: var(--sheet); border: 1px solid var(--edge); font-size: 15px; }
+/* for IT teams: one ruled strip on navy */
+.it-ledger { margin: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s3); }
+.it-ledger > div { padding: var(--s3); border: 1px solid var(--rule-navy); }
+.it-ledger dt { font: 700 11px/1 var(--sans); letter-spacing: .18em; text-transform: uppercase; color: var(--gold-hi); margin-bottom: 12px; }
+.it-ledger dd { margin: 0; font-size: 14px; color: var(--on-navy); }
+
+/* a table on paper (the privacy page's at-a-glance) */
+table.card { width: 100%; border-collapse: collapse; background: var(--sheet); border: 1px solid var(--rule); font-size: 15px; }
 .card th, .card td { padding: 18px var(--s3); border-bottom: 1px solid var(--rule); vertical-align: top; text-align: left; }
 .card thead th { background: var(--shade); font: 700 11px/1 var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); padding-block: 14px; }
 .card tbody th { width: 26%; color: var(--navy); font: 700 15px/1.4 var(--sans); }
@@ -182,28 +229,37 @@ table.card { width: 100%; border-collapse: collapse; background: var(--sheet); b
 .card td.eg { width: 26%; font: 500 13px/1.5 var(--mono); color: var(--navy); border-left: 1px solid var(--rule); }
 .card tbody tr:last-child th, .card tbody tr:last-child td { border-bottom: 0; }
 
-/* the download band: wine red from edge to edge, everything centred on the page: the heading, the banner engraved
-   wine on wine like a banknote watermark, the button right under it, the compliance ledger, then the three steps
-   across the grid */
+/* the download band: wine red from edge to edge, everything centred on the page: the heading, the banner in the
+   logo's colours faded into the wine, the button right under it, the compliance ledger, then the three steps */
 .band { background: var(--wine); color: var(--on-wine); padding-block: var(--s7); }
-.band .section-head { margin: 0 auto var(--s5); text-align: center; justify-items: center; --muted: var(--on-wine-2); }
-.band .section-head h2 { color: var(--on-wine); font-size: 40px; }
-.band .label { color: var(--on-wine-2); }
+.band .section-head h2 { color: var(--on-wine); --accent: var(--gold-band); font-size: 34px; }
+.band .section-head p, .band .label { color: var(--on-wine-2); }
 .band a { color: var(--on-wine); text-decoration-color: var(--gold-band); }
 .stage { display: flex; flex-direction: column; align-items: center; gap: var(--s4); view-timeline: --wm block; }
 .watermark { display: block; width: min(416px, 100%); height: auto; overflow: visible; }
 .watermark > g { transform-box: fill-box; transform-origin: center; }
+/* The assembly, scrubbed by the scroll itself (no clock: it stops when the wheel stops and runs backwards when it
+   turns back). Five steps, each on its own slice of the band's way into view, all done when the banner reaches the
+   middle of the screen: the bar slides in, the shield drops onto it, its gold edges draw themselves on, the emblem's
+   ring turns into place, and the two panels close from either side like a seal. Wide screens with native scroll
+   timelines only, and only when motion is welcome; everywhere else the banner sits finished. */
 @supports (animation-timeline: view()) {
   @media (min-width: 761px) and (prefers-reduced-motion: no-preference) {
-    .wm-bar, .wm-shield, .wm-ring, .wm-panels { animation: linear both; animation-timeline: --wm; animation-range: entry 0% cover 50%; }
-    .wm-bar { animation-name: wm-bar; } .wm-shield { animation-name: wm-shield; }
-    .wm-ring { animation-name: wm-ring; } .wm-panels { animation-name: wm-panels; }
+    .watermark > g, .watermark .draw { animation-timeline: --wm; animation-fill-mode: both; animation-timing-function: linear; }
+    .wm-bar { animation-name: wm-bar; animation-range: entry 0% cover 30%; }
+    .wm-shield { animation-name: wm-shield; animation-range: entry 10% cover 35%; }
+    .watermark .draw { stroke-dasharray: 1; animation-name: wm-draw; animation-range: cover 15% cover 42%; }
+    .wm-ring { animation-name: wm-ring; animation-range: cover 22% cover 46%; }
+    .wm-panel-l { animation-name: wm-panel-l; animation-range: cover 28% cover 50%; }
+    .wm-panel-r { animation-name: wm-panel-r; animation-range: cover 28% cover 50%; }
   }
 }
-@keyframes wm-bar { from { transform: translate(-30px, -30px); } to { transform: none; } }
-@keyframes wm-shield { from { transform: translate(30px, 30px) scale(.96); } to { transform: none; } }
-@keyframes wm-ring { from { transform: translate(-30px, 30px) scale(.9); } to { transform: none; } }
-@keyframes wm-panels { from { transform: translate(30px, -30px) scale(.9); } to { transform: none; } }
+@keyframes wm-bar { from { transform: translateX(-60px); opacity: .15; } to { transform: none; opacity: 1; } }
+@keyframes wm-shield { from { transform: translateY(-40px) scale(.96); opacity: .15; } to { transform: none; opacity: 1; } }
+@keyframes wm-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes wm-ring { from { transform: translate(-30px, -30px) rotate(-90deg) scale(.85); opacity: .15; } to { transform: none; opacity: 1; } }
+@keyframes wm-panel-l { from { transform: translateX(-48px); opacity: .15; } to { transform: none; opacity: 1; } }
+@keyframes wm-panel-r { from { transform: translateX(48px); opacity: .15; } to { transform: none; opacity: 1; } }
 /* the hero's first button: navy, a gold line, a gold frame 3px out; on wine the trim is the spear's gold */
 .band .btn { min-height: 56px; padding: 0 28px; }
 .band .btn-framed { outline-color: var(--gold-band); border-color: var(--gold-band); }
@@ -227,32 +283,34 @@ dl.anchor { margin: var(--s5) auto 0; max-width: 640px; display: grid; grid-temp
 .steps .line { display: block; margin-top: 10px; padding: 8px 10px; word-break: normal; overflow-x: auto; white-space: nowrap; }
 .steps .aside { margin: 0; font-size: 12.5px; color: var(--on-wine-2); }
 
-/* reading pages: a legal ledger */
-.page-head { padding-block: var(--s6) var(--s5); border-bottom: 1px solid var(--edge); }
-.page-head .wrap { display: grid; gap: var(--s2); }
-.page-head h1 { font-size: clamp(30px, 3.8vw, 40px); }
-.page-head p { margin: 0; color: var(--muted); max-width: 40em; }
-.doc { padding-block: var(--s6) var(--s7); background: var(--sheet); }
+/* reading pages: a navy head, then the legal ledger on paper */
+.page-head { padding-block: var(--s7) var(--s6); }
+.page-head .wrap { display: grid; gap: var(--s2); justify-items: center; text-align: center; }
+.page-head p { margin: 0; color: var(--on-navy-2); max-width: 40em; }
+.page-head .card { margin-top: var(--s4); text-align: left; }
+.doc { padding-block: var(--s6) var(--s7); background: var(--sheet); border-top: 1px solid var(--gold-hi); }
 .doc .wrap { display: flex; flex-wrap: wrap; gap: var(--s6); align-items: flex-start; }
-.toc { flex: 1 1 220px; max-width: 250px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 96px); display: grid; border-top: 1px solid var(--navy); }
+.doc a { text-decoration-color: var(--gold); }
+.doc .label, .faq .label, .form-card .label { color: var(--muted); }
+.toc { flex: 1 1 220px; max-width: 250px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 104px); display: grid; border-top: 1px solid var(--navy); }
 .toc b { font: 700 11px/1 var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); padding: 14px 0; border-bottom: 1px solid var(--rule); }
-.toc a { counter-increment: toc; color: var(--ink); text-decoration: none; font-size: 14px; padding: 10px 0 10px 14px; border-bottom: 1px solid var(--rule); border-left: 1px solid transparent; }
+.toc a { color: var(--ink); text-decoration: none; font-size: 14px; padding: 10px 0 10px 14px; border-bottom: 1px solid var(--rule); border-left: 1px solid transparent; }
 .toc a:hover { border-left-color: var(--gold); color: var(--navy); }
 .prose { flex: 999 1 560px; min-width: 0; max-width: 680px; counter-reset: sec; }
 .prose section { counter-increment: sec; padding-bottom: var(--s5); margin-bottom: var(--s5); border-bottom: 1px solid var(--rule); }
 .prose section:last-child { border-bottom: 0; margin-bottom: 0; }
-.prose h2 { font-size: 26px; margin-bottom: var(--s2); scroll-margin-top: 96px; display: flex; gap: 14px; align-items: baseline; }
-.prose h2::before { content: "§" counter(sec); font: 600 13px/1 var(--sans); color: var(--muted); letter-spacing: .04em; flex: none; }
+.prose h2 { font-size: 26px; margin-bottom: var(--s2); scroll-margin-top: 104px; display: flex; gap: 14px; align-items: baseline; }
+.prose h2::before { content: "§" counter(sec); font: italic 400 18px/1 var(--serif); color: var(--gold); flex: none; }
 .prose h3 { margin: var(--s3) 0 var(--s1); }
 .prose p { margin: 0 0 12px; }
 .prose ul { padding-left: 20px; margin: var(--s1) 0 12px; display: grid; gap: 8px; }
-.prose .short { border: 1px solid var(--gold); border-radius: var(--r); background: var(--sheet); padding: var(--s3); margin-bottom: var(--s5); }
-.prose .note { border: 1px solid var(--rule); background: var(--sheet); border-radius: var(--r); padding: var(--s2) var(--s3); margin-bottom: var(--s2); }
+.prose .short { border: 1px solid var(--gold); border-radius: var(--r); background: var(--field); padding: var(--s3); margin-bottom: var(--s5); }
+.prose .note { border: 1px solid var(--rule); background: var(--field); border-radius: var(--r); padding: var(--s2) var(--s3); margin-bottom: var(--s2); }
 
-/* support */
-.support { padding-block: var(--s6) var(--s7); }
+/* support: paper panels on navy */
+.support { padding-block: 0 var(--s7); }
 .support .wrap { display: flex; flex-wrap: wrap; gap: var(--s5); align-items: flex-start; }
-.faq { flex: 999 1 520px; min-width: 0; border: 1px solid var(--edge); border-radius: var(--r); background: var(--sheet); }
+.faq { flex: 999 1 520px; min-width: 0; border: 1px solid var(--rule); border-radius: var(--r); background: var(--sheet); }
 .faq .faq-head { display: grid; grid-template-columns: minmax(0, 1fr) 80px; padding: 14px var(--s3); background: var(--shade); border-bottom: 1px solid var(--rule); }
 .faq .faq-head span { font: 700 11px/1 var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
 .faq .faq-head span:last-child { text-align: right; }
@@ -260,12 +318,14 @@ dl.anchor { margin: var(--s5) auto 0; max-width: 640px; display: grid; grid-temp
 .faq details:last-child { border-bottom: 0; }
 .faq summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: minmax(0, 1fr) 80px; align-items: center; padding: 16px var(--s3); font-weight: 600; color: var(--navy); }
 .faq summary::-webkit-details-marker { display: none; }
-.faq summary::after { content: "Open"; justify-self: end; font: 600 12px/1 var(--sans); color: var(--muted); padding: 6px 8px; border: 1px solid var(--rule); border-radius: 0; }
+.faq summary::after { content: "Open"; justify-self: end; font: 600 12px/1 var(--sans); color: var(--muted); padding: 6px 8px; border: 1px solid var(--rule); border-radius: 0; transition: border-color .6s var(--ease); }
+.faq summary:hover::after { border-color: var(--gold); }
 .faq details[open] summary::after { content: "Close"; border-color: var(--gold); color: var(--navy); }
 .faq details[open] summary { border-bottom: 1px solid var(--rule); }
 .faq .a { padding: var(--s2) var(--s3) var(--s3); color: var(--ink); font-size: 15px; }
 .faq .a p { margin: 0 0 8px; }
-.form-card { flex: 1 1 360px; min-width: 0; border: 1px solid var(--edge); border-radius: var(--r); background: var(--sheet); }
+.faq a, .form-card a { text-decoration-color: var(--gold); }
+.form-card { flex: 1 1 360px; min-width: 0; border: 1px solid var(--rule); border-radius: var(--r); background: var(--sheet); }
 .form-card h2 { font-size: 22px; padding: 18px var(--s3); border-bottom: 1px solid var(--rule); }
 .form-card form { display: grid; gap: 18px; padding: var(--s3); }
 .notice { margin: 0; font-size: 13.5px; color: var(--ink); padding: 12px 14px; border: 1px solid var(--gold); border-radius: var(--r); background: var(--field); }
@@ -283,15 +343,22 @@ dl.anchor { margin: var(--s5) auto 0; max-width: 640px; display: grid; grid-temp
 .error { margin: 0; font-size: 13.5px; color: var(--wine); font-weight: 600; }
 
 /* footer */
-.foot { background: var(--navy); color: var(--on-navy-2); font-size: 13px; padding-block: var(--s4); }
+.foot { background: var(--navy); color: var(--on-navy-2); font-size: 13px; padding-block: var(--s4); border-top: 1px solid var(--gold-band); }
 .foot .wrap { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); align-items: center; }
 .foot nav { display: flex; gap: var(--s3); margin-left: auto; flex-wrap: wrap; }
-.foot a { color: var(--on-navy); text-decoration-color: var(--gold); }
-.foot { border-top: 1px solid var(--gold-band); }
+.foot a { color: var(--on-navy); text-decoration-color: var(--gold-hi); }
 
+@media (max-width: 960px) {
+  .num-grid, .it-ledger { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 760px) {
   .section, .hero { padding-block: var(--s6); }
-  .links { margin-left: 0; width: 100%; gap: var(--s2); }
+  .bar { position: static; } /* stacked, the bar is 200px tall: on a phone it scrolls away instead of covering a quarter of the screen */
+  .links { grid-template-columns: minmax(0, 1fr); justify-items: center; gap: var(--s2); padding-block: var(--s2); }
+  .links .brand { order: -1; }
+  .links .l, .links .r { justify-content: center; gap: var(--s2) var(--s3); flex-wrap: wrap; white-space: normal; }
+  .hero h1 { font-size: 28px; }
+  .section-head h2, .page-head h1 { font-size: 24px; }
   .tabs { margin-left: 0; width: 100%; min-height: 44px; }
   .tabs button:first-child { padding-left: 0; }
   .ws-body { grid-template-columns: minmax(0, 1fr); }
@@ -300,11 +367,9 @@ dl.anchor { margin: var(--s5) auto 0; max-width: 640px; display: grid; grid-temp
   .typology button:nth-of-type(even) { border-left: 1px solid var(--rule); }
   .typology button[aria-pressed="true"] { border-left-color: var(--gold); }
   .busy, .clean { min-height: 320px; padding: var(--s3); }
-  .it-ledger { grid-template-columns: minmax(0, 1fr); }
-  .it-ledger > div { border-left: 0; border-top: 1px solid var(--rule); }
-  .it-ledger > div:first-child { border-top: 0; }
+  .num-grid, .it-ledger { grid-template-columns: minmax(0, 1fr); gap: var(--s2); }
   .band { padding-block: var(--s6); }
-  .band .section-head h2 { font-size: 30px; }
+  .band .section-head h2 { font-size: 26px; }
   .watermark { width: min(256px, 100%); }
   .steps ol { grid-template-columns: minmax(0, 1fr); }
   .steps li { padding-right: 0; }
@@ -316,4 +381,3 @@ dl.anchor { margin: var(--s5) auto 0; max-width: 640px; display: grid; grid-temp
   .card td.eg { border-left: 0; padding-top: 0; }
   .toc { position: static; max-width: none; }
 }
-.page-head .card { margin-top: var(--s3); }
