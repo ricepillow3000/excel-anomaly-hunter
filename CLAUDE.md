@@ -27,6 +27,7 @@ an admin panel, role, operator route or debug switch. The weekly security sweep 
 | 9 | AI (optional) | `ai/client.py` | one call at a time, deadline, cache (answers only), key never echoed (nor the provider's error text), an AI formula may call only `client.SAFE` functions, headers and the reason go in one line each, no typed request = the flagged row only | `test_fix.py`, `test_ai_load.py`, `test_text_checks.py` |
 | 10 | Relay | `relay/worker.js` | invite hash, daily caps counted before Google, only `POST /fix`, model and key set by the relay | `relay/test.mjs`; live Worker from outside: `relay/live-probe.mjs` (CI `relay-live.yml`) |
 | 11 | Pane | `frontend/` | every dynamic `innerHTML` value goes through `esc()`; CSP allows only our files + office.js | `frontend/selfcheck.js`, `e2e/run.mjs` |
+| 12 | Website | `site/` | every link and anchor lands; nothing loads from outside but the GitHub API for the checksum (CSP meta); no HTML built from data; the support link always fits GitHub's limit | `tools/test_site.mjs` (`--browser` under `--e2e`) |
 
 ## Feature map: what the scan finds, where, and its test
 | Finds | Function | Test (grep the name) |
