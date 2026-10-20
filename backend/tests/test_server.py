@@ -88,7 +88,7 @@ def test_ribbon_icons_are_cacheable_but_panel_code_is_not():
     # Office drops ribbon icons served with no-store/no-cache, so icons must be
     # cacheable while the panel's HTML/JS and API stay no-store (stale-JS guard).
     c = client()
-    icon = c.get("/assets/banner-32.png")
+    icon = c.get("/assets/mark-32.png")
     assert icon.status_code == 200
     assert "no-store" not in icon.headers["Cache-Control"]
     assert "no-cache" not in icon.headers["Cache-Control"]

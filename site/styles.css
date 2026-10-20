@@ -44,8 +44,12 @@ code { font-family: var(--mono); font-size: .9em; background: var(--shade); bord
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--navy); }
 .bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 9; background: var(--navy); }
 .bar .wrap { display: flex; align-items: center; gap: var(--s4); min-height: 64px; flex-wrap: wrap; padding-block: var(--s1); }
-.brand { display: flex; align-items: center; gap: 12px; color: var(--on-navy); text-decoration: none; font: 600 15px/1 var(--sans); letter-spacing: .02em; }
+/* the lockup: the mark, a 1px Dark Gold rule, the name set in serif capitals */
+.brand { display: flex; align-items: center; gap: 14px; color: var(--on-navy); text-decoration: none;
+  font: 400 14px/1 var(--serif); letter-spacing: .18em; text-transform: uppercase; }
 .brand img { width: 32px; height: 32px; }
+.brand::before { content: ""; order: 1; width: 1px; height: 24px; background: var(--gold); }
+.brand img { order: 0; } .brand span { order: 2; }
 .links { display: flex; align-items: center; gap: var(--s3); margin-left: auto; flex-wrap: wrap; }
 .links a { color: var(--on-navy-2); text-decoration: none; font: 600 14px/1 var(--sans); padding: 10px 0; border-bottom: 1px solid transparent; }
 .links a:hover { color: var(--on-navy); }

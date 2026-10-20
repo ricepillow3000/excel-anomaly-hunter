@@ -19,7 +19,9 @@ header { position: relative; padding: 15px 16px 13px; border-bottom: 1px solid v
 header .brand { display: flex; align-items: center; gap: 10px; }
 header .mark { width: 32px; height: 32px; flex: none; } /* the logo's own 32 px drawing, 1:1 (docs/design/logo) */
 header .mark img { display: block; }
-h1 { margin: 0; font-family: var(--serif); font-size: 19px; font-weight: 500; color: #fbf6ec; }
+/* the wordmark: serif capitals beside the mark, after a 1px Dark Gold rule (the site's header lockup) */
+h1 { margin: 0; font: 400 14px/1 Georgia, "Times New Roman", serif; letter-spacing: .18em; text-transform: uppercase; color: #fbf6ec;
+  padding-left: 12px; border-left: 1px solid var(--gold); }
 h2 { margin: 20px 0 4px; font-family: var(--serif); font-size: 16px; font-weight: 500; color: var(--navy); }
 h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
 .sheet-name { margin: 7px 0 0; color: rgba(245,236,214,.78); font-size: 12px; }
@@ -59,7 +61,8 @@ button:disabled { cursor: default; opacity: 0.45; }
 
 /* ---- footer: flat navy, Dark Gold rule ---- */
 #pane-footer { position: relative; margin: 28px -16px 0; padding: 20px 16px 16px; background: var(--navy); color: var(--paper); border-top: 1px solid var(--gold); }
-#pane-footer .pf-brand { position: relative; display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 14px; color: var(--paper, #fbf6ec); }
+#pane-footer .pf-brand { position: relative; display: flex; align-items: center; gap: 12px; color: var(--paper, #fbf6ec);
+  font: 400 13px/1 Georgia, "Times New Roman", serif; letter-spacing: .18em; text-transform: uppercase; }
 #pane-footer .pf-brand .mk { width: 32px; height: 32px; flex: none; }
 #pane-footer .pf-brand .mk img { display: block; }
 #pane-footer .pf-tag { position: relative; margin: 9px 0 13px; font-size: 11.5px; color: rgba(245,236,214,.8); line-height: 1.5; max-width: 92%; }
