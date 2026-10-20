@@ -118,7 +118,8 @@ if (mode === "flow") {
 
   // 6b) the strength slider, driven by a real mouse: press the thumb, drag, let go -> re-check; 0 = basics only,
   // saved in the workbook; 5 brings everything back
-  const track = async () => { const b = await page.locator("#strength").boundingBox(); return { x: (v) => b.x + (b.width * v) / 10, y: b.y + b.height / 2 }; };
+  // a mouse can only drag what is on screen: bring the slider into view first, as a person scrolls up to it
+  const track = async () => { await page.locator("#strength").scrollIntoViewIfNeeded(); const b = await page.locator("#strength").boundingBox(); return { x: (v) => b.x + (b.width * v) / 10, y: b.y + b.height / 2 }; };
   const slide = async (from, to) => { const t = await track(); await page.mouse.move(t.x(from), t.y); await page.mouse.down(); await page.mouse.move(t.x(to), t.y, { steps: 8 }); await page.mouse.up(); };
   const level = () => page.getAttribute("#strength", "aria-valuenow");
   const listed5 = (await page.$$("#flagged-list li")).length;

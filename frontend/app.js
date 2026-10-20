@@ -19,12 +19,14 @@ import { autoOn, setAuto, autoUndo, undoAutoFix } from "./features/autofix.js";
 import { notice } from "./components/progress.js";
 import { n } from "./utils/text.js";
 import { initSettings } from "./pages/settings.js";
+import { initAmbient } from "./components/ambient.js";
 
 if (typeof Office !== "undefined") {
   Office.onReady((info) => {
     if (info.host !== Office.HostType.Excel) return;
     show("sideload-msg", false);
     show("app-body");
+    initAmbient(document.querySelector(".pane-hero"));
     $("scan").onclick = act(runScan);
     $("retry-health").onclick = checkHealth;
     $("clear-highlights").onclick = act(clearHighlights);
