@@ -19,7 +19,7 @@ Add a piece only when its "add it when" signal shows up in a measurement, and sa
 |---|---|---|---|
 | Timeouts | pane: 300 s for a scan, an Accept re-check, AI; 120 s otherwise. Engine: an idle socket is dropped at 60 s; an AI request has 240 s in all | `services/api.js`, `server.py`, `ai/client.py` | a measured call takes over half its timeout on a slow PC |
 | Retries + exponential backoff + jitter | own-key Google calls: 2, 4, 8, 16, 30 s plus up to 1 s; `Retry-After` honoured; a "per day" 429 stops at once. After a timeout, the next try may wait until the deadline | `client._wait`, `client._call` | never for the relay (each call counts toward the invite's day) |
-| Idempotency | a scan has no side effects except replacing `latest-scan.csv` (only when "Save each scan for Power BI" is on). A repeated AI question is answered from the cache, never asked again | `client._ask` | an action that charges or writes twice |
+| Idempotency | a scan has no side effects except replacing `latest-scan.csv` and `latest-flags.csv` (only when "Save each scan for Power BI" is on). A repeated AI question is answered from the cache, never asked again | `client._ask` | an action that charges or writes twice |
 | Circuit breaker | not needed: one AI call at a time, each with a deadline | | many calls per second to a dependency that's down |
 | Health check | `/health` (status, version, AI); the installer waits for it; the pane checks it at start; CI smoke-tests it | `server.py`, `app.py`, `build-exe.yml` | |
 | Back pressure | the pane sends one action at a time; one AI call at a time (a second gets "still working"); size caps (2M cells, 256 MB). No scan lock: concurrent scans give no throughput but are correct (24/24 identical), and need two workbooks | `hooks/use-action.js`, `client._LOCK`, `server.MAX_CELLS` | users report "busy" or memory errors with two workbooks |
@@ -30,7 +30,7 @@ Add a piece only when its "add it when" signal shows up in a measurement, and sa
 | Piece | Here | Where | Add more when |
 |---|---|---|---|
 | Race conditions, thread safety | no shared mutable state but two locks; same sheet = same answer, 8 at once = serial | `test_server.py`, stress test | a new module-level cache or RNG |
-| Pessimistic lock | one AI call at a time (non-blocking); one Power BI file write at a time | `client._LOCK`, `server._CSV_LOCK` | |
+| Pessimistic lock | one AI call at a time (non-blocking); one Power BI write (both files) at a time | `client._LOCK`, `server._CSV_LOCK` | |
 | Optimistic lock (compare-and-set) | Accept, Undo and auto-fix write only if the row is still what the scan read | `features/fix.js`, `autofix.js` | |
 | Deadlock | can't happen: two locks, never held together, the AI one never waits | | a second lock held while taking another |
 | Memory leak / GC | none: +0.3 MB per 100 scans; a 2M scan peaks at 813 MB and settles at ~400 MB; longest GC pause 0.39 s | stress test | the engine is seen growing over days |

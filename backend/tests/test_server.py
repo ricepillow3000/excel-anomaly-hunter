@@ -176,6 +176,26 @@ def test_scan_rejects_non_json_body():
     assert resp.status_code == 400
 
 
+def test_every_link_and_file_the_pane_pages_use_is_served():
+    # the pane's Privacy and Support links, and every file its pages load, must open from the engine (a missing one
+    # is a blank page in Excel's pane with nothing on screen to say why); same-page anchors must exist too
+    from pathlib import Path
+    pane = Path(__file__).resolve().parents[2] / "frontend"
+    c = client()
+    for page in ("taskpane.html", "privacy.html", "support.html"):
+        html = (pane / page).read_text(encoding="utf-8")
+        r = c.get(f"/{page}")
+        assert r.status_code == 200 and "text/html" in r.content_type and r.headers["Content-Security-Policy"], page
+        links = re.findall(r'(?:href|src)="([^"]+)"', html) + [s.split()[0] for s in re.findall(r'srcset="([^"]+)"', html)]
+        for link in {u for u in links if not re.match(r"https?://", u)}:
+            target, _, anchor = link.partition("#")
+            if target:
+                assert c.get(f"/{target}").status_code == 200, (page, link)
+            if anchor:
+                assert f'id="{anchor}"' in (pane / (target or page)).read_text(encoding="utf-8"), (page, link)
+    assert {"privacy.html", "support.html"} <= set(re.findall(r'href="([a-z]+\.html)"', (pane / "taskpane.html").read_text(encoding="utf-8")))
+
+
 def test_each_scan_overwrites_the_power_bi_csv(tmp_path):
     import pandas as pd
     out = tmp_path / "latest-scan.csv"
@@ -184,7 +204,8 @@ def test_each_scan_overwrites_the_power_bi_csv(tmp_path):
     for n in (40, 30):  # second scan replaces the first, never appends
         assert c.post("/scan", json={"columns": columns, "rows": rows[:n], "power_bi": True}).status_code == 200
         got = pd.read_csv(out, encoding="utf-8-sig")
-        assert len(got) == n and list(got.columns) == [*columns, "Severity", "Bucket", "Reason", "Magnitude"]
+        assert len(got) == n and list(got.columns) == ["Excel Row", *columns, "Severity", "Bucket", "Reason",
+                                                       "Suggested Fix", "Magnitude"]  # powerbi/README.md's schema
     assert not (tmp_path / "latest-scan.csv.tmp").exists()
     # the user's own "Severity" column is kept; ours gets a clear name instead of overwriting it
     rows = [[f"T{i}", 10 + i % 5, "Open"] for i in range(40)]

@@ -1,5 +1,4 @@
 """Local HTTPS server, 127.0.0.1 only. Engine API + serves panel/ at same origin (no CORS, no build)."""
-import csv
 import datetime
 import ipaddress
 import json
@@ -16,7 +15,6 @@ from collections import Counter
 from pathlib import Path
 
 import anthropic
-import pandas as pd
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -26,6 +24,7 @@ from flask.json.provider import DefaultJSONProvider
 from werkzeug.exceptions import HTTPException
 from werkzeug.serving import WSGIRequestHandler
 
+from anomaly_hunter import powerbi
 from anomaly_hunter.agents import checker, scan_agent
 from anomaly_hunter.ai import client
 from anomaly_hunter.engine.detectors import K
@@ -51,16 +50,10 @@ logging.getLogger("werkzeug").setLevel(logging.WARNING)
 # its connection (no keep-alive), so this never cuts off a scan, however long it runs.
 WSGIRequestHandler.timeout = 60
 MAX_CELLS = 2_000_000  # same as the pane's maxCells (frontend/utils/sheet.js): it never sends more in one scan
-# OWASP CSV injection: text starting with these runs as a formula when the Power BI CSV is opened in Excel
-FORMULA_START = tuple("=+-@\t\r\n＝＋－＠")
+EXCEL_ROWS = 1_048_576  # a sheet's rows: the header can't sit lower
+FORMULA_START, _inert = powerbi.FORMULA_START, powerbi.inert  # the CSV-injection guard lives with the Power BI CSV
 # two workbooks scanning at once shared one temp file: a replace found it gone and a file could mix both (2026-10-16)
 _CSV_LOCK = threading.Lock()
-
-
-def _inert(v):
-    """A leading apostrophe keeps a formula-looking text cell as text (numbers untouched). Partial protection:
-    OWASP notes Excel may drop it after a save and reopen."""
-    return "'" + v if isinstance(v, str) and v.startswith(FORMULA_START) else v
 
 
 def _bad(body):
@@ -110,8 +103,9 @@ def _strength(body):
 
 
 def create_app(scan_csv=None):
-    """scan_csv: the Power BI file (powerbi/anomaly-hunter.pbids). A scan writes it only when the pane says power_bi
-    (off unless the user turns it on) and removes it otherwise. None = no file at all (tests)."""
+    """scan_csv: the Power BI file latest-scan.csv (latest-flags.csv goes beside it; the .pbids files open them). A
+    scan writes both only when the pane says power_bi (off unless the user turns it on) and removes them otherwise.
+    None = no file at all (tests)."""
     app = Flask(__name__, static_folder=str(PANEL), static_url_path="")
     app.json = _JSON(app)
     # Werkzeug reads a body into memory only safely with a cap; 256 MB is far above a 2M-cell sheet (~20 MB measured)
@@ -150,30 +144,29 @@ def create_app(scan_csv=None):
             return {"error": err}, 400
         cols, rows, limits = [str(c) for c in body["columns"]], body["rows"], body.get("limits")  # a year header 2024 is "2024"
         order_by = None if body.get("order_by") is None else str(body["order_by"])
+        # where the table sits, for the Power BI copy's "Excel Row" (the pane's "Row N") and "Sheet"
+        start_row, sheet = body.get("start_row"), body.get("sheet")
+        if not ((start_row is None or type(start_row) is int and 0 <= start_row < EXCEL_ROWS)
+                and (sheet is None or isinstance(sheet, str) and len(sheet) <= 31)):  # Excel's longest sheet name
+            return {"error": "'start_row' must be a row inside the sheet, and 'sheet' a sheet name"}, 400
         try:  # Agent 1, one scan, no stop
             df, out, suggested, used, status, fair = scan_agent.scan(cols, rows, limits, order_by, _strength(body))
         except Exception:  # a bug in the engine: full detail to the log, not pandas internals to the user
             app.logger.exception("scan failed")
             return {"error": "Engine error - details in server.log"}, 500
+        saved = None  # Power BI copy: None = off, True = written, False = it failed (the pane says so)
         if scan_csv and body.get("power_bi") is not True:  # opt-in (2026-10-16): no plain-text copy of the sheet unasked
             with _CSV_LOCK:
-                Path(scan_csv).unlink(missing_ok=True)
-        elif scan_csv:  # Power BI reads this file: no HTTPS/cert in its way, survives engine restarts
-            try:
-                taken = set(df.columns)  # a sheet's own "Severity" or "Reason" column is never overwritten
-                flat = pd.DataFrame(rows, columns=df.columns).assign(**{
-                    (k.capitalize() if k.capitalize() not in taken else f"Anomaly Hunter {k.capitalize()}"): [r[k] for r in out]
-                    for k in ("severity", "bucket", "reason", "magnitude")})
-                flat = flat.map(_inert).rename(columns=_inert)
-                # errors="replace": one odd character (a lone surrogate) becomes "?" instead of failing the scan.
-                # Text is always quoted: Excel in a ";" locale splits an unquoted "Pen;=cmd|..." into a live formula
+                powerbi.remove(scan_csv)
+        elif scan_csv:  # Power BI reads these files: no HTTPS/cert in its way, survives engine restarts
+            try:  # text is always quoted: Excel in a ";" locale splits an unquoted "Pen;=cmd|..." into a live formula
                 with _CSV_LOCK:
-                    flat.to_csv(f"{scan_csv}.tmp", index=False, encoding="utf-8-sig", errors="replace",
-                                quoting=csv.QUOTE_NONNUMERIC)
-                    os.replace(f"{scan_csv}.tmp", scan_csv)  # Power BI never reads a half-written file
-            except (OSError, OverflowError):  # file open elsewhere, or a 309-digit number: the scan still answers
+                    powerbi.write(scan_csv, list(df.columns), rows, out, start_row or 0, sheet or "")
+                saved = True
+            except Exception:  # file open in Power BI, disk full, a bug: the scan still answers; an old copy is removed
                 app.logger.exception("could not write %s", scan_csv)
-        return {"rows": out, "suggested_limits": suggested, "limits": used, "fairness": fair, "summary": {
+                saved = False
+        return {"rows": out, "suggested_limits": suggested, "limits": used, "fairness": fair, "power_bi_saved": saved, "summary": {
             "severity_counts": Counter(r["severity"] for r in out if r["severity"]),
             "bucket_counts": Counter(r["bucket"] for r in out if r["bucket"]),
             "detectors": status, "k": K}}

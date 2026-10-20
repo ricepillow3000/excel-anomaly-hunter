@@ -9,7 +9,17 @@ paths:
       responses: {"200": {$ref: "#/components/responses/Json"}}
   /scan:
     post:
-      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Sheet"}}}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/Sheet"
+                - type: object
+                  properties:  # where the table sits, for the Power BI copy's "Excel Row" and "Sheet"
+                    start_row: {type: integer, minimum: 0, maximum: 1048575, nullable: true}
+                    sheet: {type: string, maxLength: 31, nullable: true}
       responses: {"200": {$ref: "#/components/responses/Json"}, "400": {$ref: "#/components/responses/Error"}}
   /fix:
     post:
@@ -102,7 +112,7 @@ components:
             items: {type: number, nullable: true, minimum: -1.0e300, maximum: 1.0e300, exclusiveMinimum: true, exclusiveMaximum: true}
         strength: {type: integer, minimum: 0, maximum: 10, nullable: true}
         order_by: {nullable: true}  # any column name (or null); _bad() checks it is one of the columns
-        power_bi: {type: boolean, nullable: true}  # keep this scan for Power BI (latest-scan.csv); off unless true
+        power_bi: {type: boolean, nullable: true}  # keep this scan for Power BI (latest-scan.csv, latest-flags.csv); off unless true
   responses:
     Json: {description: OK, content: {application/json: {schema: {type: object}}}}
     Error:

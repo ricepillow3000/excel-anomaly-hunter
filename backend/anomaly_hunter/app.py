@@ -5,7 +5,6 @@
   AnomalyHunter.exe serve        the engine only (what Windows starts at logon)
   AnomalyHunter.exe scan F...    no-Excel mode, same options as `anomaly-hunter scan`
   AnomalyHunter.exe uninstall"""
-import json
 import os
 import shutil
 import subprocess
@@ -13,7 +12,7 @@ import sys
 import time
 from pathlib import Path
 
-from anomaly_hunter import cli, practice, server
+from anomaly_hunter import cli, powerbi, practice, server
 
 APP = "AnomalyHunter.exe"
 ID = "a64b585c-34c7-4447-b3ae-9aa8b3294bcf"  # the add-in's Id in manifest.xml
@@ -153,10 +152,8 @@ def install():
     reg_set(CAT, "Url", unc)
     reg_set(CAT, "Flags", 1)
 
-    # Power BI: double-click this file; it opens the CSV every scan overwrites
-    pbids = home / "anomaly-hunter.pbids"
-    pbids.write_text(json.dumps({"version": "0.1", "connections": [{"details": {"protocol": "file", "address": {
-        "path": str(home / "latest-scan.csv")}}, "options": {}, "mode": "Import"}]}, indent=2), encoding="utf-8")
+    # Power BI: double-click a .pbids; it opens the CSV every scan overwrites (the sheet, or its flagged rows)
+    powerbi.shortcuts(home, home)
 
     reg_set(RUN, "AnomalyHunter", f'"{exe}" serve')  # engine at every logon
     subprocess.Popen([str(exe), "serve"], creationflags=QUIET | 0x00000008)  # noqa: S603 - DETACHED_PROCESS: outlives this window

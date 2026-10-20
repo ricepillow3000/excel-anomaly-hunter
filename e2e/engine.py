@@ -6,4 +6,5 @@ from anomaly_hunter.server import create_app, make_cert, tls_context
 d = Path(sys.argv[1]); make_cert(d)
 client.KEY_FILE = d / "gemini-key.txt"  # never the real key saved on this PC
 client.INVITE_FILE = d / "invite-code.txt"  # nor a real invite code
-create_app().run(host="127.0.0.1", port=5055, ssl_context=tls_context(d / "cert.pem", d / "key.pem"))
+# the Power BI copy goes beside the throwaway cert, as the installed engine puts it beside its own (run.mjs reads it)
+create_app(d / "latest-scan.csv").run(host="127.0.0.1", port=5055, ssl_context=tls_context(d / "cert.pem", d / "key.pem"))
