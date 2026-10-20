@@ -127,7 +127,7 @@ def test_power_bi_csv_never_carries_a_live_formula(tmp_path):
     assert r.status_code == 200
     text = out.read_text(encoding="utf-8-sig")
     assert "'=cmd" in text and "'@SUM" in text and "'＝1+1" in text and "\n=cmd" not in text
-    assert '\n"Pen 0",10,' in text  # numbers stay numbers (no apostrophe, no quotes); text is quoted
+    assert '\n2,"Pen 0",10,' in text  # numbers stay numbers (no apostrophe, no quotes); text is quoted
 
 
 def test_a_semicolon_before_a_formula_never_splits_the_power_bi_csv(tmp_path):

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Excel Anomaly Hunter</title>
 <meta name="claude:viewport-fit-sides" content="cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src https://api.github.com; base-uri 'none'; form-action 'none'">
 <meta name="description" content="Anomaly Hunter reads every row of an Excel sheet on your own PC, flags the figures that don't reconcile and proposes the correction.">
 <link rel="icon" href="assets/mark-32.png" sizes="32x32">
 <link rel="preload" href="assets/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin>
@@ -12,7 +13,7 @@
 </head>
 <body id="home">
 <div class="backdrop" aria-hidden="true"></div>
-<div class="notice-bar"><p>Free for Windows · a scan never leaves your PC · <a href="#download">Download</a></p></div>
+<aside class="notice-bar" aria-label="Announcement"><p>Free for Windows · a scan never leaves your PC · <a href="#download">Download</a></p></aside>
 <header class="bar">
   <div class="wrap">
     <nav class="links" aria-label="Main">
@@ -63,21 +64,21 @@
                   <tbody>
                     <tr><th scope="row">4</th><td>2026-01-08</td><td class="t">Central</td><td>54</td><td>3.99</td><td>215.46</td><td class="why"></td></tr>
                     <tr data-kind="time"><th scope="row"><button type="button" class="rowbtn" aria-expanded="false" aria-controls="m5">5</button></th><td>2026-01-09</td><td class="t">East</td><td>61</td><td>4.99</td><td class="q">304.39</td><td class="why"><i class="q" aria-hidden="true"></i>Total jumped sharply near 2026-01-09</td></tr>
-                    <tr class="skip"><th scope="row"></th><td colspan="6">⋯</td></tr>
+                    <tr class="skip"><td></td><td colspan="6">⋯</td></tr>
                     <tr><th scope="row">10</th><td>2026-01-14</td><td class="t">Central</td><td>50</td><td>1.99</td><td>99.50</td><td class="why"></td></tr>
                     <tr data-kind="recon keying"><th scope="row"><button type="button" class="rowbtn" aria-expanded="false" aria-controls="m11">11</button></th><td>2026-01-15</td><td class="t">East</td><td class="flag">-5</td><td>2.99</td><td class="flag">170.43</td><td class="why"><i aria-hidden="true"></i>Total ≠ Units × UnitCost · <b>Fix: Units 57</b></td></tr>
                     <tr><th scope="row">12</th><td>2026-01-16</td><td class="t">West</td><td>41</td><td>3.99</td><td>163.59</td><td class="why"></td></tr>
-                    <tr class="skip"><th scope="row"></th><td colspan="6">⋯</td></tr>
+                    <tr class="skip"><td></td><td colspan="6">⋯</td></tr>
                     <tr><th scope="row">20</th><td>2026-01-24</td><td class="t">East</td><td>51</td><td>3.99</td><td>203.49</td><td class="why"></td></tr>
                     <tr data-kind="time"><th scope="row"><button type="button" class="rowbtn" aria-expanded="false" aria-controls="m21">21</button></th><td>2026-01-25</td><td class="t">West</td><td>58</td><td>4.99</td><td class="q">289.42</td><td class="why"><i class="q" aria-hidden="true"></i>Total jumped sharply near 2026-01-25</td></tr>
                     <tr data-kind="recon keying time"><th scope="row"><button type="button" class="rowbtn" aria-expanded="false" aria-controls="m22">22</button></th><td>2026-01-26</td><td class="t">Central</td><td class="flag">7777</td><td>1.99</td><td class="flag">83.58</td><td class="why"><i aria-hidden="true"></i>Total ≠ Units × UnitCost · <b>Fix: Units 42</b></td></tr>
                     <tr><th scope="row">23</th><td>2026-01-27</td><td class="t">East</td><td>49</td><td>2.99</td><td>146.51</td><td class="why"></td></tr>
-                    <tr class="skip"><th scope="row"></th><td colspan="6">⋯</td></tr>
+                    <tr class="skip"><td></td><td colspan="6">⋯</td></tr>
                     <tr><th scope="row">30</th><td>2026-02-03</td><td class="t">West</td><td>52</td><td>1.99</td><td>103.48</td><td class="why"></td></tr>
                     <tr data-kind="label"><th scope="row"><button type="button" class="rowbtn" aria-expanded="false" aria-controls="m31">31</button></th><td>2026-02-04</td><td class="t flag">east&nbsp;</td><td>59</td><td>2.99</td><td>176.41</td><td class="why"><i aria-hidden="true"></i>"east " looks like "East" · <b>Fix: East</b></td></tr>
-                    <tr class="skip"><th scope="row"></th><td colspan="6">⋯</td></tr>
+                    <tr class="skip"><td></td><td colspan="6">⋯</td></tr>
                     <tr data-kind="time"><th scope="row"><button type="button" class="rowbtn" aria-expanded="false" aria-controls="m41">41</button></th><td>2026-02-14</td><td class="t">East</td><td>60</td><td>4.99</td><td class="q">299.40</td><td class="why"><i class="q" aria-hidden="true"></i>Total jumped sharply near 2026-02-14</td></tr>
-                    <tr class="skip"><th scope="row"></th><td colspan="6">⋯</td></tr>
+                    <tr class="skip"><td></td><td colspan="6">⋯</td></tr>
                     <tr data-kind="time"><th scope="row"><button type="button" class="rowbtn" aria-expanded="false" aria-controls="m57">57</button></th><td>2026-03-02</td><td class="t">West</td><td>57</td><td>4.99</td><td class="q">284.43</td><td class="why"><i class="q" aria-hidden="true"></i>Total jumped sharply near 2026-03-02</td></tr>
                   </tbody>
                 </table>
@@ -256,7 +257,7 @@
       <div class="steps">
         <span class="label">Three steps past Windows' checks</span>
         <ol>
-          <li><div><b>Check the file.</b> In PowerShell, in your Downloads folder, run the line below and compare the result with the SHA-256 above.<code class="line">Get-FileHash .\AnomalyHunter.exe -Algorithm SHA256</code></div></li>
+          <li><div><b>Check the file.</b> In PowerShell, in your Downloads folder, run the line below and compare the result with the SHA-256 above.<code class="line" tabindex="0">Get-FileHash .\AnomalyHunter.exe -Algorithm SHA256</code></div></li>
           <li><div><b>Unblock it.</b> Right-click the file › <b>Properties</b> › tick <b>Unblock</b> › <b>OK</b>, then double-click it. Or, at "Windows protected your PC": <b>More info</b> › <b>Run anyway</b>. Click <b>Yes</b> to trust its certificate, which works only for 127.0.0.1, this PC.</div></li>
           <li><div><b>Add it to Excel.</b> <b>Home › Add-ins › More Add-ins › SHARED FOLDER › Anomaly Hunter › Add</b>. You do this once.</div></li>
         </ol>

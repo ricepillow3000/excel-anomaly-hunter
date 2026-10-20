@@ -172,7 +172,7 @@ jobs:
         shell: pwsh
         run: |
           npm install --prefix "$env:RUNNER_TEMP\pw" playwright@1.56.1 --no-save --silent
-          $env:NODE_PATH = "$env:RUNNER_TEMP\pw\node_modules"; $env:SHOTS = "$env:RUNNER_TEMP\proof"
+          $env:NODE_PATH = "$env:RUNNER_TEMP\pw\node_modules"; $env:SHOTS = "$env:RUNNER_TEMP\proof"; $env:AH_DATA = "$env:LOCALAPPDATA\AnomalyHunter"
           Set-Location tests\e2e
           node run.mjs flow
           if ($LASTEXITCODE) { throw "pane flow failed" }

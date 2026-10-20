@@ -29,8 +29,9 @@ export async function runScan(auto) { // auto === false: the re-check right afte
   }
   busy(`Step 2 of 3: checking ${n(s.rows.length)} rows…`);
   const level = strength();
+  // start_row and sheet: where the table sits, so the Power BI copy's "Excel Row" is the row number shown here
   const body = await post("/scan", { columns: s.columns, rows: s.rows, limits: await getLimits(), order_by: null, strength: level,
-    power_bi: powerBiOn() }, 300);
+    power_bi: powerBiOn(), start_row: s.startRow, sheet: String(s.sheet).slice(0, 31) }, 300);
   state.lastStrength = level; // Agent 3 judges fixes at the level this scan used
   state.lastScan = s;
   state.lastRows = body.rows;
@@ -42,7 +43,8 @@ export async function runScan(auto) { // auto === false: the re-check right afte
   await paint(body.rows, s);
   await watchSelection(s.sheet, onSelect);
   const secs = Math.max(1, Math.round((Date.now() - t0) / 1000));
-  notice(`Done in ${secs} second${secs === 1 ? "" : "s"}.`);
+  notice(`Done in ${secs} second${secs === 1 ? "" : "s"}.` + (body.power_bi_saved === false
+    ? " The Power BI copy couldn't be saved (is latest-scan.csv open in another program?) - details in server.log." : ""));
   // a checked workbook reopens with this pane open (Office autoopen; manifest TaskpaneId)
   Office.context.document.settings.set("Office.AutoShowTaskpaneWithDocument", true);
   Office.context.document.settings.saveAsync();

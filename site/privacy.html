@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Anomaly Hunter Privacy</title>
 <meta name="claude:viewport-fit-sides" content="cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src https://api.github.com; base-uri 'none'; form-action 'none'">
 <link rel="icon" href="assets/mark-32.png" sizes="32x32">
 <link rel="preload" href="assets/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="styles.css">
@@ -12,7 +13,7 @@
 <body>
 <!-- the sections below are the pane's own Privacy page (frontend/privacy.html), word for word, plus "This website";
      a change there is a change here (test_both_privacy_pages_name_every_place_data_goes_and_every_file_the_app_keeps) -->
-<div class="notice-bar"><p>Free for Windows · a scan never leaves your PC · <a href="index.html#download">Download</a></p></div>
+<aside class="notice-bar" aria-label="Announcement"><p>Free for Windows · a scan never leaves your PC · <a href="index.html#download">Download</a></p></aside>
 <header class="bar">
   <div class="wrap">
     <nav class="links" aria-label="Main">
@@ -78,11 +79,12 @@
           <li><strong>ca.pem, cert.pem, key.pem</strong>: the certificate the engine uses for HTTPS on this PC.</li>
           <li><strong>addin\manifest.xml</strong>: the file that lists Anomaly Hunter in Excel.</li>
           <li><strong>Start here.xlsx</strong>: the practice workbook.</li>
-          <li><strong>anomaly-hunter.pbids</strong>: a shortcut that opens latest-scan.csv in Power BI.</li>
-          <li><strong>latest-scan.csv</strong>: only if you turn on "Save each scan for Power BI" (off unless you turn it on). It holds a plain-text copy of every cell of the last sheet you scanned, plus each row's result. Each scan replaces it. After you turn the option off, the next scan deletes it.</li>
+          <li><strong>anomaly-hunter.pbids</strong> and <strong>anomaly-hunter-flags.pbids</strong>: shortcuts that open latest-scan.csv and latest-flags.csv in Power BI. They hold only those files' paths.</li>
+          <li><strong>latest-scan.csv</strong>: only if you turn on "Save each scan for Power BI" (off unless you turn it on). It holds a plain-text copy of every cell of the last sheet you scanned, with each row's number, result and suggested fix. Each scan replaces it. After you turn the option off, the next scan deletes it.</li>
+          <li><strong>latest-flags.csv</strong>: only with the same option on. It holds the sheet's name, the time of the scan, and the number, result and suggested fix of each flagged row (results and fixes can quote your cells). It is kept and deleted together with latest-scan.csv.</li>
         </ul>
         <h3>If you installed an invite kit with install.bat</h3>
-        <p>John shares kits by a Google Drive or OneDrive link. A kit runs from its own folder: <code>install.bat</code> downloads the Python packages it needs from PyPI, the Python package site (PyPI sees your IP address), and keeps them in a <code>.venv</code> folder there, with the Power BI shortcut in its <code>powerbi</code> folder. It copies the kit's invite code into the folder above. A kit has no AnomalyHunter.exe, addin\manifest.xml or Start here.xlsx: Excel lists the add-in from the kit's <code>frontend</code> folder. To uninstall a kit, run <code>install.bat /u</code>, then delete the kit folder.</p>
+        <p>John shares kits by a Google Drive or OneDrive link. A kit runs from its own folder: <code>install.bat</code> downloads the Python packages it needs from PyPI, the Python package site (PyPI sees your IP address), and keeps them in a <code>.venv</code> folder there, with the Power BI shortcuts in its <code>powerbi</code> folder. It copies the kit's invite code into the folder above. A kit has no AnomalyHunter.exe, addin\manifest.xml or Start here.xlsx: Excel lists the add-in from the kit's <code>frontend</code> folder. To uninstall a kit, run <code>install.bat /u</code>, then delete the kit folder.</p>
         <h3>Elsewhere on your PC</h3>
         <p>If you installed AnomalyHunter.exe, it unpacks itself into a temporary folder in <code>%TEMP%</code> each time it starts. If the engine is stopped by force, that folder can be left behind. Install removes the "downloaded from the internet" mark from its own copy of the app, so Windows doesn't warn at every logon.</p>
         <h3>In your workbook</h3>

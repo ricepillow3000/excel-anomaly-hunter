@@ -21,6 +21,12 @@ class H(BaseHTTPRequestHandler):
             ans = {"technique": "Excel pros mark impossible values with Data Validation and fix them at the source.",
                    "formula": "=COUNTIF(C:C,\"<0\")", "steps": ["Select the column", "Data > Data Validation", "Allow decimals >= 0"]}
             return self.reply(body, None, content + [{"type": "text", "text": json.dumps(ans)}])
+        if "distinct values of some text columns" in prompt:  # /odd-text: a hostile answer the engine and pane must tame
+            values = json.loads(prompt.splitlines()[1])
+            col = next(iter(values))
+            ans = {"odd": [{"column": col, "value": values[col][0], "why": "<img src=x onerror=window.__pwned=1> a city"},
+                           {"column": col, "value": "Atlantis", "why": "not in the sheet at all"}]}
+            return self.reply(body, ans)
         if "Flagged row" not in prompt:  # /triage
             ans = {"results": [{"row_index": int(i), "verdict": "broken-weird", "reason": "Looks like a typo.",
                                 "safe_action": "add_note", "suggested_action_detail": "Check the source."}

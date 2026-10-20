@@ -38,6 +38,8 @@ jobs:
         run: node relay/test.mjs
       - name: Pane logic self-check
         run: node frontend/selfcheck.js
+      - name: Website links and scripts (every link lands, nothing loads from outside, no HTML from data)
+        run: node tools/test_site.mjs
       # main's ruleset needs no approval: nothing else in CI stops a change that writes harmful fixes (2026-10-16)
       - name: Accuracy benches (no crash, no harmful fix, no new Medium+ false alarm)
         run: |

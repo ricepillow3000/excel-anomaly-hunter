@@ -2,25 +2,6 @@
   "detector": {
     "ignoreRules": [],
     "ignoreFiles": [],
-    "ignoreValues": [
-      {
-        "rule": "low-contrast",
-        "value": "*",
-        "files": [
-          "site/tool-preview.html"
-        ],
-        "createdAt": "2026-10-17T00:29:57.583Z",
-        "reason": "3-critic review computed every real text pair >=4.5:1; residual flag is a gradient-sampler FP (header text sits on the dark left scrim, ~7:1; checker samples the bright sun pixel). Verified readable in browser."
-      },
-      {
-        "rule": "tiny-text",
-        "value": "*",
-        "files": [
-          "site/tool-preview.html"
-        ],
-        "createdAt": "2026-10-17T00:29:57.717Z",
-        "reason": "11.5px .sheet/.note labels are intentional and acceptable for a dense 376px Office task pane; a11y critic confirmed."
-      }
-    ]
+    "ignoreValues": []
   }
 }
