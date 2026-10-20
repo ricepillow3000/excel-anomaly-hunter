@@ -38,6 +38,8 @@
     </section>
 
     <section id="main-ui" hidden>
+      <div class="pane-hero">
+      <p class="eyebrow">Excel add-in · checks run on this PC</p>
       <button id="scan" class="primary">Find problems in this sheet</button>
       <div class="strength">
         <div class="strength-head"><span id="strength-label">How hard to look</span><b id="strength-val">5 of 10</b></div>
@@ -48,6 +50,7 @@
         </div>
         <div class="slider-scale"><span>Basics</span><span>Recommended</span><span>Strictest</span></div>
         <p id="strength-hint" class="hint"></p>
+      </div>
       </div>
       <button id="undo-auto" class="secondary" hidden>Undo auto-fixes</button>
 
@@ -123,6 +126,8 @@
         <p id="ai-off" class="hint">Want AI help with fixes? Turn it on for free under <b>AI help</b> at the bottom.</p>
       </section>
 
+      <div class="settings-band">
+      <p class="band-label">Options</p>
       <details class="more">
         <summary>Auto-fix (optional)</summary>
         <label class="check"><input type="checkbox" id="auto-fix" /> Fix exact mistakes by itself</label>
@@ -152,14 +157,15 @@
         <p class="hint">Ask AI sends the column names, the row you ask about, up to 5 rows above and below it, its formulas and anything you type; Check words with AI sends your text columns' different values. Both go to Google (through John's relay if you use an invite code). Google's free tier may use them to improve its products, so don't ask AI about private data. The key is stored only on this computer.</p>
         <p class="hint"><a href="privacy.html" target="_blank" rel="noopener">What leaves your PC</a> · <a href="support.html" target="_blank" rel="noopener">Questions or problems</a></p>
       </details>
+      </div>
 
       <footer id="pane-footer">
         <div class="pf-brand"><span class="mk"><img src="assets/mark-32.png" srcset="assets/mark-64.png 2x" width="32" height="32" alt=""></span>Anomaly Hunter</div>
         <p class="pf-tag">Scans run on this PC. Only AI help sends part of a sheet.</p>
         <div class="pf-links"><a href="privacy.html" target="_blank" rel="noopener">Privacy</a><a href="support.html" target="_blank" rel="noopener">Support</a></div>
+        <p id="engine-version" class="pf-version"></p>
       </footer>
     </section>
-    <p id="engine-version" class="hint pad"></p>
   </main>
 </body>
 </html>
