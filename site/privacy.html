@@ -11,14 +11,15 @@
 <body>
 <!-- the sections below are the pane's own Privacy page (frontend/privacy.html), word for word, plus "This website";
      a change there is a change here (test_both_privacy_pages_name_every_place_data_goes_and_every_file_the_app_keeps) -->
-<header class="top">
+<header class="bar">
   <div class="wrap">
     <a class="brand" href="index.html"><img src="assets/banner-64.png" width="32" height="32" alt="">Anomaly Hunter</a>
-    <nav class="nav" aria-label="Main">
+    <nav class="links" aria-label="Main">
       <a href="index.html">Product</a>
-      <a href="index.html#download">Download</a>
-      <a href="privacy.html" aria-current="page">Privacy</a>
+      <a href="index.html#checks">Checks</a>
+      <a href="privacy.html" aria-current="page">Privacy &amp; security</a>
       <a href="support.html">Support</a>
+      <a class="btn-trim" href="index.html#download">Download</a>
     </nav>
   </div>
 </header>
@@ -26,16 +27,25 @@
 <main>
   <section class="page-head">
     <div class="wrap">
-      <span class="eyebrow">Privacy</span>
+      <span class="label">Privacy &amp; security</span>
       <h1>What stays on your PC, and what leaves it.</h1>
-      <p>Every sentence here describes what the code does. Last updated 20 October 2026.</p>
+      <p>Every sentence here describes what the code does, and the code is public. Last updated 20 October 2026.</p>
+      <table class="card" aria-label="Where each part runs">
+        <thead><tr><th scope="col">Part</th><th scope="col">Where it runs</th><th scope="col">What leaves your PC</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">The scan</th><td>On your PC, in memory</td><td class="eg">Nothing</td></tr>
+          <tr><th scope="row">Ask AI, Check words with AI</th><td>Google's Gemini, only when you click; through John's relay on Cloudflare with an invite code</td><td class="eg">The parts listed in §3</td></tr>
+          <tr><th scope="row">Your AI key</th><td>Stored on your PC; used only to ask Google</td><td class="eg">Sent to Google with each request</td></tr>
+          <tr><th scope="row">This website</th><td>Static pages, no cookies or analytics</td><td class="eg">Your IP address, to its host and to GitHub for the download</td></tr>
+        </tbody>
+      </table>
     </div>
   </section>
 
-  <section class="band chalk doc">
+  <section class="doc">
     <div class="wrap">
     <nav class="toc" aria-label="On this page">
-      <b>On this page</b>
+      <b>Contents</b>
       <a href="#intro">Who makes it</a>
       <a href="#collect">What stays on your PC</a>
       <a href="#use">What AI help sends</a>
@@ -155,9 +165,9 @@
     <span>Anomaly Hunter · made by one person · free, with no warranty</span>
     <nav aria-label="Footer">
       <a href="index.html#download">Download</a>
-      <a href="privacy.html">Privacy</a>
+      <a href="privacy.html">Privacy &amp; security</a>
       <a href="support.html">Support</a>
-      <a href="https://github.com/ricepillow3000/excel-anomaly-hunter">Source on GitHub</a>
+      <a href="https://github.com/ricepillow3000/excel-anomaly-hunter">Source</a>
     </nav>
   </div>
 </footer>

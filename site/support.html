@@ -9,14 +9,15 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<header class="top">
+<header class="bar">
   <div class="wrap">
     <a class="brand" href="index.html"><img src="assets/banner-64.png" width="32" height="32" alt="">Anomaly Hunter</a>
-    <nav class="nav" aria-label="Main">
+    <nav class="links" aria-label="Main">
       <a href="index.html">Product</a>
-      <a href="index.html#download">Download</a>
-      <a href="privacy.html">Privacy</a>
+      <a href="index.html#checks">Checks</a>
+      <a href="privacy.html">Privacy &amp; security</a>
       <a href="support.html" aria-current="page">Support</a>
+      <a class="btn-trim" href="index.html#download">Download</a>
     </nav>
   </div>
 </header>
@@ -24,22 +25,23 @@
 <main>
   <section class="page-head">
     <div class="wrap">
-      <span class="eyebrow">Support</span>
-      <h1>Get help.</h1>
-      <p>Most problems take a minute to fix. Check the answers first. Anomaly Hunter is a free project run by one person, so there is no reply-time promise.</p>
+      <span class="label">Support</span>
+      <h1>Answers first, then a direct line.</h1>
+      <p>Most questions are answered below. Anomaly Hunter is a free project run by one person, so there is no reply-time promise.</p>
     </div>
   </section>
 
-  <section class="band chalk support" aria-label="Answers and contact">
+  <section class="support" aria-label="Answers and contact">
     <div class="wrap">
       <div class="faq">
+        <div class="faq-head"><span>Question</span><span>Answer</span></div>
         <details open>
           <summary>The pane says "The checker isn't running"</summary>
           <div class="a"><p>Wait 30 seconds, then press <b>Try again</b>. Still stuck? Double-click <code>AnomalyHunter.exe</code> again. It asks you to close Excel, repairs the install, starts the checker and opens Excel again.</p></div>
         </details>
         <details>
           <summary>Windows says "Windows protected your PC"</summary>
-          <div class="a"><p>The app is not code-signed yet, so Windows warns about it. Click <b>More info</b>, then <b>Run anyway</b>.</p></div>
+          <div class="a"><p>The app is not code-signed yet, so Windows warns about it. Click <b>More info</b>, then <b>Run anyway</b>. To check the file first, compare its SHA-256 with the one on the <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest">release page</a>.</p></div>
         </details>
         <details>
           <summary>How do I add it to Excel?</summary>
@@ -51,7 +53,7 @@
         </details>
         <details id="uninstall">
           <summary>How do I uninstall?</summary>
-          <div class="a"><p>Press Windows+R, paste <code>"%LOCALAPPDATA%\AnomalyHunter\AnomalyHunter.exe" uninstall</code> and press Enter. It removes the add-in, the checker, its certificate and its files, except the app file itself, which you can then delete. It is not listed in Windows "Installed apps". The <a href="privacy.html#rights">Privacy page</a> lists exactly what it removes.</p></div>
+          <div class="a"><p>Press Windows+R, paste <code>"%LOCALAPPDATA%\AnomalyHunter\AnomalyHunter.exe" uninstall</code> and press Enter. It removes the add-in, the checker, its certificate and its files, except the app file itself, which you can then delete. It is not listed in Windows "Installed apps". The <a href="privacy.html#rights">privacy page</a> lists exactly what it removes.</p></div>
         </details>
         <details>
           <summary>Where is AI help, and what does Remove key do?</summary>
@@ -63,14 +65,14 @@
         </details>
         <details>
           <summary>Is my data private?</summary>
-          <div class="a"><p>A scan runs on your PC and sends nothing. Only <b>Ask AI</b> and <b>Check words with AI</b> send part of your sheet: to Google, or through John's relay to Google if you use an invite code. The <a href="privacy.html">Privacy page</a> says exactly what.</p></div>
+          <div class="a"><p>A scan runs on your PC and sends nothing. Only <b>Ask AI</b> and <b>Check words with AI</b> send part of your sheet: to Google, or through John's relay to Google if you use an invite code. The <a href="privacy.html">privacy page</a> says exactly what.</p></div>
         </details>
       </div>
 
-      <section class="contact" aria-labelledby="contact-title">
+      <section class="form-card" aria-labelledby="contact-title">
         <h2 id="contact-title">Ask a question</h2>
         <form id="ticket" novalidate>
-          <p class="warn"><b>Public.</b> This fills in a question on GitHub for you; nothing is sent until you press Submit there. You need a free GitHub account. Never paste real customer data, your AI key or your invite code. John will never ask for them.</p>
+          <p class="notice"><b>Public.</b> This fills in a question on GitHub for you; nothing is sent until you press Submit there. You need a free GitHub account. Never paste client data, account numbers, your AI key or your invite code. John will never ask for them.</p>
           <div class="field">
             <label for="topic">What is this about?</label>
             <select id="topic" name="topic">
@@ -86,7 +88,7 @@
           </div>
           <div class="field">
             <label for="version">Engine version</label>
-            <input id="version" name="version" type="text" maxlength="60" placeholder="v0.1.77 (2026-10-20)">
+            <input id="version" name="version" type="text" maxlength="60" placeholder="v0.1.79 (2026-10-20)">
             <span class="hint">The Engine line at the bottom of the pane.</span>
           </div>
           <div class="field">
@@ -95,14 +97,14 @@
             <span class="hint">Made-up values only.</span>
           </div>
           <label class="confirm" for="clean"><input id="clean" type="checkbox" required><span>This contains no AI key, no invite code and no real or private data.</span></label>
-          <button class="btn btn-red" type="submit">Prepare my question</button>
+          <button class="btn btn-navy" type="submit">Prepare my question</button>
           <div class="result" id="result" hidden>
             <span>Ready. Open it on GitHub, check it, and press Submit there.</span>
-            <a class="btn btn-line" id="open" href="https://github.com/ricepillow3000/excel-anomaly-hunter/issues/new?template=support_request.yml" target="_blank" rel="noopener">Open on GitHub</a>
+            <a class="btn btn-plain" id="open" href="https://github.com/ricepillow3000/excel-anomaly-hunter/issues/new?template=support_request.yml" target="_blank" rel="noopener">Open on GitHub</a>
           </div>
-          <p class="warn" id="missing" hidden role="alert"></p>
+          <p class="error" id="missing" hidden role="alert"></p>
         </form>
-        <noscript><p class="warn">Without JavaScript, use the <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/issues/new?template=support_request.yml">GitHub question form</a>.</p></noscript>
+        <noscript><p class="notice">Without JavaScript, use the <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/issues/new?template=support_request.yml">GitHub question form</a>.</p></noscript>
       </section>
     </div>
   </section>
@@ -113,7 +115,7 @@
     <span>Anomaly Hunter · made by one person · free, with no warranty</span>
     <nav aria-label="Footer">
       <a href="index.html#download">Download</a>
-      <a href="privacy.html">Privacy</a>
+      <a href="privacy.html">Privacy &amp; security</a>
       <a href="support.html">Support</a>
       <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/issues">Past questions</a>
     </nav>
