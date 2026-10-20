@@ -32,3 +32,6 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["backend"]
 include = ["anomaly_hunter*"]
+
+[tool.setuptools.package-data]
+anomaly_hunter = ["ai/bias_rules.json"]  # the measured bias rules (tools/bias_sources.py); the exe gets them from the spec

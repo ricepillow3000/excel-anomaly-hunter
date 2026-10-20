@@ -18,6 +18,8 @@ import anthropic
 from openpyxl.utils import column_index_from_string, get_column_letter
 from pydantic import BaseModel, ValidationError
 
+from anomaly_hunter.ai import bias_context
+
 MODEL = "claude-opus-5"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"  # OpenAI-compatible
 GEMINI_MODEL = "gemini-3.8-flash"  # free tier, no credit card (aistudio.google.com)
@@ -144,9 +146,10 @@ def _one_line(text):
     return " ".join(str(text).splitlines())
 
 
-def _fix_prompt(columns, rows, i, start_row, start_col, reason, intent, formulas=None, ctx=5, keep=None, cut=None, flagged=None):
+def _fix_prompt(columns, rows, i, start_row, start_col, reason, intent, formulas=None, ctx=5, keep=None, cut=None, flagged=None, notes=""):
     """keep = column indexes to show (default all), ctx = rows shown above/below. Cells longer than CELL_CAP are cut
-    (their addresses go into `cut`: the AI may not rewrite a cell it only saw part of) - never the flagged cell."""
+    (their addresses go into `cut`: the AI may not rewrite a cell it only saw part of) - never the flagged cell.
+    notes = our own lines after the reason (bias_context.block), never sheet text; "" = none."""
     keep = range(len(columns)) if keep is None else keep
     letters = {j: get_column_letter(1 + start_col + j) for j in keep}
     top = start_row + 1  # 1-based sheet row of the header
@@ -172,7 +175,8 @@ def _fix_prompt(columns, rows, i, start_row, start_col, reason, intent, formulas
         f"Flagged {line(i)}\n"
         + (f"Formulas in that row: {'; '.join(calc)} - fix their inputs rather than overwrite them, unless asked.\n" if calc else "")
         + f"Why it was flagged: {_one_line(reason or 'unknown')[:500]}\n"
-        "Nearby rows for context:\n" + ("\n".join(near) or "(left out to keep the request small)") + "\n\n"
+        + notes
+        + "Nearby rows for context:\n" + ("\n".join(near) or "(left out to keep the request small)") + "\n\n"
         f"User's request: {intent.strip() or 'Recommend the single best fix for this flagged row.'}\n\n"
         "Rules: each change is one cell (A1 style, e.g. D7) and the exact text to enter in it - an Excel formula "
         "(English function names, comma separators, start with =) or a plain value. Prefer a formula when the value "
@@ -218,6 +222,11 @@ def _wire(prompt, schema=FIX_SCHEMA, name="fix"):
 
 def _fits(prompt, schema=FIX_SCHEMA, name="fix"):
     return len(_wire(prompt, schema, name)) <= BUDGET
+
+
+# Real-world notes in Ask AI's prompt (bias_context): off until backend/bench/ai_eval.py arm "bias_context" wins on
+# dev and held-out (CLAUDE.md: an AI prompt or its context changes only with eval numbers). Switching on = on=True.
+_fix_prompt = bias_context.with_rules(_fix_prompt, _fits, on=False)
 
 
 def _cache_dir():

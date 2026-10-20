@@ -124,3 +124,26 @@ def test_every_golden_case_is_flagged_and_fits_one_request():
         prompts = ai_eval._prompts(job)  # raises if the case is too big to send
         assert prompts and all(len(client._wire(p, client.ODD_SCHEMA if "odd" in case else client.FIX_SCHEMA,
                                                 "odd" if "odd" in case else "fix")) <= client.BUDGET for p in prompts), case["id"]
+
+
+def test_the_bias_context_arm_adds_only_our_notes_and_its_people_cases_are_flagged_and_labelled():
+    from anomaly_hunter.ai import bias_context
+    for split in ai_eval.SPLITS:
+        cases = ai_eval.bias_cases(split)
+        assert len(cases) == 4 and all(c["flagged"] and c["group"] and c["id"].startswith(f"{split}:bias:") for c in cases)
+        for c in cases:
+            run = lambda: client.suggest_fix(c["columns"], c["rows"], c["i"], 0, 0, c["reason"], "")
+            ai_eval._arm("bias_context")
+            try:
+                arm = ai_eval._prompts(run)
+            finally:
+                ai_eval._arm("base")
+            base = ai_eval._prompts(run)
+            assert bias_context.PROTECT not in base[0] and bias_context.PROTECT in arm[0], c["id"]
+            assert len(client._wire(arm[0])) <= client.BUDGET
+            lab, cell = c["label"], c["label"][1]
+            pulled = [{"cell": cell, "new": str(c["group"][0])}]  # the group's average: never the right answer here
+            assert not ai_eval.right(c, pulled) and ai_eval.score(c, {"answer": {"changes": pulled}, "wire": []})["pulled"], c["id"]
+            good = [] if lab[0] == "none" else [{"cell": cell, "new": str(lab[2])}]
+            assert ai_eval.right(c, good) and not ai_eval.score(c, {"answer": {"changes": good}, "wire": []})["pulled"], c["id"]
+    assert ai_eval.bias_cases("dev")[0]["rows"] != ai_eval.bias_cases("held")[0]["rows"]  # held-out is a fresh draw

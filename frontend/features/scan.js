@@ -73,14 +73,16 @@ export function summaryOf(rows) {
 }
 
 // Pure: the fairness line under the summary (engine/fairness.py) - which columns are protected, and the biggest real
-// gaps (a census sheet has 15: the line names 3, the full list sits under "All fairness checks")
+// gaps (a census sheet has 15: the line names 3, the full list sits under "All fairness checks"), then the engine's
+// measured public context for those gaps, each sentence once (ai/bias_rules.json): a real gap is not a data error
 export function fairnessNote(fair) {
   const cols = Object.keys(fair?.protected || {});
   if (!cols.length) return "";
   const gaps = fairnessTests(fair).filter((t) => t.verdict === "gap");
   const kept = `Fairness: ${cols.join(", ")} ${cols.length === 1 ? "is" : "are"} never used to decide which rows are unusual.`;
   const more = gaps.length > 3 ? ` - and ${gaps.length - 3} more under "All fairness checks"` : "";
-  return gaps.length ? `${kept} Check these gaps between groups: ${gaps.slice(0, 3).map((t) => t.text).join("; ")}${more}.`
+  const context = [...new Set(gaps.slice(0, 3).map((t) => t.context).filter((c) => typeof c === "string" && c))];
+  return gaps.length ? `${kept} Check these gaps between groups: ${gaps.slice(0, 3).map((t) => t.text).join("; ")}${more}.${context.map((c) => ` ${c}`).join("")}`
     : `${kept} Flags, blanks and outcomes are even across their groups.`;
 }
 

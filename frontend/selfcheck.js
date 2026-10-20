@@ -14,6 +14,14 @@ assert.equal(fairnessNote({ protected: { Age: "demographic", Location: "location
   "Fairness: Age, Location are never used to decide which rows are unusual. Flags, blanks and outcomes are even across their groups.");
 assert.equal(fairnessNote({ protected: { Location: "location" }, tests: [{ verdict: "gap", text: "Location Phoenix: 60% blank Income vs 3% for Chicago - a real gap, check why" }] }),
   "Fairness: Location is never used to decide which rows are unusual. Check these gaps between groups: Location Phoenix: 60% blank Income vs 3% for Chicago - a real gap, check why.");
+// a gap the engine has measured public context for: the gap first, then its context sentence, once per sentence
+const ctx = "For comparison, in public US census data 30.4% of men and 10.9% of women earn over 50K.";
+assert.equal(fairnessNote({ protected: { sex: "demographic" }, tests: [
+  { verdict: "gap", text: "sex Male: 30% income >50K vs 11% for Female - a real gap, check why", context: ctx, groups: { a: [9, 0.3], b: [9, 0.1] } },
+  { verdict: "gap", text: "sex Female: 8% missing occupation vs 5% for Male - a real gap, check why", context: ctx, groups: { a: [9, 0.08], b: [9, 0.05] } },
+  { verdict: "even", text: "x", context: "never shown for an even test" }] }),
+  "Fairness: sex is never used to decide which rows are unusual. Check these gaps between groups: sex Male: 30% income >50K vs 11% for Female - a real gap, check why; " +
+  `sex Female: 8% missing occupation vs 5% for Male - a real gap, check why. ${ctx}`);
 // many gaps (census: 15): the 3 widest in the line, the rest in the list; the list puts gaps first, widest first
 const gap = (w, text) => ({ verdict: "gap", text, groups: { a: [50, 0.5 + w], b: [50, 0.5] } });
 const census = { protected: { sex: "demographic" }, tests: [{ verdict: "even", text: "e", groups: { a: [9, 0.9], b: [9, 0] } }, gap(0.1, "g1"), gap(0.4, "g4"), gap(0.2, "g2"), gap(0.3, "g3")] };
