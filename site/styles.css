@@ -20,6 +20,7 @@
   --on-navy: #ECE7DB;  /* text on navy (14:1) */
   --on-navy-2: #B9BFCC;/* secondary text on navy (8.7:1) */
   --on-crimson: #FBF3F1;
+  --rule-navy: #2E3D63; /* 1px rules on navy */
   --r: 0;
   --serif: Georgia, "Times New Roman", serif;
   --sans: "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif;
@@ -174,15 +175,18 @@ table.card { width: 100%; border-collapse: collapse; background: var(--sheet); b
 .card td.eg { width: 26%; font: 500 13px/1.5 var(--mono); color: var(--navy); border-left: 1px solid var(--rule); }
 .card tbody tr:last-child th, .card tbody tr:last-child td { border-bottom: 0; }
 
-/* the closing download zone: alabaster, the spearless banner as a 25% watermark, the button centred on it,
-   the compliance ledger beneath, the three steps under that */
-.deploy { border: 1px solid var(--gold); border-radius: var(--r); background: var(--canvas); }
-.stage { position: relative; display: grid; place-items: center; height: 440px; overflow: hidden; view-timeline: --wm block; }
-.watermark { position: absolute; left: 50%; top: 50%; width: 520px; max-width: 92%; transform: translate(-50%, -50%); opacity: .25; overflow: visible; }
+/* the closing download zone: a navy block of its own, the spearless banner in the logo's colours, the button
+   overlapping its lower left, the compliance ledger beneath, the three steps under that */
+.deploy { background: var(--navy); color: var(--on-navy); border-radius: var(--r); }
+.deploy a { color: var(--on-navy); }
+.deploy .label { color: var(--on-navy-2); }
+.stage { display: grid; place-items: center; padding: var(--s6) var(--s5) var(--s5); view-timeline: --wm block; }
+.art { position: relative; width: min(520px, 86%); aspect-ratio: 520 / 304; }
+.watermark { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .watermark > g { transform-box: fill-box; transform-origin: center; }
-/* the scrub: the pieces start 30px apart and lock together as the zone scrolls in, at the wheel's own pace (a scroll
-   timeline has no clock: it stops when the page stops). Wide screens with native scroll timelines only, and only
-   when motion is welcome; everywhere else the banner sits assembled. */
+/* the hero's first button: navy, a gold line and a gold frame 3px out; here it overlaps the shield's lower left */
+.art .btn { position: absolute; left: -8%; top: 79%; z-index: 1; min-height: 52px; }
+.deploy .btn-framed:focus-visible { outline: 2px solid var(--on-navy); }
 @supports (animation-timeline: view()) {
   @media (min-width: 761px) and (prefers-reduced-motion: no-preference) {
     .wm-bar, .wm-shield, .wm-ring, .wm-panels { animation: linear both; animation-timeline: --wm; animation-range: entry 0% cover 50%; }
@@ -194,28 +198,22 @@ table.card { width: 100%; border-collapse: collapse; background: var(--sheet); b
 @keyframes wm-shield { from { transform: translate(30px, 30px) scale(.96); } to { transform: none; } }
 @keyframes wm-ring { from { transform: translate(-30px, 30px) scale(.9); } to { transform: none; } }
 @keyframes wm-panels { from { transform: translate(30px, -30px) scale(.9); } to { transform: none; } }
-/* flat navy, a 1px gold line; on hover the two colours swap at once, no transition */
-.btn-dl { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: .7em; min-height: 52px; padding: 0 30px; border-radius: 0;
-  background: var(--navy); color: var(--on-navy); border: 1px solid var(--gold); text-decoration: none;
-  font: 700 12px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; }
-.btn-dl:hover { background: var(--gold); color: var(--navy); }
-.btn-dl:focus-visible { outline: 2px solid var(--navy); outline-offset: 3px; }
-dl.anchor { margin: 0 auto; max-width: 620px; display: grid; grid-template-columns: minmax(0, 96px) minmax(0, 1fr); padding: 0 var(--s3) var(--s4); font-size: 12px; line-height: 1.5; }
-.anchor dt, .anchor dd { margin: 0; padding: 8px 0; border-bottom: 1px solid var(--rule); }
-.anchor dt:first-of-type, .anchor dt:first-of-type + dd { border-top: 1px solid var(--rule); }
-.anchor dt { color: var(--muted); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; font-size: 11px; padding-right: var(--s2); }
-.anchor dd { color: var(--ink); }
-.anchor dd.strong { font-weight: 700; color: var(--navy); }
+dl.anchor { margin: 0 auto; max-width: 620px; display: grid; grid-template-columns: minmax(0, 96px) minmax(0, 1fr); padding: 0 var(--s3) var(--s5); font-size: 12px; line-height: 1.5; }
+.anchor dt, .anchor dd { margin: 0; padding: 8px 0; border-bottom: 1px solid var(--rule-navy); }
+.anchor dt:first-of-type, .anchor dt:first-of-type + dd { border-top: 1px solid var(--rule-navy); }
+.anchor dt { color: var(--on-navy-2); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; font-size: 11px; padding-right: var(--s2); }
+.anchor dd { color: var(--on-navy); }
+.anchor dd.strong { font-weight: 700; }
 .anchor code { display: block; }
-.anchor code, .steps code { font: 500 11.5px/1.5 var(--mono); color: var(--ink); background: var(--shade); border: 1px solid var(--rule); border-radius: 0; padding: 2px 6px; word-break: break-all; }
-.steps { display: grid; gap: var(--s3); padding: var(--s4) var(--s5) var(--s5); border-top: 1px solid var(--rule); }
-.steps ol { margin: 0; padding: 0; list-style: none; counter-reset: step; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--rule); }
-.steps li { counter-increment: step; display: grid; grid-template-columns: 32px minmax(0, 1fr); column-gap: 12px; padding: 16px var(--s3) 16px 0; font-size: 14px; color: var(--ink); }
-.steps li + li { border-left: 1px solid var(--rule); padding-left: var(--s3); }
-.steps li::before { content: counter(step); width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--gold); font: 700 12px/1 var(--sans); color: var(--navy); }
-.steps li b { color: var(--navy); }
+.anchor code, .steps code { font: 500 11.5px/1.5 var(--mono); color: var(--on-navy); background: var(--navy-2); border: 1px solid var(--rule-navy); border-radius: 0; padding: 2px 6px; word-break: break-all; }
+.steps { display: grid; gap: var(--s3); padding: var(--s4) var(--s5) var(--s5); border-top: 1px solid var(--rule-navy); }
+.steps ol { margin: 0; padding: 0; list-style: none; counter-reset: step; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--rule-navy); }
+.steps li { counter-increment: step; display: grid; grid-template-columns: 32px minmax(0, 1fr); column-gap: 12px; padding: 16px var(--s3) 16px 0; font-size: 14px; color: var(--on-navy-2); }
+.steps li + li { border-left: 1px solid var(--rule-navy); padding-left: var(--s3); }
+.steps li::before { content: counter(step); width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--gold); font: 700 12px/1 var(--sans); color: var(--on-navy); }
+.steps li b { color: var(--on-navy); }
 .steps .line { display: block; margin-top: 10px; padding: 8px 10px; word-break: normal; overflow-x: auto; white-space: nowrap; }
-.steps .aside { margin: 0; font-size: 12.5px; color: var(--muted); }
+.steps .aside { margin: 0; font-size: 12.5px; color: var(--on-navy-2); }
 
 /* reading pages: a legal ledger */
 .page-head { padding-block: var(--s6) var(--s5); border-bottom: 1px solid var(--rule); }
@@ -292,11 +290,13 @@ dl.anchor { margin: 0 auto; max-width: 620px; display: grid; grid-template-colum
   .it-ledger { grid-template-columns: minmax(0, 1fr); }
   .it-ledger > div { border-left: 0; border-top: 1px solid var(--rule); }
   .it-ledger > div:first-child { border-top: 0; }
-  .stage { height: 300px; }
+  .stage { padding: var(--s5) var(--s3) var(--s4); }
+  .art { width: 80%; margin-left: 12%; }
+  .art .btn { left: -14%; }
   .steps { padding: var(--s3); }
   .steps ol { grid-template-columns: minmax(0, 1fr); }
   .steps li { padding-right: 0; }
-  .steps li + li { border-left: 0; border-top: 1px solid var(--rule); padding-left: 0; }
+  .steps li + li { border-left: 0; border-top: 1px solid var(--rule-navy); padding-left: 0; }
   .card tbody th, .card td.eg { width: auto; }
   .card thead { display: none; }
   .card tr { display: grid; border-bottom: 1px solid var(--rule); }
