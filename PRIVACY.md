@@ -87,6 +87,6 @@ whether the key works; that call carries the key and no sheet data.
 
 ## No warranty, changes, contact
 Anomaly Hunter is free and comes with no warranty. It can miss mistakes and flag correct values; check important data
-yourself. When this file changes, its history is on GitHub. Questions or problems: the pane's Support page, or
+yourself. Its code is open source under the MIT License ([LICENSE](LICENSE)). When this file changes, its history is on GitHub. Questions or problems: the pane's Support page, or
 https://github.com/ricepillow3000/excel-anomaly-hunter/issues (public, needs a free GitHub account; never post your AI
 key, your invite code or real data).

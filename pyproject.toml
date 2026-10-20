@@ -3,6 +3,8 @@ name = "anomaly_hunter"
 version = "0.1.0"
 description = "CLI engine that scans CSV/Excel files for anomalies and writes an annotated report.xlsx"
 requires-python = ">=3.14"
+license = "MIT"
+license-files = ["LICENSE"]
 # pinned = known-good together on Python 3.14. No pyod (2026-10-19): its numba, llvmlite, matplotlib and scikit-learn
 # made the exe 146 MB for one score, now detectors._ecod.
 dependencies = [

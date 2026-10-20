@@ -2,6 +2,7 @@
 Excel add-in that flags abnormal rows and tells useful-weird from broken-weird. Never deletes data.
 Your sheet is checked on your own PC; nothing leaves it unless you turn on AI help - see [What leaves your PC](PRIVACY.md).
 Website: [ricepillow3000.github.io/excel-anomaly-hunter](https://ricepillow3000.github.io/excel-anomaly-hunter/) (`site/`, published by `.github/workflows/pages.yml`).
+Free and open source under the [MIT License](LICENSE).
 Questions or problems: [open an issue](https://github.com/ricepillow3000/excel-anomaly-hunter/issues).
 
 ## Install (Windows + desktop Excel, nothing else needed)
