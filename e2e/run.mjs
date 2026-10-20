@@ -68,8 +68,11 @@ if (mode === "flow") {
     "reason in plain words - " + (await text("#fix-reason")));
   ok((await text("#fix-changes")).startsWith("C11: -5 → "), "preview old -> new");
   ok(await page.isVisible("#fix-dismiss") && !(await page.isVisible("#fix-next")), "card asks: Accept or Dismiss");
+  const logged = await page.evaluate(() => __log.length); // every cell value Excel was asked to write, in order
+  const wrote = () => page.evaluate((n) => __log.slice(n).map((w) => `${w[1]}!${w[2]}`).join(), logged);
   await page.click("#fix-apply"); await idle();
   ok((await cell("C11")).v !== -5 && (await page.isVisible("#fix-undo")) && (await text("#fix-apply")) === "Accepted", "Accept writes the cell");
+  ok((await wrote()) === "Sales!C11", "Accept wrote exactly the one targeted cell, nothing else - " + (await wrote()));
   ok((await text("#fix-status")).includes("looks right now"), "checker re-scanned the fixed row - " + (await text("#fix-status")));
   ok((await cell("A11")).fill === "#00B050", "fixed row: highlight gone, the user's own green back");
   ok(await page.isVisible("#fix-next") && !(await page.isVisible("#fix-dismiss")), "then Undo / Next row");
@@ -95,8 +98,10 @@ if (mode === "flow") {
   await page.waitForFunction(() => document.getElementById("fix-title").textContent.startsWith("Row 22"), null, { timeout: 10000 }).catch(() => {});
   ok((await text("#fix-title")).startsWith("Row 22"), "sheet click opens the row");
   await idle();
+  const beforeDismiss = await page.evaluate(() => __log.length);
   await page.click("#fix-dismiss"); await idle();
   ok((await cell("C22")).v === 7777 && (await cell("A22")).fill === null && (await cell("B22")).fill === "#00B0F0", "Dismiss keeps the value and removes only our highlight");
+  ok((await page.evaluate(() => __log.length)) === beforeDismiss, "Dismiss (and opening the next row) writes no cell at all");
   ok(/^Row \d+/.test(await text("#fix-title")) && !(await text("#fix-title")).startsWith("Row 22"), "and moves to the next row - " + (await text("#fix-title")));
 
   // 4) Remove highlights puts back exactly what was there (the user's green row 11 too)
@@ -214,6 +219,15 @@ if (mode === "flow") {
   await page.evaluate((rows) => __load("Other", rows, [0]), rows);
   await find();
   ok(await page.evaluate(() => __handlers("Sales") === 0 && __handlers("Other") === 1), "watcher moved to the newly checked sheet");
+
+  // 7b) an engine error reaches the user in the engine's own plain words, and the buttons come back
+  await page.route("**/scan", (r) => r.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "Engine error - details in server.log" }) }), { times: 1 });
+  const seen = errors.length;
+  await page.click("#scan"); await idle();
+  const planned = (e) => /status of 500|Engine error - details in server\.log/.test(e); // this step's own 500, logged on purpose
+  errors.splice(seen, Infinity, ...errors.slice(seen).filter((e) => !planned(e)));
+  ok((await text("#notice")) === "Something went wrong: Engine error - details in server.log" && !(await page.evaluate(() => document.getElementById("clear-highlights").disabled)),
+    "an engine error is said in plain words, and the pane is usable again - " + (await text("#notice")));
 
   // 8) an empty sheet gets a plain message, not an error
   await page.evaluate(() => __load("Empty", [["only a header"]]));
