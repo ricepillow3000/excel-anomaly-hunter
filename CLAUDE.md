@@ -110,7 +110,7 @@ Adding or removing a check: update this table in the same commit.
 - One package for one function is a download cost: pyod (for ECOD) brought numba, llvmlite, matplotlib and
   scikit-learn, half of a 146 MB exe (2026-10-19). Check what a new dependency pulls in (`uv pip tree --invert`).
 - The Privacy page once said "nothing is sent to any other third party" and "Remove key deletes every local file":
-  both false (2026-10-19 audit, 24 items). `frontend/privacy.html` and `PRIVACY.md` are twins of the code: a change to
-  what is sent, stored or installed updates both (`test_both_privacy_pages_name_every_place_data_goes_and_every_file_the_app_keeps`).
+  both false (2026-10-19 audit, 24 items). `frontend/privacy.html`, `PRIVACY.md` and `site/privacy.html` are twins of the code: a change to
+  what is sent, stored or installed updates all three (`test_both_privacy_pages_name_every_place_data_goes_and_every_file_the_app_keeps`).
 - Pin every package, indirect ones too: an unpinned scikit-learn 1.9.1 broke every Windows install (2026-10-11).
   `constraints.txt` + `tools/pinned.py` (CI and the exe job); regenerate with the command in `tools/pinned.py`.
