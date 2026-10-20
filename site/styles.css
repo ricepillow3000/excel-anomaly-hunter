@@ -110,12 +110,19 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .hero .note { font-size: 13px; color: var(--muted); }
 /* the bleed: past the hero the page turns navy at the pace of the scroll, and back. Without scroll timelines the
    hero simply stays alabaster and the rest is navy. */
+/* The same again into the download: as the wine band rises into view, the navy page melts into wine (a wine layer
+   fading in over the backdrop), and back to navy on the way up. Navy and wine are both dark, so cream text stays
+   readable all the way through (14:1 and 10.4:1). */
 @supports (animation-timeline: view()) and (timeline-scope: --hero) {
-  body { timeline-scope: --hero; }
+  body { timeline-scope: --hero, --band; }
   .hero { background: transparent; view-timeline: --hero block; }
   .backdrop { position: fixed; inset: 0; z-index: -1; background: var(--canvas); animation: bleed linear both; animation-timeline: --hero; animation-range: exit 0% exit 30%; }
+  .backdrop::after { content: ""; position: absolute; inset: 0; background: var(--wine); opacity: 0; animation: to-wine linear both; animation-timeline: --band; animation-range: entry 0% entry 60%; }
+  body:has(> .backdrop) .band { background: transparent; } /* only the home page has the backdrop */
+  .band { view-timeline: --band block; }
 }
 @keyframes bleed { to { background-color: var(--navy); } }
+@keyframes to-wine { to { opacity: 1; } }
 
 /* lines that answer the pointer: slate (or navy) at rest, gold when it comes near */
 .ws, .num-grid li, .it-ledger > div, .faq, .form-card, table.card, .field input, .field select, .field textarea, .toc a, .prose .note {
