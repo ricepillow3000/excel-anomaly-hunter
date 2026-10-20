@@ -12,7 +12,8 @@ stop() { end "$ENGINE"; end "$STUB"; ENGINE= STUB=
   for i in $(seq 40); do curl -sk -m 1 https://127.0.0.1:5055/health >/dev/null || curl -s -m 1 http://127.0.0.1:5099 >/dev/null || break; sleep 0.25; done; sleep 0.5; }
 engine() { (cd "$R" && exec env "$@" "$PY" "$D/engine.py" "$D/cert" &> "$D/engine.out") & ENGINE=$!
   for i in $(seq 40); do curl -sk https://127.0.0.1:5055/health >/dev/null && return; sleep 0.25; done; echo "engine did not start"; }
-rm -f "$D/claude.log"; (exec "$PY" "$D/stub_claude.py" "$D/claude.log" &> "$D/stub.out") & STUB=$!
+# a fresh AI answer cache too: a kept answer from the last run would never reach the stub, and test nothing
+rm -rf "$D/claude.log" "$D/cert/ai-cache" "$D/cert/latest-scan.csv" "$D/cert/latest-flags.csv"; (exec "$PY" "$D/stub_claude.py" "$D/claude.log" &> "$D/stub.out") & STUB=$!
 fail=0
 engine ANTHROPIC_API_KEY=test ANTHROPIC_BASE_URL=http://127.0.0.1:5099 GEMINI_API_KEY=
 for m in ${MODES:-flow ai}; do echo "== $m"; (cd "$D" && timeout 150 node run.mjs $m) || fail=1; done

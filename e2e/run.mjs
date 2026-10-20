@@ -22,6 +22,19 @@ const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width:
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.stack));
 page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+const scans = []; // every /scan body the pane sent: the slider's level and the Power BI switch must reach the engine
+page.on("request", (r) => r.url().endsWith("/scan") && scans.push(JSON.parse(r.postData())));
+// Power BI's two files, read back like Power BI's own import does (a record ends at every line break)
+const CSV = DIR + "cert/latest-scan.csv", FLAGS = DIR + "cert/latest-flags.csv";
+const records = (path) => fs.readFileSync(path, "utf8").replace(/^﻿/, "").split("\r\n").slice(0, -1).map((line) => {
+  const out = []; let v = "", q = false;
+  for (let k = 0; k < line.length; k++) {
+    const ch = line[k];
+    if (q) { if (ch === '"' && line[k + 1] === '"') { v += '"'; k++; } else if (ch === '"') q = false; else v += ch; }
+    else if (ch === '"') q = true; else if (ch === ",") { out.push(v); v = ""; } else v += ch;
+  }
+  return [...out, v];
+});
 await page.route("https://appsforoffice.microsoft.com/**", (r) => r.fulfill({ contentType: "text/javascript", body: fs.readFileSync(DIR + "fake-office.js", "utf8") }));
 await page.goto("https://127.0.0.1:5055/taskpane.html");
 await page.evaluate((rows) => { __load("Sales", rows, [0]); for (const c of "ABCDE") __fill("Sales", c + "11", "#00B050"); __fill("Sales", "B22", "#00B0F0"); }, rows);
@@ -127,6 +140,7 @@ if (mode === "flow") {
   const listed0 = (await page.$$("#flagged-list li")).length;
   ok(listed0 <= listed5 && (await page.evaluate(() => __settings.anomalyHunterStrength)) === 0 && (await text("#strength-hint")).startsWith("Basics"),
     `strength 0 re-checks with the basics only (${listed5} -> ${listed0} rows), saved in the workbook`);
+  ok(scans.at(-1).strength === 0 && scans.at(-2).strength === 5, "the slider's level is what the engine is sent (5, then 0)");
   const basics = await text("#flagged-list");
   // nosemgrep: detect-non-literal-regexp - test code, r is a fixed row number
   const has = (r) => new RegExp(`Row ${r}(?!\\d)`).test(basics);
@@ -141,7 +155,7 @@ if (mode === "flow") {
   ok((await level()) === "8", "the thumb drags while a check runs");
   await page.waitForFunction(() => !document.getElementById("scan").disabled && __settings.anomalyHunterStrength === 8);
   await page.waitForTimeout(400); await idle();
-  ok((await page.evaluate(() => __state.lastStrength)) === 8, "the queued re-check ran with the newest level (8)");
+  ok((await page.evaluate(() => __state.lastStrength)) === 8 && scans.at(-1).strength === 8, "the queued re-check ran with the newest level (8)");
   await page.focus("#strength"); await page.keyboard.press("ArrowLeft"); await page.keyboard.press("ArrowLeft"); await page.keyboard.press("ArrowLeft");
   ok((await level()) === "5", "arrow keys move it one step at a time");
   await page.waitForTimeout(400); await idle();
@@ -167,6 +181,32 @@ if (mode === "flow") {
   ok((await cell("B81")).v === "East" && (await text("#notice")).includes("left alone"), "Undo auto-fixes never writes into a row that moved - " + (await text("#notice")));
   await page.evaluate((v) => { __edit("Sales", "A81", v); __edit("Sales", "B81", "east "); }, a81);
   await page.evaluate(() => { const c = document.getElementById("auto-fix"); c.checked = false; c.dispatchEvent(new Event("change")); });
+
+  // 6d) Power BI: off = nothing on disk; on = both files, holding exactly the rows the pane lists; off again = deleted
+  const powerBi = (on) => page.evaluate((on) => { const c = document.getElementById("power-bi"); c.checked = on; c.dispatchEvent(new Event("change")); }, on);
+  ok(!fs.existsSync(CSV) && !fs.existsSync(FLAGS) && scans.every((b) => b.power_bi === false), "Power BI off: the engine is told so and no copy is on disk");
+  await powerBi(true); await find();
+  ok(scans.at(-1).power_bi === true && scans.at(-1).sheet === "Sales" && scans.at(-1).start_row === 0, "Power BI on: sent with where the table sits");
+  const paneRows = await page.$$eval("#flagged-list button", (bs) => bs.map((b) => +/^Row (\d+)/.exec(b.innerText)[1]).sort((a, b) => a - b));
+  const flagsCsv = records(FLAGS), scanCsv = records(CSV);
+  const csvRows = flagsCsv.slice(1).map((r) => +r[2]).sort((a, b) => a - b);
+  ok(flagsCsv[0].join() === "Scanned At,Sheet,Excel Row,Severity,Bucket,Reason,Suggested Fix,Magnitude" && flagsCsv.slice(1).every((r) => r[1] === "Sales"),
+    "latest-flags.csv has its fixed columns and the sheet's name");
+  ok(paneRows.length > 0 && JSON.stringify(csvRows) === JSON.stringify(paneRows), `latest-flags.csv holds exactly the rows the pane lists (${paneRows})`);
+  const r11 = scanCsv.find((r) => r[0] === "11");
+  ok(scanCsv.length === 301 && scanCsv[0].slice(0, 6).join() === "Excel Row,OrderDate,Region,Units,UnitCost,Total" && r11[3] === "-5"
+    && r11[6] === "Medium" && /Units: -5 → /.test(r11[9]), "latest-scan.csv: every row, Excel's row numbers, row 11's -5 and its suggested fix - " + r11);
+  await powerBi(false); await find();
+  ok(!fs.existsSync(CSV) && !fs.existsSync(FLAGS), "Power BI turned off: the next scan deletes both copies");
+
+  // 6e) the footer's Privacy and Support links open their pages from the engine
+  for (const link of ["Privacy", "Support"]) {
+    const [pop] = await Promise.all([page.waitForEvent("popup"), page.click(`#pane-footer .pf-links a:has-text("${link}")`)]);
+    await pop.waitForLoadState();
+    const status = await pop.evaluate(() => performance.getEntriesByType("navigation")[0].responseStatus);
+    ok(status === 200 && (await pop.title()) === `Anomaly Hunter, ${link}`, `${link} link opens its page (HTTP ${status})`);
+    await pop.close();
+  }
 
   // 7) rescans don't stack click-watchers; a second sheet takes the watcher over
   await find(); await find();
@@ -195,6 +235,17 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
   ok(String((await cell("C11")).f).startsWith("=AVERAGEIFS("), "Accept writes the AI formula");
   await page.click("#fix-undo"); await idle();
   ok((await cell("C11")).v === -5 && !String((await cell("C11")).f ?? "").startsWith("="), "Undo takes the AI formula back out - " + (await text("#fix-status")));
+
+  // Check words with AI: only the text columns' distinct words go; the AI's answer is shown as text, never as markup,
+  // and a word it makes up (not in the column) is dropped. The stub answers with markup in "why" and a made-up word.
+  await page.click("#fix-back");
+  await page.click("#odd-check"); await idle();
+  const odd = await page.$$eval("#odd-list li", (lis) => lis.map((li) => li.textContent));
+  ok(odd.length === 100 && odd.every((t) => /^Row \d+: Region "Central" - <img src=x onerror=/.test(t)), `each row with the odd word listed (${odd.length}) - ${odd[0]}`);
+  ok(!(await page.$("#odd-list img")) && !(await page.evaluate(() => window.__pwned)) && !odd.some((t) => t.includes("Atlantis")),
+    "the AI's words are text, never markup; a word the AI made up is dropped");
+  const sent = fs.readFileSync(DIR + "claude.log", "utf8").trim().split("\n").map(JSON.parse).find((l) => l.prompt.includes("distinct values"));
+  ok(sent && sent.prompt.includes('"Region"') && !/7777|170\.43|Units|2026-/.test(sent.prompt), "Check words sends the text column's words only, no numbers, dates or rows");
 }
 
 if (mode === "nokey") {
@@ -211,6 +262,20 @@ if (mode === "nokey") {
   await page.fill("#ai-key", ""); await page.click("#save-key");
   await page.waitForFunction(() => document.getElementById("ai-state").textContent.includes("Paste a key"));
   ok(keyCalls.length === 0, "empty Save asks for a key and sends nothing - " + (await text("#ai-state")));
+  // an invite code turns AI help on (nothing is sent anywhere: the relay checks it at the first Ask AI), never stays on
+  // screen or comes back from the engine; Remove key turns it off and deletes it from this PC
+  const code = "inv_e2eNotARealInviteCode123";
+  await page.fill("#ai-key", code); await page.click("#save-key");
+  await page.waitForFunction(() => document.getElementById("ai-state").textContent.startsWith("Invite code saved"));
+  const health = await page.evaluate(() => fetch("/health").then((r) => r.text()));
+  ok((await page.isVisible("#ai-box")) && !(await page.isVisible("#ai-off")) && JSON.parse(health).ai_provider === "relay",
+    "invite code saved: AI help is on, through the relay - " + (await text("#ai-state")));
+  ok((await page.inputValue("#ai-key")) === "" && !(await page.content()).includes(code) && !health.includes(code)
+    && fs.readFileSync(DIR + "cert/invite-code.txt", "utf8") === code, "the code is kept on this PC only: never on screen, never in an answer");
+  await page.click("#remove-key");
+  await page.waitForFunction(() => document.getElementById("ai-state").textContent === "Key removed. AI help is off.");
+  ok(!(await page.isVisible("#ai-box")) && (await page.isVisible("#ai-off")) && !fs.existsSync(DIR + "cert/invite-code.txt"),
+    "Remove key: AI help off, the code deleted from this PC");
 }
 
 if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/pane-${mode}.png`, fullPage: true }); // proof for people

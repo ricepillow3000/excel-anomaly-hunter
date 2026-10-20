@@ -176,6 +176,26 @@ def test_scan_rejects_non_json_body():
     assert resp.status_code == 400
 
 
+def test_every_link_and_file_the_pane_pages_use_is_served():
+    # the pane's Privacy and Support links, and every file its pages load, must open from the engine (a missing one
+    # is a blank page in Excel's pane with nothing on screen to say why); same-page anchors must exist too
+    from pathlib import Path
+    pane = Path(__file__).resolve().parents[2] / "frontend"
+    c = client()
+    for page in ("taskpane.html", "privacy.html", "support.html"):
+        html = (pane / page).read_text(encoding="utf-8")
+        r = c.get(f"/{page}")
+        assert r.status_code == 200 and "text/html" in r.content_type and r.headers["Content-Security-Policy"], page
+        links = re.findall(r'(?:href|src)="([^"]+)"', html) + [s.split()[0] for s in re.findall(r'srcset="([^"]+)"', html)]
+        for link in {u for u in links if not re.match(r"https?://", u)}:
+            target, _, anchor = link.partition("#")
+            if target:
+                assert c.get(f"/{target}").status_code == 200, (page, link)
+            if anchor:
+                assert f'id="{anchor}"' in (pane / (target or page)).read_text(encoding="utf-8"), (page, link)
+    assert {"privacy.html", "support.html"} <= set(re.findall(r'href="([a-z]+\.html)"', (pane / "taskpane.html").read_text(encoding="utf-8")))
+
+
 def test_each_scan_overwrites_the_power_bi_csv(tmp_path):
     import pandas as pd
     out = tmp_path / "latest-scan.csv"

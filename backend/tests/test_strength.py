@@ -69,3 +69,35 @@ def test_names_and_plurals_are_not_misspellings(rare, usual):
 def test_strength_must_be_0_to_10(bad):
     columns, rows = make_clean_payload()
     assert client().post("/scan", json={"columns": columns, "rows": rows, "strength": bad}).status_code == 400
+
+
+def test_the_slider_reaches_the_engine_through_the_scan_route_and_each_end_looks_differently():
+    # the pane sends "How hard to look" as strength: a level that never reached the engine would pass every in-process
+    # test above. Over the bench sheets: 0 < 5 < 10 flags (strictly, so the levels really differ), 0 runs the basics only
+    c, got = client(), {}
+    for s in (0, 5, 10):
+        bodies = [c.post("/scan", json={"columns": cols, "rows": rows, "strength": s}).get_json() for cols, rows in SHEETS]
+        got[s] = sum(len(flagged(b["rows"])) for b in bodies)
+        dets = [b["summary"]["detectors"] for b in bodies]
+        if s == 0:
+            assert all(d["sequence"] == "sat out: strength below 3" and d["isolation"] == "sat out: strength below 5" for d in dets)
+            reasons = " ".join(r["reason"] for b in bodies for r in b["rows"])
+            assert "Unusual combination" not in reasons and "local trend" not in reasons, "0 = basics, no statistics"
+        if s == 10:
+            assert not any("strength below" in v for d in dets for v in d.values())
+    assert got[0] < got[5] < got[10], got
+
+
+def test_check_and_suggest_judge_a_fix_at_the_level_the_scan_used(monkeypatch):
+    # Accept's re-check and the typo hunt must judge at the slider's level, or a fix "looks right" at 5 that 9 flags
+    from anomaly_hunter import server
+    seen = []
+    monkeypatch.setattr(server.checker, "check", lambda *a: seen.append(("check", a[-1])) or {"clean": True, "severity": None, "reason": ""})
+    monkeypatch.setattr(server.checker, "suggest", lambda *a: seen.append(("suggest", a[-1])) or {})
+    columns, rows = make_clean_payload()
+    c = client()
+    for s in (0, 9, None):
+        base = {"columns": columns, "rows": rows, "row_index": 1, **({} if s is None else {"strength": s})}
+        assert c.post("/check", json={**base, "changes": [{"col": 1, "value": 100.0}]}).status_code == 200
+        assert c.post("/suggest", json={**base, "column": "Amount"}).status_code == 200
+    assert seen == [("check", 0), ("suggest", 0), ("check", 9), ("suggest", 9), ("check", 5), ("suggest", 5)]
