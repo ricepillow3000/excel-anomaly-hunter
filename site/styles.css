@@ -106,7 +106,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .hero .lede { display: grid; gap: var(--s3); justify-items: center; text-align: center; max-width: 760px; margin: 0 auto; }
 .hero h1 { font-size: clamp(30px, 3.6vw, 42px); text-transform: uppercase; letter-spacing: .06em; line-height: 1.25; }
 .hero h1 em { font-size: 1.15em; }
-.hero p { margin: 0; color: var(--muted); font-size: 18px; max-width: 36em; }
+.hero .lede p { margin: 0; color: var(--muted); font-size: 18px; max-width: 36em; } /* the lede only: the sample sheet inside the hero has its own small text */
 .hero .note { font-size: 13px; color: var(--muted); }
 /* the bleed: past the hero the page turns navy at the pace of the scroll, and back. Without scroll timelines the
    hero simply stays alabaster and the rest is navy. */
