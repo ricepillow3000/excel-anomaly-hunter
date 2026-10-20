@@ -51,8 +51,9 @@ rem Never clear Excel's add-in cache (...\Office\16.0\Wef) here: it is also wher
 rem Add, so a repair would drop Anomaly Hunter (and any other added add-in) from the ribbon. The pane's code is served
 rem fresh every time; only a manifest.xml change needs that cache cleared (Excel closed), then Add again.
 
-rem Power BI: double-click powerbi\anomaly-hunter.pbids. It opens the file every scan overwrites (this PC's path).
-"%PY%" -c "import json,os; p=os.path.join(os.environ['AH'],'latest-scan.csv'); json.dump({'version':'0.1','connections':[{'details':{'protocol':'file','address':{'path':p}},'options':{},'mode':'Import'}]}, open(r'powerbi\anomaly-hunter.pbids','w'), indent=2)" || (echo Power BI file step failed. & pause & exit /b 1)
+rem Power BI: double-click powerbi\anomaly-hunter.pbids (the sheet) or anomaly-hunter-flags.pbids (its flagged rows).
+rem Each opens the file every scan overwrites (this PC's path), written by the same code as AnomalyHunter.exe's.
+"%PY%" -m anomaly_hunter.powerbi "%AH%" powerbi || (echo Power BI file step failed. & pause & exit /b 1)
 
 echo [4/5] Engine starts hidden at every logon...
 reg add "%RUN%" /v AnomalyHunter /t REG_SZ /d "\"%PYW%\" -m anomaly_hunter.server" /f >nul
