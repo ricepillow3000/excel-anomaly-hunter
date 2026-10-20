@@ -56,26 +56,31 @@ export function initStrength(rescan) {
     show(levelAt(e.clientX, r.left, r.width));
   };
 
-  el.onpointerdown = (e) => {
+  // addEventListener, not el.onpointer... = : a DOM0 handler returning false cancels its event (frontend/selfcheck.js)
+  el.addEventListener("pointerdown", (e) => {
     if (e.button !== 0) return;
     e.preventDefault(); // no text selection, no native drag - the pointer belongs to the slider
     el.setPointerCapture(e.pointerId);
     el.focus();
     pressed = level;
     follow(e); // a press anywhere on the track jumps there, then the thumb follows the drag
-  };
-  el.onpointermove = (e) => pressed !== null && follow(e);
-  el.onpointerup = el.onpointercancel = () => {
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (pressed !== null) follow(e);
+  });
+  const release = () => {
     if (pressed === null) return;
     const before = pressed;
     pressed = null;
     if (level !== before) commit();
   };
-  el.onkeydown = (e) => {
+  el.addEventListener("pointerup", release);
+  el.addEventListener("pointercancel", release);
+  el.addEventListener("keydown", (e) => {
     const step = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1, PageUp: 2, PageDown: -2 }[e.key];
     const to = e.key === "Home" ? 0 : e.key === "End" ? 10 : step === undefined ? null : Math.min(10, Math.max(0, level + step));
     if (to === null) return;
     e.preventDefault();
     if (to !== level) (show(to), commit());
-  };
+  });
 }

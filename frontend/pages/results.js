@@ -5,13 +5,13 @@ import { n } from "../utils/text.js";
 import { cutNote } from "../utils/sheet.js";
 import { act } from "../hooks/use-action.js";
 import { rowItem } from "../components/row-item.js";
-import { fairnessNote, fairnessTests, flaggedRows, summaryOf } from "../features/scan.js";
+import { fairnessNote, fairnessTests, flaggedRows, listOrder, summaryOf } from "../features/scan.js";
 import { openFix } from "./fix.js";
 
 // Results show up: the summary, the color legend and the rows to check.
 export function renderResults(rows, s, fair) {
   const flagged = flaggedRows(rows);
-  state.order = flagged.map((r) => r.i); // the list keeps this order while rows get fixed or dismissed
+  state.order = listOrder(rows, state.decided); // the list keeps this order while rows get fixed or dismissed
   $("summary").textContent = summaryOf(rows);
   const counts = flagged.reduce((c, r) => ((c[r.severity] = (c[r.severity] || 0) + 1), c), {});
   $("legend").replaceChildren(...Object.keys(SEV).filter((k) => counts[k]).map((k) => {
@@ -33,8 +33,10 @@ export function renderResults(rows, s, fair) {
 // The rows to check, worst first, each tagged once it is fixed or dismissed (like Grammarly's list of cards)
 export function listRows() {
   only("results");
-  const { order, lastRows, undos, handled } = state, { startRow } = state.lastScan;
-  const status = (i) => (undos[i] ? (SEV[lastRows[i].severity] ? "Fix accepted" : "Fixed") : handled.has(i) ? "Dismissed" : null);
+  const { order, lastRows, decided } = state, { startRow } = state.lastScan;
+  // Fixed / Dismissed come back after a reload too: kept in the workbook (features/decisions.js)
+  const status = (i) => (decided[i] === "fixed" ? (SEV[lastRows[i].severity] ? "Fix accepted" : "Fixed")
+    : decided[i] === "dismissed" ? "Dismissed" : null);
   const done = order.filter(status).length;
   show("list-title", order.length > 0);
   $("list-title").textContent = done ? `Rows to check - ${n(done)} of ${n(order.length)} done` : "Rows to check";

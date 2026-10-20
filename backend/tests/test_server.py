@@ -205,7 +205,7 @@ def test_each_scan_overwrites_the_power_bi_csv(tmp_path):
         assert c.post("/scan", json={"columns": columns, "rows": rows[:n], "power_bi": True}).status_code == 200
         got = pd.read_csv(out, encoding="utf-8-sig")
         assert len(got) == n and list(got.columns) == ["Excel Row", *columns, "Severity", "Bucket", "Reason",
-                                                       "Suggested Fix", "Magnitude"]  # powerbi/README.md's schema
+                                                       "Suggested Fix", "Magnitude", "Status"]  # powerbi/README.md's schema
     assert not (tmp_path / "latest-scan.csv.tmp").exists()
     # the user's own "Severity" column is kept; ours gets a clear name instead of overwriting it
     rows = [[f"T{i}", 10 + i % 5, "Open"] for i in range(40)]

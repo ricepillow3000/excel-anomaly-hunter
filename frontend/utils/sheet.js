@@ -15,7 +15,7 @@ export function tableFromGrid(values, formats, rowIndex, colIndex, formulas) {
   if (h < 0 || h + 1 >= values.length) return null; // need header + 1 row
   // Excel hands dates over as serial numbers; send real dates so the engine finds its time axis
   const isDate = formats ? formats[h + 1].map(isDateFormat) : [];
-  const rows = values.slice(h + 1).map((r) => r.map((v, j) => (isDate[j] && typeof v === "number" ? excelDate(v) : v)));
+  const rows = values.slice(h + 1).map((r) => readAs(r, isDate));
   const calc = formulas && formulas.slice(h + 1); // each data row's formulas ("=B2-C2"), so a fix never types over one
   const columns = []; // name duplicate headers like the engine does ("Dept", "Dept.1", skipping taken names): limits and fixes are keyed by these
   values[h].forEach((c) => {
@@ -23,8 +23,11 @@ export function tableFromGrid(values, formats, rowIndex, colIndex, formulas) {
     for (let k = 1; columns.includes(name); k++) name = `${c}.${k}`;
     columns.push(name);
   });
-  return { columns, rows, startRow: rowIndex + h, startCol: colIndex, calc };
+  return { columns, rows, startRow: rowIndex + h, startCol: colIndex, calc, dates: isDate };
 }
+
+// Pure: one row of Excel's values -> the row as a scan reads it (dates[j]: column j holds dates)
+export const readAs = (values, dates = []) => values.map((v, j) => (dates[j] && typeof v === "number" ? excelDate(v) : v));
 
 // Pure: number format shows a date? (ignore [colors/locales] and "quoted text", e.g. "[Red]0.00")
 export const isDateFormat = (f) => /[dy]/i.test(String(f).replace(/\[[^\]]*\]|"[^"]*"/g, ""));

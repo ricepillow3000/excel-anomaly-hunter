@@ -20,7 +20,7 @@ export const exactFixes = (rows, columns) => rows.flatMap((r, k) =>
 // Right after a scan: write the exact fixes -> how many were written
 export async function autoFix() {
   const { columns, rows, startRow, startCol, sheet } = state.lastScan;
-  const fixes = exactFixes(state.lastRows, columns);
+  const fixes = exactFixes(state.lastRows, columns).filter((x) => !state.decided[x.k]); // a dismissed row is left as it is
   if (!fixes.length) return 0;
   const cells = fixes.map((x) => `${colLetter(startCol + x.j)}${startRow + 2 + x.k}`);
   const olds = await readCells(sheet, cells);

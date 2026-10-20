@@ -20,6 +20,12 @@ paths:
                   properties:  # where the table sits, for the Power BI copy's "Excel Row" and "Sheet"
                     start_row: {type: integer, minimum: 0, maximum: 1048575, nullable: true}
                     sheet: {type: string, maxLength: 31, nullable: true}
+                    # each row's decision, kept in the workbook by the pane (Power BI's Status); the route also
+                    # checks it is exactly as long as rows
+                    decisions:
+                      type: array
+                      nullable: true
+                      items: {type: string, enum: [fixed, dismissed], nullable: true}
       responses: {"200": {$ref: "#/components/responses/Json"}, "400": {$ref: "#/components/responses/Error"}}
   /fix:
     post:

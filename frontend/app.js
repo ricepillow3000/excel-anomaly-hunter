@@ -41,7 +41,14 @@ if (typeof Office !== "undefined") {
     $("fix-next").onclick = act(nextFix);
     $("fix-ask").onclick = askFix;
     $("odd-check").onclick = act(checkWords);
-    $("fix-intent").onkeydown = (e) => e.key === "Enter" && e.ctrlKey && askFix();
+    // only Ctrl+Enter (Cmd+Enter on a Mac) is ours; every other key types, Enter makes a new line. The old DOM0
+    // `onkeydown = (e) => e.key === "Enter" && e.ctrlKey && askFix()` returned false for every other key, and a DOM0
+    // handler returning false cancels the key: nothing could be typed in this box (2026-10-20)
+    $("fix-intent").addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      askFix();
+    });
     initSettings();
     initStrength(act(runScan));
     $("auto-fix").checked = autoOn(); // off unless turned on, on this PC

@@ -6,6 +6,64 @@ import { issuesOf, recommendFix, typoKind, afterFix, unusualColumn } from "./fea
 import { plainReason, summaryOf, flaggedRows, fairnessNote, fairnessTests } from "./features/scan.js";
 import { strengthHint, asStrength, levelAt } from "./pages/strength.js";
 import { exactFixes, safeUndo } from "./features/autofix.js";
+import { readdirSync, readFileSync } from "node:fs";
+import { hash, rowHash, codes, codeAt, asBook, decide, PER_SHEET, SHEETS } from "./features/decisions.js";
+import { listOrder } from "./features/scan.js";
+import { readAs } from "./utils/sheet.js";
+
+// Fixed / Dismissed are kept in the workbook under a code per row, so they outlive the pane (2026-10-20: a dismissed
+// row came back flagged after a reload, an accepted fix vanished). Same values = same code, on any PC, every time.
+assert.equal(hash("East,5"), hash("East,5"));
+assert.notEqual(rowHash(["East", 5]), rowHash(["East", "5"]), "text typed in a number column is another row");
+assert.notEqual(rowHash(["East", 5]), rowHash(["East", 6]));
+assert.match(hash(""), /^[0-9a-z]{1,11}$/);
+// two identical rows are two rows; a sort keeps every code (the k-th copy stays the k-th copy)
+const hs = ["a", "b", "a", "c", "a"];
+assert.deepEqual(codes(hs), ["a.0", "b.0", "a.1", "c.0", "a.2"]);
+assert.deepEqual(codes(["c", "a", "a", "b", "a"]).sort(), codes(hs).sort());
+assert.equal(codeAt(hs, 4, "a"), "a.2", "a row just fixed gets the code the next scan will give it");
+assert.equal(codeAt(hs, 1, "a"), "a.1");
+// the scan's dates are text: a fixed row read back from Excel must be read the same way to keep its code
+assert.deepEqual(readAs([46028, 46028, "x"], [true, false, false]), ["2026-01-06", 46028, "x"]);
+assert.deepEqual(tableFromGrid([["When", "N"], [46028, 1]], [["General", "General"], ["m/d/yyyy", "General"]], 0, 0).dates, [true, false]);
+// a crafted workbook can put anything under the key: only codes and our two words survive, and "__proto__" is a sheet
+const tampered = JSON.parse('{"__proto__": {"a1.0": "fixed"}, "S": {"a1.0": "dismissed", "b.0": "admin", "<img>": "fixed", "c.12": "fixed"}, "T": [1], "U": "x"}');
+const book = asBook(tampered);
+assert.deepEqual(Object.keys(book), ["__proto__", "S"]);
+assert.deepEqual({ ...book.S }, { "a1.0": "dismissed", "c.12": "fixed" });
+assert.equal(({}).polluted, undefined);
+for (const junk of [null, "x", 5, [], [["S", {}]]]) assert.deepEqual(Object.keys(asBook(junk)), []);
+// decide: set, replace (Accept after Dismiss), remove (Undo); newest last; capped per sheet and in sheets
+let b = decide(asBook(null), "S", [["a.0", "dismissed"]]);
+b = decide(b, "S", [["b.0", "fixed"]]);
+b = decide(b, "S", [["a.0", null], ["a2.0", "fixed"]]);
+assert.deepEqual({ ...b.S }, { "b.0": "fixed", "a2.0": "fixed" });
+b = decide(b, "S", [["a2.0", null], ["a.0", "dismissed"]]);
+assert.deepEqual({ ...b.S }, { "b.0": "fixed", "a.0": "dismissed" }, "Undo removes the fix and brings back the Dismiss");
+b = decide(b, "S", [["b.0", null], ["a.0", null]]);
+assert.deepEqual(Object.keys(b), [], "a sheet with no decisions left is dropped");
+let many = decide(asBook(null), "S", Array.from({ length: PER_SHEET + 1 }, (_, k) => [`r${k}.0`, "fixed"]));
+assert.equal(Object.keys(many.S).length, PER_SHEET);
+assert.ok(!("r0.0" in many.S) && `r${PER_SHEET}.0` in many.S, "the oldest decision goes first");
+for (let k = 0; k <= SHEETS; k++) many = decide(many, `Sheet${k}`, [["a.0", "dismissed"]]);
+assert.equal(Object.keys(many).length, SHEETS);
+assert.ok(!("S" in many), "the sheet decided on longest ago goes first");
+// the list: flagged worst first, then rows fixed or dismissed before that are no longer flagged, in sheet order
+assert.deepEqual(listOrder([{ severity: null }, { severity: "Low", magnitude: 1 }, { severity: null }, { severity: "High", magnitude: 0 }, { severity: "Noted" }],
+  { 4: "fixed", 0: "dismissed", 1: "dismissed" }), [3, 1, 0, 4]);
+
+// A DOM0 handler that returns false cancels its event: `$("fix-intent").onkeydown = (e) => e.key === "Enter" && e.ctrlKey
+// && askFix()` returned false for every key but Ctrl+Enter, so no character ever reached the Ask AI box (2026-10-20).
+// Key, pointer and input handlers go through addEventListener with an explicit preventDefault, and no other DOM0
+// handler may be a bare `a && b()` / `a || b()` whose value can be false.
+const panes = readdirSync(new URL(".", import.meta.url), { recursive: true }).filter((f) => f.endsWith(".js") && f !== "selfcheck.js");
+for (const f of panes) {
+  const src = readFileSync(new URL(f, import.meta.url), "utf8");
+  const cancels = /\.on(?:key|pointer|mouse|touch|wheel|input|beforeinput|submit|contextmenu|drag|drop|paste|cut|copy)[a-z]*\s*=(?!=)/.exec(src);
+  assert.ok(!cancels, `${f}: "${cancels?.[0]}" - use addEventListener and call preventDefault yourself`);
+  const falsy = /\.on[a-z]+\s*=\s*(?:async\s*)?(?:\([^)]*\)|\w+)\s*=>\s*(?!\{)[^\n;]*(?:&&|\|\|)/.exec(src);
+  assert.ok(!falsy, `${f}: "${falsy?.[0]}" can return false, which cancels the event - give it a { body }`);
+}
 
 // fairness line: protected columns named; a real gap spelled out; nothing at all without a protected column
 assert.equal(fairnessNote({ protected: {}, tests: [] }), "");

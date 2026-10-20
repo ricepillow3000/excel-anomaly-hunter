@@ -1,13 +1,14 @@
 import { EXCEL_ERRORS } from "../constants/index.js";
 import { state } from "../hooks/use-state.js";
 import { $ } from "../utils/dom.js";
-import { cellAt, colLetter, sameRow } from "../utils/sheet.js";
+import { cellAt, colLetter, readAs, sameRow } from "../utils/sheet.js";
 import { setApplied } from "../components/fix-preview.js";
 import { busy } from "../components/progress.js";
 import { post } from "../services/api.js";
 import { readCells, readRows, writeCells } from "../services/excel.js";
 import { fillRow } from "./highlight.js";
 import { plainReason } from "./scan.js";
+import { codeAt, rowHash, saveDecisions } from "./decisions.js";
 
 // Fix one row: the instant suggested fix (no AI), and Apply / Undo.
 // Pure: a reason -> its parts ("Units weird limit is 0; this is -5" stays ONE part)
@@ -189,10 +190,14 @@ export async function applyFix(f, changes, sheet) { // the fix, its changes and 
     const olds = await readCells(sheet, cells), formats = await readCells(sheet, cells, "numberFormat");
     await writeCells(sheet, changes.map((c) => ({ cell: c.cell, value: c.new })));
     const after = await readCells(sheet, cells); // exactly what Excel made of it ("12%" -> 0.12): Undo checks against this
+    // the row as the next scan will read it: its code is what "fixed" is kept under in the workbook
+    const [fixed] = await readRows(sheet, [{ row: startRow + 1 + f.i, col: startCol, width: columns.length }]);
+    const code = codeAt(state.hashes, f.i, rowHash(readAs(fixed.values, state.lastScan.dates)));
     // all read before any write; the cells (with their number formats), the row and its verdict as they were, for Undo
     state.undos[f.i] = { sheet, changes, after, writes: cells.map((cell, k) => ({ cell, value: olds[k], format: formats[k] })),
-      row: state.lastScan.rows[f.i], verdict: state.lastRows[f.i], wasHandled: state.handled.has(f.i) }; // dismissed: stays so
-    state.handled.add(f.i);
+      row: state.lastScan.rows[f.i], verdict: state.lastRows[f.i], was: state.decided[f.i], code }; // dismissed: stays so
+    state.decided[f.i] = "fixed";
+    saveDecisions(sheet, [[state.codes[f.i], null], [code, "fixed"]]); // an Accept after a Dismiss replaces it
     if (state.fix === f) setApplied(true);
   } catch (e) {
     if (state.fix === f) $("fix-apply").disabled = false;
@@ -236,8 +241,10 @@ export async function undoFix(f) {
     delete state.undos[f.i];
     state.lastScan.rows[f.i] = u.row;
     state.lastRows[f.i] = u.verdict;
-    if (!u.wasHandled) state.handled.delete(f.i);
-    await fillRow(f.i, !u.wasHandled); // flagged again - unless it had been dismissed, then it stays unhighlighted
+    if (u.was) state.decided[f.i] = u.was;
+    else delete state.decided[f.i];
+    saveDecisions(u.sheet, [[u.code, null], [state.codes[f.i], u.was || null]]); // the fix's decision goes; a Dismiss before it comes back
+    await fillRow(f.i, !u.was); // flagged again - unless it had been dismissed, then it stays unhighlighted
     if (state.fix === f) {
       setApplied(false);
       $("fix-status").textContent = "Undone - the cells are back to what they were.";

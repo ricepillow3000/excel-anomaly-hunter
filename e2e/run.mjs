@@ -197,16 +197,49 @@ if (mode === "flow") {
   const paneRows = await page.$$eval("#flagged-list button", (bs) => bs.map((b) => +/^Row (\d+)/.exec(b.innerText)[1]).sort((a, b) => a - b));
   const flagsCsv = records(FLAGS), scanCsv = records(CSV);
   const csvRows = flagsCsv.slice(1).map((r) => +r[2]).sort((a, b) => a - b);
-  ok(flagsCsv[0].join() === "Scanned At,Sheet,Excel Row,Severity,Bucket,Reason,Suggested Fix,Magnitude" && flagsCsv.slice(1).every((r) => r[1] === "Sales"),
+  ok(flagsCsv[0].join() === "Scanned At,Sheet,Excel Row,Severity,Bucket,Reason,Suggested Fix,Magnitude,Status" && flagsCsv.slice(1).every((r) => r[1] === "Sales"),
     "latest-flags.csv has its fixed columns and the sheet's name");
   ok(paneRows.length > 0 && JSON.stringify(csvRows) === JSON.stringify(paneRows), `latest-flags.csv holds exactly the rows the pane lists (${paneRows})`);
   const r11 = scanCsv.find((r) => r[0] === "11");
   ok(scanCsv.length === 301 && scanCsv[0].slice(0, 6).join() === "Excel Row,OrderDate,Region,Units,UnitCost,Total" && r11[3] === "-5"
-    && r11[6] === "Medium" && /Units: -5 → /.test(r11[9]), "latest-scan.csv: every row, Excel's row numbers, row 11's -5 and its suggested fix - " + r11);
+    && r11[6] === "Medium" && /Units: -5 → /.test(r11[9]) && r11[11] === "Open", "latest-scan.csv: every row, Excel's row numbers, row 11's -5, its suggested fix, Status Open - " + r11);
+
+  // 6e) Fixed and Dismissed outlive the pane: kept in the workbook, they come back after a reload (the pane closed and
+  // opened again) and every re-scan, a sort keeps them, Power BI's Status shows them, and Undo takes its decision out.
+  // They lived in the pane's memory: a dismissed row came back flagged, an accepted fix vanished (John, 2026-10-20)
+  const tag = (r) => page.locator(`#flagged-list button:has-text("Row ${r} ") .sev`).textContent({ timeout: 2000 }).catch(() => null);
+  const kept = () => page.evaluate(() => Object.values(__settings.anomalyHunterDecisions?.Sales || {}).sort().join());
+  ok((await tag(22)) === "Dismissed", "row 22, dismissed in step 3, is still Dismissed after every re-scan since - " + (await tag(22)));
+  await openRow(11); await page.click("#fix-apply"); await idle();
+  ok((await kept()) === "dismissed,fixed", "the workbook keeps one code per decision, never the values - " + (await kept()));
+  const book = await page.evaluate(() => JSON.stringify(__settings.anomalyHunterDecisions));
+  ok(/^\{"Sales":\{("[0-9a-z]{1,11}\.\d+":"(fixed|dismissed)",?){2}\}\}$/.test(book), "only codes, never a cell value - " + book);
+  await page.reload(); await page.waitForSelector("#main-ui", { state: "visible" });
+  ok((await cell("C11")).v !== -5, "the reloaded pane sees the same workbook (the fix is in the cell)");
+  await find();
+  ok((await tag(11)) === "Fixed" && (await tag(22)) === "Dismissed", `after a reload: row 11 Fixed, row 22 Dismissed - ${await tag(11)}, ${await tag(22)}`);
+  ok((await cell("A22")).fill === null && (await cell("A11")).fill === null && (await cell("A51")).fill === "#FFEB9C",
+    "a decided row is not highlighted again; the others are - " + JSON.stringify([await cell("A22"), await cell("A11"), await cell("A51")]));
+  ok(/2 of \d+ done/.test(await text("#list-title")), "and counted done - " + (await text("#list-title")));
+  await page.click('#flagged-list button:has-text("Row 11 ")'); await idle();
+  ok(await page.isVisible("#results") && (await text("#notice")).includes("Undo is only offered right after a fix"), "a row fixed before only selects its row, and says why there's no Undo - " + (await text("#notice")));
+  await openRow(22);
+  ok((await text("#fix-title")).startsWith("Row 22") && (await page.isVisible("#fix-apply")), "a dismissed row's card still opens from the list, so it can still be fixed");
+  await page.click("#fix-back");
+  const flagsNow = records(FLAGS), statusOf = (r) => flagsNow.find((x) => x[2] === String(r))?.[8];
+  ok(statusOf(11) === "Fixed" && statusOf(22) === "Dismissed" && statusOf(51) === "Open", `latest-flags.csv: Status Fixed, Dismissed, Open (${statusOf(11)}, ${statusOf(22)}, ${statusOf(51)})`);
+  const swap = () => page.evaluate(() => { for (const c of "ABCDE") { const a = __cell("Sales", c + "22").v, b = __cell("Sales", c + "23").v; __edit("Sales", c + "22", b); __edit("Sales", c + "23", a); } });
+  await swap(); await find(); // a sort moves the dismissed record down one row
+  ok((await tag(23)) === "Dismissed" && (await tag(22)) === null, `a sort keeps the decision with its record (row 23 now) - ${await tag(23)}, ${await tag(22)}`);
+  await swap();
+  await openRow(81); await page.click("#fix-apply"); await idle(); // a fix accepted, then undone: its decision goes
+  ok((await kept()) === "dismissed,fixed,fixed", "Accept keeps a decision - " + (await kept()));
+  await page.click("#fix-undo"); await idle();
+  ok((await kept()) === "dismissed,fixed" && (await cell("B81")).v === "east ", "Undo takes it back out - " + (await kept()));
   await powerBi(false); await find();
   ok(!fs.existsSync(CSV) && !fs.existsSync(FLAGS), "Power BI turned off: the next scan deletes both copies");
 
-  // 6e) the footer's Privacy and Support links open their pages from the engine
+  // 6f) the footer's Privacy and Support links open their pages from the engine
   for (const link of ["Privacy", "Support"]) {
     const [pop] = await Promise.all([page.waitForEvent("popup"), page.click(`#pane-footer .pf-links a:has-text("${link}")`)]);
     await pop.waitForLoadState();
@@ -242,20 +275,60 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
   ok(await page.isVisible("#ai-box") || !(await page.isVisible("#ai-off")), "AI help is on when a key is set");
   await openRow(11);
   ok(await page.isVisible("#ai-box") && !(await page.isVisible("#ai-off")), "Ask AI shown when a key is set");
-  await page.fill("#fix-intent", "use the average Units for East");
-  await page.click("#fix-ask");
+  // typed with the real keyboard: page.fill sets the value without a single key event, and so hid that the box
+  // cancelled every key (2026-10-20). Focus left on the slider or Find problems (both act on a key) must not matter:
+  // keys inside a text field never start a scan, and Ctrl+Enter asks AI, which sends only /fix and /check.
+  const posts = []; // every POST the page makes, by path
+  page.on("request", (r) => r.method() === "POST" && posts.push(new URL(r.url()).pathname));
+  const level = await page.getAttribute("#strength", "aria-valuenow");
+  await page.focus("#strength");
+  await page.click("#fix-intent");
+  await page.keyboard.type("use the average Units");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("for East");
+  // a space then Backspace leave the text as it was, wherever the caret ended up
+  for (const k of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown", " ", "Backspace"]) await page.keyboard.press(k);
+  await page.focus("#scan");
+  await page.click("#fix-intent");
+  for (const k of ["End", " ", "Backspace", "Enter", "Backspace"]) await page.keyboard.press(k);
+  await page.waitForTimeout(500); // a scan would have started by now
+  const typed = "use the average Units\nfor East";
+  ok((await page.inputValue("#fix-intent")) === typed, "typed keys land in the Ask AI box, Enter makes a new line - " + JSON.stringify(await page.inputValue("#fix-intent")));
+  ok(posts.length === 0 && (await page.getAttribute("#strength", "aria-valuenow")) === level, "typing, Enter, Space and arrows in the box start no scan - " + posts);
+  await page.keyboard.press("Control+Enter");
   await page.waitForFunction(() => document.getElementById("fix-label").textContent === "AI's fix", null, { timeout: 30000 });
+  ok(posts.includes("/fix") && posts.every((p) => p === "/fix" || p === "/check"), "Ctrl+Enter asks AI: only /fix and /check are sent - " + posts);
+  ok((await page.inputValue("#fix-intent")) === typed, "Ctrl+Enter adds no new line");
+  const asked = fs.readFileSync(DIR + "claude.log", "utf8").trim().split("\n").map(JSON.parse).filter((l) => l.prompt.includes("Flagged row")).at(-1);
+  ok(asked && asked.prompt.includes(`User's request: ${typed}`), "what was typed is what AI is asked");
   ok((await text("#fix-changes")).startsWith("C11: -5 → =AVERAGEIFS("), "AI's fix previewed - " + (await text("#fix-changes")));
   ok((await cell("C11")).v === -5, "nothing written before Accept");
   await page.click("#fix-apply"); await idle();
   ok(String((await cell("C11")).f).startsWith("=AVERAGEIFS("), "Accept writes the AI formula");
   await page.click("#fix-undo"); await idle();
   ok((await cell("C11")).v === -5 && !String((await cell("C11")).f ?? "").startsWith("="), "Undo takes the AI formula back out - " + (await text("#fix-status")));
+  posts.length = 0;
+  await page.click("#fix-ask");
+  await page.waitForFunction(() => document.getElementById("fix-ask").textContent === "Ask AI" && !document.getElementById("fix-ask").disabled, null, { timeout: 30000 });
+  ok(posts.includes("/fix") && posts.every((p) => p === "/fix" || p === "/check"), "clicking Ask AI sends only /fix and /check, never /scan - " + posts);
+
+  // the AI key box (Options > AI help) takes typed keys too; Enter in it sends nothing
+  await page.click("#settings summary");
+  posts.length = 0;
+  await page.click("#ai-key");
+  await page.keyboard.type("AIzaTypedKey_123");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(300);
+  ok((await page.inputValue("#ai-key")) === "AIzaTypedKey_123" && posts.length === 0, "the AI key box takes typed keys; Enter there sends nothing - " + posts);
+  await page.fill("#ai-key", "");
+  await page.click("#settings summary");
 
   // Check words with AI: only the text columns' distinct words go; the AI's answer is shown as text, never as markup,
   // and a word it makes up (not in the column) is dropped. The stub answers with markup in "why" and a made-up word.
   await page.click("#fix-back");
+  posts.length = 0;
   await page.click("#odd-check"); await idle();
+  ok(posts.join() === "/odd-text", "Check words with AI sends only /odd-text - " + posts);
   const odd = await page.$$eval("#odd-list li", (lis) => lis.map((li) => li.textContent));
   ok(odd.length === 100 && odd.every((t) => /^Row \d+: Region "Central" - <img src=x onerror=/.test(t)), `each row with the odd word listed (${odd.length}) - ${odd[0]}`);
   ok(!(await page.$("#odd-list img")) && !(await page.evaluate(() => window.__pwned)) && !odd.some((t) => t.includes("Atlantis")),

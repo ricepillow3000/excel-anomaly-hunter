@@ -2,9 +2,9 @@
 anomaly-hunter-flags.pbids). Written only when the pane's "Save each scan for Power BI" is on. The schema is documented
 in powerbi/README.md and pinned by backend/tests/test_powerbi.py.
   latest-scan.csv   one row per data row: Excel Row, every column of the sheet, then Severity, Bucket, Reason,
-                    Suggested Fix, Magnitude (the sheet's own columns change with the sheet)
-  latest-flags.csv  one row per flagged row, the same 8 columns whatever the sheet, so a report built on it keeps
-                    refreshing when another sheet is scanned"""
+                    Suggested Fix, Magnitude, Status (the sheet's own columns change with the sheet)
+  latest-flags.csv  one row per flagged row or row the user fixed or dismissed, the same 9 columns whatever the
+                    sheet, so a report built on it keeps refreshing when another sheet is scanned"""
 import csv
 import datetime
 import json
@@ -15,9 +15,12 @@ from pathlib import Path
 
 import numpy as np
 
-RESULTS = ("Severity", "Bucket", "Reason", "Suggested Fix", "Magnitude")
+RESULTS = ("Severity", "Bucket", "Reason", "Suggested Fix", "Magnitude", "Status")
 FLAGS = ("Scanned At", "Sheet", "Excel Row", *RESULTS)
 FLAGGED = ("High", "Medium", "Low")  # "Noted" = fine, as in the pane
+# what the user decided about a row, kept in the workbook by the pane and sent with each scan -> its Status. A row
+# nobody decided is "Open" when flagged. An accepted fix used to vanish from latest-flags.csv on Refresh (2026-10-20).
+DECISIONS = {"fixed": "Fixed", "dismissed": "Dismissed"}
 # OWASP CSV injection: text starting with these runs as a formula when the CSV is opened in Excel
 FORMULA_START = tuple("=+-@\t\r\n＝＋－＠")
 # Power BI's Text/CSV import puts QuoteStyle.None in the query it makes, which ends a row at every line break, quoted
@@ -130,16 +133,19 @@ def _header(columns):
     return [ours[0], *names, *ours[1:]]
 
 
-def tables(columns, rows, out, start_row=0, sheet="", now=None):
-    """-> (scan table, flags table): lists of rows, the header first, cells as csv.writer gets them."""
+def tables(columns, rows, out, start_row=0, sheet="", now=None, decisions=None):
+    """-> (scan table, flags table): lists of rows, the header first, cells as csv.writer gets them.
+    decisions: per row None, "fixed" or "dismissed" (checked by the /scan route)."""
     now = now or datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+    decisions = decisions or [None] * len(rows)
     full, flags = [_header(columns)], [list(FLAGS)]
-    for i, (row, v) in enumerate(zip(rows, out, strict=True)):
+    for i, (row, v, d) in enumerate(zip(rows, out, decisions, strict=True)):
         hit = v["severity"] in FLAGGED
-        result = [v["severity"], v["bucket"], v["reason"], suggested_fix(columns, row, v) if hit else "", v["magnitude"]]
+        status = DECISIONS.get(d) or ("Open" if hit else "")
+        result = [v["severity"], v["bucket"], v["reason"], suggested_fix(columns, row, v) if hit else "", v["magnitude"], status]
         excel_row = start_row + 2 + i  # the pane's "Row N": the header sits in sheet row start_row + 1
         full.append([field(excel_row), *map(field, row), *map(field, result)])
-        if hit:
+        if hit or d:  # a fixed row looks right now, and stays listed as Fixed
             flags.append([field(now), field(sheet), field(excel_row), *map(field, result)])
     return full, flags
 
@@ -155,11 +161,11 @@ def remove(scan_csv):
             q.unlink(missing_ok=True)
 
 
-def write(scan_csv, columns, rows, out, start_row=0, sheet=""):
+def write(scan_csv, columns, rows, out, start_row=0, sheet="", decisions=None):
     """Both files, each written whole to a .tmp first and then swapped in, so Power BI never reads half a file.
     UTF-8 with a BOM: without it Power BI reads the file as Windows-1252 and every accent or emoji comes out garbled."""
     try:
-        made = list(zip(paths(scan_csv), tables(columns, rows, out, start_row, sheet), strict=True))
+        made = list(zip(paths(scan_csv), tables(columns, rows, out, start_row, sheet, decisions=decisions), strict=True))
         for p, table in made:
             # errors="replace": one odd character (a lone surrogate) becomes "?" instead of failing the copy
             with open(f"{p}.tmp", "w", encoding="utf-8-sig", errors="replace", newline="") as f:
