@@ -61,6 +61,9 @@ function openMatrix(btn) {
   box.hidden = false;
   btn.setAttribute("aria-expanded", "true");
   open = { btn, box };
+  // the box is a dialog that sits after the whole table in the page: without this a keyboard or screen-reader user
+  // reached it only after every other row; Escape and Close bring focus back to the row
+  box.querySelector(".m-close").focus();
 }
 for (const btn of ws.querySelectorAll(".rowbtn")) {
   btn.addEventListener("click", (e) => { e.stopPropagation(); openMatrix(btn); });
@@ -81,7 +84,8 @@ fetch("https://api.github.com/repos/ricepillow3000/excel-anomaly-hunter/releases
     document.getElementById("sha").textContent = hash[1];
     const tag = /^v\d+\.\d+\.\d+$/.test(d.tag_name) ? d.tag_name : "Latest";
     const date = /^\d{4}-\d{2}-\d{2}/.exec(d.published_at || "");
-    document.getElementById("rel").textContent = `${tag}${date ? ", " + date[0] : ""} · ${Math.round(exe.size / 1e6)} MB · free`;
+    const mb = Number.isFinite(exe.size) && exe.size > 0 ? Math.round(exe.size / 1e6) + " MB" : ""; // a size that isn't a number read "NaN MB"
+    document.getElementById("rel").textContent = [tag + (date ? ", " + date[0] : ""), mb, "free"].filter(Boolean).join(" · ");
   })
   .catch(() => {});  // offline or rate-limited: the release-page link stays
 

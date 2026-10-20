@@ -5,12 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Anomaly Hunter Support</title>
 <meta name="claude:viewport-fit-sides" content="cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src https://api.github.com; base-uri 'none'; form-action 'none'">
 <link rel="icon" href="assets/mark-32.png" sizes="32x32">
 <link rel="preload" href="assets/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<div class="notice-bar"><p>Free for Windows · a scan never leaves your PC · <a href="index.html#download">Download</a></p></div>
+<aside class="notice-bar" aria-label="Announcement"><p>Free for Windows · a scan never leaves your PC · <a href="index.html#download">Download</a></p></aside>
 <header class="bar">
   <div class="wrap">
     <nav class="links" aria-label="Main">
@@ -95,10 +96,11 @@
             <textarea id="details" name="details" maxlength="4000" required placeholder="When I clicked Find problems in this sheet, ..."></textarea>
             <span class="hint">Made-up values only.</span>
           </div>
-          <label class="confirm" for="clean"><input id="clean" type="checkbox" required><span>This contains no AI key, no invite code and no real or private data.</span></label>
+          <label class="confirm"><input id="clean" type="checkbox" required><span>This contains no AI key, no invite code and no real or private data.</span></label>
           <button class="btn btn-navy" type="submit">Prepare my question</button>
           <div class="result" id="result" hidden>
             <span>Ready. Open it on GitHub, check it, and press Submit there.</span>
+            <span id="cut" hidden>What happened is too long for one link, so the link holds only its start. Copy the rest from the box above and paste it on GitHub.</span>
             <a class="btn btn-plain" id="open" href="https://github.com/ricepillow3000/excel-anomaly-hunter/issues/new?template=support_request.yml" target="_blank" rel="noopener">Open on GitHub</a>
           </div>
           <p class="error" id="missing" hidden role="alert"></p>

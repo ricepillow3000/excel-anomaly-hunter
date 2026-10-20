@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Anomaly Hunter Privacy</title>
 <meta name="claude:viewport-fit-sides" content="cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src https://api.github.com; base-uri 'none'; form-action 'none'">
 <link rel="icon" href="assets/mark-32.png" sizes="32x32">
 <link rel="preload" href="assets/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="styles.css">
@@ -12,7 +13,7 @@
 <body>
 <!-- the sections below are the pane's own Privacy page (frontend/privacy.html), word for word, plus "This website";
      a change there is a change here (test_both_privacy_pages_name_every_place_data_goes_and_every_file_the_app_keeps) -->
-<div class="notice-bar"><p>Free for Windows · a scan never leaves your PC · <a href="index.html#download">Download</a></p></div>
+<aside class="notice-bar" aria-label="Announcement"><p>Free for Windows · a scan never leaves your PC · <a href="index.html#download">Download</a></p></aside>
 <header class="bar">
   <div class="wrap">
     <nav class="links" aria-label="Main">
