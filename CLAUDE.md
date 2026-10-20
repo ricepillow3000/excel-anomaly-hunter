@@ -48,7 +48,7 @@ an admin panel, role, operator route or debug switch. The weekly security sweep 
 | A top value that is all 9s and over twice the next one (99999 = "missing" / "too big") | `pipeline.codes` | `test_an_all_nines_top_value_is_a_code` |
 | A lone decimal in a column of whole numbers (study day 7.3 for 73) | `pipeline.whole_numbers` | `test_a_lone_decimal_in_a_column_of_whole_numbers_is_worth_a_check` |
 | A number past what its column's name allows (Month 13, Hour 25, a 6 on "Rating (1-5)", Latitude 91.5); quiet when 1%+ break it (yyyymm months, 0-360 longitudes) | `pipeline.named_bounds` | `test_a_value_past_what_its_column_name_allows_is_worth_a_check`, `test_a_column_whose_name_means_something_else_keeps_quiet` |
-| Fairness gaps by demographic group, incl. 2-label text outcomes; `?` counts as missing, never a group; labels read case- and space-blind ("no " is "No") | `engine/fairness.py` | `test_blindspots.py`, `test_wild_census.py`, `test_delinquency.py` |
+| Fairness gaps by demographic group, incl. 2-label text outcomes; `?` counts as missing, never a group; labels read case- and space-blind ("no " is "No"); a real gap in an outcome or in blanks, on a column the measured public rules cover, gets one sentence of context (never a flag-rate gap; rules re-measured by `tools/bias_sources.py`, `docs/bias/FINDINGS.md`) | `engine/fairness.py`, `ai/bias_context.pane_note`, `ai/bias_rules.json` | `test_blindspots.py`, `test_wild_census.py`, `test_delinquency.py`, `test_a_real_gap_in_an_outcome_gets_one_sentence_of_public_context_and_a_flag_rate_gap_none` |
 Adding or removing a check: update this table in the same commit.
 
 ## Patterns to copy
@@ -64,7 +64,8 @@ Adding or removing a check: update this table in the same commit.
   the pane and engine without it (`docs/SYSTEMS-MAP.md`). Use a fresh set each time: a set you fixed against is no
   longer held out.
 - **An AI prompt, its context or the model** changes only with `backend/bench/ai_eval.py` numbers (your own key,
-  never the relay; paired wins vs losses on dev and held-out) in the commit message. No eval run, no change.
+  never the relay; paired wins vs losses on dev and held-out) in the commit message. No eval run, no change. Ask AI's
+  real-world notes (`ai/bias_context.py`) are built but off: arm `bias_context`; `on=True` in `client.py` once it wins.
 - **Before adding a system-design piece** (a cache, queue, lock, retry, rate limit), read `docs/SYSTEMS-MAP.md`: what
   exists, where, and which measurement would justify more.
 - **Comments say why** (the incident or measurement), not what.

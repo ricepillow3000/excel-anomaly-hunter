@@ -1,0 +1,209 @@
+{
+ "about": "Measured by tools/bias_sources.py from pinned public tables (docs/bias/FINDINGS.md). Each rule describes a real gap so it is not mistaken for a typo; none is ever an expectation to correct a value toward.",
+ "topics": {
+  "sex": [
+   "sex",
+   "gender"
+  ],
+  "race": [
+   "race",
+   "ethnicity",
+   "ethnic"
+  ],
+  "age": [
+   "age",
+   "dob",
+   "birth",
+   "birthday",
+   "birthdate"
+  ],
+  "marital": [
+   "marital"
+  ],
+  "employment": [
+   "employment",
+   "employed",
+   "job",
+   "occupation",
+   "workclass"
+  ],
+  "housing": [
+   "housing",
+   "tenure"
+  ],
+  "smoker": [
+   "smoker",
+   "smoking",
+   "smokes"
+  ],
+  "place": [
+   "location",
+   "city",
+   "state",
+   "zip",
+   "zipcode",
+   "postal",
+   "postcode",
+   "country",
+   "region",
+   "neighborhood",
+   "neighbourhood",
+   "county"
+  ]
+ },
+ "sources": {
+  "adult": {
+   "title": "UCI Adult, US census 1994 (Becker and Kohavi)",
+   "url": "https://raw.githubusercontent.com/jbrownlee/Datasets/d20fcb6402ae34e653d4513b00f39257bb37ed7f/adult-all.csv",
+   "sha256": "21e0ea2f925a00338929a8c86c27354c72ac1c79819bcca81c7d91c3d64218c2",
+   "licence": "CC BY 4.0 (UCI); mirror has no licence of its own",
+   "rows": 48842
+  },
+  "adult_test": {
+   "title": "UCI Adult, its original test part as UCI writes it",
+   "url": "https://raw.githubusercontent.com/jbrownlee/Datasets/d20fcb6402ae34e653d4513b00f39257bb37ed7f/adult-test.csv",
+   "sha256": "72567b94f5c1a6f8501377dd80f93892c3848ff071cf91ba47e00b0785a28074",
+   "licence": "CC BY 4.0 (UCI)",
+   "rows": 16281
+  },
+  "german": {
+   "title": "Statlog German Credit (Hofmann), labels spelled out",
+   "url": "https://raw.githubusercontent.com/stedy/Machine-Learning-with-R-datasets/ff933238d9c30da179b7e3ad4b6ca938d67efc53/credit.csv",
+   "sha256": "5c9906df163beb8c7d9c497146d3bdf210c4816401f32b488d6c10fcbff0d048",
+   "licence": "CC BY 4.0 (UCI); mirror README: public domain",
+   "rows": 1000
+  },
+  "insurance": {
+   "title": "Medical costs teaching table (Lantz, Machine Learning with R), simulated from US census figures",
+   "url": "https://raw.githubusercontent.com/stedy/Machine-Learning-with-R-datasets/ff933238d9c30da179b7e3ad4b6ca938d67efc53/insurance.csv",
+   "sha256": "505c1cbc2e63d0363bac59501563df2530aadf4cdb9cfee226f4ef32f5468281",
+   "licence": "none stated; mirror README: public domain",
+   "rows": 1338
+  },
+  "compas": {
+   "title": "ProPublica COMPAS, Broward County 2013-2014 (Machine Bias, 2016)",
+   "url": "https://raw.githubusercontent.com/propublica/compas-analysis/bafff5da3f2e45eca6c2d5055faad269defd135a/compas-scores-two-years.csv",
+   "sha256": "c451db85908b2f7fef1d83203bedf6b71ecda0d5af468d82ae62178f91d0cc7d",
+   "licence": "no licence file; published by ProPublica for analysis",
+   "rows": 7214
+  }
+ },
+ "rules": [
+  {
+   "id": "sex_outcome",
+   "topic": "sex",
+   "kind": "outcome",
+   "text": "In public US census data (UCI Adult, 48,842 people) 30.4% of men and 10.9% of women earn over 50K: a gap between groups is common in real data and is not by itself a data error.",
+   "pane_for": "outcome",
+   "pane": "For comparison, in public US census data (UCI Adult, 48,842 people) 30.4% of men and 10.9% of women earn over 50K, so a gap like this is common in real data: check how the rows were collected and what else differs between the groups, never change a value toward its group."
+  },
+  {
+   "id": "race_outcome",
+   "topic": "race",
+   "kind": "outcome",
+   "text": "In public US census data (UCI Adult, 48,842 people) 26.9% of Asian or Pacific Islander people and 12.1% of Black people earn over 50K: a gap between groups is common in real data and is not by itself a data error.",
+   "pane_for": "outcome",
+   "pane": "For comparison, in public US census data (UCI Adult, 48,842 people) 26.9% of Asian or Pacific Islander people and 12.1% of Black people earn over 50K, so a gap like this is common in real data: check how the rows were collected and what else differs between the groups, never change a value toward its group."
+  },
+  {
+   "id": "age_outcome",
+   "topic": "age",
+   "kind": "outcome",
+   "text": "In public US census data (UCI Adult, 48,842 people) 38.3% of people aged 45-59 and 5.1% of people under 30 earn over 50K: a gap between groups is common in real data and is not by itself a data error.",
+   "pane_for": "outcome",
+   "pane": "For comparison, in public US census data (UCI Adult, 48,842 people) 38.3% of people aged 45-59 and 5.1% of people under 30 earn over 50K, so a gap like this is common in real data: check how the rows were collected and what else differs between the groups, never change a value toward its group."
+  },
+  {
+   "id": "marital_outcome",
+   "topic": "marital",
+   "kind": "outcome",
+   "text": "In public US census data (UCI Adult, 48,842 people) 44.6% of married people and 4.5% of never-married people earn over 50K: a gap between groups is common in real data and is not by itself a data error.",
+   "pane_for": "outcome",
+   "pane": "For comparison, in public US census data (UCI Adult, 48,842 people) 44.6% of married people and 4.5% of never-married people earn over 50K, so a gap like this is common in real data: check how the rows were collected and what else differs between the groups, never change a value toward its group."
+  },
+  {
+   "id": "employment_outcome",
+   "topic": "employment",
+   "kind": "outcome",
+   "text": "In public US census data (UCI Adult, 48,842 people) 55.3% of the self-employed (incorporated) and 21.8% of private-sector workers earn over 50K: a gap between groups is common in real data and is not by itself a data error."
+  },
+  {
+   "id": "housing_outcome",
+   "topic": "housing",
+   "kind": "outcome",
+   "text": "In public German credit data (Statlog, 1,000 loans) 40.7% of people housed for free and 26.1% of home owners have bad credit: a gap between groups is common in real data and is not by itself a data error."
+  },
+  {
+   "id": "place_outcome",
+   "topic": "place",
+   "kind": "outcome",
+   "text": "In a public medical-cost teaching table (1,338 people, simulated from US census figures) 25.0% of people in the southeast and 17.8% in the northwest smoke: a gap between groups is common in real data and is not by itself a data error.",
+   "pane_for": "outcome",
+   "pane": "For comparison, in a public medical-cost teaching table (1,338 people, simulated from US census figures) 25.0% of people in the southeast and 17.8% in the northwest smoke, so a gap like this is common in real data: check how the rows were collected and what else differs between the groups, never change a value toward its group."
+  },
+  {
+   "id": "sex_spread",
+   "topic": "sex",
+   "kind": "spread",
+   "text": "In public German credit data (Statlog, 1,000 loans) the median loan is 1,959 for women and 2,444 for men, and the middle half of each group overlaps widely (1,248-3,606 and 1,442-4,266): a value outside its group's usual range is common and real."
+  },
+  {
+   "id": "age_spread",
+   "topic": "age",
+   "kind": "spread",
+   "text": "In a public medical-cost teaching table (1,338 people, simulated from US census figures) the median yearly cost is 3,214 under 30 and 14,255 at 60 and over: amounts that rise with age are real, not typos."
+  },
+  {
+   "id": "smoker_spread",
+   "topic": "smoker",
+   "kind": "spread",
+   "text": "In a public medical-cost teaching table (1,338 people) smokers' median yearly cost is 34,456, 4.7 times non-smokers' 7,345: a situation can change amounts this much in real data."
+  },
+  {
+   "id": "far_from_group",
+   "topic": "any",
+   "kind": "far",
+   "text": "In public tables (German credit 1,000 loans, COMPAS 7,214 people, medical costs 1,338 people) 7.5%, 8.9% and 3.4% of values sit past their own group's usual range (1.5 IQR) and are real records: unusual for its group is not a typo."
+  },
+  {
+   "id": "group_median_move",
+   "topic": "any",
+   "kind": "far",
+   "text": "Setting each cost in a public medical-cost table (1,338 people) to its smoker group's median would move a typical real value by 41%: a group's average is never a fix for one person's value."
+  },
+  {
+   "id": "question_mark",
+   "topic": "any",
+   "kind": "hygiene",
+   "text": "In UCI Adult '?' means unknown in 5.7% of workclass, 5.8% of occupation and 1.8% of country cells: a '?' is a missing value, never a group and never a value to fill from a group."
+  },
+  {
+   "id": "label_spellings",
+   "topic": "any",
+   "kind": "hygiene",
+   "text": "UCI Adult's own test part (16,281 rows) writes every label with a leading space and its income labels with a dot (' >50K.'), the main part without: case, space and dot variants are one label, not different groups."
+  },
+  {
+   "id": "top_codes",
+   "topic": "any",
+   "kind": "hygiene",
+   "text": "In UCI Adult the top values are caps: 55 people are exactly 90 (only 2 are 89), 137 work exactly 99 hours and 244 have capital gain 99999: a cap is a recorded code, not a typing slip."
+  },
+  {
+   "id": "age_missing",
+   "topic": "age",
+   "kind": "missing",
+   "text": "In UCI Adult occupation is unknown for 18.4% of people 60 and over and 2.3% of people aged 30-44: blanks that gather in one group are often how the data were collected.",
+   "pane_for": "missing",
+   "pane": "For comparison, in UCI Adult occupation is unknown for 18.4% of people 60 and over and 2.3% of people aged 30-44, so blanks that gather in one group are often how the data were collected: check why before filling any."
+  },
+  {
+   "id": "sex_missing",
+   "topic": "sex",
+   "kind": "missing",
+   "text": "In UCI Adult occupation is unknown for 7.9% of women and 4.7% of men: blanks that gather in one group are often how the data were collected.",
+   "pane_for": "missing",
+   "pane": "For comparison, in UCI Adult occupation is unknown for 7.9% of women and 4.7% of men, so blanks that gather in one group are often how the data were collected: check why before filling any."
+  }
+ ]
+}
