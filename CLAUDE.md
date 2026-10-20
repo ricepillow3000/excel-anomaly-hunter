@@ -23,7 +23,7 @@ an admin panel, role, operator route or debug switch. The weekly security sweep 
 | 5 | Load | `engine/load.py` | text/number/date/id per column; Excel errors logged, not crashed on | `test_engine.py` |
 | 6 | Checks | `engine/pipeline.py`, `engine/detectors.py`, `engine/limits.py` | each check returns one list of plain-sentence reasons per row | see the feature map |
 | 7 | Severity | `pipeline.score` | hygiene or weird limit = Medium; 2 votes = Medium; 3 = High; 1 = Low | `test_strength.py` |
-| 8 | Answer | routes, `_inert` | every error is JSON; the Power BI CSV never carries a live formula (text always quoted) | `test_api_security.py` |
+| 8 | Answer | routes, `powerbi.py` | every error is JSON; the Power BI CSVs never carry a live formula (text always quoted, `inert`) and read back, the way Power BI's import reads them, as exactly what the pane got (schema: `powerbi/README.md`) | `test_api_security.py`, `test_powerbi.py` |
 | 9 | AI (optional) | `ai/client.py` | one call at a time, deadline, cache (answers only), key never echoed (nor the provider's error text), an AI formula may call only `client.SAFE` functions, headers and the reason go in one line each, no typed request = the flagged row only | `test_fix.py`, `test_ai_load.py`, `test_text_checks.py` |
 | 10 | Relay | `relay/worker.js` | invite hash, daily caps counted before Google, only `POST /fix`, model and key set by the relay | `relay/test.mjs`; live Worker from outside: `relay/live-probe.mjs` (CI `relay-live.yml`) |
 | 11 | Pane | `frontend/` | every dynamic `innerHTML` value goes through `esc()`; CSP allows only our files + office.js | `frontend/selfcheck.js`, `e2e/run.mjs` |
@@ -47,7 +47,7 @@ an admin panel, role, operator route or debug switch. The weekly security sweep 
 | A top value that is all 9s and over twice the next one (99999 = "missing" / "too big") | `pipeline.codes` | `test_an_all_nines_top_value_is_a_code` |
 | A lone decimal in a column of whole numbers (study day 7.3 for 73) | `pipeline.whole_numbers` | `test_a_lone_decimal_in_a_column_of_whole_numbers_is_worth_a_check` |
 | A number past what its column's name allows (Month 13, Hour 25, a 6 on "Rating (1-5)", Latitude 91.5); quiet when 1%+ break it (yyyymm months, 0-360 longitudes) | `pipeline.named_bounds` | `test_a_value_past_what_its_column_name_allows_is_worth_a_check`, `test_a_column_whose_name_means_something_else_keeps_quiet` |
-| Fairness gaps by demographic group, incl. 2-label text outcomes; `?` counts as missing, never a group | `engine/fairness.py` | `test_blindspots.py`, `test_wild_census.py` |
+| Fairness gaps by demographic group, incl. 2-label text outcomes; `?` counts as missing, never a group; labels read case- and space-blind ("no " is "No") | `engine/fairness.py` | `test_blindspots.py`, `test_wild_census.py`, `test_delinquency.py` |
 Adding or removing a check: update this table in the same commit.
 
 ## Patterns to copy
@@ -114,3 +114,12 @@ Adding or removing a check: update this table in the same commit.
   what is sent, stored or installed updates all three (`test_both_privacy_pages_name_every_place_data_goes_and_every_file_the_app_keeps`).
 - Pin every package, indirect ones too: an unpinned scikit-learn 1.9.1 broke every Windows install (2026-10-11).
   `constraints.txt` + `tools/pinned.py` (CI and the exe job); regenerate with the command in `tools/pinned.py`.
+- Test a file the way its reader reads it. Power BI's Text/CSV import ends a record at every line break, even inside
+  quotes (`QuoteStyle.None`): one cell with a line break shifted every row below it, and a 309-digit cell made the old
+  writer give up silently, leaving the previous sheet's copy for Power BI (2026-10-20). `powerbi.py` writes a break as
+  ↵, removes both files when a write fails, and `test_powerbi.py` parses them back record by record.
+- One stray spelling switches a check off: a single "no " among 480 Yes/No answers made three labels, and every
+  outcome fairness test vanished with the real gap in it (South 34% vs East 8%). Labels are read the way the spelling
+  check reads them (`fairness._labels`, `test_delinquency.py`).
+- A cache that outlives a test run tests nothing: e2e/all.sh kept the AI answer cache, so a second run never reached
+  the stub. It starts fresh now.

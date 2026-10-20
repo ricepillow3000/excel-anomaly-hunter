@@ -21,14 +21,15 @@ A scan runs on your PC and sends nothing to the internet. Your sheet's data leav
   | `ca.pem`, `cert.pem`, `key.pem` | the certificate the engine uses for HTTPS on this PC |
   | `addin\manifest.xml` | the file that lists Anomaly Hunter in Excel |
   | `Start here.xlsx` | the practice workbook |
-  | `anomaly-hunter.pbids` | a shortcut that opens latest-scan.csv in Power BI |
-  | `latest-scan.csv` | **only if you turn on "Save each scan for Power BI"** (off unless you turn it on): a plain-text copy of every cell of the last sheet you scanned, plus each row's result. Each scan replaces it; after you turn the option off, the next scan deletes it |
+  | `anomaly-hunter.pbids`, `anomaly-hunter-flags.pbids` | shortcuts that open latest-scan.csv and latest-flags.csv in Power BI; they hold only those files' paths |
+  | `latest-scan.csv` | **only if you turn on "Save each scan for Power BI"** (off unless you turn it on): a plain-text copy of every cell of the last sheet you scanned, with each row's number, result and suggested fix. Each scan replaces it; after you turn the option off, the next scan deletes it |
+  | `latest-flags.csv` | **only with the same option on**: the sheet's name, the time of the scan, and the number, result and suggested fix of each flagged row (results and fixes can quote your cells). Kept and deleted together with latest-scan.csv |
 - **Elsewhere:** if you installed AnomalyHunter.exe, it unpacks itself into a temporary folder in `%TEMP%` each time it starts; if the engine is
   stopped by force, that folder can be left behind. Install removes the "downloaded from the internet" mark from its
   own copy of the app, so Windows doesn't warn at every logon.
 - **An invite kit** (shared by John by a Google Drive or OneDrive link) runs from its own folder: `install.bat`
   downloads the Python packages it needs from PyPI, the Python package site (PyPI sees your IP address), and keeps
-  them in a `.venv` folder there, with the Power BI shortcut in its `powerbi` folder. It copies the kit's invite code
+  them in a `.venv` folder there, with the Power BI shortcuts in its `powerbi` folder. It copies the kit's invite code
   into the folder above. A kit has no AnomalyHunter.exe, `addin\manifest.xml` or Start here.xlsx: Excel lists the
   add-in from the kit's `frontend` folder. Uninstall a kit with `install.bat /u`, then delete the kit folder.
 - **In your workbook:** the limits you changed, the strength slider, a list of the last auto-fixes with their old

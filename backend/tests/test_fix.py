@@ -420,7 +420,8 @@ def test_both_privacy_pages_name_every_place_data_goes_and_every_file_the_app_ke
     root = Path(__file__).resolve().parents[2]
     places = ("Google", "Cloudflare", "Anthropic", "GitHub", "Microsoft")
     files = ("AnomalyHunter.exe", "server.log", "ai-cache", "gemini-key.txt", "invite-code.txt", "cert.pem",
-             "manifest.xml", "Start here.xlsx", "anomaly-hunter.pbids", "latest-scan.csv")
+             "manifest.xml", "Start here.xlsx", "anomaly-hunter.pbids", "latest-scan.csv", "anomaly-hunter-flags.pbids",
+             "latest-flags.csv")
     for page in ("PRIVACY.md", "frontend/privacy.html", "site/privacy.html"):
         words = (root / page).read_text(encoding="utf-8")
         assert [p for p in places + files if p not in words] == [], page
