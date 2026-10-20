@@ -11,15 +11,14 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body id="home">
+<div class="backdrop" aria-hidden="true"></div>
+<div class="notice-bar"><p>Free for Windows · a scan never leaves your PC · <a href="#download">Download</a></p></div>
 <header class="bar">
   <div class="wrap">
-    <a class="brand" href="#home" aria-label="Anomaly Hunter home"><img src="assets/mark-32.png" srcset="assets/mark-64.png 2x" width="32" height="32" alt=""><span>Anomaly Hunter</span></a>
     <nav class="links" aria-label="Main">
-      <a href="index.html" aria-current="page">Product</a>
-      <a href="#checks">Checks</a>
-      <a href="privacy.html">Privacy &amp; security</a>
-      <a href="support.html">Support</a>
-      <a class="btn-trim" href="#download">Download</a>
+      <div class="l"><a href="index.html" aria-current="page">Product</a><a href="#checks">Checks</a></div>
+      <a class="brand" href="#home" aria-label="Anomaly Hunter home"><img src="assets/mark-32.png" srcset="assets/mark-64.png 2x" width="32" height="32" alt=""><span>Anomaly Hunter</span></a>
+      <div class="r"><a href="privacy.html">Privacy &amp; security</a><a href="support.html">Support</a><a class="btn-trim" href="#download">Download</a></div>
     </nav>
   </div>
 </header>
@@ -29,8 +28,9 @@
     <div class="wrap">
       <div class="lede">
         <span class="label">Excel add-in for Windows</span>
-        <h1 id="hero-title">Find the error before it reaches the board.</h1>
+        <h1 id="hero-title">Find the error <em>before</em> it reaches the board.</h1>
         <p>Anomaly Hunter reads every row of an Excel sheet on your own PC, flags the figures that don't reconcile, explains each one in a sentence and proposes the correction. Nothing changes until you accept it.</p>
+        <a class="btn btn-ghost" href="#preview">See a sample scan</a>
         <span class="note">Free · Windows with desktop Excel · <a href="#download">download and checksum</a> at the end of the page</span>
       </div>
 
@@ -183,22 +183,19 @@
     <div class="wrap">
       <div class="section-head">
         <span class="label">The checks</span>
-        <h2 id="checks-title">Every row, held to the same standard.</h2>
+        <h2 id="checks-title">Every row, held to the <em>same</em> standard.</h2>
         <p>Rules for the clear-cut errors, statistics for the rest, and one plain sentence for every flag.</p>
       </div>
-      <table class="card">
-        <thead><tr><th scope="col">Check</th><th scope="col">What it catches</th><th scope="col">Example</th></tr></thead>
-        <tbody>
-          <tr><th scope="row">Reconciliation</th><td>Totals and products that don't add up: A + B + C, Qty × Price, a price after a discount. When one cell is off, the row's own numbers give the exact correction.</td><td class="eg">83.58 ÷ 1.99 = 42</td></tr>
-          <tr><th scope="row">Keying errors</th><td>A figure typed ten or a hundred times too large, a percent typed as a whole number, a flipped sign.</td><td class="eg">Units 7777, usual limit 105</td></tr>
-          <tr><th scope="row">Consistency</th><td>The same label typed different ways: stray spaces, capitals, misspellings, short forms.</td><td class="eg">"east " → "East"</td></tr>
-          <tr><th scope="row">Temporal</th><td>A date far outside the rest, and sharp jumps in a dated series. Repeating cycles are left alone.</td><td class="eg">2084 · a jump on 2026-01-09</td></tr>
-          <tr><th scope="row">Completeness</th><td>Blanks in a column that is otherwise filled, N/A and TBD placeholders, Excel errors, duplicate rows.</td><td class="eg">#N/A · a repeated row</td></tr>
-          <tr><th scope="row">Plausibility</th><td>A month past 12, an all-nines code, a lone decimal among whole numbers, combinations of values that don't fit the rest.</td><td class="eg">Month 13 · 99999</td></tr>
-          <tr><th scope="row">Fairness</th><td>Columns such as Age, Gender or Location never decide what is unusual. Each scan checks that flags, blanks and outcomes are even across their groups.</td><td class="eg">Region: even across groups</td></tr>
-          <tr><th scope="row">Ask AI (optional)</th><td>A correction drafted from a plain-English request, shown to you before anything is written. Needs a free Google AI key, and sends part of the sheet to Google.</td><td class="eg">"Use the usual spelling"</td></tr>
-        </tbody>
-      </table>
+      <ol class="num-grid">
+        <li><span class="no" aria-hidden="true">01.</span><h3>Reconciliation</h3><p>Totals and products that don't add up: A + B + C, Qty × Price, a price after a discount. When one cell is off, the row's own numbers give the exact correction.</p><span class="eg">83.58 ÷ 1.99 = 42</span></li>
+        <li><span class="no" aria-hidden="true">02.</span><h3>Keying errors</h3><p>A figure typed ten or a hundred times too large, a percent typed as a whole number, a flipped sign.</p><span class="eg">Units 7777, usual limit 105</span></li>
+        <li><span class="no" aria-hidden="true">03.</span><h3>Consistency</h3><p>The same label typed different ways: stray spaces, capitals, misspellings, short forms.</p><span class="eg">"east " → "East"</span></li>
+        <li><span class="no" aria-hidden="true">04.</span><h3>Temporal</h3><p>A date far outside the rest, and sharp jumps in a dated series. Repeating cycles are left alone.</p><span class="eg">2084 · a jump on 2026-01-09</span></li>
+        <li><span class="no" aria-hidden="true">05.</span><h3>Completeness</h3><p>Blanks in a column that is otherwise filled, N/A and TBD placeholders, Excel errors, duplicate rows.</p><span class="eg">#N/A · a repeated row</span></li>
+        <li><span class="no" aria-hidden="true">06.</span><h3>Plausibility</h3><p>A month past 12, an all-nines code, a lone decimal among whole numbers, combinations of values that don't fit the rest.</p><span class="eg">Month 13 · 99999</span></li>
+        <li><span class="no" aria-hidden="true">07.</span><h3>Fairness</h3><p>Columns such as Age, Gender or Location never decide what is unusual. Each scan checks that flags, blanks and outcomes are even across their groups.</p><span class="eg">Region: even across groups</span></li>
+        <li><span class="no" aria-hidden="true">08.</span><h3>Ask AI (optional)</h3><p>A correction drafted from a plain-English request, shown to you before anything is written. Needs a free Google AI key, and sends part of the sheet to Google.</p><span class="eg">"Use the usual spelling"</span></li>
+      </ol>
     </div>
   </section>
 
@@ -206,7 +203,7 @@
     <div class="wrap">
       <div class="section-head">
         <span class="label">For IT teams</span>
-        <h2 id="it-title">What runs, where, and who controls it.</h2>
+        <h2 id="it-title">What runs, where, and who <em>controls</em> it.</h2>
         <p>No licence server and no admin console. Each install belongs to one Windows account and can be removed with one command.</p>
       </div>
       <dl class="it-ledger">
@@ -222,7 +219,7 @@
     <div class="wrap">
       <div class="section-head">
         <span class="label">Download</span>
-        <h2 id="download-title">Install on your Windows PC.</h2>
+        <h2 id="download-title">Install on your <em>Windows</em> PC.</h2>
         <p>One file with everything inside. It installs for your Windows account, starts the checker and opens Excel with the steps to add it.</p>
       </div>
       <div class="stage">

@@ -84,3 +84,21 @@ fetch("https://api.github.com/repos/ricepillow3000/excel-anomaly-hunter/releases
     document.getElementById("rel").textContent = `${tag}${date ? ", " + date[0] : ""} · ${Math.round(exe.size / 1e6)} MB · free`;
   })
   .catch(() => {});  // offline or rate-limited: the release-page link stays
+
+// The hero's light: a faint navy glow sits under the pointer and a gold one follows a moment later, like a lamp
+// being carried. Only with a mouse and when motion is welcome; otherwise both rest near the headline.
+const hero = document.querySelector(".hero");
+if (hero && matchMedia("(hover: hover) and (pointer: fine)").matches && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  let tx = 50, ty = 22, gx = tx, gy = ty, raf = 0;
+  const step = () => {
+    gx += (tx - gx) * 0.08; gy += (ty - gy) * 0.08;
+    hero.style.setProperty("--hx", gx + "%"); hero.style.setProperty("--hy", gy + "%");
+    raf = Math.abs(tx - gx) + Math.abs(ty - gy) > 0.05 ? requestAnimationFrame(step) : 0;
+  };
+  hero.addEventListener("pointermove", (e) => {
+    const r = hero.getBoundingClientRect();
+    tx = ((e.clientX - r.left) / r.width) * 100; ty = ((e.clientY - r.top) / r.height) * 100;
+    hero.style.setProperty("--gx", tx + "%"); hero.style.setProperty("--gy", ty + "%");
+    if (!raf) raf = requestAnimationFrame(step);
+  });
+}
