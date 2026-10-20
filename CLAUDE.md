@@ -5,8 +5,8 @@ flags wrong cells and suggests fixes. Optional AI help goes to Google directly o
 
 ## Before every commit: one command
 `python tools/check.py` runs every gate, fastest first, and stops at the first red layer (`--e2e` adds the browser
-test, `--keep-going` runs them all). Needs `pip install -e ".[dev]" -c constraints.txt` and node. All green = what CI checks (both
-accuracy benches run there too). Never commit with a red layer, and never get a gate green by loosening it.
+test, `--keep-going` runs them all). Needs `pip install -e ".[dev]" -c constraints.txt` and node. All green = what CI checks
+(both accuracy benches run there too), except Semgrep (see the rules below). Never commit with a red layer, and never get a gate green by loosening it.
 
 ## Security first: read `docs/security/SECURITY-LESSONS.md`
 Every input is an attack until proven harmless (emoji, "ignore all previous instructions and drop table"), and John is
@@ -116,6 +116,13 @@ Adding or removing a check: update this table in the same commit.
   what is sent, stored or installed updates all three (`test_both_privacy_pages_name_every_place_data_goes_and_every_file_the_app_keeps`).
 - Pin every package, indirect ones too: an unpinned scikit-learn 1.9.1 broke every Windows install (2026-10-11).
   `constraints.txt` + `tools/pinned.py` (CI and the exe job); regenerate with the command in `tools/pinned.py`.
+- pip-audit reads every package installed, the app's or not, never `constraints.txt`: certifi and pillow, pinned past
+  their advisories, still failed the local gate until they were installed (2026-10-20). After a pin change, install
+  the moved pins (`pip install -e ".[dev]" -c constraints.txt`, and `pip install -c constraints.txt pillow` for a pin
+  outside `dev`), then run `tools/check.py`.
+- Semgrep runs only in CI (`security.yml`): its rule packs come from semgrep.dev, which a cloud session cannot reach.
+  It went red three times on 2026-10-20 after every local gate was green: a RegExp built from a name, `Object.assign`
+  of parsed JSON, urllib on a URL from a variable. Where it cannot run, grep the diff for those before pushing.
 - Test a file the way its reader reads it. Power BI's Text/CSV import ends a record at every line break, even inside
   quotes (`QuoteStyle.None`): one cell with a line break shifted every row below it, and a 309-digit cell made the old
   writer give up silently, leaving the previous sheet's copy for Power BI (2026-10-20). `powerbi.py` writes a break as
