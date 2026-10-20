@@ -8,11 +8,11 @@ import hashlib
 import json
 import sys
 import tempfile
-import urllib.request
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import requests
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "backend" / "anomaly_hunter" / "ai" / "bias_rules.json"
@@ -61,8 +61,12 @@ def fetch(key, folder):
     path = Path(folder) / key / src["url"].rsplit("/", 1)[1]
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=False)  # a new, empty folder for each download
-        with urllib.request.urlopen(src["url"], timeout=60) as r:  # noqa: S310 - https constant above
-            path.write_bytes(r.read())
+        # requests, never urllib (it opens file:// too: semgrep dynamic-urllib-use-detected blocks CI), and only our host
+        if not src["url"].startswith(RAW):
+            raise SystemExit(f"{key}: not a {RAW} address - not downloaded")
+        r = requests.get(src["url"], timeout=60)
+        r.raise_for_status()
+        path.write_bytes(r.content)
     data = path.read_bytes()
     if hashlib.sha256(data).hexdigest() != src["sha256"]:
         raise SystemExit(f"{key}: SHA-256 differs from the pinned one - not measured")
