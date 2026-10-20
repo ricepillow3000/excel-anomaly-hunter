@@ -13,7 +13,7 @@
     <span class="mark"><img src="assets/banner-64.png" width="64" height="64" alt=""></span>
     <h1>Privacy</h1>
     <p class="lead">What Anomaly Hunter keeps on your PC, what it sends, and who can see it. Every sentence here describes what the code does.</p>
-    <p class="meta">Last updated 19 October 2026</p>
+    <p class="meta">Last updated 20 October 2026</p>
   </header>
 
   <div class="shell">
@@ -51,18 +51,22 @@
           <li><strong>ca.pem, cert.pem, key.pem</strong>: the certificate the engine uses for HTTPS on this PC.</li>
           <li><strong>addin\manifest.xml</strong>: the file that lists Anomaly Hunter in Excel.</li>
           <li><strong>Start here.xlsx</strong>: the practice workbook.</li>
-          <li><strong>anomaly-hunter.pbids</strong>: a shortcut that opens the Power BI file in Power BI.</li>
+          <li><strong>anomaly-hunter.pbids</strong>: a shortcut that opens latest-scan.csv in Power BI.</li>
           <li><strong>latest-scan.csv</strong>: only if you turn on "Save each scan for Power BI" (off unless you turn it on). It holds a plain-text copy of every cell of the last sheet you scanned, plus each row's result. Each scan replaces it. After you turn the option off, the next scan deletes it.</li>
         </ul>
+        <h3>If you installed an invite kit with install.bat</h3>
+        <p>John shares kits by a Google Drive or OneDrive link. A kit runs from its own folder: <code>install.bat</code> downloads the Python packages it needs from PyPI, the Python package site (PyPI sees your IP address), and keeps them in a <code>.venv</code> folder there, with the Power BI shortcut in its <code>powerbi</code> folder. It copies the kit's invite code into the folder above. A kit has no AnomalyHunter.exe, addin\manifest.xml or Start here.xlsx: Excel lists the add-in from the kit's <code>frontend</code> folder. To uninstall a kit, run <code>install.bat /u</code>, then delete the kit folder.</p>
+        <h3>Elsewhere on your PC</h3>
+        <p>If you installed AnomalyHunter.exe, it unpacks itself into a temporary folder in <code>%TEMP%</code> each time it starts. If the engine is stopped by force, that folder can be left behind. Install removes the "downloaded from the internet" mark from its own copy of the app, so Windows doesn't warn at every logon.</p>
         <h3>In your workbook</h3>
-        <p>The workbook you scan keeps the limits you changed, the strength slider, a list of the last auto-fixes with their old values (so Undo works), and a setting that opens the pane with that file. Highlights are fill colours written into your cells. A fix changes your cells only when you click <strong>Accept</strong>, or when auto-fix runs, if you turned auto-fix on.</p>
+        <p>The workbook you scan keeps the limits you changed, the strength slider, a list of the last auto-fixes with their old values and a copy of each fixed row (so Undo works), and a setting that opens the pane with that file. Highlights are fill colours written into your cells. A fix changes your cells only when you click <strong>Accept</strong>, or when auto-fix runs, if you turned auto-fix on.</p>
         <h3>In the pane</h3>
         <p>The auto-fix switch and the Power BI switch are saved in Excel's storage for the pane, on this PC.</p>
       </section>
 
       <section id="use">
         <h2>What AI help sends</h2>
-        <p>AI help works only after you paste a Google AI key or an invite code, or install an invite kit from John. Even then, nothing from your sheet is sent until you click <strong>Ask AI</strong> or <strong>Check words with AI</strong>.</p>
+        <p>AI help works only after you paste a Google AI key or an invite code, or install an invite kit from John (or a developer sets <code>GEMINI_API_KEY</code> or <code>ANTHROPIC_API_KEY</code> on the PC). Even then, nothing from your sheet is sent until you click <strong>Ask AI</strong> or <strong>Check words with AI</strong>.</p>
         <p>When you save a Google key, the engine asks Google once whether the key works. That call carries the key and no sheet data.</p>
         <ul>
           <li><strong>Ask AI</strong> sends the column names, the row you asked about, up to 5 rows above and 5 below it, the formulas in that row, the cell addresses, the reason it was flagged, and anything you type in the request box. On a wide sheet, only the columns nearest the flagged cell go. Long cells are cut to 200 characters, except the flagged cell.</li>
@@ -81,8 +85,9 @@
         <h2>Who else sees something</h2>
         <ul>
           <li><strong>Google</strong> receives what AI help sends, under Google's own terms.</li>
-          <li><strong>Cloudflare and John's relay</strong>, only with an invite code. Each AI request passes through it. The relay keeps one counter for today: how many AI calls each invite made, under the name John gave that invite, plus the total. It saves no request and no answer, and its saved logs are switched off. The list of invites (a scrambled copy of each code and a name) stays until John removes it. Cloudflare sees your IP address as the request passes.</li>
+          <li><strong>Cloudflare and John's relay</strong>, only with an invite code. Each AI request passes through it. The relay keeps one counter for today: how many AI calls each invite made, under the name John gave that invite, plus the total. It saves no request and no answer, and its saved logs are switched off. The list of invites (a scrambled copy of each code and a name) stays until John removes it. Cloudflare sees your IP address as the request passes. The relay's key never reaches your PC.</li>
           <li><strong>Anthropic</strong>, only in the developer case above.</li>
+          <li><strong>PyPI</strong>, only for an invite kit: install.bat downloads Python packages from it, so it sees your IP address.</li>
           <li><strong>GitHub</strong> hosts the download, so GitHub sees your IP address when you download the app. Anything you post in a GitHub issue is public.</li>
           <li><strong>Microsoft</strong>: Excel loads Microsoft's Office script from Microsoft for the pane, and Windows may check the downloaded file. Microsoft's privacy terms apply.</li>
         </ul>
@@ -92,9 +97,9 @@
       <section id="rights">
         <h2>Your control</h2>
         <ul>
-          <li><strong>Turn off AI help</strong>: click <strong>Remove key</strong> in the pane. It deletes your key and invite code from this PC. Scans and fixes keep working.</li>
+          <li><strong>Turn off AI help</strong>: click <strong>Remove key</strong> in the pane. It deletes the key and invite code saved in <code>%LOCALAPPDATA%\AnomalyHunter</code>. Scans and fixes keep working. An invite kit keeps its own copy, and running its install.bat again turns AI help back on, so also delete <code>invite-code.txt</code> from the kit folder. A <code>GEMINI_API_KEY</code> or <code>ANTHROPIC_API_KEY</code> setting on the PC keeps AI help on.</li>
           <li><strong>Delete the AI cache or the log</strong>: delete <code>ai-cache</code> or <code>server.log</code> in the folder above, or uninstall.</li>
-          <li><strong>Uninstall</strong>: press Windows+R, paste <code>"%LOCALAPPDATA%\AnomalyHunter\AnomalyHunter.exe" uninstall</code> and press Enter. It removes the startup entry, the Excel add-in listing, the certificate and the files in that folder, except the app file itself, which you can then delete. It also clears Excel's add-in cache, so other add-ins you added from a shared folder must be added again. It never touches your workbooks.</li>
+          <li><strong>Uninstall</strong>: press Windows+R, paste <code>"%LOCALAPPDATA%\AnomalyHunter\AnomalyHunter.exe" uninstall</code> and press Enter. It removes the startup entry, the Excel add-in listing, the certificate and the files in that folder, except the app file itself, which you can then delete. It also deletes Excel's add-in cache (the Wef folder), so other web add-ins may need to be added again and may forget their settings. It never touches your workbooks, so settings a scan saved inside a workbook stay there.</li>
           <li><strong>Your invite</strong>: ask John, the way you got the invite, to remove it.</li>
           <li><strong>A GitHub issue</strong>: you can edit or delete your own. John can delete it if you ask. Copies made while it was public may remain.</li>
         </ul>

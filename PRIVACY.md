@@ -21,17 +21,26 @@ A scan runs on your PC and sends nothing to the internet. Your sheet's data leav
   | `ca.pem`, `cert.pem`, `key.pem` | the certificate the engine uses for HTTPS on this PC |
   | `addin\manifest.xml` | the file that lists Anomaly Hunter in Excel |
   | `Start here.xlsx` | the practice workbook |
-  | `anomaly-hunter.pbids` | a shortcut that opens the Power BI file in Power BI |
+  | `anomaly-hunter.pbids` | a shortcut that opens latest-scan.csv in Power BI |
   | `latest-scan.csv` | **only if you turn on "Save each scan for Power BI"** (off unless you turn it on): a plain-text copy of every cell of the last sheet you scanned, plus each row's result. Each scan replaces it; after you turn the option off, the next scan deletes it |
+- **Elsewhere:** if you installed AnomalyHunter.exe, it unpacks itself into a temporary folder in `%TEMP%` each time it starts; if the engine is
+  stopped by force, that folder can be left behind. Install removes the "downloaded from the internet" mark from its
+  own copy of the app, so Windows doesn't warn at every logon.
+- **An invite kit** (shared by John by a Google Drive or OneDrive link) runs from its own folder: `install.bat`
+  downloads the Python packages it needs from PyPI, the Python package site (PyPI sees your IP address), and keeps
+  them in a `.venv` folder there, with the Power BI shortcut in its `powerbi` folder. It copies the kit's invite code
+  into the folder above. A kit has no AnomalyHunter.exe, `addin\manifest.xml` or Start here.xlsx: Excel lists the
+  add-in from the kit's `frontend` folder. Uninstall a kit with `install.bat /u`, then delete the kit folder.
 - **In your workbook:** the limits you changed, the strength slider, a list of the last auto-fixes with their old
-  values (so Undo works), and a setting that opens the pane with that file. Highlights are fill colours in your cells.
+  values and a copy of each fixed row (so Undo works), and a setting that opens the pane with that file. Highlights are fill colours in your cells.
   A fix changes your cells only when you click **Accept**, or when auto-fix runs, if you turned it on.
 - **In the pane:** the auto-fix and Power BI switches, in Excel's storage for the pane on this PC.
 - **Install** also adds a startup entry, a trusted add-in folder for Excel, and a certificate in your Windows account
   that works only for `localhost` and `127.0.0.1` (the key that made it is never saved).
 
 ## Only if you use AI help
-AI help works only after you paste a Google AI key or an invite code, or install an invite kit from John. Even then,
+AI help works only after you paste a Google AI key or an invite code, or install an invite kit from John (or a
+developer sets `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` on the PC). Even then,
 nothing from your sheet is sent until you click a button. When you save a Google key, the engine asks Google once
 whether the key works; that call carries the key and no sheet data.
 - **Ask AI (fix a row):** sends the column names, the row you asked about, up to 5 rows above and 5 below it, the
@@ -51,17 +60,26 @@ whether the key works; that call carries the key and no sheet data.
   your own key it depends on your Google plan. Don't ask AI about private or personal data.
 
 ## Who else sees something
+- **Google** receives what AI help sends, under Google's own terms.
+- **Cloudflare and John's relay**, only with an invite code (see above).
+- **Anthropic**, only in the developer case above.
+- **PyPI**, only for an invite kit: `install.bat` downloads Python packages from it, so it sees your IP address.
 - **GitHub** hosts the download, so it sees your IP address when you download. Anything you post in an issue is public.
 - **Microsoft:** Excel loads Microsoft's Office script for the pane, and Windows may check the downloaded file.
+  Microsoft's privacy terms apply.
+- The pane loads only its own files and Microsoft's Office script; its Content Security Policy blocks everything
+  else. The fonts are on your PC.
 - Nothing is sold, and nothing is used for ads or tracking.
 
 ## Your control
-- **Remove key** (in the pane) deletes your key and invite code from this PC. Scans and fixes keep working.
+- **Remove key** (in the pane) deletes the key and invite code saved in `%LOCALAPPDATA%\AnomalyHunter`. Scans and
+  fixes keep working. An invite kit keeps its own copy, and running its install.bat again turns AI help back on, so
+  also delete `invite-code.txt` from the kit folder. A `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` setting keeps AI help on.
 - **Delete** `ai-cache` or `server.log` in the folder above whenever you like.
 - **Uninstall:** `"%LOCALAPPDATA%\AnomalyHunter\AnomalyHunter.exe" uninstall`. It removes the startup entry, the
   add-in listing, the certificate and the files in that folder, except the app file itself (delete it afterwards). It
-  also clears Excel's add-in cache, so other add-ins you added from a shared folder must be added again. It never
-  touches your workbooks.
+  also deletes Excel's add-in cache (the Wef folder), so other web add-ins may need to be added again and may forget
+  their settings. It never touches your workbooks, so settings a scan saved inside a workbook stay there.
 - **Your invite:** ask John, the way you got it, to remove it.
 - **A GitHub issue:** you can edit or delete your own; John can delete it if you ask. Copies made while it was public
   may remain. John holds no other data about you.
