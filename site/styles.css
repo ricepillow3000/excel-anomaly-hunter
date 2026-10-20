@@ -175,9 +175,11 @@ table.card { width: 100%; border-collapse: collapse; background: var(--sheet); b
 .card td.eg { width: 26%; font: 500 13px/1.5 var(--mono); color: var(--navy); border-left: 1px solid var(--rule); }
 .card tbody tr:last-child th, .card tbody tr:last-child td { border-bottom: 0; }
 
-/* the closing download zone: a navy block of its own, the spearless banner in the logo's colours, the button
-   overlapping its lower left, the compliance ledger beneath, the three steps under that */
-.deploy { background: var(--navy); color: var(--on-navy); border-radius: var(--r); }
+/* the closing download zone: a crimson block of its own (navy, gold and red together once), the spearless banner
+   in the logo's colours, the navy button overlapping its lower left, the compliance ledger beneath, the steps under
+   that. On crimson the trim gold lightens: #997D3A is 1.9:1 there, #D9B76A is 3.9:1; text is 6.9:1 and 5.5:1. */
+.deploy { --on-navy: #FBF3F1; --on-navy-2: #F3D6D9; --rule-navy: #C9505F; --gold: #D9B76A; --code: #8A1426;
+  background: var(--crimson); color: var(--on-navy); border-radius: var(--r); }
 .deploy a { color: var(--on-navy); }
 .deploy .label { color: var(--on-navy-2); }
 .stage { display: grid; place-items: center; padding: var(--s6) var(--s5) var(--s5); view-timeline: --wm block; }
@@ -205,7 +207,7 @@ dl.anchor { margin: 0 auto; max-width: 620px; display: grid; grid-template-colum
 .anchor dd { color: var(--on-navy); }
 .anchor dd.strong { font-weight: 700; }
 .anchor code { display: block; }
-.anchor code, .steps code { font: 500 11.5px/1.5 var(--mono); color: var(--on-navy); background: var(--navy-2); border: 1px solid var(--rule-navy); border-radius: 0; padding: 2px 6px; word-break: break-all; }
+.anchor code, .steps code { font: 500 11.5px/1.5 var(--mono); color: var(--on-navy); background: var(--code); border: 1px solid var(--rule-navy); border-radius: 0; padding: 2px 6px; word-break: break-all; }
 .steps { display: grid; gap: var(--s3); padding: var(--s4) var(--s5) var(--s5); border-top: 1px solid var(--rule-navy); }
 .steps ol { margin: 0; padding: 0; list-style: none; counter-reset: step; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--rule-navy); }
 .steps li { counter-increment: step; display: grid; grid-template-columns: 32px minmax(0, 1fr); column-gap: 12px; padding: 16px var(--s3) 16px 0; font-size: 14px; color: var(--on-navy-2); }
