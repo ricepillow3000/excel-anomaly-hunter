@@ -227,25 +227,44 @@
       </div>
       <div class="deploy">
         <div class="stage">
-          <div class="art">
-            <div class="geo" aria-hidden="true">
-            <svg class="banner" viewBox="0 0 200 260"><path d="M1 1 H199 V221 L100 259 L1 221 Z"/></svg>
-            <svg class="rhombus" viewBox="0 0 200 200"><path d="M100 1 L199 100 L100 199 L1 100 Z"/></svg>
-            </div>
-            <a class="btn btn-bone" href="https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest/download/AnomalyHunter.exe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Download for Windows</a>
-          </div>
-          <dl class="anchor">
-            <dt>SHA-256</dt><dd><code id="sha"><a href="https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest">shown on the release page</a></code></dd>
-            <dt>Release</dt><dd id="rel">Latest, about 81 MB, free</dd>
-            <dt>Works with</dt><dd>Desktop Excel for Microsoft 365 on Windows 10 or 11, 64-bit. Excel 2021 and 2024 are not tested yet. Not Mac, not Excel on the web.</dd>
-            <dt>Signature</dt><dd>Not code-signed yet. Your organisation may block unsigned apps: ask IT first.</dd>
-            <dt>Data</dt><dd class="strong">Local scan engine: a scan never leaves your PC. Ask AI, if you use it, sends part of the sheet to Google.</dd>
-          </dl>
+          <!-- the banner without its spear: crossbar, drape, shield, a small emblem. 1 unit = 1px at full size, so the
+               scrub's 30px offsets are true screen pixels -->
+          <svg class="watermark" viewBox="0 0 520 373" aria-hidden="true">
+            <g class="wm-shield"><g transform="scale(8.6667) translate(-10 -41)">
+              <path d="M19.5 46 H60.5 V71.5 L40 75 L19.5 71.5 Z" fill="#0C1938" stroke="#997D3A" stroke-width="1.2"/>
+            </g></g>
+            <g class="wm-bar"><g transform="scale(8.6667) translate(-10 -41)">
+              <path d="M18.9 45.5 H61.1 V46.8 Q40 57 18.9 46.8 Z" fill="#997D3A" stroke="#5E4719" stroke-width=".45" stroke-linejoin="round"/>
+              <path d="M22 47.3 Q40 54 58 47.3M25 47.1 Q40 51.4 55 47.1" fill="none" stroke="#5E4719" stroke-width=".45"/>
+              <rect x="17" y="43" width="46" height="4" rx="2" fill="#997D3A" stroke="#5E4719" stroke-width=".45"/>
+              <rect x="18" y="43.6" width="44" height="1.2" rx=".6" fill="#B8954A"/>
+              <g fill="#997D3A" stroke="#5E4719" stroke-width=".45"><rect x="12" y="42.5" width="6.5" height="5" rx="1.2"/><rect x="61.5" y="42.5" width="6.5" height="5" rx="1.2"/></g>
+              <path d="M14.4 42.5v5M16.4 42.5v5M63.6 42.5v5M65.6 42.5v5" stroke="#5E4719" stroke-width=".45"/>
+              <rect x="37.8" y="42.8" width="4.4" height="4.4" rx="1" fill="#997D3A" stroke="#5E4719" stroke-width=".45"/>
+              <path d="M38.7 43.7 L41.3 46.3 M41.3 43.7 L38.7 46.3" stroke="#5E4719" stroke-width=".45" stroke-linecap="round"/>
+            </g></g>
+            <!-- the emblem, small and low on the shield so the button has the middle to itself -->
+            <g class="wm-ring"><g transform="scale(8.6667) translate(-10 -41) translate(40 69.2) scale(.4) translate(-40 -62.2)">
+              <circle cx="40" cy="58.7" r="2.7" fill="none" stroke="#F4F1EA" stroke-width="1.15"/>
+              <path d="M35.75 62.05 L44.25 55.35" stroke="#F4F1EA" stroke-width="1.15" stroke-linecap="round"/>
+            </g></g>
+            <g class="wm-panels"><g transform="scale(8.6667) translate(-10 -41) translate(40 69.2) scale(.4) translate(-40 -62.2)" fill="#F4F1EA">
+              <path d="M30.4 63.4 H40 L36 69 H26.4 Z"/><path d="M49.6 63.4 H40 L44 69 H53.6 Z"/>
+            </g></g>
+          </svg>
+          <a class="btn-dl" href="https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest/download/AnomalyHunter.exe">Download add-in<span id="btn-ver">for Windows</span></a>
         </div>
+        <dl class="anchor">
+          <dt>SHA-256</dt><dd><code id="sha"><a href="https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest">shown on the release page</a></code></dd>
+          <dt>Release</dt><dd id="rel">Latest, about 81 MB, free</dd>
+          <dt>Works with</dt><dd>Desktop Excel for Microsoft 365 on Windows 10 or 11, 64-bit. Excel 2021 and 2024 are not tested yet. Not Mac, not Excel on the web.</dd>
+          <dt>Signature</dt><dd>Not code-signed yet. Your organisation may block unsigned apps: ask IT first.</dd>
+          <dt>Data</dt><dd class="strong">Local scan engine: a scan never leaves your PC. Ask AI, if you use it, sends part of the sheet to Google.</dd>
+        </dl>
         <div class="steps">
           <span class="label">Three steps past Windows' checks</span>
           <ol>
-            <li><div><b>Check the file.</b> In PowerShell, in your Downloads folder, run the line below and compare the result with the SHA-256 on the left.<code class="line">Get-FileHash .\AnomalyHunter.exe -Algorithm SHA256</code></div></li>
+            <li><div><b>Check the file.</b> In PowerShell, in your Downloads folder, run the line below and compare the result with the SHA-256 above.<code class="line">Get-FileHash .\AnomalyHunter.exe -Algorithm SHA256</code></div></li>
             <li><div><b>Unblock it.</b> Right-click the file › <b>Properties</b> › tick <b>Unblock</b> › <b>OK</b>, then double-click it. Or, at "Windows protected your PC": <b>More info</b> › <b>Run anyway</b>. Click <b>Yes</b> to trust its certificate, which works only for 127.0.0.1, this PC.</div></li>
             <li><div><b>Add it to Excel.</b> <b>Home › Add-ins › More Add-ins › SHARED FOLDER › Anomaly Hunter › Add</b>. You do this once.</div></li>
           </ol>
