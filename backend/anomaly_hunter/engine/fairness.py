@@ -50,9 +50,24 @@ def _groups(df, col, types):
         labels = pd.cut(x, edges, right=False, duplicates="drop")  # [30, 45) = "30-44"
         return labels.map(lambda b: None if pd.isna(b) else _band(b))
     if types.get(col) == "text":
-        v = s.astype(str).str.strip().where(~_missing(s))  # "?" is no group: a blank is not a kind of person
-        return v.where(v.notna(), None) if v.nunique() <= 50 else None  # category-like: groups under 20 rows drop out
+        v = _labels(s, 50)  # category-like: groups under 20 rows drop out
+        return None if v is None else v.where(v.notna(), None)
     return None
+
+
+def _labels(s, most):
+    """Text cells as their labels, or None past `most` labels. "no " and "NO" are the label "No", written the way the
+    column writes it most: one stray "no " among 480 Yes/No made the outcome three labels, and every outcome test
+    went away with the real gap in it (2026-10-20). Blank and "?" are no label: a blank is not a kind of person."""
+    v = s.astype(str).str.strip().where(~_missing(s))
+    if not v.notna().any():  # nothing but blanks: no labels (and no text for .str to work on - the fuzzer's 500)
+        return v.astype(object)
+    key = v.str.split().str.join(" ").str.casefold()
+    if key.nunique() > most:
+        return None
+    counts = v.value_counts()  # most common first: each label is shown as its most common spelling
+    usual = pd.Series(counts.index, index=counts.index.str.split().str.join(" ").str.casefold()).groupby(level=0).first()
+    return key.map(usual)
 
 
 def _band(b):
@@ -77,8 +92,8 @@ def _outcomes(df, types, skip):
             if x.notna().any() and set(x.dropna().unique()) == {0, 1}:
                 out[f"{c} rate"] = (x.eq(1).where(x.notna()), f"{c} = 1")
         elif t == "text":
-            v = df[c].astype(str).str.strip().where(~_missing(df[c]))
-            counts = v.value_counts()
+            v = _labels(df[c], 2)
+            counts = v.value_counts() if v is not None else ()
             if len(counts) == 2:
                 yes = counts.index[-1]
                 out[f"{c} {yes} rate"] = (v.eq(yes).where(v.notna()), f"{c} {yes}")
