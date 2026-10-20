@@ -16,7 +16,8 @@ from anomaly_hunter.server import create_app
 ROOT = Path(__file__).resolve().parents[2]
 BOM = "﻿"
 FORMULA = tuple("=+-@\t\r\n＝＋－＠")
-RESULTS = ["Severity", "Bucket", "Reason", "Suggested Fix", "Magnitude"]
+RESULTS = ["Severity", "Bucket", "Reason", "Suggested Fix", "Magnitude", "Status"]
+STATUS = {"fixed": "Fixed", "dismissed": "Dismissed"}  # the pane's decision -> the Status Power BI shows
 FLAGS = ["Scanned At", "Sheet", "Excel Row", *RESULTS]
 
 
@@ -136,9 +137,10 @@ def test_the_power_bi_copy_holds_every_cell_and_every_verdict_the_pane_got(scann
         assert rec[0] == (str(3 + 2 + i), False), "Excel Row = the pane's Row N"
         for j, value in enumerate(row):
             assert same(rec[1 + j], value), (i, columns[j], value, rec[1 + j])
-        sev, bucket, reason, fix, mag = rec[1 + w:]
+        sev, bucket, reason, fix, mag, status = rec[1 + w:]
         assert same(sev, v["severity"]) and same(bucket, v["bucket"]) and same(reason, v["reason"]), i
         assert not mag[1] and float(mag[0]) == v["magnitude"], i
+        assert same(status, "Open" if v["severity"] in ("High", "Medium", "Low") else ""), "no decision sent: flagged = Open"
         assert (fix == ("", False)) == (v["severity"] not in ("High", "Medium", "Low") or not fix[0]), i
 
 
@@ -167,6 +169,47 @@ def test_no_text_in_the_power_bi_copy_can_run_as_a_formula(scanned):
             for value, quoted in rec:
                 assert quoted or re.fullmatch(r"|TRUE|FALSE|-?\d+|-?\d+\.\d+(E[+-]\d+)?|-?\d(\.\d+)?E[+-]\d+", value), value
                 assert not (quoted and unicodedata.normalize("NFKC", value).startswith(FORMULA)), value
+
+
+def test_each_rows_fixed_or_dismissed_reaches_power_bi_and_a_decided_row_stays_in_the_flags_table(tmp_path):
+    # John: an accepted fix vanished from latest-flags.csv on Refresh instead of showing as fixed (2026-10-20). The pane
+    # keeps each decision in the workbook and sends it with every scan; Power BI's Status says Open, Fixed or Dismissed
+    columns, rows = sheet(40)
+    out = tmp_path / "latest-scan.csv"
+    c = create_app(out).test_client()
+    verdicts = c.post("/scan", json={"columns": columns, "rows": rows}).get_json()["rows"]
+    hit = [i for i, v in enumerate(verdicts) if v["severity"] in ("High", "Medium", "Low")]
+    clean = [i for i in range(len(rows)) if i not in hit]
+    decisions = [None] * len(rows)
+    decisions[hit[0]] = "dismissed"  # left as it is: still flagged, Dismissed
+    decisions[hit[1]] = "fixed"  # accepted, and the checker still finds it odd
+    decisions[clean[0]] = "fixed"  # accepted, and now it looks right: no longer flagged, but not gone
+    r = c.post("/scan", json={"columns": columns, "rows": rows, "power_bi": True, "decisions": decisions})
+    assert r.status_code == 200 and r.get_json()["rows"] == verdicts, "a decision never changes the engine's verdict"
+    want = [STATUS.get(d) or ("Open" if i in hit else "") for i, d in enumerate(decisions)]
+    full = read(out)
+    assert full[0][-1] == ("Status", True)
+    assert [rec[-1] for rec in full[1:]] == [((w, True) if w else ("", False)) for w in want]
+    flags = read(out.with_name("latest-flags.csv"))
+    assert [v for v, _ in flags[0]] == FLAGS
+    listed = sorted(hit + [clean[0]])
+    assert [int(rec[2][0]) for rec in flags[1:]] == [2 + i for i in listed], "flagged rows plus the rows someone decided"
+    assert [rec[-1][0] for rec in flags[1:]] == [want[i] for i in listed]
+    assert {rec[-1][0] for rec in flags[1:]} == {"Open", "Fixed", "Dismissed"}
+
+
+@pytest.mark.parametrize("bad", ["fixed", {}, 7, "short", "long", ["Fixed"], ["done"], [1], [True], [["fixed"]], [{"x": 1}],
+                                 ["fixed\x00"], ["dismissed "]])
+def test_each_rows_decision_is_checked_before_the_scan(bad):
+    columns, rows = sheet(40)
+    if bad == "short":
+        bad = [None] * (len(rows) - 1)
+    elif bad == "long":
+        bad = [None] * (len(rows) + 1)
+    elif isinstance(bad, list):
+        bad = bad + [None] * (len(rows) - 1)
+    r = create_app().test_client().post("/scan", json={"columns": columns, "rows": rows, "decisions": bad})
+    assert r.status_code == 400 and "decisions" in r.get_json()["error"], r.get_json()
 
 
 def test_the_suggested_fix_is_what_the_panes_card_offers(scanned):

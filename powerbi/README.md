@@ -7,7 +7,8 @@ uploaded (Power BI's cloud would need a Microsoft tenant and a Pro licence, and 
 1. In the pane: **Power BI (optional) > Save each scan for Power BI** (off by default: no copy of the sheet is kept).
 2. Scan. The engine writes, in `%LOCALAPPDATA%\AnomalyHunter`:
    - `latest-scan.csv`: the whole sheet plus each row's result;
-   - `latest-flags.csv`: only the flagged rows, with the same 8 columns whatever the sheet.
+   - `latest-flags.csv`: the flagged rows and the rows you fixed or dismissed, with the same 9 columns whatever the
+     sheet.
 3. Double-click a shortcut (needs Power BI Desktop): `anomaly-hunter.pbids` opens `latest-scan.csv`,
    `anomaly-hunter-flags.pbids` opens `latest-flags.csv`. Click **Load**.
    - Installed with AnomalyHunter.exe: both shortcuts sit in `%LOCALAPPDATA%\AnomalyHunter`.
@@ -34,12 +35,14 @@ shortcut again for a new report).
 | Reason | the engine's reasons, joined with `; ` (what the pane shows, before its plain-words rewording) |
 | Suggested Fix | the values the pane's card offers, as `Units: 140 → 14; Region: "east " → "East"`; a guessed spelling ends in `(a guess)`. Empty when the card writes nothing (a blank, an unexplained extreme, 2+ cells off by the same step). The card also never types over a formula; this column doesn't know which cells hold one |
 | Magnitude | how far past its limit the value is (0 for most rows) |
+| Status | `Fixed` (you accepted a fix for this row), `Dismissed` (you left it as it is), `Open` (flagged, nobody decided yet), or empty (not flagged, no decision). Fixed and Dismissed are kept in the workbook, so they last after the pane closes; a row you edit afterwards is a new row, judged again |
 
 A sheet's own column with one of these names keeps its name; ours becomes `Anomaly Hunter Severity` (and so on).
 
-`latest-flags.csv`: one record per flagged row (High, Medium or Low), in the sheet's order:
-`Scanned At` (ISO time with its zone, e.g. `2026-10-20T14:03:05+02:00`), `Sheet`, `Excel Row`, then Severity, Bucket,
-Reason, Suggested Fix and Magnitude as above.
+`latest-flags.csv`: one record per flagged row (High, Medium or Low) and per row you fixed or dismissed (a fixed row
+usually looks right now: it stays, with Status `Fixed`), in the sheet's order: `Scanned At` (ISO time with its zone,
+e.g. `2026-10-20T14:03:05+02:00`), `Sheet`, `Excel Row`, then Severity, Bucket, Reason, Suggested Fix, Magnitude and
+Status as above.
 
 How every value is written (both files):
 - UTF-8 with a byte-order mark (without it Power BI reads Windows-1252 and garbles accents and emoji); records end in CRLF.
@@ -57,7 +60,8 @@ Verified by tests on every commit: a hostile sheet (accents, emoji, quotes, comm
 formula starts, 6,000-character text, blanks, Excel errors, dates, 1E+300, 2^53+1, a 309-digit number) scanned with
 Power BI on, then both files parsed back the way Power BI's generated query reads them: every row, every cell, every
 Severity, Bucket and Reason equals what the pane got; the Suggested Fix equals the card's own `recommendFix`; the
-browser test checks `latest-flags.csv` lists exactly the pane's rows. The `.pbids` files are checked for shape only.
+browser test checks `latest-flags.csv` lists exactly the pane's rows, and that a fixed and a dismissed row keep their
+Status after the pane is reloaded. The `.pbids` files are checked for shape only.
 
 Not verifiable without Power BI Desktop (John, on his PC, about 10 minutes):
 1. Install with AnomalyHunter.exe; turn on the Power BI option; scan the Practice sheet in `Start here.xlsx`.
@@ -65,7 +69,8 @@ Not verifiable without Power BI Desktop (John, on his PC, about 10 minutes):
    preselected; the preview shows the header row as headers; `Excel Row` matches the pane's row numbers; accents read
    correctly; Severity is empty (not the text "null") on clean rows.
 3. Same with `anomaly-hunter-flags.pbids`: one row per row the pane lists.
-4. Scan again after fixing a row; **Refresh**: the fixed row leaves `latest-flags.csv`.
+4. Accept a fix on a row, scan again; **Refresh**: the row stays in `latest-flags.csv` with Status `Fixed`. Dismiss
+   a row, scan, Refresh: Status `Dismissed`. Close and open the pane, scan, Refresh: both stay so.
 5. Windows set to a comma-decimal region (German, French...): Power BI reads `2.5` by the PC's locale. If numbers come in
    wrong, set **File > Options > Regional settings > Locale for import** to English (United States).
 

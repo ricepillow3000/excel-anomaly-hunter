@@ -47,9 +47,26 @@
   } };
   sheets.Sheet1 = makeSheet("Sheet1");
   const settings = {};
+  // The workbook outlives the pane: reloading the page (the pane closed and opened again) keeps the sheets and the
+  // settings as they were last SAVED (saveAsync), as a real workbook does. Page memory alone forgot both, so nothing
+  // could test that Fixed / Dismissed survive a reload (2026-10-20).
+  const KEEP = "__fakeWorkbook";
+  let saved = {};
+  try {
+    const was = JSON.parse(sessionStorage.getItem(KEEP) || "null");
+    if (was) {
+      for (const [n, cells] of Object.entries(was.sheets)) Object.assign((sheets[n] = makeSheet(n)).cells, cells);
+      Object.assign(settings, JSON.parse(JSON.stringify(was.settings)));
+      saved = was.settings;
+      active = was.active;
+    }
+  } catch { /* a fresh workbook */ }
+  addEventListener("pagehide", () => sessionStorage.setItem(KEEP, JSON.stringify({
+    sheets: Object.fromEntries(Object.entries(sheets).map(([n, ws]) => [n, ws.cells])), settings: saved, active })));
+  const saveAsync = (cb) => { saved = JSON.parse(JSON.stringify(settings)); if (cb) cb({ status: "succeeded" }); };
   window.Office = {
     HostType: { Excel: "Excel" }, onReady: (cb) => setTimeout(() => cb({ host: "Excel" }), 0),
-    context: { document: { settings: { get: (k) => settings[k] ?? null, set: (k, v) => (settings[k] = v), remove: (k) => delete settings[k], saveAsync() {}, refreshAsync: (cb) => cb() } } },
+    context: { document: { settings: { get: (k) => settings[k] ?? null, set: (k, v) => (settings[k] = v), remove: (k) => delete settings[k], saveAsync, refreshAsync: (cb) => cb() } } },
   };
   window.Excel = { run: async (a, b) => (b || a)(ctx) };
   // test hooks

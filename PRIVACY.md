@@ -23,7 +23,7 @@ A scan runs on your PC and sends nothing to the internet. Your sheet's data leav
   | `Start here.xlsx` | the practice workbook |
   | `anomaly-hunter.pbids`, `anomaly-hunter-flags.pbids` | shortcuts that open latest-scan.csv and latest-flags.csv in Power BI; they hold only those files' paths |
   | `latest-scan.csv` | **only if you turn on "Save each scan for Power BI"** (off unless you turn it on): a plain-text copy of every cell of the last sheet you scanned, with each row's number, result and suggested fix. Each scan replaces it; after you turn the option off, the next scan deletes it |
-  | `latest-flags.csv` | **only with the same option on**: the sheet's name, the time of the scan, and the number, result and suggested fix of each flagged row (results and fixes can quote your cells). Kept and deleted together with latest-scan.csv |
+  | `latest-flags.csv` | **only with the same option on**: the sheet's name, the time of the scan, and the number, result, suggested fix and status (Open, Fixed or Dismissed) of each flagged row and each row you fixed or dismissed (results and fixes can quote your cells). Kept and deleted together with latest-scan.csv |
 - **Elsewhere:** if you installed AnomalyHunter.exe, it unpacks itself into a temporary folder in `%TEMP%` each time it starts; if the engine is
   stopped by force, that folder can be left behind. Install removes the "downloaded from the internet" mark from its
   own copy of the app, so Windows doesn't warn at every logon.
@@ -33,7 +33,9 @@ A scan runs on your PC and sends nothing to the internet. Your sheet's data leav
   into the folder above. A kit has no AnomalyHunter.exe, `addin\manifest.xml` or Start here.xlsx: Excel lists the
   add-in from the kit's `frontend` folder. Uninstall a kit with `install.bat /u`, then delete the kit folder.
 - **In your workbook:** the limits you changed, the strength slider, a list of the last auto-fixes with their old
-  values and a copy of each fixed row (so Undo works), and a setting that opens the pane with that file. Highlights are fill colours in your cells.
+  values and a copy of each fixed row (so Undo works), a short code for each row you fixed or dismissed (worked out
+  from the row's values, never the values themselves, so the row is still Fixed or Dismissed when the pane opens
+  again), and a setting that opens the pane with that file. Highlights are fill colours in your cells.
   A fix changes your cells only when you click **Accept**, or when auto-fix runs, if you turned it on.
 - **In the pane:** the auto-fix and Power BI switches, in Excel's storage for the pane on this PC.
 - **Install** also adds a startup entry, a trusted add-in folder for Excel, and a certificate in your Windows account

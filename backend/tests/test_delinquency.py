@@ -97,7 +97,7 @@ def test_the_power_bi_copy_of_a_loan_book_carries_exactly_the_panes_flags(tmp_pa
     for f, i in zip(flags, hits, strict=True):
         assert same(f[3], verdicts[i]["severity"]) and same(f[4], verdicts[i]["bucket"]) and same(f[5], verdicts[i]["reason"])
     full = read(out)[1:]
-    assert len(full) == len(rows) and [same(r[-5], v["severity"]) for r, v in zip(full, verdicts, strict=True)] == [True] * len(rows)
+    assert len(full) == len(rows) and [same(r[-6], v["severity"]) for r, v in zip(full, verdicts, strict=True)] == [True] * len(rows)
 
 
 def test_a_text_column_of_nothing_but_blanks_never_breaks_the_fairness_report():

@@ -33,6 +33,7 @@ Add a piece only when its "add it when" signal shows up in a measurement, and sa
 | Pessimistic lock | one AI call at a time (non-blocking); one Power BI write (both files) at a time | `client._LOCK`, `server._CSV_LOCK` | |
 | Optimistic lock (compare-and-set) | Accept, Undo and auto-fix write only if the row is still what the scan read | `features/fix.js`, `autofix.js` | |
 | Deadlock | can't happen: two locks, never held together, the AI one never waits | | a second lock held while taking another |
+| Persistent state | Fixed / Dismissed live in the workbook's own settings (no database, no file, no engine route): a code per row (53-bit hash of its values + its copy number), at most 5,000 per sheet and 8 sheets, oldest dropped (Office keeps about 2 MB of settings per add-in) | `features/decisions.js` | a user decides on more than 5,000 rows of one sheet |
 | Memory leak / GC | none: +0.3 MB per 100 scans; a 2M scan peaks at 813 MB and settles at ~400 MB; longest GC pause 0.39 s | stress test | the engine is seen growing over days |
 | Slow paths (query optimisation) | checks over pairs of columns are capped in sheet order (wrong-column: first 100 category columns; products and fractions: first 64 number columns; fairness: 400 tests); labels over 60 characters are never compared. A typo hunt stops after 10 s | `pipeline.shifted`, `pairs`, `fairness.MAX_TESTS`, `checker.BUDGET` | a real sheet is measured slow (2M cells take 31 s here) |
 

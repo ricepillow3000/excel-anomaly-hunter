@@ -7,6 +7,7 @@ export const STRENGTH_KEY = "anomalyHunterStrength"; // the slider, saved inside
 export const AUTO_KEY = "anomalyHunterAutoFix"; // the auto-fix toggle: this PC (localStorage), off unless turned on
 export const UNDO_KEY = "anomalyHunterAutoUndo"; // what auto-fix changed, saved inside the workbook for Undo auto-fixes
 export const POWER_BI_KEY = "anomalyHunterPowerBi"; // keep each scan for Power BI: this PC (localStorage), off unless turned on
+export const DECISIONS_KEY = "anomalyHunterDecisions"; // rows fixed or dismissed, as codes, saved inside the workbook
 
 // What each slider level adds (each level shows the last line at or below it). Measured on the bench's 43 planted
 // problems / 2,048 clean rows: 0 catches 39 with no false alarms, 5 catches all 43, 10 flags ~2% of clean rows.

@@ -422,7 +422,10 @@ def test_both_privacy_pages_name_every_place_data_goes_and_every_file_the_app_ke
     files = ("AnomalyHunter.exe", "server.log", "ai-cache", "gemini-key.txt", "invite-code.txt", "cert.pem",
              "manifest.xml", "Start here.xlsx", "anomaly-hunter.pbids", "latest-scan.csv", "anomaly-hunter-flags.pbids",
              "latest-flags.csv")
+    # what the pane keeps inside the workbook too: Fixed / Dismissed outlive the pane as a code per row (2026-10-20)
+    kept = ("a short code for each row you fixed or dismissed", "never the values themselves")
     for page in ("PRIVACY.md", "frontend/privacy.html", "site/privacy.html"):
         words = (root / page).read_text(encoding="utf-8")
         assert [p for p in places + files if p not in words] == [], page
+        assert [k for k in kept if k not in " ".join(words.split())] == [], page
         assert "any other third party" not in words and "never transmitted" not in words, page

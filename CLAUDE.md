@@ -19,14 +19,14 @@ an admin panel, role, operator route or debug switch. The weekly security sweep 
 | 1 | Network | `server.main`, `tls_context` | 127.0.0.1 only; TLS 1.2+; handshake in the request's thread; idle connections dropped after 60 s | `test_server.py` (`live_engine`) |
 | 2 | Who may call | `own_panel_only` | Host must be localhost; Origin must be the pane (other websites, DNS rebinding) | `test_every_route_refuses_other_websites` |
 | 3 | Body shape | `_JSON`, `_bad`, `MAX_CONTENT_LENGTH`, `MAX_CELLS` | any malformed body is a clear 400, never a 500 | `test_every_post_route_answers_a_hostile_body_with_a_clear_4xx`, `test_fuzz_api.py` |
-| 4 | Route fields | each route in `create_app` | extra fields (`row_index`, `changes`, `start_col`...) checked before any work | `test_fix.py`, `test_agents.py` |
+| 4 | Route fields | each route in `create_app` | extra fields (`row_index`, `changes`, `start_col`, `/scan`'s `decisions`...) checked before any work | `test_fix.py`, `test_agents.py`, `test_powerbi.py` |
 | 5 | Load | `engine/load.py` | text/number/date/id per column; Excel errors logged, not crashed on | `test_engine.py` |
 | 6 | Checks | `engine/pipeline.py`, `engine/detectors.py`, `engine/limits.py` | each check returns one list of plain-sentence reasons per row | see the feature map |
 | 7 | Severity | `pipeline.score` | hygiene or weird limit = Medium; 2 votes = Medium; 3 = High; 1 = Low | `test_strength.py` |
-| 8 | Answer | routes, `powerbi.py` | every error is JSON; the Power BI CSVs never carry a live formula (text always quoted, `inert`) and read back, the way Power BI's import reads them, as exactly what the pane got (schema: `powerbi/README.md`) | `test_api_security.py`, `test_powerbi.py` |
+| 8 | Answer | routes, `powerbi.py` | every error is JSON; the Power BI CSVs never carry a live formula (text always quoted, `inert`) and read back, the way Power BI's import reads them, as exactly what the pane got, each row's Status (Open, Fixed, Dismissed) from the pane's `decisions` (schema: `powerbi/README.md`) | `test_api_security.py`, `test_powerbi.py` |
 | 9 | AI (optional) | `ai/client.py` | one call at a time, deadline, cache (answers only), key never echoed (nor the provider's error text), an AI formula may call only `client.SAFE` functions, headers and the reason go in one line each, no typed request = the flagged row only | `test_fix.py`, `test_ai_load.py`, `test_text_checks.py` |
 | 10 | Relay | `relay/worker.js` | invite hash, daily caps counted before Google, only `POST /fix`, model and key set by the relay | `relay/test.mjs`; live Worker from outside: `relay/live-probe.mjs` (CI `relay-live.yml`) |
-| 11 | Pane | `frontend/` | every dynamic `innerHTML` value goes through `esc()`; CSP allows only our files + office.js; key and pointer handlers only through `addEventListener` (a DOM0 handler returning false cancels the key) | `frontend/selfcheck.js`, `e2e/run.mjs` |
+| 11 | Pane | `frontend/` | every dynamic `innerHTML` value goes through `esc()`; CSP allows only our files + office.js; key and pointer handlers only through `addEventListener` (a DOM0 handler returning false cancels the key); Fixed / Dismissed kept in the workbook as one code per row, never the values (`features/decisions.js`) | `frontend/selfcheck.js`, `e2e/run.mjs` |
 | 12 | Website | `site/` | every link and anchor lands; nothing loads from outside but the GitHub API for the checksum (CSP meta); no HTML built from data; the support link always fits GitHub's limit | `tools/test_site.mjs` (`--browser` under `--e2e`); `pages.yml` publishes only after it passes |
 
 ## Feature map: what the scan finds, where, and its test
@@ -128,3 +128,8 @@ Adding or removing a check: update this table in the same commit.
   swallowed every keystroke in the Ask AI box, and the e2e never saw it because `page.fill` sets the value without a
   key event (2026-10-20). Test typing with the real keyboard (`page.keyboard.type`); `frontend/selfcheck.js` refuses
   DOM0 key/pointer handlers and any `on... = () => a && b()`.
+- What the user decided must outlive the pane: Dismissed and accepted fixes lived only in its memory, so a reload or a
+  re-scan brought a dismissed row back flagged and an accepted fix vanished from the list and from Power BI
+  (2026-10-20). Each decision is kept in the workbook's settings under a code of the row's values plus its copy number
+  (`features/decisions.js`; a sort keeps it, an edit makes a new row), sent with `/scan` for Power BI's Status. The
+  e2e fake workbook keeps its sheets and saved settings across a page reload, so "reload the pane" is testable.

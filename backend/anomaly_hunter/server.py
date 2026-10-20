@@ -149,6 +149,12 @@ def create_app(scan_csv=None):
         if not ((start_row is None or type(start_row) is int and 0 <= start_row < EXCEL_ROWS)
                 and (sheet is None or isinstance(sheet, str) and len(sheet) <= 31)):  # Excel's longest sheet name
             return {"error": "'start_row' must be a row inside the sheet, and 'sheet' a sheet name"}, 400
+        # each row's Fixed / Dismissed, kept in the workbook by the pane, for the Power BI copy's Status. Only ever our
+        # own words go into the file (type(d) is str first: `[] in dict` would raise, a 500)
+        decisions = body.get("decisions")
+        if decisions is not None and not (isinstance(decisions, list) and len(decisions) == len(rows) and all(
+                d is None or type(d) is str and d in powerbi.DECISIONS for d in decisions)):
+            return {"error": "'decisions' must give each row null, \"fixed\" or \"dismissed\""}, 400
         try:  # Agent 1, one scan, no stop
             df, out, suggested, used, status, fair = scan_agent.scan(cols, rows, limits, order_by, _strength(body))
         except Exception:  # a bug in the engine: full detail to the log, not pandas internals to the user
@@ -161,7 +167,7 @@ def create_app(scan_csv=None):
         elif scan_csv:  # Power BI reads these files: no HTTPS/cert in its way, survives engine restarts
             try:  # text is always quoted: Excel in a ";" locale splits an unquoted "Pen;=cmd|..." into a live formula
                 with _CSV_LOCK:
-                    powerbi.write(scan_csv, list(df.columns), rows, out, start_row or 0, sheet or "")
+                    powerbi.write(scan_csv, list(df.columns), rows, out, start_row or 0, sheet or "", decisions)
                 saved = True
             except Exception:  # file open in Power BI, disk full, a bug: the scan still answers; an old copy is removed
                 app.logger.exception("could not write %s", scan_csv)
