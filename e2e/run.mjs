@@ -3,6 +3,7 @@
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import fs from "node:fs";
+import path from "node:path";
 const pw = await import(process.env.PLAYWRIGHT || "playwright") // local install, else the global one
   .catch(() => import(pathToFileURL(createRequire(import.meta.url).resolve("playwright", { paths: [process.env.NODE_PATH || ""] })).href));
 const { chromium } = pw.chromium ? pw : pw.default;
@@ -24,9 +25,10 @@ page.on("pageerror", (e) => errors.push(e.stack));
 page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
 const scans = []; // every /scan body the pane sent: the slider's level and the Power BI switch must reach the engine
 page.on("request", (r) => r.url().endsWith("/scan") && scans.push(JSON.parse(r.postData())));
-// Power BI's two files, read back like Power BI's own import does (a record ends at every line break)
-const CSV = DIR + "cert/latest-scan.csv", FLAGS = DIR + "cert/latest-flags.csv";
-const records = (path) => fs.readFileSync(path, "utf8").replace(/^﻿/, "").split("\r\n").slice(0, -1).map((line) => {
+// Power BI's two files, read back like Power BI's own import does (a record ends at every line break). They sit in the
+// engine's folder: e2e/cert here, %LOCALAPPDATA%\AnomalyHunter for the installed exe (CI's new-user job sets AH_DATA)
+const DATA = process.env.AH_DATA || DIR + "cert", CSV = path.join(DATA, "latest-scan.csv"), FLAGS = path.join(DATA, "latest-flags.csv");
+const records = (file) => fs.readFileSync(file, "utf8").replace(/^﻿/, "").split("\r\n").slice(0, -1).map((line) => {
   const out = []; let v = "", q = false;
   for (let k = 0; k < line.length; k++) {
     const ch = line[k];
