@@ -19,7 +19,7 @@ boolean-py==5.0
     # via license-expression
 cachecontrol==0.14.4
     # via pip-audit
-certifi==2026.7.22
+certifi==2026.10.19
     # via requests
 cffi==2.1.1 ; platform_python_implementation != 'PyPy'
     # via cryptography
@@ -113,7 +113,7 @@ pandas==3.0.6
     # via anomaly-hunter (pyproject.toml)
 pefile==2024.8.26 ; sys_platform == 'win32'
     # via pyinstaller
-pillow==12.3.0
+pillow==13.0.0
     # via anomaly-hunter (pyproject.toml)
 pip==26.2.1
     # via pip-api

@@ -9,19 +9,21 @@ import { plainReason } from "../features/scan.js";
 import { recommendFix, suggestTypo } from "../features/fix.js";
 import { fillRow } from "../features/highlight.js";
 import { listRows } from "./results.js";
+import { saveDecisions } from "../features/decisions.js";
 
 // One row's card: what's wrong, the suggested fix (Accept / Dismiss, then Undo / Next row), and Ask AI.
 export function onSelect(e) {
   if (state.working || !state.lastScan || (state.view !== "results" && state.view !== "fix-view")) return; // never yank the user out of the limits editor
   const i = rowFromAddress(e.address, state.lastScan.startRow);
   // a dismissed row stays quiet when clicked in the sheet (the list still opens it); a fixed one offers Undo
-  const open = (SEV[state.lastRows[i]?.severity] && !state.handled.has(i)) || state.undos[i];
+  const open = (SEV[state.lastRows[i]?.severity] && !state.decided[i]) || state.undos[i];
   if (i !== null && open && !(state.fix && state.fix.i === i)) act(() => openFix(i, false))();
 }
 
 export async function openFix(i, selectInSheet) {
   const { columns, rows, startRow, startCol, sheet } = state.lastScan;
   const r = state.lastRows[i], u = state.undos[i]; // u: its fix was accepted - the card offers Undo
+  if (r && !SEV[r.severity] && !u && state.decided[i] === "fixed") return selectFixed(i); // fixed before: nothing to undo here
   if (!r || (!SEV[r.severity] && !u)) return;
   busy("Opening row…");
   const f = (state.fix = { i, sheet, changes: [], calc: null });
@@ -48,11 +50,26 @@ export async function openFix(i, selectInSheet) {
   if (state.fix === f) await showFix(f, label, rec);
 }
 
+// A row fixed before this scan (another session, or before a re-check) that looks right now: the list selects it in
+// the sheet. Its Undo was the cells' old values, which only the pane that made the fix held.
+async function selectFixed(i) {
+  const { columns, startRow, startCol, sheet } = state.lastScan;
+  await Excel.run(async (ctx) => {
+    const ws = ctx.workbook.worksheets.getItem(sheet);
+    ws.activate();
+    ws.getRangeByIndexes(startRow + 1 + i, startCol, 1, columns.length).select();
+    await ctx.sync();
+  });
+  notice(`Row ${startRow + i + 2} was fixed and looks right now. Undo is only offered right after a fix, before the sheet is checked again.`);
+}
+
 // Dismiss = leave this row as it is: its highlight goes, like a dismissed Grammarly underline. Then the next row.
+// Kept in the workbook under the row's code, so the row stays dismissed after a reload or a re-scan.
 export async function dismissFix() {
   const f = state.fix;
   if (!f) return;
-  state.handled.add(f.i);
+  state.decided[f.i] = "dismissed";
+  saveDecisions(f.sheet, [[state.codes[f.i], "dismissed"]]);
   await fillRow(f.i, false);
   await nextFix();
 }
@@ -60,7 +77,7 @@ export async function dismissFix() {
 // The next row in the list (worst first) nobody accepted or dismissed yet - selected in the sheet, card open.
 export async function nextFix() {
   const order = state.order, at = order.indexOf(state.fix?.i);
-  const next = [...order.slice(at + 1), ...order.slice(0, at + 1)].find((i) => !state.handled.has(i));
+  const next = [...order.slice(at + 1), ...order.slice(0, at + 1)].find((i) => !state.decided[i]);
   if (next !== undefined) return openFix(next, true);
   state.fix = null;
   listRows();

@@ -107,14 +107,18 @@ def _missing(s):
 
 
 def report(df, types, rows):
-    """{protected: {col: why}, tests: [{column, test, groups: {label: [rows, rate]}, p, verdict, text}]}.
-    verdict "gap" = one subgroup's rate is 1.25x another's (four-fifths rule) AND the difference is significant."""
+    """{protected: {col: why}, tests: [{column, test, groups: {label: [rows, rate]}, p, verdict, text, context?}]}.
+    verdict "gap" = one subgroup's rate is 1.25x another's (four-fifths rule) AND the difference is significant.
+    context = one sentence of measured public context (ai/bias_rules.json) for a gap in an outcome or in blanks on a
+    column the rules cover: a real gap must not pass for a data error. Never on a flag-rate gap: that one is ours."""
+    from anomaly_hunter.ai.bias_context import pane_note  # here, not at the top: bias_context reads this module's words
     prot = {c: why for c, why in protected(types).items() if c in df.columns}
     flagged = pd.Series([r["severity"] in ("High", "Medium", "Low") for r in rows], index=df.index)
     missing = {c: _missing(df[c]) for c in df.columns if c not in prot}
-    measures = {"flag rate": (flagged, "rows flagged"),
-                **{f"missing {c}": (b, f"missing {c}") for c, b in missing.items() if b.sum() >= 5},
-                **_outcomes(df, types, prot)}
+    blanks = {f"missing {c}": (b, f"missing {c}") for c, b in missing.items() if b.sum() >= 5}
+    outcomes = _outcomes(df, types, prot)
+    measures = {"flag rate": (flagged, "rows flagged"), **blanks, **outcomes}
+    kinds = {name: "outcome" if name in outcomes else "missing" if name in blanks else "flag" for name in measures}
     tests, left = [], MAX_TESTS
     for col, why in prot.items():
         g = _groups(df, col, types)
@@ -130,10 +134,10 @@ def report(df, types, rows):
             if len(table) < 2 or table.shape[1] < 2 or (table.sum(axis=0) == 0).any():
                 continue
             rates = table[True] / table.sum(axis=1)
-            tests.append({"column": col, "kind": why, "test": name, "what": what, "p": float(chi2_contingency(table)[1]),
+            tests.append({"column": col, "kind": why, "test": name, "what": what, "measure": kinds[name], "p":float(chi2_contingency(table)[1]),
                           "groups": {str(k): [int(table.loc[k].sum()), round(float(v), 4)] for k, v in rates.items()}})
     for t in tests:
-        rates, what = {k: v[1] for k, v in t["groups"].items()}, t.pop("what")
+        rates, what, measure = {k: v[1] for k, v in t["groups"].items()}, t.pop("what"), t.pop("measure")
         hi, lo = max(rates, key=rates.get), min(rates, key=rates.get)
         big, real = rates[hi] >= RATIO * rates[lo] and rates[hi] - rates[lo] >= 0.05, t["p"] * len(tests) < ALPHA
         t["verdict"] = "gap" if big and real else "even"
@@ -141,4 +145,7 @@ def report(df, types, rows):
         t["text"] = (f"{t['column']} {hi}: {rates[hi]:.0%} {what} vs {rates[lo]:.0%} for {lo} - a real gap, check why" if big and real
                      else f"{t['column']}: {what} close across groups ({span} - a real difference, but small)" if real
                      else f"{t['column']}: {what} even across groups ({span}, within normal variation)")
+        note = pane_note(t["column"], measure) if t["verdict"] == "gap" else None
+        if note:
+            t["context"] = note
     return {"protected": prot, "tests": tests}

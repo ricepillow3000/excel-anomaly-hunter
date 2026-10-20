@@ -10,6 +10,7 @@ import { renderResults } from "../pages/results.js";
 import { onSelect } from "../pages/fix.js";
 import { strength } from "../pages/strength.js";
 import { autoFix, autoOn, autoUndo } from "./autofix.js";
+import { codes, decisionsFor, rowHash } from "./decisions.js";
 
 // Keep each scan for Power BI (a plain-text copy of the sheet on this PC): off unless turned on, like auto-fix
 export const powerBiOn = () => { try { return localStorage.getItem(POWER_BI_KEY) === "1"; } catch { return false; } };
@@ -28,19 +29,24 @@ export async function runScan(auto) { // auto === false: the re-check right afte
     return notice("Not enough data here. Put a row of column names on top, with at least one row of data below it.");
   }
   busy(`Step 2 of 3: checking ${n(s.rows.length)} rows…`);
-  const level = strength();
-  // start_row and sheet: where the table sits, so the Power BI copy's "Excel Row" is the row number shown here
-  const body = await post("/scan", { columns: s.columns, rows: s.rows, limits: await getLimits(), order_by: null, strength: level,
-    power_bi: powerBiOn(), start_row: s.startRow, sheet: String(s.sheet).slice(0, 31) }, 300);
+  const level = strength(), limits = await getLimits(); // getLimits re-reads the workbook's settings first
+  // the rows fixed or dismissed before, in any session: found again by their codes, wherever a sort moved them
+  const hashes = s.rows.map(rowHash), keys = codes(hashes), kept = decisionsFor(s.sheet), decided = {};
+  keys.forEach((k, i) => kept[k] && (decided[i] = kept[k]));
+  // start_row and sheet: where the table sits, so the Power BI copy's "Excel Row" is the row number shown here;
+  // decisions: its Status (Open, Fixed, Dismissed)
+  const body = await post("/scan", { columns: s.columns, rows: s.rows, limits, order_by: null, strength: level,
+    power_bi: powerBiOn(), start_row: s.startRow, sheet: String(s.sheet).slice(0, 31),
+    decisions: Object.keys(decided).length ? s.rows.map((_, i) => decided[i] || null) : null }, 300);
   state.lastStrength = level; // Agent 3 judges fixes at the level this scan used
   state.lastScan = s;
   state.lastRows = body.rows;
   state.lastLimits = body.limits || {};
   state.undos = {};
-  state.handled = new Set();
+  Object.assign(state, { hashes, codes: keys, decided });
   $("sheet-name").textContent = s.sheet;
   renderResults(body.rows, s, body.fairness);
-  await paint(body.rows, s);
+  await paint(body.rows, s, decided); // a decided row is not highlighted again
   await watchSelection(s.sheet, onSelect);
   const secs = Math.max(1, Math.round((Date.now() - t0) / 1000));
   notice(`Done in ${secs} second${secs === 1 ? "" : "s"}.` + (body.power_bi_saved === false
@@ -63,6 +69,11 @@ export async function runScan(auto) { // auto === false: the re-check right afte
 export const flaggedRows = (rows) => rows.map((r, i) => ({ ...r, i })).filter((r) => SEV[r.severity])
   .sort((a, b) => RANK[a.severity] - RANK[b.severity] || b.magnitude - a.magnitude);
 
+// Pure: the list's rows: the flagged ones worst first, then rows decided before that are no longer flagged (a fixed
+// row looks right now: it is listed as Fixed instead of vanishing), in sheet order
+export const listOrder = (rows, decided = {}) => [...flaggedRows(rows).map((r) => r.i),
+  ...Object.keys(decided).map(Number).filter((i) => rows[i] && !SEV[rows[i].severity]).sort((a, b) => a - b)];
+
 // Pure: the summary sentence
 export function summaryOf(rows) {
   const sure = rows.filter((r) => r.severity === "High" || r.severity === "Medium").length;
@@ -73,14 +84,16 @@ export function summaryOf(rows) {
 }
 
 // Pure: the fairness line under the summary (engine/fairness.py) - which columns are protected, and the biggest real
-// gaps (a census sheet has 15: the line names 3, the full list sits under "All fairness checks")
+// gaps (a census sheet has 15: the line names 3, the full list sits under "All fairness checks"), then the engine's
+// measured public context for those gaps, each sentence once (ai/bias_rules.json): a real gap is not a data error
 export function fairnessNote(fair) {
   const cols = Object.keys(fair?.protected || {});
   if (!cols.length) return "";
   const gaps = fairnessTests(fair).filter((t) => t.verdict === "gap");
   const kept = `Fairness: ${cols.join(", ")} ${cols.length === 1 ? "is" : "are"} never used to decide which rows are unusual.`;
   const more = gaps.length > 3 ? ` - and ${gaps.length - 3} more under "All fairness checks"` : "";
-  return gaps.length ? `${kept} Check these gaps between groups: ${gaps.slice(0, 3).map((t) => t.text).join("; ")}${more}.`
+  const context = [...new Set(gaps.slice(0, 3).map((t) => t.context).filter((c) => typeof c === "string" && c))];
+  return gaps.length ? `${kept} Check these gaps between groups: ${gaps.slice(0, 3).map((t) => t.text).join("; ")}${more}.${context.map((c) => ` ${c}`).join("")}`
     : `${kept} Flags, blanks and outcomes are even across their groups.`;
 }
 
