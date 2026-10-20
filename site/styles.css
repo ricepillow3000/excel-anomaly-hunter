@@ -3,7 +3,7 @@
    never by shadows or gradients. Dark Gold is trim only (1px lines, the active menu line, the download frame), never text or fill. Corners are 90 degrees.
    Weight: one font file (the sans; the serif is Georgia, already on every PC), one 1.2 KB logo, two small deferred scripts (the home
    page's sample workspace, the support form). Crimson is a solid fill and appears only where the sheet is wrong (an outline for "worth a
-   check"). Serif for headlines, sans for everything read or clicked. The only motion is the scan meter and the download zone's scroll scrub. */
+   check"). Serif for headlines, sans for everything read or clicked. The only motion is the scan meter and the download watermark's scroll scrub. */
 @font-face { font-family: "Plus Jakarta Sans"; src: url("assets/plus-jakarta-sans.woff2") format("woff2"); font-weight: 200 800; font-display: swap; }
 :root {
   color-scheme: light;
@@ -20,7 +20,6 @@
   --on-navy: #ECE7DB;  /* text on navy (14:1) */
   --on-navy-2: #B9BFCC;/* secondary text on navy (8.7:1) */
   --on-crimson: #FBF3F1;
-  --rule-navy: #2E3D63; /* 1px rules on navy */
   --r: 0;
   --serif: Georgia, "Times New Roman", serif;
   --sans: "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif;
@@ -175,46 +174,48 @@ table.card { width: 100%; border-collapse: collapse; background: var(--sheet); b
 .card td.eg { width: 26%; font: 500 13px/1.5 var(--mono); color: var(--navy); border-left: 1px solid var(--rule); }
 .card tbody tr:last-child th, .card tbody tr:last-child td { border-bottom: 0; }
 
-/* the closing download zone: navy, a gold banner over a crimson rhombus, the button on their intersection */
-.deploy { background: var(--navy); color: var(--on-navy); border-radius: var(--r); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-.deploy > div { padding: var(--s5); min-width: 0; }
-.deploy > div + div { border-left: 1px solid var(--rule-navy); }
-.deploy a { color: var(--on-navy); }
-.deploy .label { color: var(--on-navy-2); }
-.art { position: relative; width: min(100%, 360px); aspect-ratio: 36 / 31; margin-bottom: var(--s4); }
-.geo, .geo svg { position: absolute; }
-.geo { inset: 0; view-timeline: --geo block; }
-.geo .banner { left: 16%; top: 0; width: 56%; overflow: visible; }
-.geo .banner path { stroke: var(--gold); }
-.geo .rhombus { left: 42%; top: 30%; width: 55%; overflow: visible; }
-.geo .rhombus path { stroke: var(--crimson); }
-.btn-bone { position: absolute; left: 0; bottom: 14%; z-index: 1; min-height: 56px; background: var(--canvas); color: var(--navy) !important; border: 1px solid var(--canvas); }
-.btn-bone:hover { background: var(--navy); color: var(--on-navy) !important; border-color: var(--gold); }
-.btn-bone:focus-visible { outline: 2px solid var(--on-navy); outline-offset: 3px; }
-/* the scrub: the shapes start 30px apart at 10% and lock together as the zone scrolls in; scrolling up takes them apart again.
-   Only where the browser drives animations from scroll natively, on wide screens, and when motion is welcome; elsewhere they sit assembled. */
+/* the closing download zone: alabaster, the spearless banner as a 25% watermark, the button centred on it,
+   the compliance ledger beneath, the three steps under that */
+.deploy { border: 1px solid var(--gold); border-radius: var(--r); background: var(--canvas); }
+.stage { position: relative; display: grid; place-items: center; height: 440px; overflow: hidden; view-timeline: --wm block; }
+.watermark { position: absolute; left: 50%; top: 50%; width: 520px; max-width: 92%; transform: translate(-50%, -50%); opacity: .25; overflow: visible; }
+.watermark > g { transform-box: fill-box; transform-origin: center; }
+/* the scrub: the pieces start 30px apart and lock together as the zone scrolls in, at the wheel's own pace (a scroll
+   timeline has no clock: it stops when the page stops). Wide screens with native scroll timelines only, and only
+   when motion is welcome; everywhere else the banner sits assembled. */
 @supports (animation-timeline: view()) {
   @media (min-width: 761px) and (prefers-reduced-motion: no-preference) {
-    .geo .banner { animation: from-top-left linear both; animation-timeline: --geo; animation-range: entry 0% cover 50%; }
-    .geo .rhombus { animation: from-bottom-right linear both; animation-timeline: --geo; animation-range: entry 0% cover 50%; }
+    .wm-bar, .wm-shield, .wm-ring, .wm-panels { animation: linear both; animation-timeline: --wm; animation-range: entry 0% cover 50%; }
+    .wm-bar { animation-name: wm-bar; } .wm-shield { animation-name: wm-shield; }
+    .wm-ring { animation-name: wm-ring; } .wm-panels { animation-name: wm-panels; }
   }
 }
-@keyframes from-top-left { from { transform: translate(-30px, -30px); opacity: .1; } to { transform: none; opacity: 1; } }
-@keyframes from-bottom-right { from { transform: translate(30px, 30px); opacity: .1; } to { transform: none; opacity: 1; } }
-dl.anchor { margin: 0; display: grid; grid-template-columns: minmax(0, 96px) minmax(0, 1fr); border-top: 1px solid var(--rule-navy); font-size: 12px; line-height: 1.5; }
-.anchor dt, .anchor dd { margin: 0; padding: 8px 0; border-bottom: 1px solid var(--rule-navy); }
-.anchor dt { color: var(--on-navy-2); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; font-size: 11px; padding-right: var(--s2); }
-.anchor dd { color: var(--on-navy); }
-.anchor dd.strong { font-weight: 700; }
+@keyframes wm-bar { from { transform: translate(-30px, -30px); } to { transform: none; } }
+@keyframes wm-shield { from { transform: translate(30px, 30px) scale(.96); } to { transform: none; } }
+@keyframes wm-ring { from { transform: translate(-30px, 30px) scale(.9); } to { transform: none; } }
+@keyframes wm-panels { from { transform: translate(30px, -30px) scale(.9); } to { transform: none; } }
+/* flat navy, a 1px gold line; on hover the two colours swap at once, no transition */
+.btn-dl { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: .7em; min-height: 52px; padding: 0 30px; border-radius: 0;
+  background: var(--navy); color: var(--on-navy); border: 1px solid var(--gold); text-decoration: none;
+  font: 700 12px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; }
+.btn-dl:hover { background: var(--gold); color: var(--navy); }
+.btn-dl:focus-visible { outline: 2px solid var(--navy); outline-offset: 3px; }
+dl.anchor { margin: 0 auto; max-width: 620px; display: grid; grid-template-columns: minmax(0, 96px) minmax(0, 1fr); padding: 0 var(--s3) var(--s4); font-size: 12px; line-height: 1.5; }
+.anchor dt, .anchor dd { margin: 0; padding: 8px 0; border-bottom: 1px solid var(--rule); }
+.anchor dt:first-of-type, .anchor dt:first-of-type + dd { border-top: 1px solid var(--rule); }
+.anchor dt { color: var(--muted); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; font-size: 11px; padding-right: var(--s2); }
+.anchor dd { color: var(--ink); }
+.anchor dd.strong { font-weight: 700; color: var(--navy); }
 .anchor code { display: block; }
-.anchor code, .steps code { font: 500 11.5px/1.5 var(--mono); color: var(--on-navy); background: var(--navy-2); border: 1px solid var(--rule-navy); border-radius: 0; padding: 2px 6px; word-break: break-all; }
-.steps { display: grid; align-content: start; gap: var(--s3); }
-.steps ol { margin: 0; padding: 0; list-style: none; counter-reset: step; border-top: 1px solid var(--rule-navy); }
-.steps li { counter-increment: step; display: grid; grid-template-columns: 32px minmax(0, 1fr); column-gap: 12px; padding: 16px 0; border-bottom: 1px solid var(--rule-navy); font-size: 14px; color: var(--on-navy-2); }
-.steps li::before { content: counter(step); width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--gold); font: 700 12px/1 var(--sans); color: var(--on-navy); }
-.steps li b { color: var(--on-navy); }
+.anchor code, .steps code { font: 500 11.5px/1.5 var(--mono); color: var(--ink); background: var(--shade); border: 1px solid var(--rule); border-radius: 0; padding: 2px 6px; word-break: break-all; }
+.steps { display: grid; gap: var(--s3); padding: var(--s4) var(--s5) var(--s5); border-top: 1px solid var(--rule); }
+.steps ol { margin: 0; padding: 0; list-style: none; counter-reset: step; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--rule); }
+.steps li { counter-increment: step; display: grid; grid-template-columns: 32px minmax(0, 1fr); column-gap: 12px; padding: 16px var(--s3) 16px 0; font-size: 14px; color: var(--ink); }
+.steps li + li { border-left: 1px solid var(--rule); padding-left: var(--s3); }
+.steps li::before { content: counter(step); width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--gold); font: 700 12px/1 var(--sans); color: var(--navy); }
+.steps li b { color: var(--navy); }
 .steps .line { display: block; margin-top: 10px; padding: 8px 10px; word-break: normal; overflow-x: auto; white-space: nowrap; }
-.steps .aside { margin: 0; font-size: 12.5px; color: var(--on-navy-2); }
+.steps .aside { margin: 0; font-size: 12.5px; color: var(--muted); }
 
 /* reading pages: a legal ledger */
 .page-head { padding-block: var(--s6) var(--s5); border-bottom: 1px solid var(--rule); }
@@ -291,9 +292,11 @@ dl.anchor { margin: 0; display: grid; grid-template-columns: minmax(0, 96px) min
   .it-ledger { grid-template-columns: minmax(0, 1fr); }
   .it-ledger > div { border-left: 0; border-top: 1px solid var(--rule); }
   .it-ledger > div:first-child { border-top: 0; }
-  .deploy { grid-template-columns: minmax(0, 1fr); }
-  .deploy > div { padding: var(--s3); }
-  .deploy > div + div { border-left: 0; border-top: 1px solid var(--rule-navy); }
+  .stage { height: 300px; }
+  .steps { padding: var(--s3); }
+  .steps ol { grid-template-columns: minmax(0, 1fr); }
+  .steps li { padding-right: 0; }
+  .steps li + li { border-left: 0; border-top: 1px solid var(--rule); padding-left: 0; }
   .card tbody th, .card td.eg { width: auto; }
   .card thead { display: none; }
   .card tr { display: grid; border-bottom: 1px solid var(--rule); }

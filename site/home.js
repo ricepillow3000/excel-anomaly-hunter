@@ -81,6 +81,7 @@ fetch("https://api.github.com/repos/ricepillow3000/excel-anomaly-hunter/releases
     document.getElementById("sha").textContent = hash[1];
     const tag = /^v\d+\.\d+\.\d+$/.test(d.tag_name) ? d.tag_name : "Latest";
     const date = /^\d{4}-\d{2}-\d{2}/.exec(d.published_at || "");
+    if (tag !== "Latest") document.getElementById("btn-ver").textContent = `(${tag})`;
     document.getElementById("rel").textContent = `${tag}${date ? ", " + date[0] : ""} · ${Math.round(exe.size / 1e6)} MB · free`;
   })
   .catch(() => {});  // offline or rate-limited: the release-page link stays
