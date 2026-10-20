@@ -1,8 +1,8 @@
 /* Anomaly Hunter website: a ledger on alabaster stationery.
    Layout: a solid Crown Navy bar, then one 1120px column on an 8px grid; every module is separated by 1px rules,
-   never by shadows or gradients. Gold is trim only (1px lines, the active menu line), never text or fill. Crimson is a
+   never by shadows or gradients. Dark Gold is trim only (1px lines, the active menu line, the download frame), never text or fill. Corners are 90 degrees.
+   Weight: one font file (the sans; the serif is Georgia, already on every PC), one 1.2 KB logo, no scripts but the support form's. Crimson is a
    solid fill and appears only where the sheet is wrong. Serif for headlines, sans for everything read or clicked. */
-@font-face { font-family: "Playfair Display"; src: url("assets/playfair-display.woff2") format("woff2"); font-weight: 400 700; font-display: swap; }
 @font-face { font-family: "Plus Jakarta Sans"; src: url("assets/plus-jakarta-sans.woff2") format("woff2"); font-weight: 200 800; font-display: swap; }
 :root {
   color-scheme: light;
@@ -11,7 +11,7 @@
   --shade: #EFECE4;    /* header rows, quiet panels */
   --navy: #0C1938;     /* Crown Navy: bar, headlines, primary button */
   --navy-2: #1A2B52;   /* navy hover */
-  --gold: #C5A059;     /* Champagne Gold: 1px trim only */
+  --gold: #9C7A35;     /* Dark Gold: 1px trim only (3.7:1 on the canvas, 4.3:1 on navy; #C5A059 was 2.3:1) */
   --crimson: #A6192E;  /* solid fill for anomalies only */
   --rule: #CBD5E1;     /* 1px slate rules */
   --ink: #1F2638;      /* body text (13:1 on canvas) */
@@ -19,25 +19,23 @@
   --on-navy: #ECE7DB;  /* text on navy (14:1) */
   --on-navy-2: #B9BFCC;/* secondary text on navy (8.7:1) */
   --on-crimson: #FBF3F1;
-  --r: 4px;
-  --serif: "Playfair Display", Georgia, "Times New Roman", serif;
+  --r: 0;
+  --serif: Georgia, "Times New Roman", serif;
   --sans: "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif;
   --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
   --s1: 8px; --s2: 16px; --s3: 24px; --s4: 32px; --s5: 48px; --s6: 64px; --s7: 96px;
   --wrap: 1120px;
 }
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
 body { margin: 0; background: var(--canvas); color: var(--ink); font: 400 16px/1.65 var(--sans); }
 img { max-width: 100%; display: block; }
 a { color: var(--navy); text-decoration-color: var(--gold); text-underline-offset: 3px; text-decoration-thickness: 1px; }
 a:hover { text-decoration-color: var(--navy); }
 :focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
 h1, h2, h3 { margin: 0; color: var(--navy); text-wrap: balance; }
-h1, h2 { font-family: var(--serif); font-weight: 500; letter-spacing: -.005em; line-height: 1.15; }
+h1, h2 { font-family: var(--serif); font-weight: 400; letter-spacing: -.005em; line-height: 1.15; }
 h3 { font: 700 15px/1.4 var(--sans); }
-code { font-family: var(--mono); font-size: .9em; background: var(--shade); border: 1px solid var(--rule); border-radius: 2px; padding: 1px 5px; word-break: break-word; }
-@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+code { font-family: var(--mono); font-size: .9em; background: var(--shade); border: 1px solid var(--rule); border-radius: 0; padding: 1px 5px; word-break: break-word; }
 
 .wrap { max-width: var(--wrap); margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 .label { font: 700 11px/1 var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
@@ -61,6 +59,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .btn svg { width: 17px; height: 17px; flex: none; }
 .btn-navy { background: var(--navy); color: var(--on-navy); }
 .btn-navy:hover { background: var(--navy-2); }
+.btn-framed { outline: 1px solid var(--gold); outline-offset: 3px; border-color: var(--gold); }
+.btn-framed:focus-visible { outline: 2px solid var(--navy); outline-offset: 3px; }
 .btn-plain { background: transparent; color: var(--navy); border-color: var(--rule); }
 .btn-plain:hover { border-color: var(--navy); }
 
@@ -72,7 +72,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .section-head p { margin: 0; color: var(--muted); font-size: 17px; }
 
 /* hero */
-.hero { padding-block: var(--s7) var(--s6); }
+.hero { padding-block: var(--s6) var(--s6); }
 .hero .lede { display: grid; gap: var(--s3); max-width: 680px; }
 .hero h1 { font-size: clamp(32px, 4.2vw, 46px); }
 .hero p { margin: 0; color: var(--muted); font-size: 18px; max-width: 34em; }
@@ -80,7 +80,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .hero .note { font-size: 13px; color: var(--muted); }
 
 /* the ledger preview: a sheet on the page */
-.ledger { margin-top: var(--s6); background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r); }
+.ledger { margin-top: var(--s5); background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r); }
 .ledger-top { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s3); align-items: baseline; padding: 14px var(--s3); border-bottom: 1px solid var(--rule); }
 .ledger-top b { font: 700 14px/1.4 var(--sans); color: var(--navy); }
 .ledger-top span { font-size: 13px; color: var(--muted); }
@@ -120,7 +120,7 @@ table.card { width: 100%; border-collapse: collapse; background: var(--sheet); b
 .terminal .micro { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: 13px; color: var(--muted); }
 .terminal .micro li { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 10px; }
 .terminal .micro li::before { content: ""; width: 7px; height: 7px; margin-top: 7px; border: 1px solid var(--gold); }
-.hash { font: 500 12px/1.5 var(--mono); color: var(--ink); background: var(--shade); border: 1px solid var(--rule); border-radius: 2px; padding: 10px 12px; overflow-x: auto; white-space: nowrap; }
+.hash { font: 500 12px/1.5 var(--mono); color: var(--ink); background: var(--shade); border: 1px solid var(--rule); border-radius: 0; padding: 10px 12px; overflow-x: auto; white-space: nowrap; }
 .terminal ol { margin: 0; padding-left: 20px; display: grid; gap: 8px; font-size: 14px; color: var(--ink); }
 dl.spec { margin: 0; display: grid; grid-template-columns: minmax(0, 132px) minmax(0, 1fr); border-top: 1px solid var(--rule); }
 .spec dt, .spec dd { margin: 0; padding: 12px 0; border-bottom: 1px solid var(--rule); font-size: 14px; }
@@ -160,7 +160,7 @@ dl.spec { margin: 0; display: grid; grid-template-columns: minmax(0, 132px) minm
 .faq details:last-child { border-bottom: 0; }
 .faq summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: minmax(0, 1fr) 80px; align-items: center; padding: 16px var(--s3); font-weight: 600; color: var(--navy); }
 .faq summary::-webkit-details-marker { display: none; }
-.faq summary::after { content: "Open"; justify-self: end; font: 600 12px/1 var(--sans); color: var(--muted); padding: 6px 8px; border: 1px solid var(--rule); border-radius: 2px; }
+.faq summary::after { content: "Open"; justify-self: end; font: 600 12px/1 var(--sans); color: var(--muted); padding: 6px 8px; border: 1px solid var(--rule); border-radius: 0; }
 .faq details[open] summary::after { content: "Close"; border-color: var(--gold); color: var(--navy); }
 .faq details[open] summary { border-bottom: 1px solid var(--rule); }
 .faq .a { padding: var(--s2) var(--s3) var(--s3); color: var(--ink); font-size: 15px; }

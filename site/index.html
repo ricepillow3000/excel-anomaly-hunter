@@ -7,12 +7,13 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="description" content="Anomaly Hunter reads every row of an Excel sheet on your own PC, flags the figures that don't reconcile and proposes the correction.">
 <link rel="icon" href="assets/banner-32.png" sizes="32x32">
+<link rel="preload" href="assets/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <header class="bar">
   <div class="wrap">
-    <a class="brand" href="index.html"><img src="assets/banner-64.png" width="32" height="32" alt="">Anomaly Hunter</a>
+    <a class="brand" href="index.html" aria-label="Anomaly Hunter home"><img src="assets/banner-32.png" srcset="assets/banner-64.png 2x" width="32" height="32" alt="">Anomaly Hunter</a>
     <nav class="links" aria-label="Main">
       <a href="index.html" aria-current="page">Product</a>
       <a href="index.html#checks">Checks</a>
@@ -31,10 +32,9 @@
         <h1 id="hero-title">Find the error before it reaches the board.</h1>
         <p>Anomaly Hunter reads every row of an Excel sheet on your own PC, flags the figures that don't reconcile, explains each one in a sentence and proposes the correction. Nothing changes until you accept it.</p>
         <div class="actions">
-          <a class="btn btn-navy" href="#download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Download for Windows</a>
-          <a class="btn btn-plain" href="#checks">Review the checks</a>
+          <a class="btn btn-navy btn-framed" href="https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest/download/AnomalyHunter.exe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Download for Windows</a>
         </div>
-        <span class="note">Free. The scan runs on your PC. A 48,842-row table took about 9 seconds in our tests.</span>
+        <span class="note">Free · about 81 MB · Windows with desktop Excel · <a href="#download">requirements and SHA-256</a></span>
       </div>
 
       <figure class="ledger" aria-labelledby="ledger-cap">
@@ -98,7 +98,7 @@
       </div>
       <div class="terminal">
         <div class="go">
-          <a class="btn btn-navy" href="https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest/download/AnomalyHunter.exe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Download for Windows</a>
+          <a class="btn btn-navy btn-framed" href="https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest/download/AnomalyHunter.exe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Download for Windows</a>
           <ul class="micro">
             <li><span>Latest release, about 81 MB, free.</span></li>
             <li><span>GitHub publishes the file's SHA-256 on the <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest">release page</a>. Compare it before you run the file.</span></li>
