@@ -56,7 +56,9 @@
     const was = JSON.parse(sessionStorage.getItem(KEEP) || "null");
     if (was) {
       for (const [n, cells] of Object.entries(was.sheets)) Object.assign((sheets[n] = makeSheet(n)).cells, cells);
-      Object.assign(settings, JSON.parse(JSON.stringify(was.settings)));
+      // key by key, not Object.assign of parsed JSON (semgrep insecure-object-assign blocks CI): a copy, so later
+      // set() calls never change what was saved
+      for (const [k, v] of Object.entries(was.settings)) settings[k] = structuredClone(v);
       saved = was.settings;
       active = was.active;
     }
