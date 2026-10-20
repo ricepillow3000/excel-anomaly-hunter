@@ -15,6 +15,6 @@ exe = EXE(
     PYZ(a.pure), a.scripts, a.binaries, a.datas,
     name="AnomalyHunter",
     console=False,  # no black window: messages are Windows message boxes, the engine logs to server.log
-    icon=str(ROOT / "packaging" / "AnomalyHunter.ico"),  # 16/32 hand-drawn, 48/64/256 from the master (docs/design/logo)
+    icon=str(ROOT / "packaging" / "AnomalyHunter.ico"),  # 16/32 hand-drawn, 48/64/256 from the master (docs/design/logo/README.md)
     upx=False,  # UPX-packed files trip antivirus false alarms
 )
