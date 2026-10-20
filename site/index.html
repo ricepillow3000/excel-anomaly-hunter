@@ -229,8 +229,8 @@
         <svg class="watermark" viewBox="0 0 416 334" aria-hidden="true">
           <g class="wm-shield">
             <path d="M48 24 H368 V300 L208 330 L48 300 Z" fill="#321B34"/>
-            <path d="M48 24 H368 V300 L208 330 L48 300 Z" fill="none" stroke="#A27442" stroke-width="2" vector-effect="non-scaling-stroke"/>
-            <path d="M58 24 V293 L208 319 L358 293 V24" fill="none" stroke="#A27442" stroke-width="1" vector-effect="non-scaling-stroke"/>
+            <path class="draw" pathLength="1" d="M48 24 H368 V300 L208 330 L48 300 Z" fill="none" stroke="#A27442" stroke-width="2" vector-effect="non-scaling-stroke"/>
+            <path class="draw" pathLength="1" d="M58 24 V293 L208 319 L358 293 V24" fill="none" stroke="#A27442" stroke-width="1" vector-effect="non-scaling-stroke"/>
           </g>
           <g class="wm-bar" fill="#8C6237">
             <path d="M40 24 H376 Q208 132 40 24 Z"/>
@@ -241,9 +241,8 @@
           <g class="wm-ring"><g transform="translate(208 188) scale(6.6) translate(-40 -62.2)" fill="none" stroke="#B69295" stroke-width="1.1">
             <circle cx="40" cy="58.7" r="2.7"/><path d="M35.75 62.05 L44.25 55.35"/>
           </g></g>
-          <g class="wm-panels"><g transform="translate(208 188) scale(6.6) translate(-40 -62.2)" fill="#B69295">
-            <path d="M30.4 63.4 H40 L36 69 H26.4 Z"/><path d="M49.6 63.4 H40 L44 69 H53.6 Z"/>
-          </g></g>
+          <g class="wm-panel-l"><path transform="translate(208 188) scale(6.6) translate(-40 -62.2)" fill="#B69295" d="M30.4 63.4 H40 L36 69 H26.4 Z"/></g>
+          <g class="wm-panel-r"><path transform="translate(208 188) scale(6.6) translate(-40 -62.2)" fill="#B69295" d="M49.6 63.4 H40 L44 69 H53.6 Z"/></g>
         </svg>
         <a class="btn btn-navy btn-framed" href="https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest/download/AnomalyHunter.exe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Download for Windows</a>
       </div>

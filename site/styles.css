@@ -238,17 +238,28 @@ table.card { width: 100%; border-collapse: collapse; background: var(--sheet); b
 .stage { display: flex; flex-direction: column; align-items: center; gap: var(--s4); view-timeline: --wm block; }
 .watermark { display: block; width: min(416px, 100%); height: auto; overflow: visible; }
 .watermark > g { transform-box: fill-box; transform-origin: center; }
+/* The assembly, scrubbed by the scroll itself (no clock: it stops when the wheel stops and runs backwards when it
+   turns back). Five steps, each on its own slice of the band's way into view, all done when the banner reaches the
+   middle of the screen: the bar slides in, the shield drops onto it, its gold edges draw themselves on, the emblem's
+   ring turns into place, and the two panels close from either side like a seal. Wide screens with native scroll
+   timelines only, and only when motion is welcome; everywhere else the banner sits finished. */
 @supports (animation-timeline: view()) {
   @media (min-width: 761px) and (prefers-reduced-motion: no-preference) {
-    .wm-bar, .wm-shield, .wm-ring, .wm-panels { animation: linear both; animation-timeline: --wm; animation-range: entry 0% cover 50%; }
-    .wm-bar { animation-name: wm-bar; } .wm-shield { animation-name: wm-shield; }
-    .wm-ring { animation-name: wm-ring; } .wm-panels { animation-name: wm-panels; }
+    .watermark > g, .watermark .draw { animation-timeline: --wm; animation-fill-mode: both; animation-timing-function: linear; }
+    .wm-bar { animation-name: wm-bar; animation-range: entry 0% cover 30%; }
+    .wm-shield { animation-name: wm-shield; animation-range: entry 10% cover 35%; }
+    .watermark .draw { stroke-dasharray: 1; animation-name: wm-draw; animation-range: cover 15% cover 42%; }
+    .wm-ring { animation-name: wm-ring; animation-range: cover 22% cover 46%; }
+    .wm-panel-l { animation-name: wm-panel-l; animation-range: cover 28% cover 50%; }
+    .wm-panel-r { animation-name: wm-panel-r; animation-range: cover 28% cover 50%; }
   }
 }
-@keyframes wm-bar { from { transform: translate(-30px, -30px); } to { transform: none; } }
-@keyframes wm-shield { from { transform: translate(30px, 30px) scale(.96); } to { transform: none; } }
-@keyframes wm-ring { from { transform: translate(-30px, 30px) scale(.9); } to { transform: none; } }
-@keyframes wm-panels { from { transform: translate(30px, -30px) scale(.9); } to { transform: none; } }
+@keyframes wm-bar { from { transform: translateX(-60px); opacity: .15; } to { transform: none; opacity: 1; } }
+@keyframes wm-shield { from { transform: translateY(-40px) scale(.96); opacity: .15; } to { transform: none; opacity: 1; } }
+@keyframes wm-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes wm-ring { from { transform: translate(-30px, -30px) rotate(-90deg) scale(.85); opacity: .15; } to { transform: none; opacity: 1; } }
+@keyframes wm-panel-l { from { transform: translateX(-48px); opacity: .15; } to { transform: none; opacity: 1; } }
+@keyframes wm-panel-r { from { transform: translateX(48px); opacity: .15; } to { transform: none; opacity: 1; } }
 /* the hero's first button: navy, a gold line, a gold frame 3px out; on wine the trim is the spear's gold */
 .band .btn { min-height: 56px; padding: 0 28px; }
 .band .btn-framed { outline-color: var(--gold-band); border-color: var(--gold-band); }
