@@ -98,7 +98,7 @@ def test_a_scan_never_sends_anything_to_google_even_with_a_key_saved(monkeypatch
 
 def test_safe_headers_on_every_answer():
     c = APP.test_client()
-    for r in (c.get("/health"), c.get("/taskpane.html"), c.get("/assets/logo-16.png"), c.post("/scan", data="x"), c.get("/nope")):
+    for r in (c.get("/health"), c.get("/taskpane.html"), c.get("/assets/banner-16.png"), c.post("/scan", data="x"), c.get("/nope")):
         assert r.headers["X-Content-Type-Options"] == "nosniff"
         # exact string: loosening it (say 'unsafe-inline' or a new host) must be a deliberate, re-tested change
         assert r.headers["Content-Security-Policy"] == (

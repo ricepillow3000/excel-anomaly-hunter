@@ -411,3 +411,17 @@ def test_any_unexpected_ai_failure_is_our_own_json_502(monkeypatch):
         r = post(BODY)
         assert r.status_code == 502 and r.is_json and "CANARY" not in r.get_data(as_text=True), r.get_data(as_text=True)
         assert r.get_json()["error"] == "AI error - details in server.log"
+
+
+def test_both_privacy_pages_name_every_place_data_goes_and_every_file_the_app_keeps():
+    # 2026-10-19 audit: the Privacy page said "nothing is sent to any other third party" (the relay runs on Cloudflare;
+    # an ANTHROPIC_API_KEY sends to Anthropic) and left out files the installer writes. Both pages must stay twins.
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2]
+    places = ("Google", "Cloudflare", "Anthropic", "GitHub", "Microsoft")
+    files = ("AnomalyHunter.exe", "server.log", "ai-cache", "gemini-key.txt", "invite-code.txt", "cert.pem",
+             "manifest.xml", "Start here.xlsx", "anomaly-hunter.pbids", "latest-scan.csv")
+    for page in ("PRIVACY.md", "frontend/privacy.html"):
+        words = (root / page).read_text(encoding="utf-8")
+        assert [p for p in places + files if p not in words] == [], page
+        assert "any other third party" not in words and "never transmitted" not in words, page
