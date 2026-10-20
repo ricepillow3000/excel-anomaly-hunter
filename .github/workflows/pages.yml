@@ -1,0 +1,41 @@
+# The website (site/) on GitHub Pages: https://ricepillow3000.github.io/excel-anomaly-hunter/
+# Published only from main, only after the website check passes. Needs Settings > Pages > Source: "GitHub Actions" once.
+name: Website
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", "tools/test_site.mjs", ".github/workflows/pages.yml"]
+  workflow_dispatch:      # "Run workflow" button on the Actions tab
+
+permissions:
+  contents: read
+
+concurrency:              # one publish at a time; a newer push never waits behind an older one
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - name: Website check (every link and anchor lands, nothing loads from outside)
+        run: node tools/test_site.mjs
+      # hidden files (site/.impeccable) stay out: the action skips them by default
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:          # only this job may publish, and only to Pages
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5.0.1
