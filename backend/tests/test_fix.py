@@ -57,7 +57,7 @@ def test_ask_ai_sends_no_more_rows_than_both_privacy_pages_say():
     lines = client._fix_prompt(COLS, rows, 20, 0, 0, "Units odd", "").splitlines()
     near = [int(re.match(r"row (\d+): ", x).group(1)) for x in lines if re.match(r"row \d+: ", x)]
     flagged = 22  # sheet row of rows[20] under the header in row 1
-    for page in ("PRIVACY.md", "frontend/privacy.html"):
+    for page in ("PRIVACY.md", "frontend/privacy.html", "site/privacy.html"):
         words = (root / page).read_text(encoding="utf-8")
         said = re.search(r"up to (\d+) rows above and (\d+) below it", words)
         assert said, f"{page} must say how many nearby rows Ask AI sends"
@@ -421,7 +421,7 @@ def test_both_privacy_pages_name_every_place_data_goes_and_every_file_the_app_ke
     places = ("Google", "Cloudflare", "Anthropic", "GitHub", "Microsoft")
     files = ("AnomalyHunter.exe", "server.log", "ai-cache", "gemini-key.txt", "invite-code.txt", "cert.pem",
              "manifest.xml", "Start here.xlsx", "anomaly-hunter.pbids", "latest-scan.csv")
-    for page in ("PRIVACY.md", "frontend/privacy.html"):
+    for page in ("PRIVACY.md", "frontend/privacy.html", "site/privacy.html"):
         words = (root / page).read_text(encoding="utf-8")
         assert [p for p in places + files if p not in words] == [], page
         assert "any other third party" not in words and "never transmitted" not in words, page
