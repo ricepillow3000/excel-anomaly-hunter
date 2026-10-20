@@ -1,7 +1,7 @@
 :root {
   /* corporate identity 2026-10-17: warm navy/gold/red, ledger brand. Matches site/tool-preview.html */
   --ink: #1c160d; --muted: #6a5f4d; --line: rgba(28,22,13,.14); --bg: #fbf6ec; --card: #fffdf8; --paper: #fbf6ec;
-  --navy: #0C1938; --navy-2: #0a1424; --gold: #9C7A35; --gold-soft: #e2c277; --red: #b1342a; --red-deep: #7f1f16;
+  --navy: #0C1938; --navy-2: #0a1424; --gold: #997D3A; --gold-soft: #e2c277; --red: #b1342a; --red-deep: #7f1f16;
   --accent: var(--navy); --accent-dark: #0b1a33; --warn: #b1342a;
   --high: #ffc7ce; --medium: #ffeb9c; --low: #ffffcc; /* the same fills the sheet gets - never recolour without the engine */
   --serif: "Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;

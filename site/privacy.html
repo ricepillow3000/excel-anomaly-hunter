@@ -37,7 +37,7 @@
           <tr><th scope="row">The scan</th><td>On your PC, in memory</td><td class="eg">Nothing</td></tr>
           <tr><th scope="row">Ask AI, Check words with AI</th><td>Google's Gemini, only when you click; through John's relay on Cloudflare with an invite code</td><td class="eg">The parts listed in §3</td></tr>
           <tr><th scope="row">Your AI key</th><td>Stored on your PC; used only to ask Google</td><td class="eg">Sent to Google with each request</td></tr>
-          <tr><th scope="row">This website</th><td>Static pages, no cookies or analytics</td><td class="eg">Your IP address, to its host and to GitHub for the download</td></tr>
+          <tr><th scope="row">This website</th><td>Static pages, no cookies or analytics</td><td class="eg">Your IP address, to its host and to GitHub (the checksum and the download)</td></tr>
         </tbody>
       </table>
     </div>
@@ -153,7 +153,7 @@
       </section>
       <section id="site">
         <h2>This website</h2>
-        <p>This website sets no cookies, runs no analytics and loads no outside fonts or scripts. Like any website, its host sees your IP address when you open it. The download button takes the file from GitHub, so GitHub sees your IP address too.</p>
+        <p>This website sets no cookies, runs no analytics and loads no outside fonts or scripts. Like any website, its host sees your IP address when you open it. The home page asks GitHub's public API for the latest release's SHA-256, and the download button takes the file from GitHub, so GitHub sees your IP address too.</p>
       </section>
 
     </article>
