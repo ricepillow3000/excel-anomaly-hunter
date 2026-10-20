@@ -242,20 +242,60 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
   ok(await page.isVisible("#ai-box") || !(await page.isVisible("#ai-off")), "AI help is on when a key is set");
   await openRow(11);
   ok(await page.isVisible("#ai-box") && !(await page.isVisible("#ai-off")), "Ask AI shown when a key is set");
-  await page.fill("#fix-intent", "use the average Units for East");
-  await page.click("#fix-ask");
+  // typed with the real keyboard: page.fill sets the value without a single key event, and so hid that the box
+  // cancelled every key (2026-10-20). Focus left on the slider or Find problems (both act on a key) must not matter:
+  // keys inside a text field never start a scan, and Ctrl+Enter asks AI, which sends only /fix and /check.
+  const posts = []; // every POST the page makes, by path
+  page.on("request", (r) => r.method() === "POST" && posts.push(new URL(r.url()).pathname));
+  const level = await page.getAttribute("#strength", "aria-valuenow");
+  await page.focus("#strength");
+  await page.click("#fix-intent");
+  await page.keyboard.type("use the average Units");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("for East");
+  // a space then Backspace leave the text as it was, wherever the caret ended up
+  for (const k of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown", " ", "Backspace"]) await page.keyboard.press(k);
+  await page.focus("#scan");
+  await page.click("#fix-intent");
+  for (const k of ["End", " ", "Backspace", "Enter", "Backspace"]) await page.keyboard.press(k);
+  await page.waitForTimeout(500); // a scan would have started by now
+  const typed = "use the average Units\nfor East";
+  ok((await page.inputValue("#fix-intent")) === typed, "typed keys land in the Ask AI box, Enter makes a new line - " + JSON.stringify(await page.inputValue("#fix-intent")));
+  ok(posts.length === 0 && (await page.getAttribute("#strength", "aria-valuenow")) === level, "typing, Enter, Space and arrows in the box start no scan - " + posts);
+  await page.keyboard.press("Control+Enter");
   await page.waitForFunction(() => document.getElementById("fix-label").textContent === "AI's fix", null, { timeout: 30000 });
+  ok(posts.includes("/fix") && posts.every((p) => p === "/fix" || p === "/check"), "Ctrl+Enter asks AI: only /fix and /check are sent - " + posts);
+  ok((await page.inputValue("#fix-intent")) === typed, "Ctrl+Enter adds no new line");
+  const asked = fs.readFileSync(DIR + "claude.log", "utf8").trim().split("\n").map(JSON.parse).filter((l) => l.prompt.includes("Flagged row")).at(-1);
+  ok(asked && asked.prompt.includes(`User's request: ${typed}`), "what was typed is what AI is asked");
   ok((await text("#fix-changes")).startsWith("C11: -5 → =AVERAGEIFS("), "AI's fix previewed - " + (await text("#fix-changes")));
   ok((await cell("C11")).v === -5, "nothing written before Accept");
   await page.click("#fix-apply"); await idle();
   ok(String((await cell("C11")).f).startsWith("=AVERAGEIFS("), "Accept writes the AI formula");
   await page.click("#fix-undo"); await idle();
   ok((await cell("C11")).v === -5 && !String((await cell("C11")).f ?? "").startsWith("="), "Undo takes the AI formula back out - " + (await text("#fix-status")));
+  posts.length = 0;
+  await page.click("#fix-ask");
+  await page.waitForFunction(() => document.getElementById("fix-ask").textContent === "Ask AI" && !document.getElementById("fix-ask").disabled, null, { timeout: 30000 });
+  ok(posts.includes("/fix") && posts.every((p) => p === "/fix" || p === "/check"), "clicking Ask AI sends only /fix and /check, never /scan - " + posts);
+
+  // the AI key box (Options > AI help) takes typed keys too; Enter in it sends nothing
+  await page.click("#settings summary");
+  posts.length = 0;
+  await page.click("#ai-key");
+  await page.keyboard.type("AIzaTypedKey_123");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(300);
+  ok((await page.inputValue("#ai-key")) === "AIzaTypedKey_123" && posts.length === 0, "the AI key box takes typed keys; Enter there sends nothing - " + posts);
+  await page.fill("#ai-key", "");
+  await page.click("#settings summary");
 
   // Check words with AI: only the text columns' distinct words go; the AI's answer is shown as text, never as markup,
   // and a word it makes up (not in the column) is dropped. The stub answers with markup in "why" and a made-up word.
   await page.click("#fix-back");
+  posts.length = 0;
   await page.click("#odd-check"); await idle();
+  ok(posts.join() === "/odd-text", "Check words with AI sends only /odd-text - " + posts);
   const odd = await page.$$eval("#odd-list li", (lis) => lis.map((li) => li.textContent));
   ok(odd.length === 100 && odd.every((t) => /^Row \d+: Region "Central" - <img src=x onerror=/.test(t)), `each row with the odd word listed (${odd.length}) - ${odd[0]}`);
   ok(!(await page.$("#odd-list img")) && !(await page.evaluate(() => window.__pwned)) && !odd.some((t) => t.includes("Atlantis")),
