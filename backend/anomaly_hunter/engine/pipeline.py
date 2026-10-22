@@ -391,24 +391,6 @@ def _short_for(short, label):
             and sum(ch in "aeiou" for ch in short[1:]) <= 1 and all(ch in rest for ch in short[1:]))
 
 
-# a column of people's names: one-slip twins are honest there (Thomson/Thompson, Philips/Phillips, Mathew/Matthew).
-# Measured on the 10,000 commonest US surnames and first names (AH-24): one inner letter dropped gives another real
-# name for 21% of surnames and 37% of first names (4.8% of common words), a letter typed twice 4% and 13% (0.3%)
-PERSON = {"surname", "surnames", "forename", "forenames", "firstname", "lastname", "fullname"}
-PERSON_NAME = {"first", "last", "given", "family", "middle", "full", "maiden", "nick", "christian", "legal", "preferred",
-               "customer", "client", "employee", "staff", "patient", "student", "pupil", "contact", "person", "member", "user",
-               "owner", "manager", "author", "applicant", "candidate", "teacher", "doctor", "driver", "agent", "rep", "buyer",
-               "seller", "player", "guest", "passenger", "mother", "father", "parent", "spouse", "partner", "tenant", "donor",
-               "volunteer", "attendee", "participant", "respondent", "recipient", "sender", "holder"}
-
-
-def _person_name(col):
-    """Surname, "First name", LastName, "Customer name", plain "Name": a column of people's names. "Product name",
-    "Company name", "City" are labels like any other."""
-    w = fairness._words(col)
-    return bool(PERSON & set(w)) or (bool(w) and w[-1] in ("name", "names") and (len(w) == 1 or w[-2] in PERSON_NAME))
-
-
 def spellings(df, column_types, skip):
     """Same category typed differently ("Sales" / "sales " / "SALES") - breaks SUMIFS and pivots silently.
     Only case/space differences, only in category-like columns (<= 50 distinct). Every spelling but the right one is
@@ -446,8 +428,6 @@ def spellings(df, column_types, skip):
                     if counts[right] >= 5 * c:  # auto-fix only when the right spelling is plainly the usual one
                         exact[i][col] = right
         cnt = keys.value_counts()
-        if _person_name(col):  # capitals/spaces of the very same name above, never a guess at another name (AH-24)
-            continue
         # over 60 characters is a note, not a label: crafted 32,000-character labels took 58 s here (council, 2026-10-16)
         for rare, c in cnt[cnt <= 2].items():
             usual = next((u for u, m in cnt.items() if m >= max(5, 5 * c) and len(u) <= 60 and len(rare) <= 60
