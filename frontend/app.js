@@ -10,7 +10,6 @@ import { powerBiOn, runScan, setPowerBi } from "./features/scan.js";
 import { clearHighlights } from "./features/highlight.js";
 import { applyFix, undoFix } from "./features/fix.js";
 import { setAi, askFix, checkWords } from "./features/ai.js";
-import { showHome } from "./pages/home.js";
 import { openLimitsEditor, saveLimitsAndRescan } from "./pages/limits.js";
 import { dismissFix, nextFix } from "./pages/fix.js";
 import { listRows } from "./pages/results.js";
@@ -66,7 +65,7 @@ if (typeof Office !== "undefined") {
       await ctx.sync();
       $("sheet-name").textContent = sheet.name;
     });
-    showHome();
+    only("empty-state");
     checkHealth();
   });
 }

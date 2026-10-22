@@ -115,7 +115,6 @@ def measure(folder):
     bad = g.default == "2"  # Statlog: 1 = good, 2 = bad credit
     census = f"in public US census data (UCI Adult, {num(n_a)} people)"
     credit = f"in public German credit data (Statlog, {num(n_g)} loans)"
-    costs = f"in a public medical-cost teaching table ({num(n_i)} people, simulated from US census figures)"
     gap = "a gap between groups is common in real data and is not by itself a data error."
     look = "so a gap like this is common in real data: check how the rows were collected and what else differs between the groups, never change a value toward its group."
     nums, rules = {}, []

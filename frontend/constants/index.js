@@ -32,7 +32,7 @@ export const READ_CELLS = 200000; // cells read per Excel call, so the progress 
 
 export const VIEWS = ["empty-state", "results", "limits-editor", "fix-view"];
 
-// Pure: the rows worth a look - surest first, then biggest - each with its data-row index ("Noted" = fine)
+// The list's order: surest first ("Noted" = fine, not listed)
 export const RANK = { High: 0, Medium: 1, Low: 2 };
 
 // What Excel's own error codes mean, in plain words
