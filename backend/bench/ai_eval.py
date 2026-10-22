@@ -35,7 +35,7 @@ from anomaly_hunter.server import create_app
 
 SPLITS = {"dev": (7, 11, 21), "held": (8, 12, 22)}
 NO_CHANGE = {"excel_error", "real_outlier", "duplicate_row"}  # nothing in the sheet says what the value was
-ARMS = {"base": {}}  # name -> {"fix": prompt builder, "odd": prompt builder}; the app switches to an arm only with its numbers
+ARMS = {"base": {}}  # name -> {"fix": prompt builder, "odd": prompt builder, "body": extra request fields}; the app switches to an arm only with its numbers
 close = lambda a, b: _num(a) is not None and _num(b) is not None and abs(_num(a) - _num(b)) <= max(1e-9, 0.01 * abs(_num(b)))
 
 
@@ -236,14 +236,22 @@ AMBIGUOUS = {"Puerto Rico"}  # not scored either way
 
 
 def _arm(name):
-    """Swap this arm's prompt builders into the client (this process only)."""
+    """Swap this arm's prompt builders and extra request fields into the client (this process only). Every arm's body
+    is the relay's (max_tokens 4096), so arms differ only in what they set."""
     for k, fn in (("fix", "_fix_prompt"), ("odd", "_odd_prompt")):
         setattr(client, fn, ARMS[name].get(k, ORIG[fn]))
+    extra = ARMS[name].get("body", {})
+    client._body = lambda p, s=client.FIX_SCHEMA, n="fix": {**ORIG["_body"](p, s, n), "max_tokens": 4096, **extra}
 
 
 ORIG = {"_fix_prompt": client._fix_prompt, "_odd_prompt": client._odd_prompt, "_body": client._body}
 # the real-world notes (ai/bias_context.py) after the reason; not in the app until this arm wins on dev and held-out
 ARMS["bias_context"] = {"fix": bias_context.with_rules(ORIG["_fix_prompt"], lambda p: client._fits(p))}
+# John's brief (AH-12) asked for temperature 0.1: a model setting, so it waits for its numbers like a prompt change.
+# Gemini's OpenAI-compatible endpoint (client.GEMINI_URL) takes it as the top-level "temperature". Run it after the
+# base run: --arms base,temperature_0.1. Note the relay builds its own request body (relay/worker.js): if this arm
+# wins, the relay needs the same field, or invited users keep the default.
+ARMS["temperature_0.1"] = {"body": {"temperature": 0.1}}
 
 
 def _prompts(job):
@@ -279,7 +287,6 @@ def main(argv):
     client.RELAY_URL = ""  # never the relay or an invite code
     tmp = Path(tempfile.mkdtemp(prefix="ai-eval-"))
     client.KEY_FILE, client.INVITE_FILE = tmp / "gemini-key.txt", tmp / "invite-code.txt"  # no saved key, no invite code
-    client._body = lambda p, s=client.FIX_SCHEMA, n="fix": {**ORIG["_body"](p, s, n), "max_tokens": 4096}  # as the relay sends it
     if dry:
         os.environ["GEMINI_API_KEY"] = "dry-run"
     if client.provider() != "gemini":

@@ -28,10 +28,11 @@ def run(monkeypatch, tmp_path):
     for name in ("_body", "_fix_prompt", "_odd_prompt", "provider", "gemini_key"):
         monkeypatch.setattr(client, name, getattr(client, name))  # main swaps these in its own process: put them back
     monkeypatch.setattr(client.urllib.request, "urlopen", client.urllib.request.urlopen)
-    urls, todo, hooks, jobs = [], [], [], ai_eval.jobs
+    urls, todo, hooks, jobs, bodies = [], [], [], ai_eval.jobs, []
 
     def google(req, timeout=None, **kw):
         urls.append(req.full_url)
+        bodies.append(json.loads(req.data))
         for hook in hooks:
             hook()
         if todo:
@@ -47,6 +48,7 @@ def run(monkeypatch, tmp_path):
         todo[:], hooks[:] = list(fail), [hook] if hook else []
         code = ai_eval.main([REPO, "--out", str(tmp_path / "results.jsonl"), *flags])
         return code, urls, (tmp_path / "results.jsonl").read_text(encoding="utf-8") if (tmp_path / "results.jsonl").exists() else ""
+    go.bodies = bodies  # every request body sent, in order
     return go
 
 
@@ -147,3 +149,21 @@ def test_the_bias_context_arm_adds_only_our_notes_and_its_people_cases_are_flagg
             good = [] if lab[0] == "none" else [{"cell": cell, "new": str(lab[2])}]
             assert ai_eval.right(c, good) and not ai_eval.score(c, {"answer": {"changes": good}, "wire": []})["pulled"], c["id"]
     assert ai_eval.bias_cases("dev")[0]["rows"] != ai_eval.bias_cases("held")[0]["rows"]  # held-out is a fresh draw
+
+
+def test_the_temperature_arm_sets_0_1_in_the_eval_only_and_the_app_sends_no_temperature(run, monkeypatch, capsys):
+    # John's brief asked for temperature 0.1. It is a model setting, so CLAUDE.md wants eval numbers first: this arm
+    # sends it in the eval's own process, on Gemini's OpenAI-compatible endpoint, as the top-level "temperature".
+    monkeypatch.setenv("GEMINI_API_KEY", KEY)
+    code, urls, results = run("--yes", "--runs", "1", "--arms", "base,temperature_0.1")
+    assert code == 0 and len(urls) == 2 and set(urls) == {client.GEMINI_URL}
+    arms = [json.loads(x)["arm"] for x in results.splitlines()]
+    sent = dict(zip(arms, run.bodies))
+    assert "temperature" not in sent["base"] and sent["temperature_0.1"]["temperature"] == 0.1
+    assert {k: v for k, v in sent["temperature_0.1"].items() if k != "temperature"} == sent["base"]  # only that differs
+    assert "temperature_0.1 vs base on dev: wins 0, losses 0" in capsys.readouterr().out  # paired against base (same fake answer)
+
+
+def test_the_app_itself_sends_no_temperature():
+    assert set(client._body("x")) == {"model", "messages", "response_format"}
+    assert "temperature" not in ai_eval.ORIG["_body"]("x")
