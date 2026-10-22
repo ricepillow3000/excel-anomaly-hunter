@@ -53,7 +53,7 @@ an admin panel, role, operator route or debug switch. The weekly security sweep 
 | A top value that is all 9s and over twice the next one (99999 = "missing" / "too big") | `pipeline.codes` | `test_an_all_nines_top_value_is_a_code` |
 | A lone decimal in a column of whole numbers (study day 7.3 for 73) | `pipeline.whole_numbers` | `test_a_lone_decimal_in_a_column_of_whole_numbers_is_worth_a_check` |
 | A number past what its column's name allows (Month 13, Hour 25, a 6 on "Rating (1-5)", Latitude 91.5); quiet when 1%+ break it (yyyymm months, 0-360 longitudes) | `pipeline.named_bounds` | `test_a_value_past_what_its_column_name_allows_is_worth_a_check`, `test_a_column_whose_name_means_something_else_keeps_quiet` |
-| Fairness gaps by demographic group, incl. 2-label text outcomes; `?` counts as missing, never a group; labels read case- and space-blind ("no " is "No"); a real gap in an outcome or in blanks, on a column the measured public rules cover, gets one sentence of context (never a flag-rate gap; rules re-measured by `tools/bias_sources.py`, `docs/bias/FINDINGS.md`) | `engine/fairness.py`, `ai/bias_context.pane_note`, `ai/bias_rules.json` | `test_blindspots.py`, `test_wild_census.py`, `test_delinquency.py`, `test_a_real_gap_in_an_outcome_gets_one_sentence_of_public_context_and_a_flag_rate_gap_none` |
+| Fairness gaps by demographic group, incl. 2-label text outcomes that are opposites (Yes/No, Approved/Denied, <=50K/>50K; never a Shift Day/Night); `?` counts as missing, never a group; labels read case- and space-blind ("no " is "No"); a gap is 1.25x and 5 points, or a doubling; a big gap too few rows can prove is "not enough rows to tell", never "even"; with 3+ groups the group that stands out is named against the rest (its own p-value), never the lowest; groups under 20 rows are named as left out; "Race Time" and an order "State" are not people (report only); a real gap in an outcome or in blanks gets one sentence of public context only when the measured rule is about that outcome (earnings, an unknown occupation) and runs the same way (never a flag-rate gap; rules re-measured by `tools/bias_sources.py`, `docs/bias/FINDINGS.md`); the pane's line names only the checks that ran | `engine/fairness.py`, `ai/bias_context.pane_note_matching`, `ai/bias_rules.json`, pane `fairnessNote` | `test_blindspots.py`, `test_wild_census.py`, `test_delinquency.py`, `test_a_real_gap_in_an_outcome_gets_one_sentence_of_public_context_and_a_flag_rate_gap_none`, `test_fairness_words.py` |
 Adding or removing a check: update this table in the same commit.
 
 ## Patterns to copy
@@ -135,6 +135,10 @@ Adding or removing a check: update this table in the same commit.
 - One stray spelling switches a check off: a single "no " among 480 Yes/No answers made three labels, and every
   outcome fairness test vanished with the real gap in it (South 34% vs East 8%). Labels are read the way the spelling
   check reads them (`fairness._labels`, `test_delinquency.py`).
+- Not significant is not even: "even across groups (22% to 50%, within normal variation)" was said of 80 people, the
+  census sentence about who earns over 50K was put under a loan's denials and under a Day/Night shift, and 40
+  countries' gap was stated against whichever one landed lowest (AH-17 bias hunt, 2026-10-22). The report says only
+  what its numbers show (`fairness.report`, `test_fairness_words.py`).
 - A cache that outlives a test run tests nothing: e2e/all.sh kept the AI answer cache, so a second run never reached
   the stub. It starts fresh now.
 - A DOM0 key handler returning false cancels the key: `onkeydown = (e) => e.key === "Enter" && e.ctrlKey && askFix()`

@@ -50,6 +50,10 @@ NAMES = {"Asian-Pac-Islander": "Asian or Pacific Islander people", "Black": "Bla
          "under 30": "people under 30", "45-59": "people aged 45-59", "60 and over": "people 60 and over", "30-44": "people aged 30-44",
          "rent": "renters", "own": "home owners", "for free": "people housed for free"}
 BANDS = ([-np.inf, 30, 45, 60, np.inf], ["under 30", "30-44", "45-59", "60 and over"])  # the fairness report's age bands
+# the column words a pane sentence is about: the census measured who earns over 50K and whose occupation is unknown, so
+# its sentence fits only a gap in earnings or in blank occupations (a loan's denials got it, AH-17 bias hunt)
+EARNINGS = ["income", "salary", "salaries", "wage", "wages", "earnings", "earn", "pay"]
+JOBS = ["occupation", "job", "jobs", "workclass", "employment"]
 pct = lambda v: f"{100 * v:.1f}%"
 num = lambda v: f"{v:,.0f}"
 name = lambda g: NAMES.get(str(g), str(g))
@@ -123,8 +127,8 @@ def measure(folder):
         hi, lo = ends(r)
         fact = f"{where} {pct(r[hi][1])} of {name(hi)} and {pct(r[lo][1])} of {name(lo)} {what}"
         rule = {"id": rid, "topic": topic, "kind": "outcome", "text": fact[0].upper() + fact[1:] + ": " + gap}
-        if pane_where is not False:
-            rule.update(pane_for="outcome", pane=f"For comparison, {fact}, {look}")
+        if pane_where is not False:  # pane_*: when the sentence fits a sheet's gap (the same outcome, the same way round)
+            rule.update(pane_for="outcome", pane=f"For comparison, {fact}, {look}", pane_match=EARNINGS, pane_high=str(hi), pane_low=str(lo))
         rules.append(rule)
 
     r = rates(a, "sex", rich); nums["adult income >50K by sex"] = r
@@ -203,12 +207,14 @@ def measure(folder):
     hi, lo = ends(r)
     fact = f"in UCI Adult occupation is unknown for {pct(r[hi][1])} of {name(hi)} and {pct(r[lo][1])} of {name(lo)}"
     rules.append({"id": "age_missing", "topic": "age", "kind": "missing", "text": fact[0].upper() + fact[1:] + ": blanks that gather in one group are often how the data were collected.",
-                  "pane_for": "missing", "pane": f"For comparison, {fact}, so blanks that gather in one group are often how the data were collected: check why before filling any."})
+                  "pane_for": "missing", "pane": f"For comparison, {fact}, so blanks that gather in one group are often how the data were collected: check why before filling any.",
+                  "pane_match": JOBS, "pane_high": str(hi), "pane_low": str(lo)})
     r = rates(a, "sex", miss); nums["adult occupation unknown by sex"] = r
     hi, lo = ends(r)
     fact = f"in UCI Adult occupation is unknown for {pct(r[hi][1])} of {name(hi)} and {pct(r[lo][1])} of {name(lo)}"
     rules.append({"id": "sex_missing", "topic": "sex", "kind": "missing", "text": fact[0].upper() + fact[1:] + ": blanks that gather in one group are often how the data were collected.",
-                  "pane_for": "missing", "pane": f"For comparison, {fact}, so blanks that gather in one group are often how the data were collected: check why before filling any."})
+                  "pane_for": "missing", "pane": f"For comparison, {fact}, so blanks that gather in one group are often how the data were collected: check why before filling any.",
+                  "pane_match": JOBS, "pane_high": str(hi), "pane_low": str(lo)})
     nums["adult occupation unknown by race"] = rates(a, "race", miss)
     nums["rows"] = {"adult": n_a, "adult_test": len(t), "german": n_g, "insurance": n_i, "compas": n_c}
     return rules, nums

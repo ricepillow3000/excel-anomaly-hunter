@@ -71,8 +71,9 @@ def test_the_fairness_report_names_the_real_gap_and_calls_the_rest_even(book):
     tests = {(t["column"], t["test"]): t for t in fair["tests"]}
     gap = tests[("Region", "Delinquent Yes rate")]
     assert gap["verdict"] == "gap" and gap["text"].startswith("Region South:"), gap["text"]
-    for c in PROTECTED:
-        assert tests[(c, "flag rate")]["verdict"] == "even", "flags land evenly on every group"
+    for c in PROTECTED:  # flags never land as a gap on a group; 1% vs 3% of 240 rows is "not enough rows to tell", not "even" (AH-18)
+        t = tests[(c, "flag rate")]
+        assert t["verdict"] == "even" or t["verdict"] == "unclear" and "not enough rows to tell" in t["text"], t["text"]
     assert tests[("Gender", "Delinquent Yes rate")]["verdict"] == "even" and tests[("Age", "Delinquent Yes rate")]["verdict"] == "even"
 
 

@@ -66,8 +66,19 @@ for (const f of panes) {
 // fairness line: protected columns named; a real gap spelled out; nothing at all without a protected column
 assert.equal(fairnessNote({ protected: {}, tests: [] }), "");
 assert.equal(fairnessNote(undefined), "");
-assert.equal(fairnessNote({ protected: { Age: "demographic", Location: "location" }, tests: [{ verdict: "even", text: "x" }] }),
+// with no gap, the line names only the checks that ran (AH-17: "Flags, blanks and outcomes are even" on a sheet that ran
+// one flag-rate check), says which ones too few rows could prove, and never calls an empty report even
+const even = (measure) => ({ verdict: "even", text: "x", measure });
+assert.equal(fairnessNote({ protected: { Age: "demographic", Location: "location" }, tests: [even("flag"), even("missing"), even("outcome")] }),
   "Fairness: Age, Location are never used to decide which rows are unusual. Flags, blanks and outcomes are even across their groups.");
+assert.equal(fairnessNote({ protected: { Region: "location" }, tests: [even("flag"), even("flag")] }),
+  "Fairness: Region is never used to decide which rows are unusual. Flags are even across its groups.");
+assert.equal(fairnessNote({ protected: { Sex: "demographic" }, tests: [even("outcome"), { verdict: "unclear", measure: "flag",
+  text: "Sex: rows flagged differs across groups (1% to 9%), but there are not enough rows to tell whether that is a real gap" }] }),
+  "Fairness: Sex is never used to decide which rows are unusual. Outcomes are even across its groups. Not enough rows to tell: " +
+  "Sex: rows flagged differs across groups (1% to 9%), but there are not enough rows to tell whether that is a real gap.");
+assert.equal(fairnessNote({ protected: { Sex: "demographic" }, tests: [] }),
+  "Fairness: Sex is never used to decide which rows are unusual. Nothing to compare between its groups: no flags, blanks or yes/no results in groups of 20 rows or more.");
 assert.equal(fairnessNote({ protected: { Location: "location" }, tests: [{ verdict: "gap", text: "Location Phoenix: 60% blank Income vs 3% for Chicago - a real gap, check why" }] }),
   "Fairness: Location is never used to decide which rows are unusual. Check these gaps between groups: Location Phoenix: 60% blank Income vs 3% for Chicago - a real gap, check why.");
 // a gap the engine has measured public context for: the gap first, then its context sentence, once per sentence

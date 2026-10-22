@@ -116,7 +116,9 @@ def test_bias_tests_report_each_protected_column_and_stay_quiet_on_noise(scanned
     assert {"Age", "Location"} <= cols and fair["protected"] == {"Age": "demographic",
                                                                 "Location": "location (can stand in for race or income)"}
     assert {t["test"] for t in fair["tests"]} >= {"flag rate", "missing Income", "Delinquent_Account rate"}
-    assert all(t["verdict"] == "even" for t in fair["tests"]), [t for t in fair["tests"] if t["verdict"] != "even"]
+    # noise is never called a gap; a spread 80 rows a city cannot settle says so, never "even" (AH-18: "even" was an overclaim)
+    assert all(t["verdict"] == "even" or t["verdict"] == "unclear" and "not enough rows to tell" in t["text"] for t in fair["tests"]), \
+        [t["text"] for t in fair["tests"] if t["verdict"] != "even"]
 
 
 def test_a_real_subgroup_gap_is_reported():
