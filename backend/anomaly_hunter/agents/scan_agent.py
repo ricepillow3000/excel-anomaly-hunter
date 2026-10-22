@@ -13,5 +13,5 @@ def scan(columns, rows, limits=None, order_by=None, strength=5, fair=True):
     df, types, errors = load_from_records(columns, rows)
     suggested = suggest_limits_dict(df, numbers(types), knobs(strength)[1])
     used = {**suggested, **(limits or {})}
-    out, status = score(df, types, errors, used, order_by, strength)
+    out, status = score(df, types, errors, used, order_by, strength, saved=list(limits or {}))
     return df, out, suggested, used, status, fairness.report(df, types, out) if fair else None

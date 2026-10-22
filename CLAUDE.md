@@ -48,6 +48,7 @@ an admin panel, role, operator route or debug switch. The weekly security sweep 
 | A fraction above 100% | `pipeline.fractions` | `test_blindspots.py` |
 | A value typed into the wrong column | `pipeline.shifted` | `test_text_checks.py` |
 | Values past their column's limits; the typo behind them (x10, %, sign); a lone slip with an exact x10/x100 behind it past even the usual limit; a stray minus sign never excused as a tail | `detectors.limits_detector`, `likely_value`, `limits._limits` | `test_engine.py`, `test_a_x100_slip_in_a_skewed_column_stands_alone_and_votes`, `test_a_minus_sign_in_a_count_column_is_not_excused_as_its_tail`, `test_a_mildly_skewed_column_keeps_its_honest_heavy_users_and_still_catches_a_x100_slip` |
+| From strength 7: a value past its usual limit that at most max(2, 0.25% of the column) other values pass and at most 2 reach (a 10 on a 1-5 scale; never an honest tail of bulk orders, 43-49 past; on 30,000 clean rows only each side's extremes), listed as worth a check with its limit and that count in the sentence, never a vote or a fix; never on a protected column (Age) or past a limit the user saved | `detectors.limits_detector` (`alone_reasons`, `FEW`), `pipeline.score` (`ALONE`, `quiet`) | `test_a_value_past_its_usual_range_with_few_values_near_it_is_worth_a_check_from_level_7`, `test_a_moderate_outlier_is_left_alone_at_5_and_named_with_its_value_from_level_8_on_a_small_and_a_big_sheet`, `test_honest_ages_are_never_listed_for_their_age_at_any_level`, `test_a_limit_the_user_saved_wins_over_the_list`, `test_an_honest_tail_of_bulk_orders_is_never_listed`, `test_every_listed_sentence_says_what_the_column_really_holds`, `test_a_big_clean_column_lists_only_its_own_extremes` |
 | Jumps in a dated series (cycles excluded) | `detectors.sequence_detector` | `test_a_repeating_cycle_is_not_a_jump` |
 | Odd combinations across columns (ECOD, our own 15 lines: pyod made the exe 146 MB) | `detectors.isolation_detector`, `detectors._ecod` | `test_the_cross_column_score_keeps_the_values_recorded_from_pyod`, `test_the_cross_column_score_refuses_a_blank_or_infinite_value` |
 | A top value that is all 9s and over twice the next one (99999 = "missing" / "too big") | `pipeline.codes` | `test_an_all_nines_top_value_is_a_code` |
@@ -87,6 +88,11 @@ Adding or removing a check: update this table in the same commit.
 - A real slip stands alone; a long tail is crowded (census hours 1-99, survey weights): a value past the weird limit
   votes only when few other values lie between it and halfway back to the median (`limits_detector.in_tail`), and a
   50%+ zero column is judged on its amounts (`limits._limits`). `test_wild_census.py`.
+- A knob must reach a check that can move: strength only lowered k, and the long-tail crowd (a count, the same at
+  every level) excused every value k let in, so 5 and 10 flagged the same sure mistakes on every sheet John would
+  scan (AH-14). Levels 7+ now list a breach few other values share, and say how many: a crowd that grew with the level
+  listed honest bulk orders "with few values near it" while 32 sat near them, and honest people aged 91-98 for their
+  age (AH-14 review). Votes keep their crowd. Measure each level, not only 5 (`test_strength.py`).
 - A contraction keeps the word's first and last letters (Std, Mgmt): "Iran" is not one of "Ireland" (`_short_for`).
 - The installer starts Excel by its App Paths path, never "open this .xlsx": with no Excel, Windows' "Pick an app"
   held the install (`app.excel_exe`, `test_the_installer_finds_desktop_excel_or_says_none`).

@@ -458,12 +458,17 @@ def knobs(strength=5):
     """How hard to look, 0-10 -> (level, k). k = how many robust spreads out a value must be to count as weird.
     5 = the tuned default (k 6, bench 51/51). Each step up lowers the bar ~10% and may add a check, so a row flagged
     at s stays flagged at s+1. 0: hygiene + obvious typos; 1+: values past their column's range; 3+: breaks in a
-    series; 5+: odd mixes across columns. The floor (k 3.5 at 10) stays above the baseline band of 3."""
+    series; 5+: odd mixes across columns; 7+: a value past its usual limit that few others pass is worth a check (Low;
+    "few" = detectors.FEW, and the sentence says how many). The floor (k 3.5 at 10) stays above the baseline band of 3.
+    k alone made 5 and 10 flag the same sure mistakes on every sheet John would scan (AH-14)."""
     s = min(10, max(0, int(strength)))
     return s, 6 * 0.9 ** (s - 5)
 
 
-def score(df, column_types, errors_log, limits, order_by, strength=5):
+ALONE = 7  # from this level, a value past its usual limit that few others pass is listed (Low), not only noted
+
+
+def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
     """-> (rows, status). Severity = votes: 1 Low, 2 Medium, 3+ High. Weird limit or hygiene hit = at least Medium.
     Totals/summary rows are left out of every check (their numbers would distort the rest) and say so."""
     n, skip = len(df), summary_rows(df)
@@ -473,7 +478,9 @@ def score(df, column_types, errors_log, limits, order_by, strength=5):
         df.loc[skip, nums] = np.nan
     errors_log = [e for e in errors_log if not skip[e[0]]]
     s, k = knobs(strength)
-    lim = limits_detector(df, column_types, limits, typos_only=s < 1)
+    # saved: the columns whose limits the user set - their limits win, so nothing is listed past the data's own band
+    lim = limits_detector(df, column_types, limits, typos_only=s < 1, listing=s >= ALONE,
+                          quiet=set(fairness.protected(column_types)) | set(saved))
     # protected columns (Age, Gender, Location...) are checked for slips like any column (limits, blanks, spellings), but
     # never used to judge whether a person is unusual: a 74-year-old is not an anomaly for being 74 (fairness blueprint)
     judged = {c: t for c, t in column_types.items() if c not in fairness.protected(column_types)}
@@ -491,6 +498,8 @@ def score(df, column_types, errors_log, limits, order_by, strength=5):
     missed = [m + s + f + w + b for m, s, f, w, b in zip(missed, shifted(df, column_types, skip), fractions(df, column_types, skip),
                                                           whole_numbers(df, column_types, skip), named_bounds(df, column_types, skip),
                                                           strict=True)]  # all "worth a check" (Low)
+    if s >= ALONE:
+        missed = [m + a for m, a in zip(missed, lim["alone_reasons"], strict=True)]
     rows = []
     for i in range(n):
         if skip[i]:

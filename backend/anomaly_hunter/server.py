@@ -27,8 +27,8 @@ from werkzeug.serving import WSGIRequestHandler
 from anomaly_hunter import powerbi
 from anomaly_hunter.agents import checker, scan_agent
 from anomaly_hunter.ai import client
-from anomaly_hunter.engine.detectors import K
 from anomaly_hunter.engine.load import load_from_records
+from anomaly_hunter.engine.pipeline import knobs
 
 # the pane, served as-is: beside the code in a checkout, inside the bundle in the one-file app (unpacked to _MEIPASS)
 PANEL = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2])) / "frontend"
@@ -177,7 +177,7 @@ def create_app(scan_csv=None):
         return {"rows": out, "suggested_limits": suggested, "limits": used, "fairness": fair, "power_bi_saved": saved, "summary": {
             "severity_counts": Counter(r["severity"] for r in out if r["severity"]),
             "bucket_counts": Counter(r["bucket"] for r in out if r["bucket"]),
-            "detectors": status, "k": K}}
+            "detectors": status, "k": knobs(_strength(body))[1]}}
 
     def ai(call):
         """Run a Claude call; map its failures to HTTP errors the panel shows as-is."""
