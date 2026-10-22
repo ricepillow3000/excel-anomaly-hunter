@@ -114,7 +114,7 @@ def placeholders(df, column_types, skip):
 def blanks(df, column_types, skip, errors_log, threshold=0.80):
     """Blank cell in a column that is >= 80% filled (summary rows not counted): a required field left empty. Mostly-empty
     columns (notes, optional extras) are left alone. Was 95%: a credit sheet's Income, 92% filled, hid 39 blanks."""
-    out = [[] for _ in range(len(df))]
+    out, prot = [[] for _ in range(len(df))], fairness.protected(column_types)
     wrong = {}  # text/errors already named as such are not blanks
     for i, c, _ in errors_log:
         wrong.setdefault(c, []).append(i)
@@ -125,16 +125,96 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
         lab = df[g].astype(str).str.strip().where(~skip & ~_blank(df[g])) if t == "text" else None
         if lab is not None and lab.nunique() <= 50 and len(labels) < 64:  # 64: a crafted 1,000-column sheet stays fast
             labels[g] = lab
-    for col in column_types:
-        b = _blank(df[col]) & ~skip & ~df.index.isin(wrong.get(col, []))  # empty text cells too, not only converted ones
-        if b.any() and 1 - b.sum() / max(1, (~skip).sum()) >= threshold:
-            for g, lab in labels.items():
-                if g != col and (b & lab.notna()).any():
-                    st = b[lab.notna()].groupby(lab[lab.notna()]).agg(["all", "size"])
-                    b &= ~lab.isin(st.index[st["all"] & (st["size"] >= 5)])
+    cols = list(column_types)
+    if not cols:
+        return out
+    blank = np.column_stack([(_blank(df[c]) & ~skip & ~df.index.isin(wrong.get(c, []))).to_numpy(bool) for c in cols])
+    # blanks per label per column, counted for every column at once: grouping each label column against each column
+    # took 168 s on a crafted 64 x 1,500-column sheet (AH-16 build, 2026-10-22)
+    groups = {}
+    for g, lab in labels.items():
+        code = pd.factorize(lab)[0]
+        keep = np.flatnonzero(code >= 0)
+        order = keep[np.argsort(code[keep], kind="stable")]
+        if not len(order):
+            continue
+        starts = np.flatnonzero(np.r_[True, np.diff(code[order]) != 0])
+        size = np.diff(np.r_[starts, len(order)])
+        groups[g] = (code, size, np.add.reduceat(blank[order].astype(np.int32), starts, axis=0))
+    n = max(1, (~skip).sum())
+    for j, col in enumerate(cols):
+        b = blank[:, j].copy()
+        if b.any() and 1 - b.sum() / n >= threshold:
+            for g, (code, size, per) in groups.items():
+                # a group all blank before the groups above took theirs; the rest counted again on what is left
+                if g == col or not ((per[:, j] == size) & (size >= 5)).any() or not (b & (code >= 0)).any():
+                    continue
+                now = np.bincount(code[code >= 0], weights=b[code >= 0], minlength=len(size))
+                b &= ~np.isin(code, np.flatnonzero((now == size) & (size >= 5)))
             for i in df.index[b]:
                 out[i].append(f"Blank cell in column {col}, which is otherwise filled")
+        elif b.any():
+            # a long-format sheet fills Value for some indicators and Pct for others, so Value is 2/3 filled, under the bar,
+            # and a blank in a GDP row went unseen (AH-17 stress hunt, 9 of 9 missed). A group that fills the column
+            # (95%+, 20+ rows) next to one that leaves it empty (20% or less) is the layout; a blank in the filled group
+            # is a slip. Never judged by a protected group: a person's blank is not measured against their sex or race
+            for g, (code, size, per) in groups.items():
+                if g == col or g in prot or not 2 <= len(size) <= 20:
+                    continue
+                fill = 1 - per[:, j] / size
+                full = np.flatnonzero((fill >= 0.95) & (size >= 20))
+                if len(full) and (fill <= 0.2).any():
+                    for i in df.index[b & np.isin(code, full)]:
+                        out[i].append(f"Blank cell in column {col}, which is otherwise filled for {g} {_short(labels[g][i])}")
+                    break
     return out
+
+
+# an answer on a small range: a survey item (Q3, q_12), a rating, a score - whole words only. A count is not one: 80
+# households of 0-5 children and one real family of 10 were told "maybe 1 with an extra 0" (Council A, AH-16 reconvene
+# 1), and so were "Q4 How many children", "Years of experience", "Goals scored" (score inside scored) and "Agreements
+# signed" (reconvene 2). Any word that counts refuses the header, whatever else it says
+ANSWERS = {"rating", "ratings", "rated", "score", "scores", "satisfaction", "satisfied", "dissatisfied", "agree", "disagree",
+           "agreement", "likert", "opinion", "recommend", "likely", "likelihood", "importance", "important", "question"}
+COUNTING = {"number", "numbers", "num", "count", "counts", "counted", "total", "totals", "sum",
+            "year", "years", "yrs", "month", "months", "week", "weeks", "day", "days", "hour", "hours", "hrs", "minute", "minutes",
+            "times", "age", "aged", "amount", "qty", "quantity", "children", "child", "kids", "people", "persons", "members",
+            "staff", "employees", "cars", "vehicles", "rooms", "floors", "beds", "bedrooms", "bathrooms", "pets", "goals", "points",
+            "visits", "made", "signed", "scored", "wins", "losses", "games", "items", "units", "orders", "tickets"}
+COUNTING_PAIRS = {("how", "many"), ("how", "much"), ("how", "often"), ("how", "long"), ("how", "old"), ("no", "of"), ("n", "of")}
+
+
+def _answer_header(col):
+    """Q3, "q_12", "Q3. How satisfied are you?", "OverallRating", "Likelihood to recommend": yes. "Q4 How many children",
+    "Goals scored", "Rating count", "Q2 # of visits": no (a word that counts, or "#")."""
+    words = [w.lower() for w in re.findall(r"[A-Za-z]+|\d+", re.sub(r"([a-z])([A-Z])", r"\1 \2", str(col)))]
+    if "#" in str(col) or COUNTING & set(words) or COUNTING_PAIRS & set(zip(words, words[1:])) or words == ["n"]:
+        return False  # "How satisfied" is a survey item; "How many" counts
+    return bool(ANSWERS & set(words)) or any(a == "q" and b.isdigit() for a, b in zip(words, words[1:]))
+
+
+def scale_slips(df, column_types, skip):
+    """A 10 typed for a 1 on a survey answer whose header doesn't give its range: Q3 10 among answers 1-5 was only
+    "noted" at every level (AH-17 stress hunt). Narrow on purpose, two guards each enough to keep a real count out: an
+    answer-like header (_answer_header: never a count like Children or "Q4 How many children") that names no range
+    (named_bounds says "Rating (1-5)"'s own), and the other values a survey's range, from 1: every one a whole number from
+    1 to 5 (3+ of them, 29+ rows) - a count runs from 0. The odd one is the column's single top value, at least twice the
+    range's top, a multiple of 10, with a tenth of it inside the range.
+    -> (reasons, {col: the guess}) per row: worth a check (Low), the guess for the user to confirm, never an exact fix."""
+    out, maybe = [[] for _ in range(len(df))], [{} for _ in range(len(df))]
+    for col in numbers(column_types):
+        if not _answer_header(col) or _bounds(col):
+            continue
+        x = pd.to_numeric(df[col], errors="coerce")[~skip].dropna()
+        if len(x) < 30 or not (x == x.round()).all() or (x == x.max()).sum() != 1:
+            continue
+        v, rest = float(x.max()), x[x != x.max()]
+        lo, hi = float(rest.min()), float(rest.max())
+        if rest.nunique() >= 3 and lo == 1 and hi <= 5 and v >= 2 * hi and v % 10 == 0 and lo <= v / 10 <= hi:
+            i = x.idxmax()
+            out[i].append(f"{col} {v:g} is outside the {lo:g} to {hi:g} range its other values use (maybe {v / 10:g} with an extra 0)")
+            maybe[i][col] = v / 10
+    return out, maybe
 
 
 def whole_numbers(df, column_types, skip):
@@ -495,9 +575,10 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
     add = [list(dict.fromkeys(s + m)) for s, m in zip(sums(df, column_types, skip), paired, strict=True)]
     code = codes(df, column_types, skip)
     spell, spell_fix, missed, spell_maybe, spell_exact = spellings(df, column_types, skip)
-    missed = [m + s + f + w + b for m, s, f, w, b in zip(missed, shifted(df, column_types, skip), fractions(df, column_types, skip),
-                                                          whole_numbers(df, column_types, skip), named_bounds(df, column_types, skip),
-                                                          strict=True)]  # all "worth a check" (Low)
+    scale, scale_maybe = scale_slips(df, column_types, skip)
+    missed = [m + s + f + w + b + c for m, s, f, w, b, c in zip(missed, shifted(df, column_types, skip), fractions(df, column_types, skip),
+                                                                whole_numbers(df, column_types, skip), named_bounds(df, column_types, skip),
+                                                                scale, strict=True)]  # all "worth a check" (Low)
     if s >= ALONE:
         missed = [m + a for m, a in zip(missed, lim["alone_reasons"], strict=True)]
     rows = []
@@ -520,7 +601,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
             "reason": (f"Flagged by {v} of {len(ran)}: " if v else "") + "; ".join(dict.fromkeys(hygiene + missed[i] + [r for d in voted for r in d["reasons"][i]])),  # dedupe, keep order
             "magnitude": float(max((d["magnitude"][i] for d in voted), default=0.0)),
             "likely": {**lim["likely"][i], **solved[i], **spell_fix[i]},  # the row's own arithmetic beats a typo pattern
-            "maybe": spell_maybe[i],  # misspelling: a guess the user confirms
+            "maybe": {**scale_maybe[i], **spell_maybe[i]},  # misspelling, a 1-5 scale's extra 0: a guess the user confirms
             "exact": spell_exact[i],  # capitals/spaces where the usual spelling is 5x as common: safe to auto-fix
         })
     status = {k: "ran" if d["ran"] else f"sat out: {d['sit_out_reason']}" for k, d in dets.items()}

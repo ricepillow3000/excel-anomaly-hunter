@@ -47,13 +47,15 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
     const past = (a, b) => typeof v === "number" && ((a != null && v < a) || (b != null && v > b));
     const variant = likely && typeof likely[c] === "string" && typeof v === "string"; // "sales" where the column says "Sales"
     const miss = !variant && maybe && typeof maybe[c] === "string" && typeof v === "string"; // "Pencl" where it says "Pencil"
+    // a 10 among survey answers 1-5 (AH-16): the engine's guess of a tenth, offered for the user to confirm, never exact
+    const scale = typeof v === "number" && maybe && typeof maybe[c] === "number" && reason.includes(`${c} ${v} is outside the `);
     const blank = !!lim && (v === "" || v === null) && reason.includes(`Blank cell in column ${c},`);
     // only a value the engine flagged: it never votes on a regular repeated value (a 5.76 toll), so neither do we
     // or past the usual limit with the engine's exact typo behind it: a lone x10 in a skewed column (wide weird limit)
     const outside = !!lim && reason.includes(`${c} weird limit is`) && (past(lo, hi) || (likely && likely[c] != null && past(lim[0], lim[1])));
     // the engine solved this cell from a total that doesn't add up (Total ÷ UnitCost): exact, not a median
     const sum = typeof v === "number" && likely && likely[c] != null ? sums.find((s) => s.cols.includes(c)) : null;
-    if (!(variant || miss || blank || outside || sum)) return;
+    if (!(variant || miss || scale || blank || outside || sum)) return;
     seen.add(c);
     if (calc && String(calc[j]).startsWith("=")) return void calcCells.push(cell); // never type over a formula
     if (variant) {
@@ -67,6 +69,12 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
         : reason.includes(`"${v}" is lowercase where`) ? `lowercase where the column's other labels are capitalised ("${maybe[c]}")`
           : `probably a misspelling of "${maybe[c]}", one letter off`;
       return void typos.push(`${c} says "${v}" - ${said}`);
+    }
+    if (scale) {
+      changes.push({ cell, new: String(maybe[c]) });
+      guessed = true;
+      const [, a, b] = /is outside the (\S+) to (\S+) range/.exec(reason.slice(reason.indexOf(`${c} ${v} is outside the `))) || [];
+      return void typos.push(`${c} is ${v} - ${a ? `the rest of the column is between ${a} and ${b}, so ` : ""}it may be ${maybe[c]} with an extra 0`);
     }
     const typo = likely && likely[c];
     if (sum) {
@@ -106,7 +114,9 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
   for (const { text } of issuesOf(reason)) { // anything the loop above didn't explain (text cells, no limits)
     const m = /^(.+?) weird limit is (\S+); this is (\S+)/.exec(text), b = /^Blank cell in column (.+?), which/.exec(text);
     if (m && !seen.has(m[1])) notes.push(`${m[1]} is ${m[3]}, past its limit of ${m[2]}. Check it against the source; if it's right, leave it.`);
-    if (b && !seen.has(b[1])) notes.push(`${b[1]} is blank where the rest of the column is filled - fill it in from the source.`);
+    // a long-format sheet's blank is judged inside its group (AH-16): "the rest of the column" would be untrue there
+    const g = / otherwise filled for (.+)$/.exec(text);
+    if (b && !seen.has(b[1])) notes.push(`${b[1]} is blank where the rest of ${g ? g[1] : "the column"} is filled - fill it in from the source.`);
   }
   for (const [, err, col] of reason.matchAll(/Excel error (#\S+) in ([^;]+)/g))
     notes.push(`${col} shows ${err}: ${EXCEL_ERRORS[err] || "its formula failed"}. Fix the formula or its inputs ` +
@@ -117,7 +127,7 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
     for (const [rx, hint] of HINTS) if (rx.test(text)) notes.push(`${text} - ${hint}. Check it against the source.`);
   if (!notes.length)
     notes.push("Nothing here is clearly broken - the values are just unusual together. Check them against the source; if they're right, leave them.");
-  return { explanation: notes.join(" "), changes, guess: guessed }; // guess = a misspelling's fix
+  return { explanation: notes.join(" "), changes, guess: guessed }; // guess = a misspelling's or a scale's fix
 }
 
 // a far-off date got "Nothing here is clearly broken" (12 of 12 on 40 real sheets, 2026-10-16)

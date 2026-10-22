@@ -176,6 +176,20 @@ assert.equal(levelChange(null, at(10, sev("Low"))), "");
 assert.deepEqual([0, 10, 7, undefined, null, "3", 11, -1, 2.5].map(asStrength), [0, 10, 7, 5, 5, 5, 5, 5, 5]);
 // pointer anywhere on (or past) a 200px track starting at x=100 -> the nearest level
 assert.deepEqual([100, 110, 109, 200, 300, 0, 999, 141].map((x) => levelAt(x, 100, 200)), [0, 1, 0, 5, 10, 0, 10, 2]);
+// a x10 on a 1-5 scale (AH-16): the engine's guess is offered as a guess the user confirms, never written as exact
+{
+  const sc = recommendFix(["Who", "Q3"], [["a", 4], ["b", 10], ["c", 2]], 1, { Q3: [1, 5, 0, 9] },
+    "Q3 10 is outside the 1 to 5 range its other values use (maybe 1 with an extra 0)", 0, 0, {}, null, { Q3: 1 });
+  assert.deepEqual(sc.changes, [{ cell: "B3", new: "1" }]);
+  assert.ok(sc.guess && sc.explanation.includes("Q3 is 10 - the rest of the column is between 1 and 5, so it may be 1 with an extra 0"), sc.explanation);
+  // a long-format blank judged inside its group says the group, not "the rest of the column", and writes nothing
+  const lb = recommendFix(["Indicator", "Value"], [["GDP (bn)", 4], ["GDP (bn)", null]], 1, { Value: [1, 9, 0, 20] },
+    "Blank cell in column Value, which is otherwise filled for Indicator GDP (bn)", 0, 0, {}, null, {});
+  assert.deepEqual(lb.changes, []);
+  assert.ok(lb.explanation.includes("Value is blank where the rest of Indicator GDP (bn) is filled"), lb.explanation);
+  // no guess from the engine (a 12 among 0-5 children): nothing written
+  assert.deepEqual(recommendFix(["Who", "Q3"], [["a", 4], ["b", 12]], 1, { Q3: [0, 5, 0, 9] }, "Q3 baseline limit is 9; this is 12", 0, 0, {}, null, {}).changes, []);
+}
 // a misspelling's fix is offered, labelled a guess
 const mr = recommendFix(["Item"], [["Pencl"], ["Pencil"]], 0, {}, 'Item "Pencl" looks like a misspelling of "Pencil"', 0, 0, {}, null, { Item: "Pencil" });
 assert.deepEqual(mr.changes, [{ cell: "A2", new: "Pencil" }]);
