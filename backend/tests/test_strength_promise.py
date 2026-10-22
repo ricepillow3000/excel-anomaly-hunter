@@ -61,11 +61,20 @@ def test_the_numbers_under_the_slider_are_what_each_level_does_on_the_bench(benc
         assert m["levels"][str(level)] == b["numbers"], (level, "pane says", m["levels"][str(level)], "bench gives", b["numbers"])
 
 
-def test_what_the_strict_levels_say_in_words_is_true(bench):
-    # 7-10 say "the same mistakes as at 5": the very same planted rows, not only as many
-    assert "Stricter: the same mistakes as at 5" in SRC and "Strictest: the same mistakes as at 5" in SRC
-    for level in (7, 8, 9, 10):
+def words():
+    """Each level's own words in STRENGTH (one per level, 0-10)."""
+    return {int(k): w for k, w in re.findall(r'^\s*\[(\d+), "(.*)"\],?$', SRC, re.M)}
+
+
+def test_what_each_level_says_in_words_is_true(bench):
+    said = words()
+    assert sorted(said) == list(range(11)), sorted(said)  # every level its own words (AH-20: 6 once read "Recommended.")
+    same = [lv for lv, w in said.items() if "the same mistakes as at 5" in w]
+    fine = [lv for lv, w in said.items() if "most of them fine" in w]
+    assert same == [7, 8, 9, 10] and fine == [9, 10], (same, fine)
+    # "the same mistakes as at 5": the very same planted rows, not only as many
+    for level in same:
         assert bench[level]["found"] == bench[5]["found"], level
-    # 9-10 say "many more rows to check, most of them fine": the fine rows listed outnumber the mistakes listed as Low
-    for level in (9, 10):
+    # "many more rows to check, most of them fine": the fine rows listed outnumber the mistakes listed as Low, and 5's
+    for level in fine:
         assert bench[level]["numbers"][2] > max(bench[level]["low_planted"], bench[5]["numbers"][2]), level

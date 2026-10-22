@@ -114,7 +114,7 @@ def placeholders(df, column_types, skip):
 def blanks(df, column_types, skip, errors_log, threshold=0.80):
     """Blank cell in a column that is >= 80% filled (summary rows not counted): a required field left empty. Mostly-empty
     columns (notes, optional extras) are left alone. Was 95%: a credit sheet's Income, 92% filled, hid 39 blanks."""
-    out = [[] for _ in range(len(df))]
+    out, prot = [[] for _ in range(len(df))], fairness.protected(column_types)
     wrong = {}  # text/errors already named as such are not blanks
     for i, c, _ in errors_log:
         wrong.setdefault(c, []).append(i)
@@ -125,15 +125,50 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
         lab = df[g].astype(str).str.strip().where(~skip & ~_blank(df[g])) if t == "text" else None
         if lab is not None and lab.nunique() <= 50 and len(labels) < 64:  # 64: a crafted 1,000-column sheet stays fast
             labels[g] = lab
-    for col in column_types:
-        b = _blank(df[col]) & ~skip & ~df.index.isin(wrong.get(col, []))  # empty text cells too, not only converted ones
-        if b.any() and 1 - b.sum() / max(1, (~skip).sum()) >= threshold:
-            for g, lab in labels.items():
-                if g != col and (b & lab.notna()).any():
-                    st = b[lab.notna()].groupby(lab[lab.notna()]).agg(["all", "size"])
-                    b &= ~lab.isin(st.index[st["all"] & (st["size"] >= 5)])
+    cols = list(column_types)
+    if not cols:
+        return out
+    blank = np.column_stack([(_blank(df[c]) & ~skip & ~df.index.isin(wrong.get(c, []))).to_numpy(bool) for c in cols])
+    # blanks per label per column, counted for every column at once: grouping each label column against each column
+    # took 168 s on a crafted 64 x 1,500-column sheet (AH-16 build, 2026-10-22)
+    groups = {}
+    for g, lab in labels.items():
+        code = pd.factorize(lab)[0]
+        keep = np.flatnonzero(code >= 0)
+        order = keep[np.argsort(code[keep], kind="stable")]
+        if not len(order):
+            continue
+        starts = np.flatnonzero(np.r_[True, np.diff(code[order]) != 0])
+        size = np.diff(np.r_[starts, len(order)])
+        groups[g] = (code, size, np.add.reduceat(blank[order].astype(np.int32), starts, axis=0))
+    n = max(1, (~skip).sum())
+    for j, col in enumerate(cols):
+        b = blank[:, j].copy()
+        if b.any() and 1 - b.sum() / n >= threshold:
+            for g, (code, size, per) in groups.items():
+                # a group all blank before the groups above took theirs; the rest counted again on what is left
+                if g == col or not ((per[:, j] == size) & (size >= 5)).any() or not (b & (code >= 0)).any():
+                    continue
+                now = np.bincount(code[code >= 0], weights=b[code >= 0], minlength=len(size))
+                b &= ~np.isin(code, np.flatnonzero((now == size) & (size >= 5)))
             for i in df.index[b]:
                 out[i].append(f"Blank cell in column {col}, which is otherwise filled")
+        elif b.any():
+            # a long-format sheet fills Value for some indicators and Pct for others, so Value is 2/3 filled, under the bar,
+            # and a blank in a GDP row went unseen (AH-17 stress hunt, 9 of 9 missed). A group that fills the column
+            # (95%+, 20+ rows) next to one that leaves it empty (20% or less, 20+ rows) is the layout; a blank in the filled group
+            # is a slip. Never judged by a protected group: a person's blank is not measured against their sex or race
+            for g, (code, size, per) in groups.items():
+                if g == col or g in prot or not 2 <= len(size) <= 20:
+                    continue
+                fill = 1 - per[:, j] / size
+                full = np.flatnonzero((fill >= 0.95) & (size >= 20))
+                # ...and the empty group is layout only with 20+ rows of its own: a real planets table's distance (96% filled
+                # for one method) had only 1 of 5 Pulsar rows empty-ish, and 23 real gaps were called a slip (blind round 22)
+                if len(full) and ((fill <= 0.2) & (size >= 20)).any():
+                    for i in df.index[b & np.isin(code, full)]:
+                        out[i].append(f"Blank cell in column {col}, which is otherwise filled for {g} {_short(labels[g][i])}")
+                    break
     return out
 
 
@@ -310,6 +345,39 @@ def _one_edit(a, b):
     return len(d) == 1 or (len(d) == 2 and d[1] == d[0] + 1 and a[d[0]] == b[d[1]] and a[d[1]] == b[d[0]])
 
 
+def _dropped(rare, usual, vowel=False):
+    """rare is usual with one letter left out inside a word ("Grmany", "parietl", "Nuclear Enrgy": 4 of 6 misspellings
+    blind round 22 planted in real tables were missed, AH-23). Never a word's first or last letter (Laptop/Laptops,
+    Sara/Sarah, "Phone Case"/"Phones Case": a different word or a plural) and never a space; vowel: only a, e, i, o, u.
+    Measured on the 10,000 commonest English words: one inner letter dropped gives another word for 2.2% (vowel) and 5.8%
+    (consonant) of 5-letter words - one wrong letter, which _one_edit allows, does for 60.8% of them."""
+    if len(usual) != len(rare) + 1:
+        return False
+    return any(usual[:k] + usual[k + 1:] == rare and usual[k].isalpha() and usual[k - 1] != " " and usual[k + 1] != " "
+               and (not vowel or usual[k] in "aeiou") for k in range(1, len(usual) - 1))
+
+
+def _swapped(a, b):
+    """a and b are the same letters with two neighbours swapped ("rian" for "rain")."""
+    d = [k for k in range(len(a)) if len(a) == len(b) and a[k] != b[k]]
+    return len(d) == 2 and d[1] == d[0] + 1 and a[d[0]] == b[d[1]] and a[d[1]] == b[d[0]]
+
+
+def _misspelt(rare, usual):
+    """Is rare (casefolded, 1-2 rows) a slip of usual (5+ rows, 5x as common)? 5+ letters each: one wrong letter, two
+    neighbours swapped, a letter typed twice (_one_edit) or one inner letter dropped (_dropped). 4 letters: only two
+    neighbours swapped (4.9% of 4-letter words have such a twin: form/from) or a vowel dropped from a 5-letter label
+    ("japn" for "japan": 7.2%, plan/plain). Never one wrong letter in 4 (89%: Iran/Iraq, Mark/Mary), a consonant
+    dropped (14.8%: Chad/Chard) or anything in 3 (Jon/John)."""
+    word = lambda w, lo: lo <= len(w) <= 60 and w.replace(" ", "").isalpha()
+    if word(rare, 5) and word(usual, 5):
+        return _one_edit(rare, usual) or _dropped(rare, usual)
+    if len(rare) == 4 and rare.isalpha():
+        return (len(usual) == 4 and usual.isalpha() and _swapped(rare, usual)) or (
+            len(usual) == 5 and usual.isalpha() and _dropped(rare, usual, vowel=True))
+    return False
+
+
 def _short_for(short, label):
     """Is short a short form of label (both casefolded)? See spellings()."""
     w, v = short.split(), label.split()
@@ -327,9 +395,10 @@ def spellings(df, column_types, skip):
     """Same category typed differently ("Sales" / "sales " / "SALES") - breaks SUMIFS and pivots silently.
     Only case/space differences, only in category-like columns (<= 50 distinct). Every spelling but the right one is
     flagged, however common ("employed" 77 times next to "Employed" 82): the right one is written like the column's other
-    labels (capitalised or not), then the most common. Plus possible misspellings: a rare word (1-2 times) with one letter wrong or two
-    swapped vs a usual one (5+ times and 5x as common), both 5+ letters only - no digits ("A101"/"A102" are codes),
-    no short names (Mark/Mary). -> (reasons, {col: usual spelling}, misspelling reasons (worth a check, not "wrong"),
+    labels (capitalised or not), then the most common. Plus possible misspellings: a rare word (1-2 times) one slip from
+    a usual one (5+ times and 5x as common): one letter wrong, two swapped, one typed twice or one dropped inside a word,
+    both 5+ letters; at 4 letters only a swap or a dropped vowel (_misspelt) - no digits ("A101"/"A102" are codes), no
+    short names (Mark/Mary). -> (reasons, {col: usual spelling}, misspelling reasons (worth a check, not "wrong"),
     {col: usual spelling} for misspellings - a guess, never auto-fixed, {col: usual} when 5x as common - auto-fixable)."""
     n = len(df)
     out, fix, missed = [[] for _ in range(n)], [{} for _ in range(n)], [[] for _ in range(n)]
@@ -360,10 +429,9 @@ def spellings(df, column_types, skip):
                         exact[i][col] = right
         cnt = keys.value_counts()
         # over 60 characters is a note, not a label: crafted 32,000-character labels took 58 s here (council, 2026-10-16)
-        word_like = lambda w: 5 <= len(w) <= 60 and w.replace(" ", "").isalpha()
         for rare, c in cnt[cnt <= 2].items():
-            usual = next((u for u, m in cnt.items() if m >= max(5, 5 * c) and word_like(u) and word_like(rare)
-                          and _one_edit(rare, u)), None)
+            usual = next((u for u, m in cnt.items() if m >= max(5, 5 * c) and len(u) <= 60 and len(rare) <= 60
+                          and _misspelt(rare, u)), None)
             if usual is None:
                 continue
             word = s[keys == usual].value_counts().index[0]  # how the usual one is usually written
