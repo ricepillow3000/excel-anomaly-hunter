@@ -345,6 +345,39 @@ def _one_edit(a, b):
     return len(d) == 1 or (len(d) == 2 and d[1] == d[0] + 1 and a[d[0]] == b[d[1]] and a[d[1]] == b[d[0]])
 
 
+def _dropped(rare, usual, vowel=False):
+    """rare is usual with one letter left out inside a word ("Grmany", "parietl", "Nuclear Enrgy": 4 of 6 misspellings
+    blind round 22 planted in real tables were missed, AH-23). Never a word's first or last letter (Laptop/Laptops,
+    Sara/Sarah, "Phone Case"/"Phones Case": a different word or a plural) and never a space; vowel: only a, e, i, o, u.
+    Measured on the 10,000 commonest English words: one inner letter dropped gives another word for 2.2% (vowel) and 5.8%
+    (consonant) of 5-letter words - one wrong letter, which _one_edit allows, does for 60.8% of them."""
+    if len(usual) != len(rare) + 1:
+        return False
+    return any(usual[:k] + usual[k + 1:] == rare and usual[k].isalpha() and usual[k - 1] != " " and usual[k + 1] != " "
+               and (not vowel or usual[k] in "aeiou") for k in range(1, len(usual) - 1))
+
+
+def _swapped(a, b):
+    """a and b are the same letters with two neighbours swapped ("rian" for "rain")."""
+    d = [k for k in range(len(a)) if len(a) == len(b) and a[k] != b[k]]
+    return len(d) == 2 and d[1] == d[0] + 1 and a[d[0]] == b[d[1]] and a[d[1]] == b[d[0]]
+
+
+def _misspelt(rare, usual):
+    """Is rare (casefolded, 1-2 rows) a slip of usual (5+ rows, 5x as common)? 5+ letters each: one wrong letter, two
+    neighbours swapped, a letter typed twice (_one_edit) or one inner letter dropped (_dropped). 4 letters: only two
+    neighbours swapped (4.9% of 4-letter words have such a twin: form/from) or a vowel dropped from a 5-letter label
+    ("japn" for "japan": 7.2%, plan/plain). Never one wrong letter in 4 (89%: Iran/Iraq, Mark/Mary), a consonant
+    dropped (14.8%: Chad/Chard) or anything in 3 (Jon/John)."""
+    word = lambda w, lo: lo <= len(w) <= 60 and w.replace(" ", "").isalpha()
+    if word(rare, 5) and word(usual, 5):
+        return _one_edit(rare, usual) or _dropped(rare, usual)
+    if len(rare) == 4 and rare.isalpha():
+        return (len(usual) == 4 and usual.isalpha() and _swapped(rare, usual)) or (
+            len(usual) == 5 and usual.isalpha() and _dropped(rare, usual, vowel=True))
+    return False
+
+
 def _short_for(short, label):
     """Is short a short form of label (both casefolded)? See spellings()."""
     w, v = short.split(), label.split()
@@ -362,9 +395,10 @@ def spellings(df, column_types, skip):
     """Same category typed differently ("Sales" / "sales " / "SALES") - breaks SUMIFS and pivots silently.
     Only case/space differences, only in category-like columns (<= 50 distinct). Every spelling but the right one is
     flagged, however common ("employed" 77 times next to "Employed" 82): the right one is written like the column's other
-    labels (capitalised or not), then the most common. Plus possible misspellings: a rare word (1-2 times) with one letter wrong or two
-    swapped vs a usual one (5+ times and 5x as common), both 5+ letters only - no digits ("A101"/"A102" are codes),
-    no short names (Mark/Mary). -> (reasons, {col: usual spelling}, misspelling reasons (worth a check, not "wrong"),
+    labels (capitalised or not), then the most common. Plus possible misspellings: a rare word (1-2 times) one slip from
+    a usual one (5+ times and 5x as common): one letter wrong, two swapped, one typed twice or one dropped inside a word,
+    both 5+ letters; at 4 letters only a swap or a dropped vowel (_misspelt) - no digits ("A101"/"A102" are codes), no
+    short names (Mark/Mary). -> (reasons, {col: usual spelling}, misspelling reasons (worth a check, not "wrong"),
     {col: usual spelling} for misspellings - a guess, never auto-fixed, {col: usual} when 5x as common - auto-fixable)."""
     n = len(df)
     out, fix, missed = [[] for _ in range(n)], [{} for _ in range(n)], [[] for _ in range(n)]
@@ -395,10 +429,9 @@ def spellings(df, column_types, skip):
                         exact[i][col] = right
         cnt = keys.value_counts()
         # over 60 characters is a note, not a label: crafted 32,000-character labels took 58 s here (council, 2026-10-16)
-        word_like = lambda w: 5 <= len(w) <= 60 and w.replace(" ", "").isalpha()
         for rare, c in cnt[cnt <= 2].items():
-            usual = next((u for u, m in cnt.items() if m >= max(5, 5 * c) and word_like(u) and word_like(rare)
-                          and _one_edit(rare, u)), None)
+            usual = next((u for u, m in cnt.items() if m >= max(5, 5 * c) and len(u) <= 60 and len(rare) <= 60
+                          and _misspelt(rare, u)), None)
             if usual is None:
                 continue
             word = s[keys == usual].value_counts().index[0]  # how the usual one is usually written

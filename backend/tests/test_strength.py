@@ -50,7 +50,8 @@ def test_level_0_is_basics_and_obvious_typos_only():
 def test_misspellings_one_letter_off_the_usual_word():
     assert _one_edit("pecnil", "pencil") and _one_edit("pencel", "pencil")  # two letters swapped, one letter wrong
     assert not _one_edit("pencil", "pencil") and not _one_edit("pencl", "pencil")  # an added/dropped letter is a
-    # different word too often (Laptop/Laptops, Sara/Sarah, Jon/John) - not offered
+    # different word too often (Laptop/Laptops, Sara/Sarah, Jon/John): a letter dropped inside a word is _dropped's, with
+    # its own limits (AH-23, test_misspelled_labels.py)
     items = ["Pencil"] * 12 + ["Binder"] * 10 + ["Desks"] * 6 + ["Pecnil"]
     codes = ["A101"] * 12 + ["A102"] + ["B200"] * 16  # codes one digit apart are different things
     region = ["North"] * 14 + ["South"] * 15  # real words, both common

@@ -44,7 +44,7 @@ an admin panel, role, operator route or debug switch. The weekly security sweep 
 | Dates far outside the rest (2084) | `pipeline.far_dates` | `test_a_date_far_outside_the_columns_range_is_flagged` |
 | Totals that don't add up (A + B + C) | `pipeline.sums` | `test_a_total_that_does_not_add_up_is_flagged` |
 | Two-column products and sums (Qty × Price, New + Churned), a product after a discount (Units × Price × (1 - Discount)), and the exact fix from the row's own arithmetic; a rule is judged where the numbers aren't all zero | `pipeline.pairs`, pane `fix.addUps` | `test_a_line_total_that_is_not_qty_times_price_is_flagged`, `test_columns_that_are_mostly_zero_are_not_taken_for_a_product_rule`, `test_the_rows_own_arithmetic_gives_the_fix_for_its_one_odd_cell`, `test_a_line_total_after_a_discount_that_does_not_add_up_is_flagged_and_its_odd_cell_solved` |
-| Same label typed differently, misspellings (a letter typed twice too), short forms (the rarer spelling, never a whole word of another label), lowercase label | `pipeline.spellings` | `test_blindspots.py`, `test_a_short_form_of_several_words_or_a_contraction_is_worth_a_check`, `test_a_letter_typed_twice_is_worth_a_check` |
+| Same label typed differently, misspellings (a letter wrong, two swapped, one typed twice or one dropped inside a word; at 4 letters only a swap or a dropped vowel, never a wrong letter: Iran/Iraq), short forms (the rarer spelling, never a whole word of another label), lowercase label | `pipeline.spellings` | `test_blindspots.py`, `test_a_short_form_of_several_words_or_a_contraction_is_worth_a_check`, `test_a_letter_typed_twice_is_worth_a_check`, `test_misspelled_labels.py` |
 | A fraction above 100% | `pipeline.fractions` | `test_blindspots.py` |
 | A value typed into the wrong column | `pipeline.shifted` | `test_text_checks.py` |
 | Values past their column's limits; the typo behind them (x10, %, sign); a lone slip with an exact x10/x100 behind it past even the usual limit; a stray minus sign never excused as a tail | `detectors.limits_detector`, `likely_value`, `limits._limits` | `test_engine.py`, `test_a_x100_slip_in_a_skewed_column_stands_alone_and_votes`, `test_a_minus_sign_in_a_count_column_is_not_excused_as_its_tail`, `test_a_mildly_skewed_column_keeps_its_honest_heavy_users_and_still_catches_a_x100_slip` |
@@ -99,6 +99,10 @@ Adding or removing a check: update this table in the same commit.
   2, 4, 6, 8 and 10 showed the level below's words, so 6 opened "Recommended." (AH-20). A detector change that moves a
   number updates `MEASURED` in the same commit.
 - A contraction keeps the word's first and last letters (Std, Mgmt): "Iran" is not one of "Ireland" (`_short_for`).
+- A misspelling rule is judged by its honest-twin rate on the 10,000 commonest words, not by examples: one wrong letter
+  has a twin for 61% of 5-letter words (safe only behind the rare-next-to-common gate), a dropped inner letter 2-6%, so
+  it is allowed; at 4 letters only a swap (5%) or a dropped vowel (7%), never a wrong letter (89%: Iran/Iraq). Blind
+  round 22's planted misspellings went from 3 to 9 of 9 (`_misspelt`, AH-23).
 - The installer starts Excel by its App Paths path, never "open this .xlsx": with no Excel, Windows' "Pick an app"
   held the install (`app.excel_exe`, `test_the_installer_finds_desktop_excel_or_says_none`).
 - A cliff on a measured shape is a coin flip: "upper spread > 2x lower" sits right at a log-normal's average, so 22 of
