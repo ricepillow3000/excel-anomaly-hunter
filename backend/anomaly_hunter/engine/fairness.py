@@ -181,6 +181,14 @@ def _pct(r):
     return f"{r:.1%}" if r < 0.1 else f"{r:.0%}"
 
 
+def _few(table, what):
+    """What there is little of near the line: the hits or the misses, counted. "With these few rows" was said of 3,000
+    rows with 29 flagged (Council B, AH-20 review): the few are the events, not the rows."""
+    hits = int(table[True].sum())
+    misses = int(table.to_numpy().sum()) - hits
+    return f"with only {hits:,} {what} to go on" if hits <= misses else f"with only {misses:,} rows without {what} to go on"
+
+
 def _either(a, b):
     """_big on the counted side or on the other one: Approved = 1 at 89% vs 74% is 11% vs 26% not approved, and the same
     people written Approved/Denied (Denied counted) read a gap while the 0/1 column read "small" (AH-18 review)."""
@@ -282,7 +290,7 @@ def report(df, types, rows):
                      else f"{t['column']}: {what} close across groups ({span} - a real difference, but small)" if real
                      else f"{t['column']}: {what} differs across groups ({span}), but there are not enough rows to tell whether that is a real gap"
                      if t["verdict"] == "unclear"
-                     else f"{t['column']}: {what} no clear difference across groups ({span}); with these few rows a gap this size could be chance"
+                     else f"{t['column']}: {what} no clear difference across groups ({span}); {_few(table, what)}, a gap this size could be chance"
                      if big and near else f"{t['column']}: {what} {'no clear difference' if big else 'even'} across groups ({span}, within normal variation)") + out
         note = pane_note_matching(t["column"], t["measure"], subject, _polarity(label) if t["measure"] == "outcome" else 1,
                                   t["groups"]) if t["verdict"] == "gap" else None

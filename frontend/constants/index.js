@@ -9,10 +9,10 @@ export const UNDO_KEY = "anomalyHunterAutoUndo"; // what auto-fix changed, saved
 export const POWER_BI_KEY = "anomalyHunterPowerBi"; // keep each scan for Power BI: this PC (localStorage), off unless turned on
 export const DECISIONS_KEY = "anomalyHunterDecisions"; // rows fixed or dismissed, as codes, saved inside the workbook
 
-// What each slider level does, in its own words (6, 8 and 10 once showed the level below's, so 6 opened "Recommended.",
-// AH-20), then what that very level did on the
-// industry bench's 27 sheets (backend/bench: 51 planted mistakes, 2,724 fine rows): [found, of them called probably or
-// very likely wrong, fine rows listed as worth a check, fine rows called probably wrong]. Measured, not estimated:
+// What each slider level does, in its own words (2, 4, 6, 8 and 10 once showed the level below's, so 6 opened
+// "Recommended.", AH-20), then what that very level did on the industry bench's 27 sheets (backend/bench: 51 planted
+// mistakes, 2,724 fine rows): [found, of them called probably or very likely wrong, fine rows listed as worth a check,
+// fine rows called probably wrong]. Measured, not estimated:
 // backend/tests/test_strength_promise.py scans the bench at every level and fails when a number here is not what the
 // engine does (AH-15: John read 5 and 10 as the same; the slider mostly moves the borderline list, and says so).
 export const MEASURED = {"sheets":27,"planted":51,"fine":2724,"levels":{"0":[43,42,0,0],"1":[44,44,0,0],"2":[44,44,0,0],"3":[51,45,17,0],"4":[51,46,24,0],"5":[51,48,26,0],"6":[51,48,31,0],"7":[51,48,42,0],"8":[51,48,48,0],"9":[51,51,70,0],"10":[51,51,91,4]}};

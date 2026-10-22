@@ -147,7 +147,7 @@ for (let s = 0; s <= 10; s++) {
   assert.ok(fineLow ? hint.includes(`${fineLow.toLocaleString("en-US")} of 2,724 fine rows listed as worth a check`) : hint.includes("no fine row listed"), hint);
 }
 assert.notEqual(strengthHint(5), strengthHint(10));
-// every level opens with its own words: 6, 8 and 10 used to repeat the level below, so 6 opened "Recommended." though
+// every level opens with its own words: 2, 4, 6, 8 and 10 used to repeat the level below, so 6 opened "Recommended." though
 // 5 is the recommended level (Council B, AH-15 review; AH-20)
 {
   const opening = (s) => strengthHint(s).split(/[.:]/)[0];

@@ -37,12 +37,29 @@ def test_a_big_spread_chance_explains_is_no_clear_difference_never_even():
     assert t["verdict"] == "even" and t["p"] >= 0.05 and "even" not in t["text"] and "no clear difference" in t["text"], t["text"]
     drawn = sorted(np.mean([r[3] for r in rows if r[1] == g]) for g in "FM")
     # raw p 0.054 is near the line: "within normal variation" claimed more than the numbers show (Council A, AH-20)
-    assert t["p"] < 0.10 and t["text"].endswith(
-        f"no clear difference across groups ({drawn[0]:.0%} to {drawn[1]:.0%}); with these few rows a gap this size could be chance"), t["text"]
+    approved = sum(r[3] for r in rows)  # 25 of 80: the approvals are what there is little of
+    assert t["p"] < 0.10 and t["text"].endswith(f"no clear difference across groups ({drawn[0]:.0%} to {drawn[1]:.0%}); "
+                                                 f"with only {approved} Approved = 1 to go on, a gap this size could be chance"), t["text"]
     assert "within normal variation" not in t["text"]
     # a difference that is small as well as unproven is plain "even"
     t = next(t for t in report(*people(500, {"F": 0.3, "M": 0.3}, 7))["tests"] if t["test"] == "Approved rate")
     assert t["verdict"] == "even" and "even across groups" in t["text"] and "within normal variation" in t["text"]
+
+
+@pytest.mark.parametrize("n, rates, seed", [(3000, (0.010, 0.018), 2), (2000, (0.02, 0.032), 29), (6000, (0.005, 0.009), 0)])
+def test_near_the_line_on_a_big_sheet_the_few_are_the_events_never_the_rows(n, rates, seed):
+    # 3,000 rows read "with these few rows a gap this size could be chance": what is few is the rows flagged or the
+    # defaults, not the rows (Council B, AH-20 review). The sentence counts what there is little of, and counts it right
+    rng = np.random.default_rng(seed)
+    rows = [[f"P{i}", "F" if i % 2 else "M", round(float(rng.normal(50000, 8000))), int(rng.random() < (rates[0] if i % 2 else rates[1]))]
+            for i in range(n)]
+    tests = report(["ID", "Sex", "Income", "Defaulted"], rows)["tests"]
+    near = [t for t in tests if "could be chance" in t["text"]]
+    assert near and not any("few rows" in t["text"] for t in tests), [t["text"] for t in tests]
+    for t in near:
+        events = round(sum(size * rate for size, rate in t["groups"].values()))
+        rarer = min(events, sum(size for size, _ in t["groups"].values()) - events)
+        assert f"with only {rarer} " in t["text"] and t["text"].endswith(" to go on, a gap this size could be chance"), t["text"]
 
 
 def test_a_big_spread_with_no_evidence_at_all_is_within_normal_variation():
