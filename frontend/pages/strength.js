@@ -1,4 +1,5 @@
-import { STRENGTH, STRENGTH_KEY } from "../constants/index.js";
+import { MEASURED, STRENGTH, STRENGTH_KEY } from "../constants/index.js";
+import { n } from "../utils/text.js";
 import { state } from "../hooks/use-state.js";
 import { $ } from "../utils/dom.js";
 
@@ -6,7 +7,15 @@ import { $ } from "../utils/dom.js";
 // during every re-check, so a press on it fell through to the page and started a text drag (the "stop sign").
 // This one is never disabled, follows the pointer anywhere on the track (press, drag, release), and works by keyboard.
 // Letting go saves the level in the workbook and checks the sheet again; while a check runs, the newest level waits.
-export const strengthHint = (s) => STRENGTH.filter(([at]) => at <= s).pop()[1];
+// The hint: what the level adds, then what this very level did on the bench (constants MEASURED, re-measured by a test)
+export function strengthHint(s) {
+  const what = STRENGTH.filter(([at]) => at <= s).pop()[1], m = MEASURED.levels[s];
+  if (!m) return what;
+  const [found, sure, fineLow, fineSure] = m, { sheets, planted, fine } = MEASURED;
+  return `${what} On our ${sheets} test sheets: ${found === planted ? `all ${planted}` : `${found} of ${planted}`} planted mistakes found` +
+    `${sure < found ? ` (${sure} as probably wrong, the rest as worth a check)` : ""}; ${fineLow ? `${n(fineLow)} of ${n(fine)} fine rows listed as worth a check` : "no fine row listed"}` +
+    `${fineSure ? `, ${n(fineSure)} as probably wrong` : ""}.`;
+}
 
 // Pure: whatever the workbook holds -> a level 0-10 (a missing or broken setting = 5, the recommended one)
 export const asStrength = (v) => (Number.isInteger(v) && v >= 0 && v <= 10 ? v : 5);

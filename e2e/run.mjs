@@ -208,6 +208,11 @@ if (mode === "flow") {
   await page.waitForTimeout(800); // room for a second, unwanted re-scan to show up
   ok(scans.slice(s0).map((b) => b.strength).join() === "0", "a drag to 0 causes exactly one re-scan, at 0 - " + scans.slice(s0).map((b) => b.strength));
   { const m = await matchesEngine(); ok(m.ok, "at 0 the list is exactly what the engine answered at 0 - " + m.why); }
+  // the pane says what the new level changed, counted from the engine's last two answers for this very sheet (AH-15)
+  { const [b, a] = replies.slice(-2), said = await text("#level-change");
+    const want = await page.evaluate(async ([rb, ra]) => { const { levelChange } = await import("./features/scan.js");
+      return levelChange({ level: 5, rows: rb, hashes: __state.hashes, sheet: __state.lastScan.sheet }, { level: 0, rows: ra, hashes: __state.hashes, sheet: __state.lastScan.sheet }); }, [b.rows, a.rows]);
+    ok(said.startsWith("Level 0 (was 5): ") && said === want && (await page.isVisible("#level-change")), "a slider re-check says what level 0 changed against 5 - " + said); }
   const listed0 = (await page.$$("#flagged-list li")).length;
   ok(listed0 <= listed5 && (await page.evaluate(() => __settings.anomalyHunterStrength)) === 0 && (await text("#strength-hint")).startsWith("Basics"),
     `strength 0 re-checks with the basics only (${listed5} -> ${listed0} rows), saved in the workbook`);
@@ -503,7 +508,7 @@ if (mode === "nokey") {
   await page.click("#settings summary");
   await page.fill("#ai-key", "<script>"); await page.click("#save-key");
   await page.waitForFunction(() => document.getElementById("ai-state").textContent.includes("doesn't look like an API key"));
-  ok(true, "junk key refused");
+  ok((await page.inputValue("#ai-key")) === "", "junk key refused, and cleared from the box: a refused key is no use to retry (AH-15)");
   // Save with an empty box (the paste didn't land) must say so - never "Saved", never a silent remove (John, 2026-10-12)
   const keyCalls = [];
   page.on("request", (r) => r.url().endsWith("/key") && keyCalls.push(r));
@@ -527,7 +532,7 @@ if (mode === "nokey") {
   ok(!(await page.isVisible("#ai-box")) && (await page.isVisible("#ai-off")) && !fs.existsSync(DIR + "cert/invite-code.txt"),
     "Remove key: AI help off, the code deleted from this PC");
   // saving fails: the PC can't keep the file (the engine's 503, AH-13), or the engine is gone. Said where the key goes,
-  // and the key box is cleared only after a successful save
+  // and the key stays in its box to try again (cleared after a save, or when the engine refuses the key itself)
   const disk = "Couldn't save that on this PC - the disk may be full or the file in use. Details in server.log.";
   for (const [how, fail, words] of [
     ["the PC can't keep it", (r) => r.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: disk }) }), disk],
@@ -536,7 +541,8 @@ if (mode === "nokey") {
       await page.route("**/key", fail, { times: 1 }); await page.fill("#ai-key", code); await page.click("#save-key");
       await page.waitForFunction((w) => document.getElementById("ai-state").textContent === w, words, { timeout: 10000 }).catch(() => {});
     });
-    ok((await text("#ai-state")) === words && !(await page.isVisible("#ai-box")), `Save key when ${how}: said in plain words, AI help stays off - ` + (await text("#ai-state")));
+    ok((await text("#ai-state")) === words && !(await page.isVisible("#ai-box")) && (await page.inputValue("#ai-key")) === code,
+      `Save key when ${how}: said in plain words, AI help stays off, the key kept in its box to try again - ` + (await text("#ai-state")));
   }
   await page.fill("#ai-key", "");
 }

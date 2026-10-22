@@ -25,6 +25,9 @@ export async function saveKey(key) {
     $("ai-state").textContent = out.message || (out.ai_available ? "Key removed. AI help still uses the paid Claude key set on this PC."
       : "Key removed. AI help is off.");
   } catch (e) {
+    // a key the engine refused (Google said no, or it is not a key) is no use to retry: it leaves the screen like a
+    // saved one (AH-15); a save that failed (the disk, the engine gone) keeps it in the box to try again
+    if (e.status === 400) $("ai-key").value = "";
     $("ai-state").textContent = e.message;
   }
 }
