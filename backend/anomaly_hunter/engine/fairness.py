@@ -19,6 +19,8 @@ MIN_GROUP = 20  # smaller groups prove nothing either way
 MAX_TESTS = 400  # each test is a crosstab (~5.6 ms): a crafted 40 x 40 sheet took 9 s per scan (2026-10-16)
 ALPHA = 0.01    # after a Bonferroni correction over every test of the scan: noise is not called bias
 HINT = 0.05     # a raw p-value this small, not confirmed after the correction: "not enough rows to tell"
+NEAR = 0.10     # a big spread with a raw p-value between HINT and this is near the line: chance could explain it, but
+# "within normal variation" claimed more than its numbers show (raw p 0.054 on 80 people, AH-20)
 RATIO = 1.25    # the four-fifths rule, for a rate where higher is worse (1 / 0.8)
 
 
@@ -87,15 +89,19 @@ def _band(b):
 NOT_OUTCOMES = [{"day", "night"}, {"am", "pm"}, {"morning", "evening"}, {"morning", "afternoon"}, {"weekday", "weekend"},
                 {"left", "right"}, {"north", "south"}, {"east", "west"}, {"urban", "rural"}, {"indoor", "outdoor"},
                 {"inside", "outside"}, {"inbound", "outbound"}, {"internal", "external"}, {"domestic", "international"},
-                {"online", "offline"}, {"front", "back"}, {"upper", "lower"}, {"before", "after"}, {"old", "new"}]
+                {"online", "offline"}, {"front", "back"}, {"upper", "lower"}, {"before", "after"}, {"old", "new"},
+                # AH-20: a shift, a way to pay, a sales channel, a device, a term and a survey round say when, how or
+                # where, never how it went. Full-time/Part-time stays an outcome: an employer decides it (a hiring gap)
+                {"morning", "night"}, {"cash", "card"}, {"retail", "wholesale"}, {"mac", "pc"}, {"spring", "fall"},
+                {"spring", "autumn"}, {"pre", "post"}]
 
 
 def _is_outcome(a, b):
     """Two labels (casefolded) that can be a result: anything but a who/where/when pair or a code."""
     if {a, b} in NOT_OUTCOMES:
         return False
-    if len(a) == 1 and len(b) == 1 and a.isalpha() and b.isalpha() and {a, b} not in ({"y", "n"}, {"t", "f"}):
-        return False  # A/B, X/Y: codes
+    if len(a) == 1 and len(b) == 1 and a.isalpha() and b.isalpha() and {a, b} not in ({"y", "n"}, {"t", "f"}, {"p", "f"}, {"w", "l"}):
+        return False  # A/B, X/Y: codes; Y/N, T/F, P/F (pass/fail) and W/L (won/lost) are results
     digits = lambda w: any(ch.isdigit() for ch in w)
     if digits(a) and digits(b) and {a, b} != {"0", "1"} and not (a[:1] in "<>≤≥=" or b[:1] in "<>≤≥="):
         return False  # Q1/Q2, 2024/2025, Grade 3/Grade 4; "<=50K"/">50K" is a result
@@ -175,6 +181,14 @@ def _pct(r):
     return f"{r:.1%}" if r < 0.1 else f"{r:.0%}"
 
 
+def _few(table, what):
+    """What there is little of near the line: the hits or the misses, counted. "With these few rows" was said of 3,000
+    rows with 29 flagged (Council B, AH-20 review): the few are the events, not the rows."""
+    hits = int(table[True].sum())
+    misses = int(table.to_numpy().sum()) - hits
+    return f"with only {hits:,} {what} to go on" if hits <= misses else f"with only {misses:,} rows without {what} to go on"
+
+
 def _either(a, b):
     """_big on the counted side or on the other one: Approved = 1 at 89% vs 74% is 11% vs 26% not approved, and the same
     people written Approved/Denied (Denied counted) read a gap while the 0/1 column read "small" (AH-18 review)."""
@@ -244,7 +258,7 @@ def report(df, types, rows):
         if len(rates) == 2:
             hi, lo = max(rates, key=rates.get), min(rates, key=rates.get)
             a, b = rates[hi], rates[lo]
-            real, hint = t["p"] * n < ALPHA, t["p"] < HINT
+            real, hint, near = t["p"] * n < ALPHA, t["p"] < HINT, t["p"] < NEAR
             said = f"{t['column']} {hi}: {_pct(a)} {what} vs {_pct(b)} for {lo}"
         else:  # the group that stands out against all the others, and any that stand out with it the same way
             pairs, K = {}, len(table)
@@ -265,6 +279,7 @@ def report(df, types, rows):
             a, b = float(mine[True] / mine.sum()), float(rest[True] / rest.sum())
             real = t["p"] * n < ALPHA and p_k * n * K < ALPHA
             hint = t["p"] < HINT and p_k * K < HINT  # picking the group that stands out is itself a choice among K
+            near = t["p"] < NEAR and p_k * K < NEAR
             said = f"{t['column']} {' and '.join(names)}: {_pct(a)} {what} vs {_pct(b)} for the other groups"
         big = _either(a, b)
         # "not enough rows to tell" only where the raw evidence points to a gap (raw p < HINT) that the correction for
@@ -274,7 +289,9 @@ def report(df, types, rows):
         t["text"] = (f"{said} - a real gap, check why" if t["verdict"] == "gap"
                      else f"{t['column']}: {what} close across groups ({span} - a real difference, but small)" if real
                      else f"{t['column']}: {what} differs across groups ({span}), but there are not enough rows to tell whether that is a real gap"
-                     if t["verdict"] == "unclear" else f"{t['column']}: {what} {'no clear difference' if big else 'even'} across groups ({span}, within normal variation)") + out
+                     if t["verdict"] == "unclear"
+                     else f"{t['column']}: {what} no clear difference across groups ({span}); {_few(table, what)}, a gap this size could be chance"
+                     if big and near else f"{t['column']}: {what} {'no clear difference' if big else 'even'} across groups ({span}, within normal variation)") + out
         note = pane_note_matching(t["column"], t["measure"], subject, _polarity(label) if t["measure"] == "outcome" else 1,
                                   t["groups"]) if t["verdict"] == "gap" else None
         if note:

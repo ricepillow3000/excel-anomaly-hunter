@@ -36,10 +36,42 @@ def test_a_big_spread_chance_explains_is_no_clear_difference_never_even():
     t = next(t for t in report(cols, rows)["tests"] if t["test"] == "Approved rate")
     assert t["verdict"] == "even" and t["p"] >= 0.05 and "even" not in t["text"] and "no clear difference" in t["text"], t["text"]
     drawn = sorted(np.mean([r[3] for r in rows if r[1] == g]) for g in "FM")
-    assert f"({drawn[0]:.0%} to {drawn[1]:.0%}, within normal variation)" in t["text"]
+    # raw p 0.054 is near the line: "within normal variation" claimed more than the numbers show (Council A, AH-20)
+    approved = sum(r[3] for r in rows)  # 25 of 80: the approvals are what there is little of
+    assert t["p"] < 0.10 and t["text"].endswith(f"no clear difference across groups ({drawn[0]:.0%} to {drawn[1]:.0%}); "
+                                                 f"with only {approved} Approved = 1 to go on, a gap this size could be chance"), t["text"]
+    assert "within normal variation" not in t["text"]
     # a difference that is small as well as unproven is plain "even"
     t = next(t for t in report(*people(500, {"F": 0.3, "M": 0.3}, 7))["tests"] if t["test"] == "Approved rate")
     assert t["verdict"] == "even" and "even across groups" in t["text"] and "within normal variation" in t["text"]
+
+
+@pytest.mark.parametrize("n, rates, seed", [(3000, (0.010, 0.018), 2), (2000, (0.02, 0.032), 29), (6000, (0.005, 0.009), 0)])
+def test_near_the_line_on_a_big_sheet_the_few_are_the_events_never_the_rows(n, rates, seed):
+    # 3,000 rows read "with these few rows a gap this size could be chance": what is few is the rows flagged or the
+    # defaults, not the rows (Council B, AH-20 review). The sentence counts what there is little of, and counts it right
+    rng = np.random.default_rng(seed)
+    rows = [[f"P{i}", "F" if i % 2 else "M", round(float(rng.normal(50000, 8000))), int(rng.random() < (rates[0] if i % 2 else rates[1]))]
+            for i in range(n)]
+    tests = report(["ID", "Sex", "Income", "Defaulted"], rows)["tests"]
+    near = [t for t in tests if "could be chance" in t["text"]]
+    assert near and not any("few rows" in t["text"] for t in tests), [t["text"] for t in tests]
+    for t in near:
+        events = round(sum(size * rate for size, rate in t["groups"].values()))
+        rarer = min(events, sum(size for size, _ in t["groups"].values()) - events)
+        assert f"with only {rarer} " in t["text"] and t["text"].endswith(" to go on, a gap this size could be chance"), t["text"]
+
+
+def test_a_big_spread_with_no_evidence_at_all_is_within_normal_variation():
+    # a big spread whose raw p is far from any line (0.10+) is what chance gives: "within normal variation" stays
+    for seed in range(200):
+        cols, rows = people(40, {"F": 0.3, "M": 0.3}, 500 + seed)
+        t = next((t for t in report(cols, rows)["tests"] if t["test"] == "Approved rate"), None)
+        if t and t["p"] >= 0.10 and fairness._either(*sorted(v[1] for v in t["groups"].values())[::-1]):
+            assert t["verdict"] == "even" and t["text"].endswith("within normal variation)"), t["text"]
+            assert "no clear difference" in t["text"] and "could be chance" not in t["text"], t["text"]
+            return
+    raise AssertionError("no big spread with p >= 0.10 drawn")
 
 
 def test_a_big_gap_the_raw_evidence_suggests_but_cannot_prove_is_not_enough_rows_to_tell():
@@ -78,14 +110,20 @@ def test_every_test_says_which_kind_of_check_it_is():
 @pytest.mark.parametrize("yes, no", [("Approved", "Denied"), ("Yes", "No"), ("Pass", "Fail"), (">50K", "<=50K"), ("Hired", "Not hired"),
                                      ("True", "False"), ("Defaulted", "Repaid"), ("Declined", "Approved"), ("Defaulted", "Paid"),
                                      ("Delinquent", "Current"), ("Accepted", "Declined"), ("Fraud", "Legit"), ("Active", "Inactive"),
-                                     ("Win", "Lose"), ("Left", "Stayed"), ("Graduated", "Dropped out"), ("Spam", "Ham")])
+                                     ("Win", "Lose"), ("Left", "Stayed"), ("Graduated", "Dropped out"), ("Spam", "Ham"),
+                                     # one-letter results, like Y/N and T/F (AH-20); and a contract type, which an employer decides
+                                     ("P", "F"), ("W", "L"), ("Part-time", "Full-time")])
 def test_a_two_label_column_of_opposites_is_an_outcome(yes, no):
     cols, rows = people(600, {"F": 0.3, "M": 0.3}, 3, outcome="Result", label=(yes, no))
     assert any(t["test"].startswith("Result ") and t["measure"] == "outcome" for t in report(cols, rows)["tests"])
 
 
 @pytest.mark.parametrize("col, labels", [("Shift", ("Night", "Day")), ("Dept", ("A", "B")), ("Hand", ("Left", "Right")),
-                                         ("Session", ("AM", "PM")), ("When", ("Weekday", "Weekend")), ("Setting", ("Urban", "Rural"))])
+                                         ("Session", ("AM", "PM")), ("When", ("Weekday", "Weekend")), ("Setting", ("Urban", "Rural")),
+                                         # AH-20: when, how and where, never a result
+                                         ("Shift", ("Night", "Morning")), ("Payment", ("Card", "Cash")), ("Channel", ("Wholesale", "Retail")),
+                                         ("Device", ("PC", "Mac")), ("Term", ("Fall", "Spring")), ("Term", ("Autumn", "Spring")),
+                                         ("Survey", ("Post", "Pre"))])
 def test_a_two_label_column_that_is_not_an_outcome_is_not_tested_as_one(col, labels):
     # AH-17 W3: "Shift" Day/Night by Gender was "a real gap, check why" with a census sentence about earning over 50K
     cols, rows = people(1000, {"F": 0.6, "M": 0.27}, 4, col="Gender", outcome=col, label=labels)
