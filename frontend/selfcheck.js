@@ -3,7 +3,8 @@ import assert from "node:assert";
 import { esc, asNumber } from "./utils/text.js";
 import { cutNote, tableFromGrid, isDateFormat, excelDate, rowFromAddress, colLetter, cellAt, sameRow, readAs } from "./utils/sheet.js";
 import { issuesOf, recommendFix, typoKind, afterFix, unusualColumn } from "./features/fix.js";
-import { plainReason, summaryOf, flaggedRows, fairnessNote, fairnessTests, listOrder } from "./features/scan.js";
+import { plainReason, summaryOf, flaggedRows, fairnessNote, fairnessTests, listOrder, levelChange } from "./features/scan.js";
+import { MEASURED } from "./constants/index.js";
 import { strengthHint, asStrength, levelAt } from "./pages/strength.js";
 import { exactFixes, safeUndo } from "./features/autofix.js";
 import { readdirSync, readFileSync } from "node:fs";
@@ -66,8 +67,19 @@ for (const f of panes) {
 // fairness line: protected columns named; a real gap spelled out; nothing at all without a protected column
 assert.equal(fairnessNote({ protected: {}, tests: [] }), "");
 assert.equal(fairnessNote(undefined), "");
-assert.equal(fairnessNote({ protected: { Age: "demographic", Location: "location" }, tests: [{ verdict: "even", text: "x" }] }),
+// with no gap, the line names only the checks that ran (AH-17: "Flags, blanks and outcomes are even" on a sheet that ran
+// one flag-rate check), says which ones too few rows could prove, and never calls an empty report even
+const even = (measure) => ({ verdict: "even", text: "x", measure });
+assert.equal(fairnessNote({ protected: { Age: "demographic", Location: "location" }, tests: [even("flag"), even("missing"), even("outcome")] }),
   "Fairness: Age, Location are never used to decide which rows are unusual. Flags, blanks and outcomes are even across their groups.");
+assert.equal(fairnessNote({ protected: { Region: "location" }, tests: [even("flag"), even("flag")] }),
+  "Fairness: Region is never used to decide which rows are unusual. Flags are even across its groups.");
+assert.equal(fairnessNote({ protected: { Sex: "demographic" }, tests: [even("outcome"), { verdict: "unclear", measure: "flag",
+  text: "Sex: rows flagged differs across groups (1% to 9%), but there are not enough rows to tell whether that is a real gap" }] }),
+  "Fairness: Sex is never used to decide which rows are unusual. Outcomes are even across its groups. Not enough rows to tell: " +
+  "Sex: rows flagged differs across groups (1% to 9%), but there are not enough rows to tell whether that is a real gap.");
+assert.equal(fairnessNote({ protected: { Sex: "demographic" }, tests: [] }),
+  "Fairness: Sex is never used to decide which rows are unusual. Nothing to compare between its groups: no flags, blanks or yes/no results in groups of 20 rows or more.");
 assert.equal(fairnessNote({ protected: { Location: "location" }, tests: [{ verdict: "gap", text: "Location Phoenix: 60% blank Income vs 3% for Chicago - a real gap, check why" }] }),
   "Fairness: Location is never used to decide which rows are unusual. Check these gaps between groups: Location Phoenix: 60% blank Income vs 3% for Chicago - a real gap, check why.");
 // a gap the engine has measured public context for: the gap first, then its context sentence, once per sentence
@@ -127,6 +139,40 @@ assert.equal(unusualColumn("Duplicate of row 2", uc), null);
 // the slider: every level has words; a missing or broken saved value is 5
 assert.ok([...Array(11).keys()].every((s) => strengthHint(s).length > 10));
 assert.ok(strengthHint(0).startsWith("Basics") && strengthHint(5).startsWith("Recommended") && strengthHint(10).startsWith("Strictest"));
+// each level's hint ends with what that very level did on the bench (MEASURED; backend/tests/test_strength_promise.py
+// re-measures it), so 5 and 10 never read the same (AH-15)
+for (let s = 0; s <= 10; s++) {
+  const [found, , fineLow] = MEASURED.levels[s], hint = strengthHint(s);
+  assert.ok(hint.includes(`On our ${MEASURED.sheets} test sheets: ${found === MEASURED.planted ? `all ${MEASURED.planted}` : `${found} of ${MEASURED.planted}`} planted mistakes found`), hint);
+  assert.ok(fineLow ? hint.includes(`${fineLow.toLocaleString("en-US")} of 2,724 fine rows listed as worth a check`) : hint.includes("no fine row listed"), hint);
+}
+assert.notEqual(strengthHint(5), strengthHint(10));
+// what a new level changed, counted from the two scans' own rows (AH-15)
+const sev = (...s) => s.map((x) => ({ severity: x, magnitude: 1 })), H = ["a", "b", "c", "d", "e"];
+const at = (level, rows, hashes = H, sheet = "Sales") => ({ level, rows, hashes, sheet });
+assert.equal(levelChange(at(5, sev("Medium", null, null, null, "Low")), at(10, sev("Medium", "Low", "Low", null, "Low"))),
+  "Level 10 (was 5): 2 more rows worth a check (borderline values); the rows that look wrong are the same.");
+assert.equal(levelChange(at(10, sev("Medium", "Low", "Low", null, "Low")), at(5, sev("Medium", null, null, null, "Low"))),
+  "Level 5 (was 10): 2 fewer rows worth a check; the rows that look wrong are the same.");
+assert.equal(levelChange(at(5, sev("Medium", null, "Low", null, null)), at(9, sev("Medium", "Medium", null, null, null))),
+  "Level 9 (was 5): 1 fewer row worth a check; 1 more row looks wrong.");
+assert.equal(levelChange(at(5, sev(null, "Low", null, null, null)), at(6, sev(null, null, "Low", null, null))),
+  "Level 6 (was 5): 1 other row worth a check; the rows that look wrong are the same.");
+assert.equal(levelChange(at(5, sev("High", null, null, null, "Low")), at(7, sev("High", null, null, null, "Low"))),
+  "Level 7 (was 5): the same rows as at 5 - nothing on this sheet sits between the two levels.");
+// nothing is said when the counts could mean something else: the same level, another sheet, an edited sheet, no scan before
+assert.equal(levelChange(at(5, sev("Medium")), at(5, sev(null))), "");
+assert.equal(levelChange(at(5, sev(null, "Low", null, null, null)), at(10, sev(null, "Low", "Low", null, null), H, "Costs")), "");
+assert.equal(levelChange(at(5, sev(null, "Low", null, null, null)), at(10, sev(null, "Low", "Low", null, null), ["a", "b", "x", "d", "e"])), "");
+assert.equal(levelChange(null, at(10, sev("Low"))), "");
+// 50+ rows look wrong: the list's first 50 are the same, and the line says where the new rows went
+{
+  const many = Array.from({ length: 60 }, () => ({ severity: "Medium", magnitude: 1 })), hs = many.map((_, i) => `h${i}`);
+  const more = [...many, { severity: null, magnitude: 0 }, { severity: null, magnitude: 0 }], hs2 = [...hs, "x", "y"];
+  const after = [...many, { severity: "Low", magnitude: 3 }, { severity: "Low", magnitude: 2 }];
+  assert.equal(levelChange(at(5, more, hs2), at(10, after, hs2)), "Level 10 (was 5): 2 more rows worth a check (borderline values); " +
+    'the rows that look wrong are the same. The list shows the 50 surest first, so the new ones are under "+ more" (all highlighted in the sheet).');
+}
 assert.deepEqual([0, 10, 7, undefined, null, "3", 11, -1, 2.5].map(asStrength), [0, 10, 7, 5, 5, 5, 5, 5, 5]);
 // pointer anywhere on (or past) a 200px track starting at x=100 -> the nearest level
 assert.deepEqual([100, 110, 109, 200, 300, 0, 999, 141].map((x) => levelAt(x, 100, 200)), [0, 1, 0, 5, 10, 0, 10, 2]);

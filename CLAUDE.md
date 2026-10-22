@@ -48,12 +48,13 @@ an admin panel, role, operator route or debug switch. The weekly security sweep 
 | A fraction above 100% | `pipeline.fractions` | `test_blindspots.py` |
 | A value typed into the wrong column | `pipeline.shifted` | `test_text_checks.py` |
 | Values past their column's limits; the typo behind them (x10, %, sign); a lone slip with an exact x10/x100 behind it past even the usual limit; a stray minus sign never excused as a tail | `detectors.limits_detector`, `likely_value`, `limits._limits` | `test_engine.py`, `test_a_x100_slip_in_a_skewed_column_stands_alone_and_votes`, `test_a_minus_sign_in_a_count_column_is_not_excused_as_its_tail`, `test_a_mildly_skewed_column_keeps_its_honest_heavy_users_and_still_catches_a_x100_slip` |
+| From strength 7: a value past its usual limit that at most max(2, 0.25% of the column) other values pass and at most 2 reach (a 10 on a 1-5 scale; never an honest tail of bulk orders, 43-49 past; on 30,000 clean rows only each side's extremes), listed as worth a check with its limit and that count in the sentence, never a vote or a fix; never on a protected column (Age) or past a limit the user saved | `detectors.limits_detector` (`alone_reasons`, `FEW`), `pipeline.score` (`ALONE`, `quiet`) | `test_a_value_past_its_usual_range_with_few_values_near_it_is_worth_a_check_from_level_7`, `test_a_moderate_outlier_is_left_alone_at_5_and_named_with_its_value_from_level_8_on_a_small_and_a_big_sheet`, `test_honest_ages_are_never_listed_for_their_age_at_any_level`, `test_a_limit_the_user_saved_wins_over_the_list`, `test_an_honest_tail_of_bulk_orders_is_never_listed`, `test_every_listed_sentence_says_what_the_column_really_holds`, `test_a_big_clean_column_lists_only_its_own_extremes` |
 | Jumps in a dated series (cycles excluded) | `detectors.sequence_detector` | `test_a_repeating_cycle_is_not_a_jump` |
 | Odd combinations across columns (ECOD, our own 15 lines: pyod made the exe 146 MB) | `detectors.isolation_detector`, `detectors._ecod` | `test_the_cross_column_score_keeps_the_values_recorded_from_pyod`, `test_the_cross_column_score_refuses_a_blank_or_infinite_value` |
 | A top value that is all 9s and over twice the next one (99999 = "missing" / "too big") | `pipeline.codes` | `test_an_all_nines_top_value_is_a_code` |
 | A lone decimal in a column of whole numbers (study day 7.3 for 73) | `pipeline.whole_numbers` | `test_a_lone_decimal_in_a_column_of_whole_numbers_is_worth_a_check` |
 | A number past what its column's name allows (Month 13, Hour 25, a 6 on "Rating (1-5)", Latitude 91.5); quiet when 1%+ break it (yyyymm months, 0-360 longitudes) | `pipeline.named_bounds` | `test_a_value_past_what_its_column_name_allows_is_worth_a_check`, `test_a_column_whose_name_means_something_else_keeps_quiet` |
-| Fairness gaps by demographic group, incl. 2-label text outcomes; `?` counts as missing, never a group; labels read case- and space-blind ("no " is "No"); a real gap in an outcome or in blanks, on a column the measured public rules cover, gets one sentence of context (never a flag-rate gap; rules re-measured by `tools/bias_sources.py`, `docs/bias/FINDINGS.md`) | `engine/fairness.py`, `ai/bias_context.pane_note`, `ai/bias_rules.json` | `test_blindspots.py`, `test_wild_census.py`, `test_delinquency.py`, `test_a_real_gap_in_an_outcome_gets_one_sentence_of_public_context_and_a_flag_rate_gap_none` |
+| Fairness gaps by demographic group, incl. 2-label text outcomes (any pair but who/where/when ones: Day/Night, Left/Right, A/B, Q1/Q2); `?` counts as missing, never a group; labels read case- and space-blind ("no " is "No"); a gap is 1.25x and 5 points, or a doubling, on either side of the outcome (Approved = 1 and Approved/Denied agree); "not enough rows to tell" only for a big gap with raw p < 0.05 the correction cannot confirm, else "even" ("no clear difference" for a big spread chance explains); rates under 10% keep one decimal; with 3+ groups the group(s) that stand out are named against the rest (their own p-value), never the lowest; groups under 20 rows are named as left out; "Race Time" and an order "State" are not people (report only); a real gap in an outcome or in blanks gets one sentence of public context only when the measured rule is about that outcome (earnings, an unknown occupation) and runs the same way (never a flag-rate gap; rules re-measured by `tools/bias_sources.py`, `docs/bias/FINDINGS.md`); the pane's line names only the checks that ran | `engine/fairness.py`, `ai/bias_context.pane_note_matching`, `ai/bias_rules.json`, pane `fairnessNote` | `test_blindspots.py`, `test_wild_census.py`, `test_delinquency.py`, `test_a_real_gap_in_an_outcome_gets_one_sentence_of_public_context_and_a_flag_rate_gap_none`, `test_fairness_words.py` |
 Adding or removing a check: update this table in the same commit.
 
 ## Patterns to copy
@@ -87,6 +88,11 @@ Adding or removing a check: update this table in the same commit.
 - A real slip stands alone; a long tail is crowded (census hours 1-99, survey weights): a value past the weird limit
   votes only when few other values lie between it and halfway back to the median (`limits_detector.in_tail`), and a
   50%+ zero column is judged on its amounts (`limits._limits`). `test_wild_census.py`.
+- A knob must reach a check that can move: strength only lowered k, and the long-tail crowd (a count, the same at
+  every level) excused every value k let in, so 5 and 10 flagged the same sure mistakes on every sheet John would
+  scan (AH-14). Levels 7+ now list a breach few other values share, and say how many: a crowd that grew with the level
+  listed honest bulk orders "with few values near it" while 32 sat near them, and honest people aged 91-98 for their
+  age (AH-14 review). Votes keep their crowd. Measure each level, not only 5 (`test_strength.py`).
 - A contraction keeps the word's first and last letters (Std, Mgmt): "Iran" is not one of "Ireland" (`_short_for`).
 - The installer starts Excel by its App Paths path, never "open this .xlsx": with no Excel, Windows' "Pick an app"
   held the install (`app.excel_exe`, `test_the_installer_finds_desktop_excel_or_says_none`).
@@ -135,6 +141,11 @@ Adding or removing a check: update this table in the same commit.
 - One stray spelling switches a check off: a single "no " among 480 Yes/No answers made three labels, and every
   outcome fairness test vanished with the real gap in it (South 34% vs East 8%). Labels are read the way the spelling
   check reads them (`fairness._labels`, `test_delinquency.py`).
+- Not significant is not even: "even across groups (22% to 50%, within normal variation)" was said of 80 people, the
+  census sentence about who earns over 50K was put under a loan's denials and under a Day/Night shift, and 40
+  countries' gap was stated against whichever one landed lowest (AH-17 bias hunt, 2026-10-22). The first fix swung the
+  other way: an outcome allowlist lost Approved/Declined, and pure noise read "not enough rows to tell" in 13 of 20 sheets
+  (AH-18 review). The report says only what its numbers show (`fairness.report`, `test_fairness_words.py`).
 - A cache that outlives a test run tests nothing: e2e/all.sh kept the AI answer cache, so a second run never reached
   the stub. It starts fresh now.
 - A DOM0 key handler returning false cancels the key: `onkeydown = (e) => e.key === "Enter" && e.ctrlKey && askFix()`

@@ -1,4 +1,4 @@
-import { POWER_BI_KEY, SEV, RANK } from "../constants/index.js";
+import { CAP, POWER_BI_KEY, SEV, RANK } from "../constants/index.js";
 import { state } from "../hooks/use-state.js";
 import { $, only, show } from "../utils/dom.js";
 import { n } from "../utils/text.js";
@@ -30,6 +30,8 @@ export async function runScan(auto) { // auto === false: the re-check right afte
   }
   busy(`Step 2 of 3: checking ${n(s.rows.length)} rows…`);
   const level = strength(), limits = await getLimits(); // getLimits re-reads the workbook's settings first
+  // the scan before this one, to say what a new level changed (not after auto-fix's own re-check: the level is the same)
+  const before = auto !== false && state.lastRows ? { level: state.lastStrength, rows: state.lastRows, hashes: state.hashes, sheet: state.lastScan?.sheet } : null;
   // the rows fixed or dismissed before, in any session: found again by their codes, wherever a sort moved them
   const hashes = s.rows.map(rowHash), keys = codes(hashes), kept = decisionsFor(s.sheet), decided = {};
   keys.forEach((k, i) => kept[k] && (decided[i] = kept[k]));
@@ -46,6 +48,11 @@ export async function runScan(auto) { // auto === false: the re-check right afte
   Object.assign(state, { hashes, codes: keys, decided });
   $("sheet-name").textContent = s.sheet;
   renderResults(body.rows, s, body.fairness);
+  if (auto !== false) {
+    const said = levelChange(before, { level, rows: body.rows, hashes, sheet: s.sheet });
+    $("level-change").textContent = said;
+    show("level-change", !!said);
+  }
   await paint(body.rows, s, decided); // a decided row is not highlighted again
   await watchSelection(s.sheet, onSelect);
   const secs = Math.max(1, Math.round((Date.now() - t0) / 1000));
@@ -74,6 +81,37 @@ export const flaggedRows = (rows) => rows.map((r, i) => ({ ...r, i })).filter((r
 export const listOrder = (rows, decided = {}) => [...flaggedRows(rows).map((r) => r.i),
   ...Object.keys(decided).map(Number).filter((i) => rows[i] && !SEV[rows[i].severity]).sort((a, b) => a - b)];
 
+// Pure: what a new slider level changed, counted from the two scans' own rows (AH-15: John moved 5 to 10 and saw the
+// same list, so he read the slider as just for show). Said only when the same sheet, unchanged, was checked at another
+// level: an edit between the scans would be counted as the level's doing. The rows that look wrong (High, Medium) and
+// those worth a check (Low) are counted apart: the slider mostly moves the second. When 50+ rows look wrong, the new
+// rows worth a check sit past the list's first 50, under "+ N more": the line says so (4,000 sales lines: 69 rows look
+// wrong at 5 and at 10, and the 48 rows 10 adds were all out of sight).
+export function levelChange(before, after) {
+  if (!before || !after || before.level === after.level || before.sheet !== after.sheet) return "";
+  if (!Array.isArray(before.rows) || before.rows.length !== after.rows.length || before.hashes?.length !== after.hashes?.length
+    || before.hashes.some((h, i) => h !== after.hashes[i])) return "";
+  const sure = (r) => r.severity === "High" || r.severity === "Medium", low = (r) => r.severity === "Low";
+  const ids = (rows, f) => new Set(rows.flatMap((r, i) => (f(r) ? [i] : [])));
+  const [s0, s1, l0, l1] = [ids(before.rows, sure), ids(after.rows, sure), ids(before.rows, low), ids(after.rows, low)];
+  const gone = (a, b) => [...a].filter((i) => !b.has(i)).length;
+  const some = (k, word) => `${n(k)} ${word} row${k === 1 ? "" : "s"}`; // "3 more rows", "1 fewer row"
+  const head = `Level ${after.level} (was ${before.level}):`;
+  if (!gone(s0, s1) && !gone(s1, s0) && !gone(l0, l1) && !gone(l1, l0))
+    return `${head} the same rows as at ${before.level} - nothing on this sheet sits between the two levels.`;
+  const parts = [], d = l1.size - l0.size;
+  if (d) parts.push(`${some(Math.abs(d), d > 0 ? "more" : "fewer")} worth a check${d > 0 && after.level > before.level ? " (borderline values)" : ""}`);
+  else if (gone(l0, l1)) parts.push(`${some(gone(l0, l1), "other")} worth a check`);
+  const up = gone(s1, s0), down = gone(s0, s1), look = (k) => (k === 1 ? "looks" : "look");
+  parts.push(!up && !down ? "the rows that look wrong are the same"
+    : [up && `${some(up, "more")} ${look(up)} wrong`, down && `${some(down, "fewer")} ${look(down)} wrong`].filter(Boolean).join(", "));
+  // the list puts every row that looks wrong before the ones worth a check: with CAP or more of those, a new row worth a
+  // check is past the first CAP, out of sight
+  const hidden = s1.size >= CAP && d > 0
+    ? ` The list shows the ${CAP} surest first, so the new ones are under "+ more" (all highlighted in the sheet).` : "";
+  return `${head} ${parts.join("; ")}.${hidden}`;
+}
+
 // Pure: the summary sentence
 export function summaryOf(rows) {
   const sure = rows.filter((r) => r.severity === "High" || r.severity === "Medium").length;
@@ -93,8 +131,16 @@ export function fairnessNote(fair) {
   const kept = `Fairness: ${cols.join(", ")} ${cols.length === 1 ? "is" : "are"} never used to decide which rows are unusual.`;
   const more = gaps.length > 3 ? ` - and ${gaps.length - 3} more under "All fairness checks"` : "";
   const context = [...new Set(gaps.slice(0, 3).map((t) => t.context).filter((c) => typeof c === "string" && c))];
-  return gaps.length ? `${kept} Check these gaps between groups: ${gaps.slice(0, 3).map((t) => t.text).join("; ")}${more}.${context.map((c) => ` ${c}`).join("")}`
-    : `${kept} Flags, blanks and outcomes are even across their groups.`;
+  if (gaps.length) return `${kept} Check these gaps between groups: ${gaps.slice(0, 3).map((t) => t.text).join("; ")}${more}.${context.map((c) => ` ${c}`).join("")}`;
+  // no gap: name only the checks that ran ("Flags, blanks and outcomes are even" was said on a sheet that ran one
+  // flag-rate check, AH-17), then the ones too few rows could prove, never "even" for them
+  const tests = fair.tests || [], ran = ["flag", "missing", "outcome"].filter((m) => tests.some((t) => t.verdict === "even" && t.measure === m));
+  const unclear = tests.filter((t) => t.verdict === "unclear").slice(0, 3).map((t) => t.text);
+  const kinds = ran.map((m) => ({ flag: "flags", missing: "blanks", outcome: "outcomes" })[m]);
+  const list = kinds.length > 1 ? `${kinds.slice(0, -1).join(", ")} and ${kinds.at(-1)}` : kinds[0] || "";
+  const said = (list ? ` ${list[0].toUpperCase()}${list.slice(1)} are even across ${cols.length === 1 ? "its" : "their"} groups.` : "") +
+    (unclear.length ? ` Not enough rows to tell: ${unclear.join("; ")}.` : "");
+  return `${kept}${said || ` Nothing to compare between ${cols.length === 1 ? "its" : "their"} groups: no flags, blanks or yes/no results in groups of 20 rows or more.`}`;
 }
 
 // Pure: every fairness test, gaps first, the widest gap (in rate points) first

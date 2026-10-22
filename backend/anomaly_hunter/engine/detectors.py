@@ -88,12 +88,18 @@ def _sentinel(v):
     return v in (0, -1) or (v == int(v) and abs(v) >= 99 and set(str(int(abs(v)))) == {"9"})
 
 
-def limits_detector(df, column_types, limits, typos_only=False):
+FEW = (2, 0.0025)  # the level-7+ list: a value past its usual limit that at most max(2, 0.25% of the column) others pass,
+# and at most 2 others reach
+
+
+def limits_detector(df, column_types, limits, typos_only=False, listing=False, quiet=()):
     """Weird-limit breach = vote. Baseline-only breach = noted, no vote. likely[i] = {col: probable typo fix}.
     typos_only (strength 0): only breaches with an obvious typo behind them, or negatives in a column that never goes
-    below 0, vote."""
+    below 0, vote. listing (strength 7+): alone_reasons[i] = breaches only noted that few other values share (FEW), said
+    with their count; never for a `quiet` column (protected ones, and ones whose limits the user saved)."""
     n = len(df)
-    r = {**_result(n), "noted": np.zeros(n, bool), "noted_reasons": [[] for _ in range(n)], "likely": [{} for _ in range(n)]}
+    r = {**_result(n), "noted": np.zeros(n, bool), "noted_reasons": [[] for _ in range(n)], "likely": [{} for _ in range(n)],
+         "alone_reasons": [[] for _ in range(n)]}
     for col in numbers(column_types):
         if not limits.get(col):
             continue
@@ -142,6 +148,20 @@ def limits_detector(df, column_types, limits, typos_only=False):
             elif (lim := _crossed(v, b_lo, b_hi)) is not None:
                 r["noted"][i] = True
                 r["noted_reasons"][i].append(f"{col} baseline limit is {lim:g}; this is {v:g}")
+                # a stricter level lists it when few other values are past the same limit: the gains (a 10 on a 1-5 scale,
+                # story points 50 by a usual 30) had 0-1, an honest tail of bulk orders 43-49 (AH-14 review). Counted,
+                # not "near it": "with few values near it" was shown with 32 values between it and the median. Never on a
+                # protected column (honest people aged 91-98 were listed for their age, AH-17) nor past a limit the user
+                # saved. Listed, never a vote; its real limit, value and count: nothing invented
+                if listing and col not in quiet and v not in common:
+                    up = v > lim
+                    others = int(len(sv) - np.searchsorted(sv, lim, "right") if up else np.searchsorted(sv, lim, "left")) - 1
+                    # ...and at most FEW[0] others as far out as it: on 30,000 clean normal rows every value past the usual
+                    # limit had under 0.25% of company (129 rows listed); only a column's own extremes stand that alone
+                    level = int(len(sv) - np.searchsorted(sv, v, "left") if up else np.searchsorted(sv, v, "right")) - 1
+                    if others <= max(FEW[0], FEW[1] * len(sv)) and level <= FEW[0]:
+                        r["alone_reasons"][i].append(f"{col} {v:g} is {'above' if v > lim else 'below'} its usual limit of {lim:g}, and "
+                                                     + ("no other value is too" if not others else f"{others} other value{'s are' if others > 1 else ' is'} too"))
     return r
 
 

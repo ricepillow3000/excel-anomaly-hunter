@@ -20,6 +20,10 @@ export async function post(path, body, seconds = 120) { // a stuck engine never 
   });
   const j = await r.json().catch(() => ({}));
   if (r.status === 404 && !j.error) throw new Error("the checker is out of date. Close Excel, then run the newest AnomalyHunter.exe (from a source folder: install.bat).");
-  if (!r.ok) throw new Error(j.error || "the checker returned an error.");
+  if (!r.ok) { // the status rides along: a refused key (400) is cleared from its box, a save that failed (503) is not
+    const err = new Error(j.error || "the checker returned an error.");
+    err.status = r.status;
+    throw err;
+  }
   return j;
 }

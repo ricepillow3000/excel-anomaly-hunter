@@ -116,7 +116,11 @@ def test_bias_tests_report_each_protected_column_and_stay_quiet_on_noise(scanned
     assert {"Age", "Location"} <= cols and fair["protected"] == {"Age": "demographic",
                                                                 "Location": "location (can stand in for race or income)"}
     assert {t["test"] for t in fair["tests"]} >= {"flag rate", "missing Income", "Delinquent_Account rate"}
-    assert all(t["verdict"] == "even" for t in fair["tests"]), [t for t in fair["tests"] if t["verdict"] != "even"]
+    # noise is never called a gap, and is "even" wherever its raw evidence is not suggestive; the one test whose raw
+    # evidence is (Age: missing Notes, p 0.004, not significant over 8 tests) says "not enough rows to tell" (AH-18)
+    verdicts = {f"{t['column']}: {t['test']}": t["verdict"] for t in fair["tests"]}
+    assert {k for k, v in verdicts.items() if v != "even"} == {"Age: missing Notes"}, verdicts
+    assert verdicts["Age: missing Notes"] == "unclear"
 
 
 def test_a_real_subgroup_gap_is_reported():
