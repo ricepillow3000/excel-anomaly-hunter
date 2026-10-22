@@ -147,6 +147,14 @@ for (let s = 0; s <= 10; s++) {
   assert.ok(fineLow ? hint.includes(`${fineLow.toLocaleString("en-US")} of 2,724 fine rows listed as worth a check`) : hint.includes("no fine row listed"), hint);
 }
 assert.notEqual(strengthHint(5), strengthHint(10));
+// every level opens with its own words: 6, 8 and 10 used to repeat the level below, so 6 opened "Recommended." though
+// 5 is the recommended level (Council B, AH-15 review; AH-20)
+{
+  const opening = (s) => strengthHint(s).split(/[.:]/)[0];
+  assert.equal(new Set([...Array(11).keys()].map(opening)).size, 11, [...Array(11).keys()].map(opening).join(" | "));
+  assert.deepEqual([...Array(11).keys()].filter((s) => strengthHint(s).startsWith("Recommended")), [5]);
+  assert.deepEqual([...Array(11).keys()].filter((s) => strengthHint(s).startsWith("Strictest")), [10]);
+}
 // what a new level changed, counted from the two scans' own rows (AH-15)
 const sev = (...s) => s.map((x) => ({ severity: x, magnitude: 1 })), H = ["a", "b", "c", "d", "e"];
 const at = (level, rows, hashes = H, sheet = "Sales") => ({ level, rows, hashes, sheet });
