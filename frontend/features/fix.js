@@ -47,13 +47,17 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
     const past = (a, b) => typeof v === "number" && ((a != null && v < a) || (b != null && v > b));
     const variant = likely && typeof likely[c] === "string" && typeof v === "string"; // "sales" where the column says "Sales"
     const miss = !variant && maybe && typeof maybe[c] === "string" && typeof v === "string"; // "Pencl" where it says "Pencil"
+    // a typo the numbers cannot prove (a value too small, a tenth among small whole numbers): offered only where the
+    // engine's own limit sentence says "(maybe 2)", as a guess the user confirms, never "likely" (AH-21)
+    const weak = typeof v === "number" && maybe && typeof maybe[c] === "number"
+      && issuesOf(reason).some(({ text }) => text.startsWith(`${c} weird limit is`) && text.includes(" (maybe "));
     const blank = !!lim && (v === "" || v === null) && reason.includes(`Blank cell in column ${c},`);
     // only a value the engine flagged: it never votes on a regular repeated value (a 5.76 toll), so neither do we
     // or past the usual limit with the engine's exact typo behind it: a lone x10 in a skewed column (wide weird limit)
     const outside = !!lim && reason.includes(`${c} weird limit is`) && (past(lo, hi) || (likely && likely[c] != null && past(lim[0], lim[1])));
     // the engine solved this cell from a total that doesn't add up (Total ÷ UnitCost): exact, not a median
     const sum = typeof v === "number" && likely && likely[c] != null ? sums.find((s) => s.cols.includes(c)) : null;
-    if (!(variant || miss || blank || outside || sum)) return;
+    if (!(variant || miss || weak || blank || outside || sum)) return;
     seen.add(c);
     if (calc && String(calc[j]).startsWith("=")) return void calcCells.push(cell); // never type over a formula
     if (variant) {
@@ -67,6 +71,11 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
         : reason.includes(`"${v}" is lowercase where`) ? `lowercase where the column's other labels are capitalised ("${maybe[c]}")`
           : `probably a misspelling of "${maybe[c]}", one letter off`;
       return void typos.push(`${c} says "${v}" - ${said}`);
+    }
+    if (weak) {
+      changes.push({ cell, new: String(maybe[c]) });
+      guessed = true;
+      return void typos.push(`${c} is ${v} - it may be a typo for ${maybe[c]} (${typoKind(v, maybe[c])}), but a real value can look the same`);
     }
     const typo = likely && likely[c];
     if (sum) {
@@ -119,7 +128,7 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
     for (const [rx, hint] of HINTS) if (rx.test(text)) notes.push(`${text} - ${hint}. Check it against the source.`);
   if (!notes.length)
     notes.push("Nothing here is clearly broken - the values are just unusual together. Check them against the source; if they're right, leave them.");
-  return { explanation: notes.join(" "), changes, guess: guessed }; // guess = a misspelling's fix
+  return { explanation: notes.join(" "), changes, guess: guessed }; // guess = a misspelling's fix, or a typo the numbers cannot prove
 }
 
 // a far-off date got "Nothing here is clearly broken" (12 of 12 on 40 real sheets, 2026-10-16)

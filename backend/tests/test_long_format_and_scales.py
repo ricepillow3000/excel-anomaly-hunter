@@ -85,7 +85,9 @@ def test_a_ten_among_small_numbers_is_never_offered_a_tenth_as_its_guess():
             for odd in (10, 20, 30):
                 rows = [[f"H{i:03d}", int(rng.choice([low, low, 1, 2, 2, 3, 4, 5]))] for i in range(80)] + [["H999", odd]]
                 r = scan(["Household", col], rows, fair=False)[1][-1]
-                assert not r.get("maybe") and "extra 0" not in r["reason"] and "range its other values use" not in r["reason"], (col, low, odd, r)
+                # ...nor as "likely": before AH-21 the limits path still gave 79 of these 258 a "likely" tenth (Children 20)
+                assert not r.get("maybe") and not r.get("likely") and "extra 0" not in r["reason"] \
+                    and "range its other values use" not in r["reason"], (col, low, odd, r)
 
 
 def test_a_column_whose_name_gives_its_range_gets_one_reason_for_one_cell():

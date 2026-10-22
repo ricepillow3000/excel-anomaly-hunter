@@ -588,7 +588,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
             "reason": (f"Flagged by {v} of {len(ran)}: " if v else "") + "; ".join(dict.fromkeys(hygiene + missed[i] + [r for d in voted for r in d["reasons"][i]])),  # dedupe, keep order
             "magnitude": float(max((d["magnitude"][i] for d in voted), default=0.0)),
             "likely": {**lim["likely"][i], **solved[i], **spell_fix[i]},  # the row's own arithmetic beats a typo pattern
-            "maybe": spell_maybe[i],  # misspelling: a guess the user confirms
+            "maybe": {**lim["maybe"][i], **spell_maybe[i]},  # misspelling, or a typo the numbers cannot prove: a guess the user confirms
             "exact": spell_exact[i],  # capitals/spaces where the usual spelling is 5x as common: safe to auto-fix
         })
     status = {k: "ran" if d["ran"] else f"sat out: {d['sit_out_reason']}" for k, d in dets.items()}
