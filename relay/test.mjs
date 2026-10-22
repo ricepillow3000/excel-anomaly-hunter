@@ -113,6 +113,13 @@ const broken = await worker.fetch(new Request("https://relay.example/fix", { met
   { ...env, TOKENS: "{bad" });
 assert.equal(broken.status, 500, "a mistyped TOKENS secret");
 assert.ok((await broken.json()).error);
+// the daily-cap counter itself failing (a Durable Object outage): our own JSON, and Google is never called (AH-13)
+const sentBefore = sent.length;
+const noCounter = await worker.fetch(new Request("https://relay.example/fix", { method: "POST", headers: { Authorization: "Bearer inv_ana" },
+  body: JSON.stringify(good) }), { ...env, COUNTER: { idFromName: () => "caps", get: () => ({ fetch: async () => { throw new Error("DO down"); } }) } });
+assert.equal(noCounter.status, 503, "the cap counter is down");
+assert.ok((await noCounter.json()).error, "still a JSON error");
+assert.equal(sent.length, sentBefore, "and nothing reached Google");
 
 // if the [vars] caps are ever lost, the fallbacks are the real quota (10 / 20), never looser
 googleStatus = 200;

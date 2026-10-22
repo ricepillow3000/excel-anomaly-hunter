@@ -103,7 +103,7 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
   for (const [, raw, col] of reason.matchAll(/Placeholder "([^"]*)" in column ([^;]+)/g))
     notes.push(`${col} says "${raw}" - a stand-in for a missing value. Fill in the real value, or leave the cell empty.`);
   // a limit crossed in a cell typed as text ("$1,000,000.00"): explained, never overwritten
-  for (const { text } of issuesOf(reason, columns)) { // anything the loop above didn't explain (text cells, no limits)
+  for (const { text } of issuesOf(reason)) { // anything the loop above didn't explain (text cells, no limits)
     const m = /^(.+?) weird limit is (\S+); this is (\S+)/.exec(text), b = /^Blank cell in column (.+?), which/.exec(text);
     if (m && !seen.has(m[1])) notes.push(`${m[1]} is ${m[3]}, past its limit of ${m[2]}. Check it against the source; if it's right, leave it.`);
     if (b && !seen.has(b[1])) notes.push(`${b[1]} is blank where the rest of the column is filled - fill it in from the source.`);

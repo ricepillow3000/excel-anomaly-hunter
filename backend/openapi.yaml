@@ -96,7 +96,10 @@ paths:
       requestBody:
         required: true
         content: {application/json: {schema: {type: object, required: [key], properties: {key: {type: string}}}}}
-      responses: {"200": {$ref: "#/components/responses/Json"}, "400": {$ref: "#/components/responses/Error"}}
+      responses:  # 503: the key file could not be written on this PC (a full disk, a locked file)
+        "200": {$ref: "#/components/responses/Json"}
+        "400": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
 components:
   schemas:
     Cell:

@@ -12,3 +12,5 @@ def no_real_ai_keys(monkeypatch, tmp_path):
     monkeypatch.setattr(client, "RELAY_URL", "")
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.setattr(client, "_sleep", lambda s: None, raising=False)  # retries wait for real only outside tests
+    for name in ("_body", "_fix_prompt", "_odd_prompt"):  # an eval arm swaps these in its process: each test gets the app's back
+        monkeypatch.setattr(client, name, getattr(client, name))

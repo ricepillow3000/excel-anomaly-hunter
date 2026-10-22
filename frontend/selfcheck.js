@@ -1,15 +1,13 @@
 // Pane pure-logic check, no Office/fetch. Run: node frontend/selfcheck.js
 import assert from "node:assert";
 import { esc, asNumber } from "./utils/text.js";
-import { cutNote, tableFromGrid, isDateFormat, excelDate, rowFromAddress, colLetter, cellAt, sameRow } from "./utils/sheet.js";
+import { cutNote, tableFromGrid, isDateFormat, excelDate, rowFromAddress, colLetter, cellAt, sameRow, readAs } from "./utils/sheet.js";
 import { issuesOf, recommendFix, typoKind, afterFix, unusualColumn } from "./features/fix.js";
-import { plainReason, summaryOf, flaggedRows, fairnessNote, fairnessTests } from "./features/scan.js";
+import { plainReason, summaryOf, flaggedRows, fairnessNote, fairnessTests, listOrder } from "./features/scan.js";
 import { strengthHint, asStrength, levelAt } from "./pages/strength.js";
 import { exactFixes, safeUndo } from "./features/autofix.js";
 import { readdirSync, readFileSync } from "node:fs";
 import { hash, rowHash, codes, codeAt, asBook, decide, PER_SHEET, SHEETS } from "./features/decisions.js";
-import { listOrder } from "./features/scan.js";
-import { readAs } from "./utils/sheet.js";
 
 // Fixed / Dismissed are kept in the workbook under a code per row, so they outlive the pane (2026-10-20: a dismissed
 // row came back flagged after a reload, an accepted fix vanished). Same values = same code, on any PC, every time.

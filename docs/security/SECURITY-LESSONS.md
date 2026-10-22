@@ -105,3 +105,17 @@ Nothing critical or high. Keys never leak, no input raises privilege, websites c
 | "A scan sends nothing" was untested | It held only because of how the code was laid out | Pinned: a scan with a key and an invite code saved makes no network or SDK call | `test_a_scan_never_sends_anything_to_google_even_with_a_key_saved` |
 
 Lesson for future sweeps: **an allowlist beats a blocklist** whenever the attacker gets to pick the name.
+
+### 2026-10-22: complete vulnerability sweep (AH-13)
+Nothing critical or high. No key leaks, no input raises privilege. 3,966 hostile bodies at every route, with the real
+Ask AI and word-check code and only Google stubbed, gave no 500 and no answer that wasn't JSON. Fixed:
+
+| Finding | Attack | Fix | Test |
+|---|---|---|---|
+| One huge header switched off the word check | A text column named with 5,000 emoji never fits one AI request, so the first request was refused as too large and Check words failed for every column | A column whose name can't fit even with one value is left out, like a value over 60 characters (`client.odd_text`) | `test_a_column_whose_name_alone_is_too_big_for_a_request_is_left_out_and_the_rest_still_checked` |
+| Saving the key could answer a 500 in Werkzeug's words | A full disk, a locked file or a folder where the key file goes made Save, an invite code and Remove crash | The file work is caught: a 503 in our words, details to `server.log`; any other unexpected error now also answers in our words | `test_a_key_that_cannot_be_saved_gets_our_own_words_never_a_500`, `test_an_unexpected_engine_error_answers_in_our_own_words` |
+| The relay threw when its cap counter was down | A Durable Object outage made the Worker throw, so Cloudflare answered with its own page (it still never reached Google) | The counter call is inside a try: a 503 in our JSON, and Google is never called | `relay/test.mjs` (the cap counter is down) |
+| The workbook repointer's only guard was an assert | `python -O` removes asserts, so the same file given as source and copy was wiped while it was read | A real check that compares the resolved paths | `test_the_workbook_repointer_never_writes_over_its_source_even_with_asserts_off` |
+
+Lesson: **a guard must hold however the code is run.** An assert is a test, not a guard, and a call outside the
+try is a crash waiting for the one service that is down.

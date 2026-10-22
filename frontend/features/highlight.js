@@ -5,8 +5,6 @@ import { busy, notice } from "../components/progress.js";
 
 // Highlight cells: color the flagged rows, CHUNK rows per Excel call. The old fill of each row is remembered,
 // so Remove highlights puts back exactly what was there.
-// ---- Highlights: color the flagged rows, CHUNK rows per Excel call. The old fill of each row is remembered,
-// so Remove highlights puts back exactly what was there. ----
 export async function paint(rows, s, skip = {}) { // skip: rows fixed or dismissed before - not highlighted again
   await unpaint();
   const flagged = rows.flatMap((r, i) => (COLOR[r.severity] && !skip[i] ? [i] : []));
