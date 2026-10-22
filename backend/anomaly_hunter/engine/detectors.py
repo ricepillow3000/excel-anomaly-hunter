@@ -59,7 +59,7 @@ def column_stats(x):
     x = x[~np.isnan(x)]
     mags = np.sort(np.abs(x[x != 0]))
     return {"n": len(x), "nonneg": int((x >= 0).sum()), "mags": mags, "logmed": np.median(np.log10(mags)) if len(mags) else 0.0,
-            "whole": bool((x == np.round(x)).mean() >= 0.95)}
+            "whole": bool((x == np.round(x)).mean() >= 0.95), "pos": np.sort(x[x > 0])}
 
 
 def likely_value(v, st, lo, hi):
@@ -75,8 +75,13 @@ def likely_value(v, st, lo, hi):
         far = m >= BEYOND * (mags[-2] if mags[-1] == m else mags[-1])
     else:
         far = m * BEYOND <= (mags[1] if mags[0] == m else mags[0])
-    # sign flip only where negatives are rare (v itself is one): 2% returns (Online Retail) are refunds, not slips
-    flip = v < 0 and st["nonneg"] >= 0.99 * (st["n"] - 1)
+    # sign flip only where negatives are rare (v itself is one): 2% returns (Online Retail) are refunds, not slips. And a
+    # slip stands alone: the only negative, or as big as the column's usual positives (10th percentile up). Seattle's
+    # real -1.1 highs and a sea level's -0.44 sat beside other small negatives, under every positive (AH-21: 5 of 5 flips
+    # on real values had this shape, 0 of 41 right ones; an airport's -44.5 beside 3 real territories still flips)
+    pos = st["pos"]
+    flip = v < 0 and st["nonneg"] >= 0.99 * (st["n"] - 1) and (
+        st["n"] - st["nonneg"] == 1 or (len(pos) > 0 and m >= pos[int(0.1 * (len(pos) - 1))]))
     for c in ([v / 10 ** k] if 1 <= abs(k) <= 3 and far else []) + ([-v] if flip else []):
         if lo <= c <= hi and (c == round(c) or not st["whole"]):  # 999 in a 1-5 count column is not "likely 0.999"
             return float(c) if c == -v else float(f"{c:.10g}")  # a flipped sign is exact: rounding made it "missing zeros"
@@ -99,6 +104,7 @@ def limits_detector(df, column_types, limits, typos_only=False, listing=False, q
     with their count; never for a `quiet` column (protected ones, and ones whose limits the user saved)."""
     n = len(df)
     r = {**_result(n), "noted": np.zeros(n, bool), "noted_reasons": [[] for _ in range(n)], "likely": [{} for _ in range(n)],
+         "maybe": [{} for _ in range(n)],
          "alone_reasons": [[] for _ in range(n)]}
     for col in numbers(column_types):
         if not limits.get(col):
@@ -142,9 +148,16 @@ def limits_detector(df, column_types, limits, typos_only=False, listing=False, q
                 r["votes"][i] = True
                 with np.errstate(over="ignore"):
                     r["magnitude"][i] = max(r["magnitude"][i], min(BIG, abs(v - lim) / sd))
-                if fix is not None:
-                    r["likely"][i][col] = fix
-                r["reasons"][i].append(f"{col} weird limit is {lim:g}; this is {v:g}" + (f" (likely {fix:g})" if fix is not None else ""))
+                # a typo the numbers cannot tell from a real value is never "likely" (AH-21). A value too small (DC's real 4%
+                # for 0.4; Sq Ft 19 for 1915, whose lost digits are not 00) is offered as a guess the user confirms. A tenth
+                # in a column of small whole numbers is offered nothing: a real 20 floors among 1-5 is a rating 20 typed for
+                # 2 to the numbers, and real counts offered a tenth is why the 1-5 scale rule was dropped (John, AH-16)
+                small = fix is not None and fix != -v and abs(fix) < abs(v) and st["whole"] and \
+                    st["mags"][-2 if st["mags"][-1] == abs(v) else -1] <= 10
+                said = None if fix is None or small else "maybe" if fix != -v and abs(fix) > abs(v) else "likely"
+                if said:
+                    r[said][i][col] = fix
+                r["reasons"][i].append(f"{col} weird limit is {lim:g}; this is {v:g}" + (f" ({said} {fix:g})" if said else ""))
             elif (lim := _crossed(v, b_lo, b_hi)) is not None:
                 r["noted"][i] = True
                 r["noted_reasons"][i].append(f"{col} baseline limit is {lim:g}; this is {v:g}")
@@ -162,6 +175,20 @@ def limits_detector(df, column_types, limits, typos_only=False, listing=False, q
                     if others <= max(FEW[0], FEW[1] * len(sv)) and level <= FEW[0]:
                         r["alone_reasons"][i].append(f"{col} {v:g} is {'above' if v > lim else 'below'} its usual limit of {lim:g}, and "
                                                      + ("no other value is too" if not others else f"{others} other value{'s are' if others > 1 else ' is'} too"))
+    # one slip changes one cell: 2+ cells of a row off by the same step (California's fruit, all "/1000", adding up
+    # exactly) are a real row or another unit, so none of them is offered as a typo (the card already held them back;
+    # the reason still said "likely", AH-21). The cells stay flagged
+    for i in range(n):
+        steps = {}
+        for kind in ("likely", "maybe"):
+            for col, fix in r[kind][i].items():
+                v = float(df[col].iloc[i])
+                if fix and v:  # likely_value never offers 0, nor a fix for 0
+                    steps.setdefault("sign" if fix == -v else int(round(np.log10(abs(v / fix)))), []).append((kind, col, fix))
+        for same in steps.values():
+            for kind, col, fix in same if len(same) >= 2 else ():
+                del r[kind][i][col]
+                r["reasons"][i] = [s.replace(f" ({kind} {fix:g})", "") if s.startswith(f"{col} weird limit is") else s for s in r["reasons"][i]]
     return r
 
 

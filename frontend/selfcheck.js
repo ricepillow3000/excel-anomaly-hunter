@@ -184,13 +184,19 @@ assert.equal(levelChange(null, at(10, sev("Low"))), "");
 assert.deepEqual([0, 10, 7, undefined, null, "3", 11, -1, 2.5].map(asStrength), [0, 10, 7, 5, 5, 5, 5, 5, 5]);
 // pointer anywhere on (or past) a 200px track starting at x=100 -> the nearest level
 assert.deepEqual([100, 110, 109, 200, 300, 0, 999, 141].map((x) => levelAt(x, 100, 200)), [0, 1, 0, 5, 10, 0, 10, 2]);
-// AH-16: a number is never guessed. A "maybe 1 with an extra 0" for a 10 among 1-5 answers was dropped (John,
-// 2026-10-22): real counts (household size, nights stayed) were offered a tenth. Only a misspelling's text is a guess
+// AH-16: a number the engine did not offer is never guessed. A "maybe 1 with an extra 0" for a 10 among 1-5 answers was
+// dropped (John, 2026-10-22): real counts (household size, nights stayed) were offered a tenth
 {
   const sc = recommendFix(["Who", "Q3"], [["a", 4], ["b", 10], ["c", 2]], 1, { Q3: [1, 5, 0, 9] },
     "Q3 baseline limit is 9; this is 10", 0, 0, {}, null, { Q3: 1 });
-  assert.deepEqual(sc.changes, [], "a number in maybe is never written");
+  assert.deepEqual(sc.changes, [], "a number in maybe is never written unless the engine's own limit sentence offers it");
   assert.ok(!sc.guess, sc.explanation);
+  // AH-21: a value too small for its column may have lost a 0 or be real (DC's 4% among 30-70%): offered as the engine
+  // says it, "(maybe 0.4)", a Best guess card labelled a guess, never "likely" and never auto-applied
+  const wg = recommendFix(["State", "Share"], [["a", 0.5], ["b", 0.04]], 1, { Share: [0.3, 0.7, 0.2, 0.8] },
+    "Flagged by 1 of 2: Share weird limit is 0.2; this is 0.04 (maybe 0.4)", 0, 0, {}, null, { Share: 0.4 });
+  assert.deepEqual(wg.changes, [{ cell: "B3", new: "0.4" }]);
+  assert.ok(wg.guess && wg.explanation.includes("Share is 0.04 - it may be a typo for 0.4 (missing zeros - ÷10), but a real value can look the same"), wg.explanation);
   // a long-format blank judged inside its group says the group, not "the rest of the column", and writes nothing
   const lb = recommendFix(["Indicator", "Value"], [["GDP (bn)", 4], ["GDP (bn)", null]], 1, { Value: [1, 9, 0, 20] },
     "Blank cell in column Value, which is otherwise filled for Indicator GDP (bn)", 0, 0, {}, null, {});

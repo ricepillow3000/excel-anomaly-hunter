@@ -90,13 +90,20 @@ def _typo_kind(v, fix):
 
 def suggested_fix(columns, row, verdict):
     """The values the pane's card offers for this row (fix.recommendFix), as "Column: old → new" parts: a capitals/
-    spaces variant, the row's own arithmetic, an obvious typo (x10, a sign), a possible misspelling marked "(a guess)".
+    spaces variant, the row's own arithmetic, an obvious typo (x10, a sign), a possible misspelling or a typo the numbers
+    cannot prove (a value too small, a tenth among small whole numbers) marked "(a guess)".
     Like the card, 2+ cells off by the same step are a real row, not 2 typos: none of them is offered. The card also
     never types over a formula; this file doesn't know which cells hold one."""
     likely, maybe = verdict.get("likely") or {}, verdict.get("maybe") or {}
     reason = verdict.get("reason") or ""
     parts = re.sub(r"^Flagged by \d+ of \d+: ", "", reason).split("; ")
     summed = {c for p in parts if (m := _ADDS.match(p)) for c in (m[1], m[4], m[5])}
+    issues = []  # the reason's sentences, a limit's "; this is" kept with it (the pane's issuesOf)
+    for p in parts:
+        if p.startswith("this is ") and issues:
+            issues[-1] += "; " + p
+        else:
+            issues.append(p)
     out, slips = [], {}  # slips: kind -> the parts it made
     for c, v in zip(columns, row, strict=True):
         new = likely.get(c)
@@ -105,6 +112,8 @@ def suggested_fix(columns, row, verdict):
             out.append(f'{c}: "{v}" → "{new}"')
         elif isinstance(maybe.get(c), str) and isinstance(v, str):
             out.append(f'{c}: "{v}" → "{maybe[c]}" (a guess)')
+        elif isinstance(maybe.get(c), (int, float)) and is_num and any(s.startswith(f"{c} weird limit is ") and " (maybe " in s for s in issues):
+            out.append(f"{c}: {_shown(v)} → {_shown(maybe[c])} (a guess)")  # a typo the numbers cannot prove (AH-21)
         elif new is not None and is_num and (c in summed or f"{c} weird limit is" in reason):
             out.append(f"{c}: {_shown(v)} → {_shown(new)}")
             if c not in summed:
