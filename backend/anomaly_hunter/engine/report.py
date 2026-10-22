@@ -56,8 +56,9 @@ def write_report(df, rows, status, out_path, limits_path, warnings, fair=None):
     fairness.append([])
     fairness.append(["Result", "What was compared", "Finding", "Groups (rows, rate)", "p-value", "In real data"])
     for t in (fair or {}).get("tests", []):
-        fairness.append(["Gap - check why" if t["verdict"] == "gap" else "Even", f"{t['column']}: {t['test']}", t["text"],
-                         "; ".join(f"{g} ({n}, {r:.0%})" for g, (n, r) in t["groups"].items()), round(t["p"], 4), t.get("context", "")])
+        fairness.append([{"gap": "Gap - check why", "unclear": "Not enough rows to tell"}.get(t["verdict"], "Even"), f"{t['column']}: {t['test']}",
+                         t["text"], "; ".join(f"{g} ({n}, {r:.0%})" for g, (n, r) in t["groups"].items()),
+                         "" if t["p"] is None else round(t["p"], 4), t.get("context", "")])
     for ws in wb:  # a scanned cell "=HYPERLINK(...)" or "=cmd|..." stays text: opening the report never runs it
         for row in ws.iter_rows():
             for cell in row:

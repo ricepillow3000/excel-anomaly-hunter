@@ -95,7 +95,19 @@
    "kind": "outcome",
    "text": "In public US census data (UCI Adult, 48,842 people) 30.4% of men and 10.9% of women earn over 50K: a gap between groups is common in real data and is not by itself a data error.",
    "pane_for": "outcome",
-   "pane": "For comparison, in public US census data (UCI Adult, 48,842 people) 30.4% of men and 10.9% of women earn over 50K, so a gap like this is common in real data: check how the rows were collected and what else differs between the groups, never change a value toward its group."
+   "pane": "For comparison, in public US census data (UCI Adult, 48,842 people) 30.4% of men and 10.9% of women earn over 50K, so a gap like this is common in real data: check how the rows were collected and what else differs between the groups, never change a value toward its group.",
+   "pane_match": [
+    "income",
+    "salary",
+    "salaries",
+    "wage",
+    "wages",
+    "earnings",
+    "earn",
+    "pay"
+   ],
+   "pane_high": "Male",
+   "pane_low": "Female"
   },
   {
    "id": "race_outcome",
@@ -103,7 +115,19 @@
    "kind": "outcome",
    "text": "In public US census data (UCI Adult, 48,842 people) 26.9% of Asian or Pacific Islander people and 12.1% of Black people earn over 50K: a gap between groups is common in real data and is not by itself a data error.",
    "pane_for": "outcome",
-   "pane": "For comparison, in public US census data (UCI Adult, 48,842 people) 26.9% of Asian or Pacific Islander people and 12.1% of Black people earn over 50K, so a gap like this is common in real data: check how the rows were collected and what else differs between the groups, never change a value toward its group."
+   "pane": "For comparison, in public US census data (UCI Adult, 48,842 people) 26.9% of Asian or Pacific Islander people and 12.1% of Black people earn over 50K, so a gap like this is common in real data: check how the rows were collected and what else differs between the groups, never change a value toward its group.",
+   "pane_match": [
+    "income",
+    "salary",
+    "salaries",
+    "wage",
+    "wages",
+    "earnings",
+    "earn",
+    "pay"
+   ],
+   "pane_high": "Asian-Pac-Islander",
+   "pane_low": "Black"
   },
   {
    "id": "age_outcome",
@@ -111,7 +135,19 @@
    "kind": "outcome",
    "text": "In public US census data (UCI Adult, 48,842 people) 38.3% of people aged 45-59 and 5.1% of people under 30 earn over 50K: a gap between groups is common in real data and is not by itself a data error.",
    "pane_for": "outcome",
-   "pane": "For comparison, in public US census data (UCI Adult, 48,842 people) 38.3% of people aged 45-59 and 5.1% of people under 30 earn over 50K, so a gap like this is common in real data: check how the rows were collected and what else differs between the groups, never change a value toward its group."
+   "pane": "For comparison, in public US census data (UCI Adult, 48,842 people) 38.3% of people aged 45-59 and 5.1% of people under 30 earn over 50K, so a gap like this is common in real data: check how the rows were collected and what else differs between the groups, never change a value toward its group.",
+   "pane_match": [
+    "income",
+    "salary",
+    "salaries",
+    "wage",
+    "wages",
+    "earnings",
+    "earn",
+    "pay"
+   ],
+   "pane_high": "45-59",
+   "pane_low": "under 30"
   },
   {
    "id": "marital_outcome",
@@ -119,7 +155,19 @@
    "kind": "outcome",
    "text": "In public US census data (UCI Adult, 48,842 people) 44.6% of married people and 4.5% of never-married people earn over 50K: a gap between groups is common in real data and is not by itself a data error.",
    "pane_for": "outcome",
-   "pane": "For comparison, in public US census data (UCI Adult, 48,842 people) 44.6% of married people and 4.5% of never-married people earn over 50K, so a gap like this is common in real data: check how the rows were collected and what else differs between the groups, never change a value toward its group."
+   "pane": "For comparison, in public US census data (UCI Adult, 48,842 people) 44.6% of married people and 4.5% of never-married people earn over 50K, so a gap like this is common in real data: check how the rows were collected and what else differs between the groups, never change a value toward its group.",
+   "pane_match": [
+    "income",
+    "salary",
+    "salaries",
+    "wage",
+    "wages",
+    "earnings",
+    "earn",
+    "pay"
+   ],
+   "pane_high": "Married-civ-spouse",
+   "pane_low": "Never-married"
   },
   {
    "id": "employment_outcome",
@@ -187,7 +235,16 @@
    "kind": "missing",
    "text": "In UCI Adult occupation is unknown for 18.4% of people 60 and over and 2.3% of people aged 30-44: blanks that gather in one group are often how the data were collected.",
    "pane_for": "missing",
-   "pane": "For comparison, in UCI Adult occupation is unknown for 18.4% of people 60 and over and 2.3% of people aged 30-44, so blanks that gather in one group are often how the data were collected: check why before filling any."
+   "pane": "For comparison, in UCI Adult occupation is unknown for 18.4% of people 60 and over and 2.3% of people aged 30-44, so blanks that gather in one group are often how the data were collected: check why before filling any.",
+   "pane_match": [
+    "occupation",
+    "job",
+    "jobs",
+    "workclass",
+    "employment"
+   ],
+   "pane_high": "60 and over",
+   "pane_low": "30-44"
   },
   {
    "id": "sex_missing",
@@ -195,7 +252,16 @@
    "kind": "missing",
    "text": "In UCI Adult occupation is unknown for 7.9% of women and 4.7% of men: blanks that gather in one group are often how the data were collected.",
    "pane_for": "missing",
-   "pane": "For comparison, in UCI Adult occupation is unknown for 7.9% of women and 4.7% of men, so blanks that gather in one group are often how the data were collected: check why before filling any."
+   "pane": "For comparison, in UCI Adult occupation is unknown for 7.9% of women and 4.7% of men, so blanks that gather in one group are often how the data were collected: check why before filling any.",
+   "pane_match": [
+    "occupation",
+    "job",
+    "jobs",
+    "workclass",
+    "employment"
+   ],
+   "pane_high": "Female",
+   "pane_low": "Male"
   }
  ]
 }

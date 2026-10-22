@@ -131,8 +131,16 @@ export function fairnessNote(fair) {
   const kept = `Fairness: ${cols.join(", ")} ${cols.length === 1 ? "is" : "are"} never used to decide which rows are unusual.`;
   const more = gaps.length > 3 ? ` - and ${gaps.length - 3} more under "All fairness checks"` : "";
   const context = [...new Set(gaps.slice(0, 3).map((t) => t.context).filter((c) => typeof c === "string" && c))];
-  return gaps.length ? `${kept} Check these gaps between groups: ${gaps.slice(0, 3).map((t) => t.text).join("; ")}${more}.${context.map((c) => ` ${c}`).join("")}`
-    : `${kept} Flags, blanks and outcomes are even across their groups.`;
+  if (gaps.length) return `${kept} Check these gaps between groups: ${gaps.slice(0, 3).map((t) => t.text).join("; ")}${more}.${context.map((c) => ` ${c}`).join("")}`;
+  // no gap: name only the checks that ran ("Flags, blanks and outcomes are even" was said on a sheet that ran one
+  // flag-rate check, AH-17), then the ones too few rows could prove, never "even" for them
+  const tests = fair.tests || [], ran = ["flag", "missing", "outcome"].filter((m) => tests.some((t) => t.verdict === "even" && t.measure === m));
+  const unclear = tests.filter((t) => t.verdict === "unclear").slice(0, 3).map((t) => t.text);
+  const kinds = ran.map((m) => ({ flag: "flags", missing: "blanks", outcome: "outcomes" })[m]);
+  const list = kinds.length > 1 ? `${kinds.slice(0, -1).join(", ")} and ${kinds.at(-1)}` : kinds[0] || "";
+  const said = (list ? ` ${list[0].toUpperCase()}${list.slice(1)} are even across ${cols.length === 1 ? "its" : "their"} groups.` : "") +
+    (unclear.length ? ` Not enough rows to tell: ${unclear.join("; ")}.` : "");
+  return `${kept}${said || ` Nothing to compare between ${cols.length === 1 ? "its" : "their"} groups: no flags, blanks or yes/no results in groups of 20 rows or more.`}`;
 }
 
 // Pure: every fairness test, gaps first, the widest gap (in rate points) first
