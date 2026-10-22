@@ -106,7 +106,9 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
   for (const { text } of issuesOf(reason)) { // anything the loop above didn't explain (text cells, no limits)
     const m = /^(.+?) weird limit is (\S+); this is (\S+)/.exec(text), b = /^Blank cell in column (.+?), which/.exec(text);
     if (m && !seen.has(m[1])) notes.push(`${m[1]} is ${m[3]}, past its limit of ${m[2]}. Check it against the source; if it's right, leave it.`);
-    if (b && !seen.has(b[1])) notes.push(`${b[1]} is blank where the rest of the column is filled - fill it in from the source.`);
+    // a long-format sheet's blank is judged inside its group (AH-16): "the rest of the column" would be untrue there
+    const g = / otherwise filled for (.+)$/.exec(text);
+    if (b && !seen.has(b[1])) notes.push(`${b[1]} is blank where the rest of ${g ? g[1] : "the column"} is filled - fill it in from the source.`);
   }
   for (const [, err, col] of reason.matchAll(/Excel error (#\S+) in ([^;]+)/g))
     notes.push(`${col} shows ${err}: ${EXCEL_ERRORS[err] || "its formula failed"}. Fix the formula or its inputs ` +

@@ -114,7 +114,7 @@ def placeholders(df, column_types, skip):
 def blanks(df, column_types, skip, errors_log, threshold=0.80):
     """Blank cell in a column that is >= 80% filled (summary rows not counted): a required field left empty. Mostly-empty
     columns (notes, optional extras) are left alone. Was 95%: a credit sheet's Income, 92% filled, hid 39 blanks."""
-    out = [[] for _ in range(len(df))]
+    out, prot = [[] for _ in range(len(df))], fairness.protected(column_types)
     wrong = {}  # text/errors already named as such are not blanks
     for i, c, _ in errors_log:
         wrong.setdefault(c, []).append(i)
@@ -125,15 +125,50 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
         lab = df[g].astype(str).str.strip().where(~skip & ~_blank(df[g])) if t == "text" else None
         if lab is not None and lab.nunique() <= 50 and len(labels) < 64:  # 64: a crafted 1,000-column sheet stays fast
             labels[g] = lab
-    for col in column_types:
-        b = _blank(df[col]) & ~skip & ~df.index.isin(wrong.get(col, []))  # empty text cells too, not only converted ones
-        if b.any() and 1 - b.sum() / max(1, (~skip).sum()) >= threshold:
-            for g, lab in labels.items():
-                if g != col and (b & lab.notna()).any():
-                    st = b[lab.notna()].groupby(lab[lab.notna()]).agg(["all", "size"])
-                    b &= ~lab.isin(st.index[st["all"] & (st["size"] >= 5)])
+    cols = list(column_types)
+    if not cols:
+        return out
+    blank = np.column_stack([(_blank(df[c]) & ~skip & ~df.index.isin(wrong.get(c, []))).to_numpy(bool) for c in cols])
+    # blanks per label per column, counted for every column at once: grouping each label column against each column
+    # took 168 s on a crafted 64 x 1,500-column sheet (AH-16 build, 2026-10-22)
+    groups = {}
+    for g, lab in labels.items():
+        code = pd.factorize(lab)[0]
+        keep = np.flatnonzero(code >= 0)
+        order = keep[np.argsort(code[keep], kind="stable")]
+        if not len(order):
+            continue
+        starts = np.flatnonzero(np.r_[True, np.diff(code[order]) != 0])
+        size = np.diff(np.r_[starts, len(order)])
+        groups[g] = (code, size, np.add.reduceat(blank[order].astype(np.int32), starts, axis=0))
+    n = max(1, (~skip).sum())
+    for j, col in enumerate(cols):
+        b = blank[:, j].copy()
+        if b.any() and 1 - b.sum() / n >= threshold:
+            for g, (code, size, per) in groups.items():
+                # a group all blank before the groups above took theirs; the rest counted again on what is left
+                if g == col or not ((per[:, j] == size) & (size >= 5)).any() or not (b & (code >= 0)).any():
+                    continue
+                now = np.bincount(code[code >= 0], weights=b[code >= 0], minlength=len(size))
+                b &= ~np.isin(code, np.flatnonzero((now == size) & (size >= 5)))
             for i in df.index[b]:
                 out[i].append(f"Blank cell in column {col}, which is otherwise filled")
+        elif b.any():
+            # a long-format sheet fills Value for some indicators and Pct for others, so Value is 2/3 filled, under the bar,
+            # and a blank in a GDP row went unseen (AH-17 stress hunt, 9 of 9 missed). A group that fills the column
+            # (95%+, 20+ rows) next to one that leaves it empty (20% or less, 20+ rows) is the layout; a blank in the filled group
+            # is a slip. Never judged by a protected group: a person's blank is not measured against their sex or race
+            for g, (code, size, per) in groups.items():
+                if g == col or g in prot or not 2 <= len(size) <= 20:
+                    continue
+                fill = 1 - per[:, j] / size
+                full = np.flatnonzero((fill >= 0.95) & (size >= 20))
+                # ...and the empty group is layout only with 20+ rows of its own: a real planets table's distance (96% filled
+                # for one method) had only 1 of 5 Pulsar rows empty-ish, and 23 real gaps were called a slip (blind round 22)
+                if len(full) and ((fill <= 0.2) & (size >= 20)).any():
+                    for i in df.index[b & np.isin(code, full)]:
+                        out[i].append(f"Blank cell in column {col}, which is otherwise filled for {g} {_short(labels[g][i])}")
+                    break
     return out
 
 
