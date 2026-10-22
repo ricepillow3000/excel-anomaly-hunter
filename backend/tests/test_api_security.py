@@ -218,3 +218,61 @@ def test_every_installed_package_is_pinned_by_constraints_txt(tmp_path, monkeypa
                                                          if not line.startswith("numpy==")))
     monkeypatch.setattr(pinned, "ROOT", tmp_path)
     assert any(p.startswith("numpy ") and "not pinned" in p for p in pinned.problems())
+
+
+@pytest.mark.parametrize("key", ["AIzaGOODkey123", "inv_" + "a" * 24, ""])
+def test_a_key_that_cannot_be_saved_gets_our_own_words_never_a_500(monkeypatch, tmp_path, key):
+    # AH-13 sweep: a full disk, a locked file or a folder where the key file goes made /key a 500 in Werkzeug's words
+    monkeypatch.setattr(client, "check_key", lambda k: (True, "Key works."))
+    (tmp_path / "blocked").mkdir()
+    monkeypatch.setattr(client, "KEY_FILE", tmp_path / "blocked")  # a folder: every write or unlink of it fails
+    monkeypatch.setattr(client, "INVITE_FILE", tmp_path / "blocked")
+    r = create_app().test_client().post("/key", json={"key": key})
+    assert r.status_code == 503 and "this PC" in r.get_json()["error"] and "internal error" not in r.get_json()["error"]
+
+
+def test_an_unexpected_engine_error_answers_in_our_own_words(monkeypatch):
+    # a bug anywhere still answers like the rest of the engine, never Werkzeug's "The server encountered an internal error"
+    monkeypatch.setattr(client, "provider", lambda: 1 / 0)
+    r = create_app().test_client().get("/health")
+    assert r.status_code == 500 and r.get_json() == {"error": "Engine error - details in server.log"}
+
+
+def test_the_workbook_repointer_never_writes_over_its_source_even_with_asserts_off(tmp_path):
+    # AH-13 sweep: its only guard was an assert, which python -O removes: the same path in and out truncated the
+    # workbook while it was being read
+    import subprocess
+    import sys
+    import zipfile
+    from pathlib import Path
+    book = tmp_path / "Book.xlsx"
+    with zipfile.ZipFile(book, "w") as z:
+        z.writestr("xl/webextensions/webextension1.xml", b"C:\\excel-anomaly-hunter\\panel")
+    before = book.read_bytes()
+    tool = Path(__file__).resolve().parents[2] / "tools" / "repoint_workbook.py"
+    for same in (str(book), str(book).upper()):
+        r = subprocess.run([sys.executable, "-O", str(tool), str(book), same], capture_output=True, text=True, timeout=60)
+        assert r.returncode != 0 and "copy" in (r.stdout + r.stderr) and book.read_bytes() == before, same
+
+
+def test_the_workbook_repointer_never_writes_over_its_source_through_a_hard_link(tmp_path):
+    # AH-13 reconvene 1 (Agent 2's review): a hard link, or a Windows 8.3 short name, is the same file under another
+    # name, so comparing paths let it through and python -O truncated the source (BadZipFile). Asked of the file system now.
+    import os
+    import subprocess
+    import sys
+    import zipfile
+    from pathlib import Path
+    book = tmp_path / "Book.xlsx"
+    with zipfile.ZipFile(book, "w") as z:
+        z.writestr("xl/webextensions/webextension1.xml", b"C:\\excel-anomaly-hunter\\panel")
+    before = book.read_bytes()
+    link = tmp_path / "link.xlsx"
+    os.link(book, link)
+    tool = Path(__file__).resolve().parents[2] / "tools" / "repoint_workbook.py"
+    r = subprocess.run([sys.executable, "-O", str(tool), str(book), str(link)], capture_output=True, text=True, timeout=60)
+    assert r.returncode != 0 and "copy" in (r.stdout + r.stderr) and book.read_bytes() == before
+    zipfile.ZipFile(book).testzip()  # still a whole workbook
+    copy = tmp_path / "Copy.xlsx"  # a real copy (a new file) still works
+    r = subprocess.run([sys.executable, "-O", str(tool), str(book), str(copy)], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0 and b"excel-anomaly-hunter\\frontend" in zipfile.ZipFile(copy).read("xl/webextensions/webextension1.xml")

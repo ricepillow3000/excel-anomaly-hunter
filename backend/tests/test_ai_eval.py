@@ -28,7 +28,7 @@ def run(monkeypatch, tmp_path):
     for name in ("_body", "_fix_prompt", "_odd_prompt", "provider", "gemini_key"):
         monkeypatch.setattr(client, name, getattr(client, name))  # main swaps these in its own process: put them back
     monkeypatch.setattr(client.urllib.request, "urlopen", client.urllib.request.urlopen)
-    urls, todo, hooks, jobs, bodies = [], [], [], ai_eval.jobs, []
+    urls, todo, hooks, jobs, bodies, answer = [], [], [], ai_eval.jobs, [], [None]
 
     def google(req, timeout=None, **kw):
         urls.append(req.full_url)
@@ -39,10 +39,11 @@ def run(monkeypatch, tmp_path):
             raise todo.pop(0)
         name = json.loads(req.data)["response_format"]["json_schema"]["name"]
         ans = {"odd": [{"column": "Item", "value": "London", "why": "a city"}]} if name == "odd" else \
-            {"explanation": "x10 typo.", "changes": [{"cell": "B5", "new": "50"}]}
+            answer[0](json.loads(req.data)) if answer[0] else {"explanation": "x10 typo.", "changes": [{"cell": "B5", "new": "50"}]}
         return io.BytesIO(json.dumps({"model": "gemini-test", "choices": [{"message": {"content": json.dumps(ans)}, "finish_reason": "stop"}]}).encode())
 
-    def go(*flags, odd=(), fail=(), hook=None):
+    def go(*flags, odd=(), fail=(), hook=None, fix_answer=None):  # fix_answer(request body) -> the fake fix, per request
+        answer[0] = fix_answer
         monkeypatch.setattr(client.urllib.request, "urlopen", google)
         monkeypatch.setattr(ai_eval, "jobs", lambda s, r: jobs(s, r, fix=[CASE], odd=list(odd)))
         todo[:], hooks[:] = list(fail), [hook] if hook else []
@@ -162,6 +163,18 @@ def test_the_temperature_arm_sets_0_1_in_the_eval_only_and_the_app_sends_no_temp
     assert "temperature" not in sent["base"] and sent["temperature_0.1"]["temperature"] == 0.1
     assert {k: v for k, v in sent["temperature_0.1"].items() if k != "temperature"} == sent["base"]  # only that differs
     assert "temperature_0.1 vs base on dev: wins 0, losses 0" in capsys.readouterr().out  # paired against base (same fake answer)
+
+
+def test_the_temperature_arm_counts_a_case_only_it_gets_right_as_a_win(run, monkeypatch, capsys, tmp_path):
+    # the same fake answer for both arms would print "wins 0, losses 0" even if the count were broken (Agent 2, review)
+    monkeypatch.setenv("GEMINI_API_KEY", KEY)
+    right = {"explanation": "x10 typo.", "changes": [{"cell": "B5", "new": "50"}]}
+    wrong = {"explanation": "Use the median.", "changes": [{"cell": "B5", "new": "=MEDIAN(B2:B4)"}]}
+    code, urls, _ = run("--yes", "--runs", "1", "--arms", "base,temperature_0.1",
+                        fix_answer=lambda body: right if body.get("temperature") == 0.1 else wrong)
+    out = capsys.readouterr().out
+    assert code == 0 and len(urls) == 2
+    assert "temperature_0.1 vs base on dev: wins 1, losses 0" in out and "base/dev: right 0/1" in out and "temperature_0.1/dev: right 1/1" in out
 
 
 def test_the_app_itself_sends_no_temperature():

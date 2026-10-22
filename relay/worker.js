@@ -47,11 +47,16 @@ export default {
     if (typeof prompt !== "string" || !prompt || body.messages.length !== 1 || !body.response_format) return json(400, { error: "Bad request." });
 
     // count first: a request that would go over a cap never reaches Google
-    const counter = env.COUNTER.get(env.COUNTER.idFromName("caps"));
-    const ok = await (await counter.fetch("https://caps/take", {
-      // fallbacks = the real quota (if the [vars] are ever lost, never looser); switch the relay off by emptying TOKENS
-      method: "POST", body: JSON.stringify({ who, perUser: cap(env.DAILY_PER_INVITE, 10), total: cap(env.DAILY_TOTAL, 20) }),
-    })).json();
+    let ok;
+    try { // the counter down (a Durable Object outage): our own JSON, and Google is never called (AH-13 sweep)
+      const counter = env.COUNTER.get(env.COUNTER.idFromName("caps"));
+      ok = await (await counter.fetch("https://caps/take", {
+        // fallbacks = the real quota (if the [vars] are ever lost, never looser); switch the relay off by emptying TOKENS
+        method: "POST", body: JSON.stringify({ who, perUser: cap(env.DAILY_PER_INVITE, 10), total: cap(env.DAILY_TOTAL, 20) }),
+      })).json();
+    } catch {
+      return json(503, { error: "The AI relay can't count today's fixes right now - try again in a minute." });
+    }
     if (!ok.allowed) return json(429, { error: ok.why });
 
     try {

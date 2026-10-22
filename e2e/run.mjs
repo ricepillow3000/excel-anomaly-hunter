@@ -23,6 +23,19 @@ const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width:
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.stack));
 page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+// every unhandled promise rejection and uncaught error, heard by the page itself: window listeners set before any of the
+// pane's scripts run (and again after a reload). Each mode must end with none (AH-13)
+const unhandled = [];
+await page.exposeFunction("__unhandled", (kind, what) => unhandled.push(`${kind}: ${what}`));
+await page.addInitScript(() => {
+  addEventListener("unhandledrejection", (e) => __unhandled("unhandledrejection", String(e.reason?.stack || e.reason)));
+  addEventListener("error", (e) => __unhandled("error", String(e.error?.stack || e.message)));
+});
+// a failure this test causes on purpose: the console lines matching `expected` are its own; anything else still counts
+const failing = async (expected, fn) => { const k = errors.length; await fn(); errors.splice(k, Infinity, ...errors.slice(k).filter((e) => !expected.test(e))); };
+const DROPPED = /ERR_CONNECTION_RESET|ERR_CONNECTION_REFUSED|ERR_FAILED|checker isn't running|status of 50[23]|AI error|Couldn't save that/;
+const DOWN = "the checker isn't running. Double-click AnomalyHunter.exe again (from a source folder: install.bat), then try again.";
+const dropMidway = async (r) => { await new Promise((go) => setTimeout(go, 300)); await r.abort("connectionreset"); }; // sent, then the engine is gone
 const scans = []; // every /scan body the pane sent: the slider's level and the Power BI switch must reach the engine
 page.on("request", (r) => r.url().endsWith("/scan") && scans.push(JSON.parse(r.postData())));
 // every POST the pane makes, in order ([path, body]), and every /scan answer as the engine sent it: each control must
@@ -72,6 +85,13 @@ await page.route("https://appsforoffice.microsoft.com/**", (r) => r.fulfill({ co
 await page.goto("https://127.0.0.1:5055/taskpane.html");
 await page.evaluate((rows) => { __load("Sales", rows, [0]); for (const c of "ABCDE") __fill("Sales", c + "11", "#00B050"); __fill("Sales", "B22", "#00B0F0"); }, rows);
 await page.waitForSelector("#main-ui", { state: "visible" });
+// the recorder itself can fail: a planted rejection and a planted throw are both heard, then forgotten
+await failing(/e2e recorder probe/, async () => {
+  await page.evaluate(() => { Promise.reject(new Error("e2e recorder probe")); setTimeout(() => { throw new Error("e2e recorder probe"); }); });
+  await page.waitForTimeout(300);
+});
+ok(unhandled.length === 2 && unhandled.some((u) => u.startsWith("unhandledrejection")) && unhandled.some((u) => u.startsWith("error")), "the page's recorder hears an unhandled rejection and an uncaught error - " + JSON.stringify(unhandled));
+errors.splice(0, Infinity, ...errors.filter((e) => !/e2e recorder probe/.test(e))); unhandled.length = 0;
 const text = (sel) => page.textContent(sel);
 const cell = (a) => page.evaluate((a) => __cell("Sales", a), a);
 const idle = () => page.waitForFunction(() => !document.getElementById("scan").disabled);
@@ -311,6 +331,27 @@ if (mode === "flow") {
     await pop.close();
   }
 
+  // 7a) 30 scans and re-checks: what the pane keeps (listeners, page nodes) stays what is on screen (AH-13). Counted by
+  // Chromium itself after a forced garbage collection, so a leaked list or a listener added per scan shows up
+  const cdp = await page.context().newCDPSession(page);
+  const counters = async () => { await cdp.send("HeapProfiler.collectGarbage"); return cdp.send("Memory.getDOMCounters"); };
+  await find();
+  // counted with $$eval: an element handle (page.$$) keeps its node alive, and 5 of them read as a leak of 5 rows
+  const rowsShown = () => page.$$eval("#flagged-list li", (lis) => lis.length);
+  const dom0 = await counters(), shownBefore = await rowsShown();
+  for (let k = 0; k < 20; k++) await find();
+  await page.focus("#strength");
+  for (let k = 0; k < 10; k++) { // 6, 5, 6, 5...: each a re-check, ending back at 5
+    const to = k % 2 ? 5 : 6;
+    await page.keyboard.press(to === 6 ? "ArrowRight" : "ArrowLeft");
+    await page.waitForFunction((to) => __state.lastStrength === to && !document.getElementById("scan").disabled, to, { timeout: 15000 }).catch(() => {});
+    await idle();
+  }
+  const dom30 = await counters(), shownAfter = await rowsShown();
+  ok(dom30.jsEventListeners <= dom0.jsEventListeners && dom30.nodes <= dom0.nodes + 20 && dom30.documents <= dom0.documents
+    && shownAfter === shownBefore && shownAfter <= 51 && (await page.evaluate(() => __handlers("Sales"))) === 1,
+    `30 scans and re-checks: listeners, page nodes and the list stay as they were - before ${JSON.stringify(dom0)}, after ${JSON.stringify(dom30)}, rows ${shownBefore} -> ${shownAfter}`);
+
   // 7) rescans don't stack click-watchers; a second sheet takes the watcher over
   await find(); await find();
   ok(await page.evaluate(() => __handlers("Sales")) === 1, "rescans don't stack selection handlers");
@@ -327,10 +368,35 @@ if (mode === "flow") {
   ok((await text("#notice")) === "Something went wrong: Engine error - details in server.log" && !(await page.evaluate(() => document.getElementById("clear-highlights").disabled)),
     "an engine error is said in plain words, and the pane is usable again - " + (await text("#notice")));
 
+  // 7c) the engine goes down mid-scan (the request is sent, then the connection drops): plain words that name the file
+  // most people have (the exe; install.bat only in a source folder or an invite kit), and the pane is usable again
+  await failing(DROPPED, async () => { await page.route("**/scan", dropMidway, { times: 1 }); await page.click("#scan"); await idle(); });
+  ok((await text("#notice")) === "Something went wrong: " + DOWN && !(await page.evaluate(() => document.getElementById("scan").disabled)),
+    "the engine down mid-scan: said in plain words, buttons back - " + (await text("#notice")));
+  // an engine from before a route existed answers 404 with no words of ours: told to update, naming the exe too
+  await failing(/status of 404|out of date/, async () => { await page.route("**/scan", (r) => r.fulfill({ status: 404, body: "" }), { times: 1 }); await page.click("#scan"); await idle(); });
+  ok((await text("#notice")) === "Something went wrong: the checker is out of date. Close Excel, then run the newest AnomalyHunter.exe (from a source folder: install.bat).",
+    "an engine too old for the pane: said in plain words - " + (await text("#notice")));
+  // and mid-Accept (on the Other sheet, checked last): the cell is written, the re-check that could not run is said on the card
+  await find(); await openRow(81);
+  await failing(DROPPED, async () => { await page.route("**/check", dropMidway, { times: 1 }); await page.click("#fix-apply"); await idle(); });
+  ok((await text("#fix-status")) === `Accepted. Couldn't check it again (${DOWN}) - click Find problems to check the sheet.` && (await page.evaluate(() => __cell("Other", "B81").v)) === "East",
+    "the engine down mid-Accept: the fix is in, and the card says the re-check couldn't run - " + (await text("#fix-status")));
+  await page.click("#fix-undo"); await idle(); await page.click("#fix-back");
+
   // 8) an empty sheet gets a plain message, not an error
   await page.evaluate(() => __load("Empty", [["only a header"]]));
   await page.click("#scan"); await idle();
   ok((await text("#notice")).startsWith("Not enough data here."), "empty sheet explained");
+
+  // 9) the engine down when the pane opens: the pane says so, and Try again brings it back once it answers
+  await failing(DROPPED, async () => {
+    await page.route("**/health", (r) => r.abort("connectionrefused"), { times: 1 });
+    await page.reload(); await page.waitForSelector("#server-down", { state: "visible" });
+  });
+  ok((await text("#server-down")).includes("The checker isn't running.") && !(await page.isVisible("#main-ui")), "the engine down at start: said in plain words");
+  await page.click("#retry-health"); await page.waitForSelector("#main-ui", { state: "visible", timeout: 10000 }).catch(() => {});
+  ok(await page.isVisible("#main-ui"), "Try again opens the pane once the engine answers");
 }
 
 if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.py
@@ -386,6 +452,18 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
   await page.click("#fix-ask");
   await page.waitForFunction(() => document.getElementById("fix-ask").textContent === "Ask AI" && !document.getElementById("fix-ask").disabled, null, { timeout: 30000 });
   ok(posts.includes("/fix") && posts.every((p) => p === "/fix" || p === "/check"), "clicking Ask AI sends only /fix and /check, never /scan - " + posts);
+  // the AI call fails: the engine's own words for a provider error, or the engine gone mid-call. Said on the card, the
+  // button comes back, the typed request stays
+  for (const [how, fail, words] of [
+    ["the provider fails", (r) => r.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ error: "AI error - details in server.log" }) }), "AI error - details in server.log"],
+    ["the engine goes down mid-call", dropMidway, DOWN]]) {
+    await failing(DROPPED, async () => {
+      await page.route("**/fix", fail, { times: 1 }); await page.click("#fix-ask");
+      await page.waitForFunction(() => document.getElementById("fix-ask").textContent === "Ask AI" && !document.getElementById("fix-ask").disabled, null, { timeout: 30000 }).catch(() => {});
+    });
+    ok((await text("#fix-status")) === "AI could not help: " + words && !(await page.isDisabled("#fix-ask")) && (await page.inputValue("#fix-intent")) === typed,
+      `Ask AI when ${how}: said on the card, Ask AI back, the request kept - ` + (await text("#fix-status")));
+  }
 
   // the AI key box (Options > AI help) takes typed keys too; Enter in it sends nothing
   await page.click("#settings summary");
@@ -410,6 +488,12 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
     "the AI's words are text, never markup; a word the AI made up is dropped");
   const sent = fs.readFileSync(DIR + "claude.log", "utf8").trim().split("\n").map(JSON.parse).find((l) => l.prompt.includes("distinct values"));
   ok(sent && sent.prompt.includes('"Region"') && !/7777|170\.43|Units|2026-/.test(sent.prompt), "Check words sends the text column's words only, no numbers, dates or rows");
+  for (const [how, fail, words] of [
+    ["the provider fails", (r) => r.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ error: "AI error - details in server.log" }) }), "AI error - details in server.log"],
+    ["the engine goes down mid-call", dropMidway, DOWN]]) {
+    await failing(DROPPED, async () => { await page.route("**/odd-text", fail, { times: 1 }); await page.click("#odd-check"); await idle(); });
+    ok((await text("#odd-list")) === "AI could not check: " + words && !(await page.isDisabled("#odd-check")), `Check words when ${how}: said in plain words - ` + (await text("#odd-list")));
+  }
 }
 
 if (mode === "nokey") {
@@ -442,9 +526,23 @@ if (mode === "nokey") {
   ok(since(c5) === "/key" && calls[c5][1].key === "", "Remove key sends exactly one /key, with an empty key - " + since(c5));
   ok(!(await page.isVisible("#ai-box")) && (await page.isVisible("#ai-off")) && !fs.existsSync(DIR + "cert/invite-code.txt"),
     "Remove key: AI help off, the code deleted from this PC");
+  // saving fails: the PC can't keep the file (the engine's 503, AH-13), or the engine is gone. Said where the key goes,
+  // and the key box is cleared only after a successful save
+  const disk = "Couldn't save that on this PC - the disk may be full or the file in use. Details in server.log.";
+  for (const [how, fail, words] of [
+    ["the PC can't keep it", (r) => r.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: disk }) }), disk],
+    ["the engine goes down mid-save", dropMidway, DOWN]]) {
+    await failing(DROPPED, async () => {
+      await page.route("**/key", fail, { times: 1 }); await page.fill("#ai-key", code); await page.click("#save-key");
+      await page.waitForFunction((w) => document.getElementById("ai-state").textContent === w, words, { timeout: 10000 }).catch(() => {});
+    });
+    ok((await text("#ai-state")) === words && !(await page.isVisible("#ai-box")), `Save key when ${how}: said in plain words, AI help stays off - ` + (await text("#ai-state")));
+  }
+  await page.fill("#ai-key", "");
 }
 
 if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/pane-${mode}.png`, fullPage: true }); // proof for people
 const real = errors.filter((e) => !(mode === "nokey" && e.includes("status of 400"))); // the junk key gets the engine's 400 on purpose
 ok(real.length === 0, "no page errors " + JSON.stringify(real));
+ok(unhandled.length === 0, "no unhandled promise rejection or uncaught error on the page in this mode - " + JSON.stringify(unhandled));
 await browser.close();

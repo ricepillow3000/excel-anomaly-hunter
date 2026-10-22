@@ -294,3 +294,14 @@ def test_after_a_timeout_the_next_try_may_wait_until_the_deadline(monkeypatch):
     monkeypatch.setattr(client.urllib.request, "urlopen", timed)
     assert client._ask("fix it").explanation == "Use 50."
     assert seen[0] == 90 and seen[1] > 100
+
+
+def test_a_column_whose_name_alone_is_too_big_for_a_request_is_left_out_and_the_rest_still_checked(monkeypatch):
+    # AH-13 sweep: a 5,000-emoji header could never fit, so its every part went over the relay's 8 KB and the first
+    # request failed the whole word check ("too large") - one odd header switched the check off for every column
+    log = []
+    monkeypatch.setattr(client, "_ask", _odd_ask(log))  # it asserts each request fits the budget
+    huge = "🦀" * 5000
+    hits, partial = client.odd_text({huge: ["Pen", "Desk", "London"], "Col0": ["category value 0", "category value 1"]})
+    assert log and not partial and all(huge not in p for p in log)
+    assert [h["column"] for h in hits] == ["Col0"]

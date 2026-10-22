@@ -129,6 +129,8 @@ def create_app(scan_csv=None):
 
     @app.errorhandler(HTTPException)
     def json_error(e):  # 404, 405, 413...: JSON like every other answer, not Werkzeug's HTML page (ZAP active scan)
+        if e.code == 500:  # a bug anywhere: our words, not Werkzeug's (Flask has already logged it to server.log)
+            return {"error": "Engine error - details in server.log"}, 500
         return {"error": e.description}, e.code
 
     built = version()
@@ -206,22 +208,29 @@ def create_app(scan_csv=None):
         # classic keys "AIza..."; newer service-account-bound keys "AQ.Ab8..." contain dots
         if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_.\-]{0,200}", key.strip()):
             return {"error": "That doesn't look like an API key - copy it again from Google Cloud (APIs & Services > Credentials)."}, 400
+        try:
+            return save_key(key.strip())
+        except OSError:  # a full disk, a locked file (AH-13 sweep): our words, and the details go to server.log
+            app.logger.exception("could not save or remove the AI key")
+            return {"error": "Couldn't save that on this PC - the disk may be full or the file in use. Details in server.log."}, 503
+
+    def save_key(key):
         client.KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
-        if not key.strip():  # Remove key: an own key and an invite code alike
+        if not key:  # Remove key: an own key and an invite code alike
             client.KEY_FILE.unlink(missing_ok=True)
             client.INVITE_FILE.unlink(missing_ok=True)
             return {"ai_available": client.api_key_configured(), "ai_provider": client.provider()}
-        if key.strip().startswith("inv_"):  # an invite code to John's relay: kept here, checked by the relay on use
-            if not re.fullmatch(r"inv_[A-Za-z0-9_\-]{20,64}", key.strip()):
+        if key.startswith("inv_"):  # an invite code to John's relay: kept here, checked by the relay on use
+            if not re.fullmatch(r"inv_[A-Za-z0-9_\-]{20,64}", key):
                 return {"error": "That doesn't look like a whole invite code - copy it again."}, 400
-            client.INVITE_FILE.write_text(key.strip(), encoding="utf-8")
+            client.INVITE_FILE.write_text(key, encoding="utf-8")
             on = client.provider() == "relay"
             return {"ai_available": client.api_key_configured(), "ai_provider": client.provider(),
                     "message": "Invite code saved. AI help is on." if on else "Invite code saved - the shared AI isn't switched on yet."}
-        ok, words = client.check_key(key.strip())  # tested now, not at the first Ask AI
+        ok, words = client.check_key(key)  # tested now, not at the first Ask AI
         if ok is False:
             return {"error": words}, 400  # a rejected key is not kept
-        client.KEY_FILE.write_text(key.strip(), encoding="utf-8")
+        client.KEY_FILE.write_text(key, encoding="utf-8")
         return {"ai_available": client.api_key_configured(), "ai_provider": client.provider(), "message": words}
 
     @app.post("/fix")

@@ -375,6 +375,9 @@ def odd_text(values):
     # between them - so packing never re-measures a whole request (a crafted sheet can have thousands of columns).
     base, room = len(_wire("", ODD_SCHEMA, "odd")), BUDGET - len(_wire(_odd_prompt({}), ODD_SCHEMA, "odd"))
     size = lambda c, vs: len(_wire(f"{json.dumps(c, ensure_ascii=False)}: {json.dumps(vs, ensure_ascii=False)}", ODD_SCHEMA, "odd")) - base
+    # a header too long for any request with even one value can't be sent: left out like a 60+ character value, so it
+    # never fails the check for every other column (a 5,000-emoji header, AH-13 sweep 2026-10-22)
+    cols = {c: vs for c, vs in cols.items() if size(c, vs[:1]) <= room}
     pieces = []
     for c, vs in cols.items():
         if size(c, vs) <= room:
