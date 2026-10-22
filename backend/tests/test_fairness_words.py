@@ -29,16 +29,40 @@ def report(cols, rows):
     return scan_agent.scan(cols, rows)[-1]
 
 
-def test_a_gap_too_few_rows_can_prove_is_not_enough_rows_to_tell_never_even():
-    # AH-17 W1: 80 people, 15% vs 40% planted (22% vs 50% drawn) was "even across groups (22% to 50%, within normal variation)"
+def test_a_big_spread_chance_explains_is_no_clear_difference_never_even():
+    # AH-17 W1: 80 people, 15% vs 40% planted (20% vs 42% drawn, raw p 0.054) read "even across groups (... within
+    # normal variation)". Chance explains it (raw p >= 0.05), so it is not "unclear" either (Council A, AH-18 review)
     cols, rows = people(80, {"F": 0.15, "M": 0.4}, 80)
     t = next(t for t in report(cols, rows)["tests"] if t["test"] == "Approved rate")
-    assert t["verdict"] == "unclear" and "even" not in t["text"] and "not enough rows to tell" in t["text"], t["text"]
+    assert t["verdict"] == "even" and t["p"] >= 0.05 and "even" not in t["text"] and "no clear difference" in t["text"], t["text"]
     drawn = sorted(np.mean([r[3] for r in rows if r[1] == g]) for g in "FM")
-    assert f"({drawn[0]:.0%} to {drawn[1]:.0%})" in t["text"] and drawn[1] >= 1.25 * drawn[0] + 0.05  # the sheet does show a gap
-    # a difference that is small as well as unproven is still within normal variation
+    assert f"({drawn[0]:.0%} to {drawn[1]:.0%}, within normal variation)" in t["text"]
+    # a difference that is small as well as unproven is plain "even"
     t = next(t for t in report(*people(500, {"F": 0.3, "M": 0.3}, 7))["tests"] if t["test"] == "Approved rate")
-    assert t["verdict"] == "even" and "within normal variation" in t["text"]
+    assert t["verdict"] == "even" and "even across groups" in t["text"] and "within normal variation" in t["text"]
+
+
+def test_a_big_gap_the_raw_evidence_suggests_but_cannot_prove_is_not_enough_rows_to_tell():
+    # raw p under 0.05 but not significant after the correction, and a big gap: "not enough rows to tell"
+    cols, rows = people(80, {"F": 0.15, "M": 0.4}, 10)  # drawn 15% vs 38%, raw p 0.042
+    t = next(t for t in report(cols, rows)["tests"] if t["test"] == "Approved rate")
+    assert 0.01 <= t["p"] < 0.05, t["p"]
+    assert t["verdict"] == "unclear" and "not enough rows to tell" in t["text"] and "even" not in t["text"], t["text"]
+
+
+@pytest.mark.parametrize("groups, n", [([f"C{k:02d}" for k in range(40)], 8000), (["N", "S", "E", "W"], 800), (["F", "M"], 600)])
+def test_noise_is_called_even_unless_its_raw_evidence_is_suggestive(groups, n):
+    # Council A: pure noise over 20 seeds read "not enough rows to tell" 13/20 (40 groups), 5/20 (4), 1/20 (2): the gap was
+    # judged on the group picked for standing out, with no p threshold (p 0.74 said "not enough rows to tell")
+    unclear = 0
+    for seed in range(20):
+        cols, rows = people(n, {g: 0.3 for g in groups}, 100 + seed, col="Country" if len(groups) > 2 else "Sex", groups=groups)
+        for t in report(cols, rows)["tests"]:
+            if t["test"] == "Approved rate":
+                suggestive = t["p"] < 0.05 and (len(groups) == 2 or t["p_group"] * len(groups) < 0.05)
+                assert t["verdict"] != "gap" and (t["verdict"] == "even" or suggestive), (seed, t["p"], t.get("p_group"), t["text"])
+                unclear += t["verdict"] == "unclear"
+    assert unclear <= 2, unclear
 
 
 def test_every_test_says_which_kind_of_check_it_is():
@@ -52,14 +76,16 @@ def test_every_test_says_which_kind_of_check_it_is():
 
 
 @pytest.mark.parametrize("yes, no", [("Approved", "Denied"), ("Yes", "No"), ("Pass", "Fail"), (">50K", "<=50K"), ("Hired", "Not hired"),
-                                     ("True", "False"), ("Defaulted", "Repaid")])
+                                     ("True", "False"), ("Defaulted", "Repaid"), ("Declined", "Approved"), ("Defaulted", "Paid"),
+                                     ("Delinquent", "Current"), ("Accepted", "Declined"), ("Fraud", "Legit"), ("Active", "Inactive"),
+                                     ("Win", "Lose"), ("Left", "Stayed"), ("Graduated", "Dropped out"), ("Spam", "Ham")])
 def test_a_two_label_column_of_opposites_is_an_outcome(yes, no):
     cols, rows = people(600, {"F": 0.3, "M": 0.3}, 3, outcome="Result", label=(yes, no))
     assert any(t["test"].startswith("Result ") and t["measure"] == "outcome" for t in report(cols, rows)["tests"])
 
 
-@pytest.mark.parametrize("col, labels", [("Shift", ("Night", "Day")), ("Dept", ("A", "B")), ("Product Type", ("Hardware", "Software")),
-                                         ("Hand", ("Left", "Right"))])
+@pytest.mark.parametrize("col, labels", [("Shift", ("Night", "Day")), ("Dept", ("A", "B")), ("Hand", ("Left", "Right")),
+                                         ("Session", ("AM", "PM")), ("When", ("Weekday", "Weekend")), ("Setting", ("Urban", "Rural"))])
 def test_a_two_label_column_that_is_not_an_outcome_is_not_tested_as_one(col, labels):
     # AH-17 W3: "Shift" Day/Night by Gender was "a real gap, check why" with a census sentence about earning over 50K
     cols, rows = people(1000, {"F": 0.6, "M": 0.27}, 4, col="Gender", outcome=col, label=labels)
@@ -133,10 +159,47 @@ def test_the_excel_report_says_not_enough_rows_to_tell_never_even_for_an_unclear
     from openpyxl import load_workbook
 
     from anomaly_hunter.engine.report import write_report
-    cols, rows = people(80, {"F": 0.15, "M": 0.4}, 80)
+    cols, rows = people(80, {"F": 0.15, "M": 0.4}, 10)  # raw p 0.042: "not enough rows to tell"
     small = [[f"Q{i}", "X", 500.0, 1] for i in range(15)]  # a group too small to compare: no p-value at all
     df, out, *_, fair = scan_agent.scan(cols, rows + small)
     write_report(df, out, {}, tmp_path / "r.xlsx", None, [], fair)
     lines = [[c.value for c in r] for r in load_workbook(tmp_path / "r.xlsx")["Fairness"].iter_rows()]
     unclear = [r for r in lines if r[1] == "Sex: Approved rate"]
     assert unclear and unclear[0][0] == "Not enough rows to tell", unclear
+
+
+@pytest.mark.parametrize("yes, no", [("Declined", "Approved"), ("Defaulted", "Paid"), ("Delinquent", "Current")])
+def test_a_real_loan_gap_is_reported_whatever_words_the_outcome_uses(yes, no):
+    # Council A: a 15% vs 35% gap written Declined/Approved, Defaulted/Paid or Delinquent/Current was lost in AH-18
+    cols, rows = people(2000, {"Female": 0.15, "Male": 0.35}, 31, col="Gender", outcome="Loan Status", groups=("Female", "Male"), label=(yes, no))
+    t = next(t for t in report(cols, rows)["tests"] if t["test"].startswith("Loan Status "))
+    assert t["verdict"] == "gap" and t["text"].startswith("Gender Male:"), t["text"]
+
+
+def test_rates_under_ten_percent_keep_one_decimal():
+    # Council A: 1.2% vs 0.4% read "1% ... vs 0%", and 1.0% vs 1.5% read "(1% to 2%)"
+    cols, rows = people(40000, {"F": 0.004, "M": 0.012}, 3, outcome="Defaulted")
+    t = next(t for t in report(cols, rows)["tests"] if t["test"] == "Defaulted rate")
+    drawn = {g: np.mean([r[3] for r in rows if r[1] == g]) for g in "FM"}
+    assert f"{drawn['M']:.1%}" in t["text"] and f"{drawn['F']:.1%}" in t["text"], t["text"]
+    cols, rows = people(40000, {"F": 0.010, "M": 0.015}, 3, outcome="Defaulted")
+    t = next(t for t in report(cols, rows)["tests"] if t["test"] == "Defaulted rate")
+    drawn = sorted(np.mean([r[3] for r in rows if r[1] == g]) for g in "FM")
+    assert f"{drawn[0]:.1%}" in t["text"] and f"{drawn[1]:.1%}" in t["text"], t["text"]
+
+
+def test_the_same_people_get_the_same_verdict_however_their_outcome_is_written():
+    # Council A: Approved = 1 at 89% vs 74% read "small", the same people as Approved/Denied read a gap (26% vs 11% denied)
+    cols, rows = people(4000, {"F": 0.90, "M": 0.75}, 5, outcome="Approved")
+    as_number = next(t for t in report(cols, rows)["tests"] if t["test"] == "Approved rate")
+    words = [[*r[:3], "Approved" if r[3] else "Denied"] for r in rows]
+    as_words = next(t for t in report(cols, words)["tests"] if t["test"].startswith("Approved "))
+    assert as_number["verdict"] == as_words["verdict"] == "gap", (as_number["text"], as_words["text"])
+
+
+def test_two_groups_that_stand_out_together_are_both_named():
+    # Council A: N and S at 40%, E and W at 20% read "N: 40% vs 26% for the other groups", as if N alone stood out
+    cols, rows = people(4000, {"N": 0.4, "S": 0.4, "E": 0.2, "W": 0.2}, 14, col="Region", groups=("N", "S", "E", "W"))
+    t = next(t for t in report(cols, rows)["tests"] if t["test"] == "Approved rate")
+    assert t["verdict"] == "gap" and t["text"].startswith("Region N and S:"), t["text"]
+    assert "for the other groups" in t["text"]
