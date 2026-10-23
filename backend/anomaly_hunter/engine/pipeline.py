@@ -596,7 +596,9 @@ def _person_name(col, columns, labels):
 
     def personal(c):
         cw = fairness._words(c)
-        if set(cw) & {"sex", "gender", "dob", "birth", "birthday", "birthdate"}:
+        # ...or a nationality, which only a person has: a cyclist roster (Rider, Team, Nationality) called "Thomson" a
+        # misspelling of "Thompson" (AH-51). A "Country" alone is a place: a World Cup's winners keep their spelling check
+        if set(cw) & {"sex", "gender", "dob", "birth", "birthday", "birthdate", "nationality", "nationalities", "citizenship"}:
             return True
         return "age" in cw and (set(cw) <= YEARS or (len(cw) == 2 and cw[1] == "age" and cw[0] in ROLE))
     if w in (["name"], ["names"]) or (len(w) <= 2 and set(w) & BESIDE and set(w) <= BESIDE | {"name", "names"}):

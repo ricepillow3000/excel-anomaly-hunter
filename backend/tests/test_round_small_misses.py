@@ -117,3 +117,19 @@ def test_a_crafted_long_cell_in_a_column_of_old_dates_scans_in_under_a_second(ce
     t = time.perf_counter()
     scan(["Person", "born"], rows, fair=False)
     assert time.perf_counter() - t < 1.0
+@pytest.mark.parametrize("beside", ["Nationality", "Citizenship", "Country of birth"])
+def test_a_rider_roster_beside_a_nationality_is_people(beside):
+    # AH-51: a cyclist roster (Rider, Team, Nationality) has no age or sex, and "Thomson" was called a misspelling of
+    # "Thompson"; only a person has a nationality, a citizenship or a country of birth
+    labels = ["Thompson"] * 30 + [o for o in ("Jones", "Brown", "Garcia", "Miller") for _ in range(12)] + ["Thomson"]
+    rows = [[w, ["Ineos", "Jumbo"][i % 2], ["GB", "NL", "BE"][i % 3]] for i, w in enumerate(labels)]
+    out = scan(["Rider", "Team", beside], rows, fair=False)[1]
+    assert not any(g in o["reason"] for o in out for g in GUESS), out[-1]["reason"]
+
+
+def test_a_world_cup_winner_beside_a_country_keeps_its_spelling_check():
+    # "Country" alone is a place (a host), not a person's: the World Cup's "Brazl" is still a misspelling of "Brazil"
+    labels = ["Brazil", "Germany", "Italy", "Argentina", "France", "Uruguay"]
+    rows = [[1930 + 4 * i, labels[i % 6], ["Uruguay", "Italy", "France", "Brazil"][i % 4]] for i in range(90)] + [[2290, "Brazl", "Qatar"]]
+    out = scan(["Year", "Winner", "Country"], rows, fair=False)[1]
+    assert '"Brazl" looks like a misspelling of "Brazil"' in out[-1]["reason"], out[-1]["reason"]
