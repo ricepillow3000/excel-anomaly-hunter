@@ -1,10 +1,8 @@
 """Score a loaded DataFrame: 3 detector votes + hygiene facts -> severity, bucket, reason per row.
 Shared by CLI and server."""
 import collections
-import functools
 import itertools
 import re
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -405,27 +403,11 @@ ROLE = {"customer", "client", "employee", "emp", "staff", "patient", "student", 
         "recipient", "sender", "holder",
         # AH-26 (Council A, AH-24 try 2: these still called Thomson a misspelling of Thompson)
         "physician", "nurse", "assignee", "salesperson", "athlete", "coach", "instructor", "reviewer"}
-# a role a company can hold too (a B2B customer list: Microsoft, Contoso): people only when the labels are people's names
-EITHER = {"customer", "client", "owner", "buyer", "holder", "tenant", "sender", "recipient", "member", "user"}
 # "<this> name" is a person's; on their own these are often not ("Agent" is a browser's in a log, a "Partner" a company)
 PERSON_NAME = ROLE | {"first", "last", "given", "family", "middle", "full", "maiden", "nick", "christian", "legal", "preferred",
                       "agent", "seller", "parent", "partner", "donor"}
 # a customer or client that is a company: its names are checked like any label
 COMPANY = {"inc", "ltd", "llc", "llp", "corp", "corporation", "co", "company", "gmbh", "plc", "group", "pty", "ag", "sa", "bv"}
-
-
-@functools.lru_cache(maxsize=1)
-def _names():
-    """The commonest US first names and surnames (tools/person_names.py, public domain): 6,495 words."""
-    path = Path(__file__).with_name("person_names.txt")
-    return frozenset(w for w in path.read_text(encoding="utf-8").split() if not w.startswith("#"))
-
-
-def _peoples(labels):
-    """Most labels name a person: a word of each is a common first name or surname (Ann Jones, "Garcia, Maria", Li Wei;
-    not Microsoft, Contoso or Maersk Line). Half is enough: a roster also has names no US list holds (Okafor)."""
-    names = _names()
-    return sum(bool(set(fairness._words(v)) & names) for v in labels) >= len(labels) / 2
 
 
 # a person's age, in years: "Age", "Age (years)", "Patient age". A stock's "Age (days)" or "Stock age" is not (AH-26)
@@ -453,7 +435,7 @@ def _person_name(col, columns, labels):
         return any(personal(c) for c in columns if c != col)
     if w and len(w) <= 2 and (w[-1] in ROLE or w[-2:] == ["assigned", "to"]):
         companies = sum(bool(set(fairness._words(v)) & COMPANY) for v in labels)
-        return companies < max(1, len(labels) / 10) and (w[-1] not in EITHER or _peoples(labels))
+        return companies < max(1, len(labels) / 10)
     return False
 
 
