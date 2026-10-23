@@ -365,7 +365,8 @@ def far_dates(df, column_types, skip):
             # a column of dates before 1900 is text (Excel keeps them so): read for this check alone, its type unchanged,
             # so a Nobel laureate born in 2862 among the 1800s is caught (blind round 23, AH-32)
             v = df[col][~skip & ~_blank(df[col])]
-            w = _dates(v, wide=True) if len(v) >= 30 else v.iloc[:0]
+            # a cell too long for a date is none, unparsed: a crafted 100,000-character cell doubled the scan (AH-32 review)
+            w = _dates(v.where(v.astype(str).str.len() <= 40), wide=True) if len(v) >= 30 else v.iloc[:0]
             d = w.dropna() if len(w) and w.notna().mean() >= 0.9 and (w.dt.year < 1900).any() else ()
         if len(d) < 30:
             continue
@@ -566,13 +567,16 @@ ROLE = {"customer", "client", "employee", "emp", "staff", "patient", "student", 
         "owner", "manager", "author", "applicant", "candidate", "teacher", "doctor", "driver", "rep", "buyer", "player",
         "guest", "passenger", "mother", "father", "spouse", "tenant", "volunteer", "attendee", "participant", "respondent",
         "recipient", "sender", "holder",
-        # AH-32: a Tour de France winner, a Nobel laureate (blind round 23 called a winner's name a misspelling)
-        "winner", "champion", "laureate", "rider",
         # AH-26 (Council A, AH-24 try 2: these still called Thomson a misspelling of Thompson)
         "physician", "nurse", "assignee", "salesperson", "athlete", "coach", "instructor", "reviewer"}
 # "<this> name" is a person's; on their own these are often not ("Agent" is a browser's in a log, a "Partner" a company)
 PERSON_NAME = ROLE | {"first", "last", "given", "family", "middle", "full", "maiden", "nick", "christian", "legal", "preferred",
                       "agent", "seller", "parent", "partner", "donor"}
+# a winner, a champion, a laureate or a rider is a person only beside a person's age, sex or birth date, like a plain
+# "Name": a Tour de France winner (age, born) and a Nobel laureate (gender, birth_date) are people (blind round 23 called a
+# winner's name a misspelling), but a World Cup's winner is a country, an election's a party, a product test's a phone and
+# an insurance policy's rider a cover ("Accidentl Death"): all silenced as people (AH-32 review)
+BESIDE = {"winner", "winners", "champion", "champions", "laureate", "laureates", "rider", "riders"}
 # a customer or client that is a company: its names are checked like any label
 COMPANY = {"inc", "ltd", "llc", "llp", "corp", "corporation", "co", "company", "gmbh", "plc", "group", "pty", "ag", "sa", "bv"}
 
@@ -589,17 +593,18 @@ def _person_name(col, columns, labels):
     w = fairness._words(col)
     if PERSON & set(w):
         return True
+
+    def personal(c):
+        cw = fairness._words(c)
+        if set(cw) & {"sex", "gender", "dob", "birth", "birthday", "birthdate"}:
+            return True
+        return "age" in cw and (set(cw) <= YEARS or (len(cw) == 2 and cw[1] == "age" and cw[0] in ROLE))
+    if w in (["name"], ["names"]) or (len(w) <= 2 and set(w) & BESIDE and set(w) <= BESIDE | {"name", "names"}):
+        return any(personal(c) for c in columns if c != col)
     named = bool(w) and w[-1] in ("name", "names") and len(w) > 1 and w[-2] in PERSON_NAME
     named |= len(w) > 1 and w[0] in ("name", "names") and (w[1] in PERSON_NAME or w[1:2] == ["of"] and w[2:3] and w[2] in PERSON_NAME)
     if named:
         return True
-    if w in (["name"], ["names"]):
-        def personal(c):
-            cw = fairness._words(c)
-            if set(cw) & {"sex", "gender", "dob", "birth", "birthday", "birthdate"}:
-                return True
-            return "age" in cw and (set(cw) <= YEARS or (len(cw) == 2 and cw[1] == "age" and cw[0] in ROLE))
-        return any(personal(c) for c in columns if c != col)
     if w and len(w) <= 2 and (w[-1] in ROLE or w[-2:] == ["assigned", "to"]):
         companies = sum(bool(set(fairness._words(v)) & COMPANY) for v in labels)
         return companies < max(1, len(labels) / 10)

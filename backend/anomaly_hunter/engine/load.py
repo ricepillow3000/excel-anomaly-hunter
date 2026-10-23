@@ -57,7 +57,15 @@ def _dates(s, wide=False):
         return d.where(d.dt.year.between(1900, 2200))
     # wide: also a cell that writes its year in full (1862-06-07, June 7, 1862) from 1000 to 2999, for the far-date check
     # of a text column: Excel keeps a date before 1900 as text (AH-32)
-    full = text.str.contains(r"(?<!\d)[12]\d{3}(?!\d)") & text.str.contains(r"[-/., ]")
+    # ...with its day too: a lot code "1045-03" (plant, month) is no date, and its odd "2950-04" was a far "2950-04-01"
+    # (AH-32 review)
+    # Only a cell a date fits in (40 characters), and month words bounded and anchored: the unanchored "[a-z]{3,} +\d"
+    # re-scanned a run of letters from every start, 16,000 letters took 4 s a cell, and a crafted cell hung the scan
+    short = text.str.len() <= 40
+    t = text.where(short, "")
+    day = t.str.contains(r"\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}") | t.str.contains(
+        r"\b\d{1,2}(?:st|nd|rd|th)?,? +[a-z]{3,9}\b|\b[a-z]{3,9}\.? +\d{1,2}(?:st|nd|rd|th)?\b", case=False)
+    full = short & t.str.contains(r"(?<!\d)[12]\d{3}(?!\d)") & day
     return d.where(d.dt.year.between(1900, 2200) | (full & d.dt.year.between(1000, 2999)))
 
 
