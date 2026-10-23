@@ -251,8 +251,18 @@ def whole_numbers(df, column_types, skip):
     return out
 
 
+PERSON_AGE = {"patient", "participant", "victim", "actor", "actress", "employee", "customer", "respondent", "applicant", "student",
+              "member", "client", "worker", "player", "passenger", "athlete", "person", "child", "mother", "father", "driver",
+              "rider", "voter", "resident", "subject", "defendant", "suspect", "officer", "candidate", "ceo", "senator", "artist",
+              "author", "winner", "borrower", "tenant", "user", "donor", "inmate", "pupil", "teacher", "nurse", "doctor", "spouse"}
 BOUNDED = [(r"month", 1, 12), (r"quarter|qtr", 1, 4), (r"hour", 0, 24), (r"minute|second", 0, 59),
-           (r"weekday|day of week", 0, 7), (r"lat|latitude", -90, 90), (r"lon|lng|long|longitude", -180, 180)]
+           (r"weekday|day of week", 0, 7), (r"lat|latitude", -90, 90), (r"lon|lng|long|longitude", -180, 180),
+           # a person's age: "age" alone or after a word for a person (victim age, actor 1 age, age years): LA riots' 310
+           # for 31 in 62 rows was said nothing at level 5 (AH-47). A thing's age is not a person's: a tree's 180, a
+           # building's 135, an account's or a bond's could each be said "outside what it can be" (AH-47 review). Not one
+           # in days, weeks or months, and not Average, Mileage or Age group
+           (r"(?:(?:" + "|".join(sorted(PERSON_AGE)) + r") )?(?:\d+ )?age(?: years| in years| yrs)?", 0, 120)]
+AGE_UNITS = re.compile(r"\b(days?|weeks?|months?|hours?|minutes?|seconds?|hrs?|mins?|ms|d|wk|mo)\b")
 SCALE = re.compile(r"\(\s*(\d+)\s*(?:-|–|to)\s*(\d+)\s*\)|\bout of (\d+)\b", re.I)
 
 
@@ -268,7 +278,8 @@ def _bounds(col):
     # markup, ROI, CPU, debt of GDP and a speed's % of its limit pass 100, inflation and a % increase go below 0, and a
     # 0-100 bound said "outside what it can be" of every one (AH-30 review); a 233.4 among 0-100 stands alone (AH-29)
     whole = re.sub(r"\([^()]*\)", "", h).strip()  # "Month (number)" is still Month
-    return next(((float(lo), float(hi)) for pat, lo, hi in BOUNDED if re.fullmatch(pat, whole)), None)
+    return next(((float(lo), float(hi)) for pat, lo, hi in BOUNDED if re.fullmatch(pat, whole)
+                 and not (hi == 120 and AGE_UNITS.search(h))), None)
 
 
 def named_bounds(df, column_types, skip):
