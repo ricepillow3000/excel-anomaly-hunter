@@ -391,6 +391,43 @@ def _short_for(short, label):
             and sum(ch in "aeiou" for ch in short[1:]) <= 1 and all(ch in rest for ch in short[1:]))
 
 
+# a column of people's names: one-slip twins are honest there (Thomson/Thompson, Philips/Phillips, Mathew/Matthew).
+# Measured on the 10,000 commonest US surnames and first names (AH-24): one inner letter dropped gives another real
+# name for 21% of surnames and 37% of first names (4.8% of common words), a letter typed twice 4% and 13% (0.3%)
+PERSON = {"surname", "surnames", "forename", "forenames", "firstname", "lastname", "fullname"}
+# a role that is a person on its own ("Employee", "Sales Rep"): AH-24 try 1 read only "<role> name", so Employee, Patient,
+# Driver, Author and Customer columns still called Thomson a misspelling of Thompson (Council A)
+ROLE = {"customer", "client", "employee", "emp", "staff", "patient", "student", "pupil", "contact", "person", "member", "user",
+        "owner", "manager", "author", "applicant", "candidate", "teacher", "doctor", "driver", "rep", "buyer", "player",
+        "guest", "passenger", "mother", "father", "spouse", "tenant", "volunteer", "attendee", "participant", "respondent",
+        "recipient", "sender", "holder"}
+# "<this> name" is a person's; on their own these are often not ("Agent" is a browser's in a log, a "Partner" a company)
+PERSON_NAME = ROLE | {"first", "last", "given", "family", "middle", "full", "maiden", "nick", "christian", "legal", "preferred",
+                      "agent", "seller", "parent", "partner", "donor"}
+# a customer or client that is a company: its names are checked like any label
+COMPANY = {"inc", "ltd", "llc", "llp", "corp", "corporation", "co", "company", "gmbh", "plc", "group", "pty", "ag", "sa", "bv"}
+
+
+def _person_name(col, columns, labels):
+    """A column of people's names: Surname, LastName, "First name", "Customer name", "Name of patient", "Name (Last,
+    First)", a role on its own ("Employee", "Sales Rep") unless its labels are companies, and a plain "Name" only beside a
+    person's age, sex or birth date (Titanic): on its own it named products, cities, car models and airports (Council A:
+    all 3 plain "name" columns in blind round 22's 59 real tables). "Product name", "Company name", "City" are labels."""
+    w = fairness._words(col)
+    if PERSON & set(w):
+        return True
+    named = bool(w) and w[-1] in ("name", "names") and len(w) > 1 and w[-2] in PERSON_NAME
+    named |= len(w) > 1 and w[0] in ("name", "names") and (w[1] in PERSON_NAME or w[1:2] == ["of"] and w[2:3] and w[2] in PERSON_NAME)
+    if named:
+        return True
+    if w in (["name"], ["names"]):
+        return any(set(fairness._words(c)) & {"age", "sex", "gender", "dob", "birth", "birthday", "birthdate"} for c in columns if c != col)
+    if w and len(w) <= 2 and w[-1] in ROLE:
+        companies = sum(bool(set(fairness._words(v)) & COMPANY) for v in labels)
+        return companies < max(1, len(labels) / 10)
+    return False
+
+
 def spellings(df, column_types, skip):
     """Same category typed differently ("Sales" / "sales " / "SALES") - breaks SUMIFS and pivots silently.
     Only case/space differences, only in category-like columns (<= 50 distinct). Every spelling but the right one is
@@ -428,6 +465,8 @@ def spellings(df, column_types, skip):
                     if counts[right] >= 5 * c:  # auto-fix only when the right spelling is plainly the usual one
                         exact[i][col] = right
         cnt = keys.value_counts()
+        if _person_name(col, column_types, labels):  # capitals/spaces of the very same name above, never a guess at another name (AH-24)
+            continue
         # over 60 characters is a note, not a label: crafted 32,000-character labels took 58 s here (council, 2026-10-16)
         for rare, c in cnt[cnt <= 2].items():
             usual = next((u for u, m in cnt.items() if m >= max(5, 5 * c) and len(u) <= 60 and len(rare) <= 60
