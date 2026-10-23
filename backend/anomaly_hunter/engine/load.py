@@ -66,6 +66,11 @@ def _dates(s, wide=False):
 # JSON): a missing cell, like a blank. Read as text, R's NA made ~3,960 false Medium rows in blind round 23 (AH-27)
 NO_VALUE = re.compile(r"\s*(na|nan|null|none)\s*", re.I)
 PLACEHOLDER = re.compile(r"error|unknown|n/a|null|tbd|\?|-", re.I)
+# a word that says the value is not known. Never guessed to be another label: Race "Blank" read as a misspelling of
+# "Black" gave a race to people whose race is unknown (AH-39 review, AH-50). A typo of one ("Unknwn") is still a typo
+NO_VALUE_WORD = re.compile(r"\s*(blank|blanks|empty|missing|unknown|unk|none|nil|null|na|n/a|n\.a\.|nan|tbd|tba|tbc|\?+|-+"
+                           r"|(?:not|un)[ -]?(?:known|stated|specified|applicable|available|recorded|reported|given)"
+                           r"|undefined|unspecified|no answer|no data|no response|prefer not to say)\s*", re.I)
 EXCEL_ERROR = re.compile(r"#(N/A|DIV/0!|REF!|VALUE!|NAME\?|NUM!|NULL!|SPILL!|CALC!)$")
 # money / percent typed as text, the WHOLE cell: "$1,234.00", "12%", "(500)" = -500. Commas must be thousands groups.
 MONEY = re.compile(r"(\()?([-+])?[$€£]?\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s*(%)?(\))?")

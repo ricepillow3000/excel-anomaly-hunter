@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import chi2_contingency, kruskal, mannwhitneyu
 
-from anomaly_hunter.engine.load import PLACEHOLDER
+from anomaly_hunter.engine.load import NO_VALUE_WORD, PLACEHOLDER
 
 PROXY = "location (can stand in for race or income)"
 DEMOGRAPHIC = {"age", "dob", "birth", "birthday", "birthdate", "gender", "sex", "race", "ethnicity", "ethnic", "religion",
@@ -81,13 +81,14 @@ def _labels(s, most):
 def _maybe(v):
     """{rare label: the usual label it is one slip from}: "Femlae" (1 row) beside 400 Female. Never folded into it: "Blank"
     beside Black is an export's unknown race and "Nigerien" a person from Niger (AH-39 review), so a rare label stays its
-    own group, too few to compare, and is named with what it may be. The spelling check's own rule decides."""
+    own group, too few to compare, and is named with what it may be. The spelling check's own rule decides, and like it
+    never names a word that says no value: "Blank (2 rows, maybe Black)" gave a race to people whose race is unknown (AH-50)."""
     from anomaly_hunter.engine.pipeline import _misspelt  # here: pipeline imports this module
     counts = v.value_counts()
     big = [k for k, n in counts.items() if n >= 5]
     out = {}
     for k, n in counts.items():
-        if n <= 2 and (usual := next((u for u in big if counts[u] >= 5 * n and _misspelt(str(k).casefold(), str(u).casefold())), None)):
+        if n <= 2 and not NO_VALUE_WORD.fullmatch(str(k)) and (usual := next((u for u in big if counts[u] >= 5 * n and _misspelt(str(k).casefold(), str(u).casefold())), None)):
             out[str(k)] = str(usual)
     return out
 

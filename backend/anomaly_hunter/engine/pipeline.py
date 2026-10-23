@@ -9,7 +9,7 @@ import pandas as pd
 
 from anomaly_hunter.engine import fairness
 from anomaly_hunter.engine.detectors import Why, _result, far_off, isolation_detector, limits_detector, say, sequence_detector
-from anomaly_hunter.engine.load import EXCEL_ERROR, PLACEHOLDER, _blank, _dates, numbers
+from anomaly_hunter.engine.load import EXCEL_ERROR, NO_VALUE_WORD, PLACEHOLDER, _blank, _dates, numbers
 
 def summary_rows(df):
     """Rows that summarise the data instead of being data -> bool array: fully blank rows, rows labelled
@@ -651,6 +651,8 @@ def spellings(df, column_types, skip):
             continue
         # over 60 characters is a note, not a label: crafted 32,000-character labels took 58 s here (council, 2026-10-16)
         for rare, c in cnt[cnt <= 2].items():
+            if NO_VALUE_WORD.fullmatch(rare):  # "Blank" is no race, never a misspelling of "Black" (AH-50)
+                continue
             usual = next((u for u, m in cnt.items() if m >= max(5, 5 * c) and len(u) <= 60 and len(rare) <= 60
                           and _misspelt(rare, u)), None)
             if usual is None:
@@ -672,7 +674,8 @@ def spellings(df, column_types, skip):
             # a short form is the rarer spelling - the full label at least twice as common: "CAF" (51 rows) is not short
             # for "CONCACAF" (30), nor "VI" for "VIII" - 71 cards would have overwritten correct labels (real sheets, 2026-10-16)
             longer = [u for u, m in cnt.items() if m >= max(5, 2 * cnt[short]) and len(u) >= len(short) + 2 and _short_for(short, u)]
-            if 2 <= len(short.replace(" ", "")) <= 6 and short.replace(" ", "").isalpha() and len(longer) == 1 and not whole(short):
+            if 2 <= len(short.replace(" ", "")) <= 6 and short.replace(" ", "").isalpha() and len(longer) == 1 and not whole(short) \
+                    and not NO_VALUE_WORD.fullmatch(short):
                 for i in keys.index[keys == short]:
                     missed[i].append(Why(f'{col} "{_short(s[i])}" looks like a short form of "{_short(rights[longer[0]])}"', col))
                     maybe[i][col] = rights[longer[0]]

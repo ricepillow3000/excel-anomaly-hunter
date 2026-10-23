@@ -182,6 +182,17 @@ def test_a_real_rare_group_one_letter_from_a_usual_one_is_never_counted_in_it(co
     assert all(f"{rare} (2 rows" in t["text"] for t in tests), [t["text"] for t in tests]
 
 
+@pytest.mark.parametrize("col, big, rare, said", [("Race", ["White", "Black"], "Blank", "Blank (2 rows)"),
+                                                  ("Nationality", ["Nigerian", "Ghanaian"], "Nigerien", "Nigerien (2 rows, maybe Nigerian)")])
+def test_a_word_that_says_no_value_is_never_named_as_a_group_it_may_be(col, big, rare, said):
+    # AH-50: "Blank (2 rows, maybe Black)" gave a race to people whose race is unknown; a demonym keeps its honest "maybe"
+    rng = np.random.default_rng(12)
+    rows = [[f"E{i}", big[i % 2], int(rng.random() < 0.4)] for i in range(600)]
+    rows[7][1] = rows[8][1] = rare
+    tests = [t for t in fair(["Employee", col, "Promoted"], rows)["tests"] if t["column"] == col]
+    assert tests and all(f"{said}" in t["text"] and (", maybe" in said or f"{rare} (2 rows, maybe" not in t["text"]) for t in tests), [t["text"] for t in tests]
+
+
 def test_a_place_of_birth_is_a_place_never_an_age():
     rows = [[["Paris", "Rome", "Oslo"][i % 3], ["female", "male"][i % 2], 1900 + i % 90, int(i % 5 == 0)] for i in range(600)]
     f = fair(["birth_city", "gender", "birth_year", "laureate"], rows)
