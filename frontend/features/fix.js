@@ -125,7 +125,10 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
   for (const s of sums.filter((s) => !s.cols.some((c) => solved.has(c))))
     notes.push(`${s.text} - one of these numbers is wrong. Check them against the source.`);
   for (const { text } of issuesOf(reason)) // worth-a-check reasons with no value to write: say what to look for
-    for (const [rx, hint] of HINTS) if (rx.test(text)) notes.push(`${text} - ${hint}. Check it against the source.`);
+    for (const [rx, hint] of HINTS) {
+      const m = rx.exec(text); // a hint may quote what the reason names: the word to filter the column for (AH-45 review)
+      if (m) notes.push(`${text} - ${typeof hint === "function" ? hint(m) : hint}. Check it against the source.`);
+    }
   if (!notes.length)
     notes.push("Nothing here is clearly broken - the values are just unusual together. Check them against the source; if they're right, leave them.");
   return { explanation: notes.join(" "), changes, guess: guessed }; // guess = a misspelling's fix, or a typo the numbers cannot prove
@@ -142,8 +145,11 @@ const HINTS = [
   [/ stands alone above the rest of the column, whose next highest is /, "an extra zero or a slipped decimal point is the usual " +
     "cause, but one real record above all the others looks the same"],
   // AH-28: many blanks spread through a column, one note for them all
-  [/ is (blank in \d+ of \d+ rows, spread through the sheet|"[^"]+" \(no value\) in \d+ of \d+ rows)$/, "blanks this many and this spread out are usually values not known or " +
+  [/ is blank in \d+ of \d+ rows, spread through the sheet$/, "blanks this many and this spread out are usually values not known or " +
     "not needed, not slips; if the column must always be filled, filter it for blanks and fill them in"],
+  // AH-45 review: the cells hold the word, not blanks ("filter it for blanks" found none of R's NA or 300 "Unknown")
+  [/ is "([^"]+)" \(no value\) in \d+ of \d+ rows$/, (m) => `a word written this often and this spread out is usually how the ` +
+    `source says a value is not known, not a slip; if the column must always hold a value, filter it for "${m[1]}" and fill those in`],
 ];
 
 // Pure: the column an "only unusual" reason points at (an odd mix across columns, or a break in a series), else null
