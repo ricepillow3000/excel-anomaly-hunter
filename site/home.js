@@ -93,9 +93,12 @@ fetch("https://api.github.com/repos/ricepillow3000/excel-anomaly-hunter/releases
 // being carried. Only with a mouse and when motion is welcome; otherwise both rest near the headline.
 const hero = document.querySelector(".hero");
 if (hero && matchMedia("(hover: hover) and (pointer: fine)").matches && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
-  let tx = 50, ty = 22, gx = tx, gy = ty, raf = 0;
-  const step = () => {
-    gx += (tx - gx) * 0.08; gy += (ty - gy) * 0.08;
+  let tx = 50, ty = 22, gx = tx, gy = ty, raf = 0, last = 0;
+  // eased by the clock, not by the frame: 8% of the way per 60 Hz frame is a 200 ms time constant. By frame, it needed ~90
+  // frames to settle whatever the frame rate, so a busy machine at 20 fps glided for 4.5 s and a 120 Hz screen raced (AH-22)
+  const step = (now) => {
+    const k = 1 - Math.exp(-Math.min(Math.max(now - last, 0), 100) / 200); last = now;
+    gx += (tx - gx) * k; gy += (ty - gy) * k;
     hero.style.setProperty("--hx", gx + "%"); hero.style.setProperty("--hy", gy + "%");
     raf = Math.abs(tx - gx) + Math.abs(ty - gy) > 0.05 ? requestAnimationFrame(step) : 0;
   };
@@ -103,6 +106,6 @@ if (hero && matchMedia("(hover: hover) and (pointer: fine)").matches && !matchMe
     const r = hero.getBoundingClientRect();
     tx = ((e.clientX - r.left) / r.width) * 100; ty = ((e.clientY - r.top) / r.height) * 100;
     hero.style.setProperty("--gx", tx + "%"); hero.style.setProperty("--gy", ty + "%");
-    if (!raf) raf = requestAnimationFrame(step);
+    if (!raf) { last = performance.now(); raf = requestAnimationFrame(step); }
   });
 }

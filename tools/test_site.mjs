@@ -158,6 +158,13 @@ for (const width of [1280, 390]) {
   await p.waitForTimeout(2500);
   const settled = await p.evaluate(() => window.frames_); await p.waitForTimeout(1000);
   assert.ok(settled > 0 && (await p.evaluate(() => window.frames_)) === settled, "the cursor light keeps a frame loop running when idle");
+  // ... and on a busy machine too (AH-22): with a frame only every 50 ms (20 a second, what a loaded box gave), it settles
+  // in the same 2.5 s. It eased 8% a frame, so it needed ~90 frames whatever the frame rate: 1.5 s at 60 fps, 4.5 s at 20
+  await p.evaluate(() => { window.frames_ = 0; window.requestAnimationFrame = (f) => (window.frames_++, setTimeout(() => f(performance.now()), 50)); });
+  await p.mouse.move(300, 200); await p.mouse.move(1000, 450, { steps: 8 });
+  await p.waitForTimeout(2500);
+  const slow = await p.evaluate(() => window.frames_); await p.waitForTimeout(1000);
+  assert.ok(slow > 0 && (await p.evaluate(() => window.frames_)) === slow, `at 20 frames a second the cursor light was still moving after 2.5 s (${slow} frames)`);
   // the scroll bleeds: alabaster at the top, navy past the hero, wine at the download band, and back on the way up
   const backdrop = () => p.evaluate(() => { const b = document.querySelector(".backdrop"); return [getComputedStyle(b).backgroundColor, getComputedStyle(b, "::after").opacity]; });
   assert.deepEqual(await backdrop(), ["rgb(247, 245, 240)", "0"]);
