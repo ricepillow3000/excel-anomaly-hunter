@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from anomaly_hunter.engine import fairness
-from anomaly_hunter.engine.detectors import _result, isolation_detector, limits_detector, sequence_detector
+from anomaly_hunter.engine.detectors import _result, far_off, isolation_detector, limits_detector, sequence_detector
 from anomaly_hunter.engine.load import EXCEL_ERROR, PLACEHOLDER, _blank, numbers
 
 def summary_rows(df):
@@ -260,16 +260,15 @@ def named_bounds(df, column_types, skip):
 
 
 def far_dates(df, column_types, skip):
-    """Date more than the column's whole 1%-99% span away from it (a 2018 sheet with 2084 in it). Birthdates spread
-    over decades widen the span themselves. ponytail: misses a near miss like 2019 in a 2018 sheet - no rule knows that."""
+    """Date more than the column's whole span away from it (a 2018 sheet with 2084 in it; detectors.far_off, whose span
+    leaves at least one date past each end). Birthdates spread over decades widen the span themselves. ponytail: misses a near miss like 2019 in a 2018 sheet - no rule knows that."""
     out = [[] for _ in range(len(df))]
     for col, t in column_types.items():
         d = df[col][~skip].dropna() if t == "date" else ()
         if len(d) < 30:
             continue
-        lo, hi = d.quantile([0.01, 0.99])
-        span = max(hi - lo, pd.Timedelta(days=30))
-        for i in d.index[(d < lo - span) | (d > hi + span)]:
+        far, lo, hi = far_off(d)
+        for i in d.index[far]:
             out[i].append(f"{col} {d[i]:%Y-%m-%d} is far outside the column's dates ({lo:%Y-%m-%d} to {hi:%Y-%m-%d})")
     return out
 

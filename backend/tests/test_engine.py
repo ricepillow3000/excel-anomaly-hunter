@@ -637,6 +637,17 @@ def test_a_date_far_outside_the_columns_range_is_flagged():
     assert out[10]["severity"] in ("Medium", "High")
 
 
+def test_one_far_date_in_a_short_monthly_sheet_does_not_widen_the_span_it_is_judged_by():
+    # 48 months with 2084 typed for 2022: the 1%-99% span of 48 dates reached 2084 itself, so only the series check's
+    # misreading of the sheet's last row caught it, and that went with the series ends fix (AH-31 review)
+    months = [f"{2022 + m // 12}-{m % 12 + 1:02d}-01" for m in range(48)]
+    months[2] = "2084-03-01"
+    _, out = _scan(["Month", "MRR"], [[d, 120000 + 4000 * m] for m, d in enumerate(months)])
+    assert {i for i, o in enumerate(out) if "far outside" in o["reason"]} == {2}, [o["reason"] for o in out[:4]]
+    # and it is no month of the series: sorted last, its ordinary MRR read as a jump in the months before it
+    assert [i for i, o in enumerate(out) if o["severity"] and i != 2] == [], [(i, o["reason"]) for i, o in enumerate(out) if o["severity"]]
+
+
 def test_wide_but_honest_dates_are_not_flagged():
     r = np.random.default_rng(8)
     births = [str(np.datetime64("1940-01-01") + np.timedelta64(int(d), "D")) for d in r.integers(0, 65 * 365, 300)]

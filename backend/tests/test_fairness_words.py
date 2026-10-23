@@ -46,20 +46,21 @@ def test_a_big_spread_chance_explains_is_no_clear_difference_never_even():
     assert t["verdict"] == "even" and "even across groups" in t["text"] and "within normal variation" in t["text"]
 
 
-@pytest.mark.parametrize("n, rates, seed", [(3000, (0.010, 0.018), 2), (2000, (0.02, 0.032), 29), (6000, (0.005, 0.009), 0)])
-def test_near_the_line_on_a_big_sheet_the_few_are_the_events_never_the_rows(n, rates, seed):
+@pytest.mark.parametrize("n, women, men", [(2000, 6, 15), (3000, 5, 13), (6000, 6, 15)])
+def test_near_the_line_on_a_big_sheet_the_few_are_the_events_never_the_rows(n, women, men):
     # 3,000 rows read "with these few rows a gap this size could be chance": what is few is the rows flagged or the
-    # defaults, not the rows (Council B, AH-20 review). The sentence counts what there is little of, and counts it right
-    rng = np.random.default_rng(seed)
-    rows = [[f"P{i}", "F" if i % 2 else "M", round(float(rng.normal(50000, 8000))), int(rng.random() < (rates[0] if i % 2 else rates[1]))]
-            for i in range(n)]
-    tests = report(["ID", "Sex", "Income", "Defaulted"], rows)["tests"]
+    # defaults, not the rows (Council B, AH-20 review). The sentence counts what there is little of, and counts it right.
+    # Exact counts, and the same rows flagged as defaulted: the report is read on its own, so the case never moves with
+    # what the checks flag (seeded draws did: AH-31's cap moved two seeds off the line, AH-31 review)
+    rows = [[f"P{i}", "F" if i % 2 else "M", 50000 + i % 997, int(i // 2 < (women if i % 2 else men))] for i in range(n)]
+    df, types, _ = load_from_records(["ID", "Sex", "Income", "Defaulted"], rows)
+    tests = fairness.report(df, types, [{"severity": "Low" if r[3] else None} for r in rows])["tests"]
     near = [t for t in tests if "could be chance" in t["text"]]
-    assert near and not any("few rows" in t["text"] for t in tests), [t["text"] for t in tests]
+    assert {t["measure"] for t in near} == {"flag", "outcome"} and not any("few rows" in t["text"] for t in tests), [t["text"] for t in tests]
     for t in near:
         events = round(sum(size * rate for size, rate in t["groups"].values()))
         rarer = min(events, sum(size for size, _ in t["groups"].values()) - events)
-        assert f"with only {rarer} " in t["text"] and t["text"].endswith(" to go on, a gap this size could be chance"), t["text"]
+        assert rarer == women + men and f"with only {rarer} " in t["text"] and t["text"].endswith(" to go on, a gap this size could be chance"), t["text"]
 
 
 def test_a_big_spread_with_no_evidence_at_all_is_within_normal_variation():

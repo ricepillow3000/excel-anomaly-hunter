@@ -270,6 +270,36 @@ def _beat(x, p):
     return len(q) >= 3 and (g == np.median(g)).mean() >= 0.5
 
 
+# A jump moves a value further than twice the series' usual one-row step. On a smooth line the local median is the
+# value itself, so the spread of the gaps is ~0 and every bend of the curve votes: the series check called 49-64% of
+# real CO2 and jobs-report months unusual at level 5, each 17-30x past its line (AH-31 review). A spike or a level
+# shift still moves further in one row than the series usually does: 1-20% planted jumps are found as before.
+STEP = 2
+
+
+def _centred_median(a, half=3):
+    """Each value's local median over the same number of rows on each side: 3, or at the series' ends as many as there
+    are. A one-sided window reads a trend as a jump: the first and last months of a smooth series were its strongest
+    votes, 10-38x the line (AH-31 review). The very first and last values have no neighbour on one side, so the trend
+    check leaves them to the difference checks and the column's limits."""
+    m = pd.Series(a).rolling(2 * half + 1, center=True, min_periods=1).median().to_numpy(copy=True)
+    n = len(a)
+    for p in sorted({*range(min(half, n)), *range(max(0, n - half), n)}):
+        w = a[p - min(p, n - 1 - p):p + min(p, n - 1 - p) + 1]
+        m[p] = np.nanmedian(w) if (~np.isnan(w)).any() else np.nan
+    return m
+
+
+def far_off(d):
+    """(far, lo, hi) for a column of dates: the dates more than the column's whole span away from it (a 2018 sheet with
+    2084 in it). The span leaves at least one date past each end: in 48 months the 99% point reached 2084 itself
+    (AH-31 review). Birthdates spread over decades widen the span themselves."""
+    q = max(0.01, 1.5 / len(d))
+    lo, hi = d.quantile([q, 1 - q])
+    span = max(hi - lo, pd.Timedelta(days=30))
+    return (d < lo - span) | (d > hi + span), lo, hi
+
+
 def sequence_detector(df, column_types, order_by=None, k=K):
     """Rows sorted by order column. Vote on spikes vs rolling-median trend and on 1st/2nd/3rd differences."""
     n = len(df)
@@ -283,6 +313,11 @@ def sequence_detector(df, column_types, order_by=None, k=K):
         return _result(n, f"not a time series (many rows share each {by})")
     r, order = _result(n), df[by]
     idx = order.sort_values(kind="mergesort").index.to_numpy()
+    if order.dtype.kind == "M" and order.notna().sum() >= 30:
+        # a month typed 2084 is not part of the series (far_dates names it): sorted last, its ordinary value read as
+        # a jump in the months before it (AH-31 review)
+        far = far_off(order.dropna())[0].reindex(order.index, fill_value=False).to_numpy()
+        idx, order = idx[~far[idx]], order.where(~far)
     # a series is evenly spaced (order 1..n, days, months 28-31): 70% of steps within 10% of the usual step.
     # Timestamped trips (unique seconds) pass the gate above but arrive at random gaps.
     gap = order.sort_values().diff().dropna()
@@ -302,18 +337,20 @@ def sequence_detector(df, column_types, order_by=None, k=K):
         v = s.dropna()
         if len(v) and (v >= 0).mean() >= 0.95 and (v == 0).mean() >= 0.05:  # weekend / closed-day zeros are not spikes
             s = s.where(s != 0)
-        trend = (s - s.rolling(7, center=True, min_periods=1).median()).to_numpy()
+        trend = s.to_numpy() - _centred_median(s.to_numpy())
+        step = np.abs(s.diff().to_numpy())
+        usual = np.nanmedian(step) if (~np.isnan(step)).any() else 0.0
         votes, mag = robust_vote(trend, k)
         for p in np.where(votes)[0]:
-            if not _beat(trend, p):
+            if abs(trend[p]) > STEP * usual and not _beat(trend, p):
                 hit(p, mag[p], f"{col} is unusual relative to its local trend")
         d = s
         for _ in (1, 2, 3):
             d = d.diff()
             votes, mag = robust_vote(d.to_numpy(), k)
             for p in np.where(votes)[0]:
-                if _beat(d.to_numpy(), p):  # the cycle's own reset, not a jump
-                    continue
+                if _beat(d.to_numpy(), p) or not np.nanmax(step[max(1, p - 2):p + 1], initial=0) > STEP * usual:
+                    continue  # the cycle's own reset, or a bend in a smooth line: no one-row move past its usual steps
                 # blame biggest trend gap in last 4 rows, not the diff's own row
                 w = trend[max(0, p - 3):p + 1]
                 b = p if np.isnan(w).all() else max(0, p - 3) + int(np.nanargmax(np.abs(w)))
