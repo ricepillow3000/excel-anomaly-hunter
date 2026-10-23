@@ -79,3 +79,58 @@ def test_a_misspelling_in_a_column_that_is_not_peoples_names_is_still_caught(col
 def test_a_text_column_whose_header_has_no_letters_is_still_checked_and_never_breaks_the_scan(col):
     out = scan(["Id", col, "Units"], column("Germany", "Grmany", ["Alpha label", "Second label", "Third label"]), fair=False)[1]
     assert 'looks like a misspelling of "Germany"' in out[-1]["reason"], out[-1]
+
+
+# AH-26 (Council A's notes on AH-24 try 2): roles the list missed, companies with no Inc or Ltd, and an age that is not a
+# person's
+@pytest.mark.parametrize("col", ["Physician", "Nurse", "Assignee", "Assigned to", "Salesperson", "Athlete", "Coach",
+                                 "Instructor", "Reviewer"])
+def test_a_role_header_the_first_list_missed_holds_people_too(col):
+    out = scan(["Id", col, "Units"], column("Thompson", "Thomson", PEOPLE), fair=False)[1]
+    assert not any(g in o["reason"] for o in out for g in GUESS), (col, out[-1]["reason"])
+
+
+COMPANIES = ["Contoso", "Fabrikam", "Globex", "Initech"]
+
+
+@pytest.mark.parametrize("col, usual, odd", [
+    ("Customer", "Microsoft", "Microsft"),         # a B2B customer list: company names with no Inc, Ltd or Corp
+    ("Owner", "Maersk Line", "Mersk Line"),
+    ("Client", "Northwind", "Northwnd"),
+])
+def test_a_customer_or_owner_column_of_bare_company_names_is_still_checked(col, usual, odd):
+    out = scan(["Id", col, "Units"], column(usual, odd, COMPANIES), fair=False)[1]
+    assert f'{col} "{odd}" looks like a misspelling of "{usual}"' in out[-1]["reason"], out[-1]
+
+
+@pytest.mark.parametrize("col, people", [
+    ("Customer", ["Jones", "Brown", "Garcia", "Miller"]),            # surnames
+    ("Owner", ["Ann Jones", "Bob Brown", "Maria Garcia", "Li Wei"]),   # full names, one not in a US list
+    ("Client", ["Jones, Ann", "Brown, Bob", "Garcia, Maria", "Okafor, Chidi"]),
+])
+def test_a_customer_or_owner_column_of_peoples_names_stays_quiet(col, people):
+    out = scan(["Id", col, "Units"], column("Thompson", "Thomson", people), fair=False)[1]
+    assert not any(g in o["reason"] for o in out for g in GUESS), (col, out[-1]["reason"])
+
+
+@pytest.mark.parametrize("other", ["Age (days)", "Age in days", "Stock age", "Age (hours)", "Age_weeks"])
+def test_a_plain_name_beside_an_age_that_is_not_a_persons_is_still_checked(other):
+    out = scan(["Id", "Name", other], column("Stapler", "Staplre", ["Desk Lamp", "Office Chair", "Monitor Arm"],
+               extra=lambda i: i % 90), fair=False)[1]
+    assert 'Name "Staplre" looks like a misspelling of "Stapler"' in out[-1]["reason"], (other, out[-1])
+
+
+@pytest.mark.parametrize("other", ["Age (years)", "Age in years", "Patient age", "AGE"])
+def test_a_plain_name_beside_a_persons_age_in_years_is_still_peoples_names(other):
+    out = scan(["Id", "Name", other], column("Katherine", "Kathrine", PEOPLE, extra=lambda i: 20 + i % 50), fair=False)[1]
+    assert not any(g in o["reason"] for o in out for g in GUESS), (other, out[-1]["reason"])
+
+
+def test_the_common_names_ship_with_the_engine_and_the_exe():
+    # the list is data: without these two lines a pip install or the exe would read every Customer as a company
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2]
+    assert "engine/person_names.txt" in (root / "pyproject.toml").read_text(encoding="utf-8")
+    assert '"person_names.txt"), "anomaly_hunter/engine")' in (root / "packaging" / "AnomalyHunter.spec").read_text(encoding="utf-8")
+    names = (root / "backend" / "anomaly_hunter" / "engine" / "person_names.txt").read_text(encoding="utf-8").split()
+    assert len(names) > 6000 and {"thompson", "maria", "li"} <= set(names) and not {"microsoft", "contoso"} & set(names)

@@ -8,8 +8,9 @@ ROOT = Path(SPECPATH).parent
 a = Analysis(
     [str(ROOT / "packaging" / "entry.py")],
     pathex=[str(ROOT / "backend")],
-    # the measured bias rules are data, not code: PyInstaller only bundles them when told (bias_context reads them beside itself)
-    datas=[(str(ROOT / "frontend"), "frontend"), (str(ROOT / "backend" / "anomaly_hunter" / "ai" / "bias_rules.json"), "anomaly_hunter/ai")],
+    # the measured bias rules and the common names are data, not code: PyInstaller only bundles them when told (each is read beside its module)
+    datas=[(str(ROOT / "frontend"), "frontend"), (str(ROOT / "backend" / "anomaly_hunter" / "ai" / "bias_rules.json"), "anomaly_hunter/ai"),
+           (str(ROOT / "backend" / "anomaly_hunter" / "engine" / "person_names.txt"), "anomaly_hunter/engine")],
     excludes=["tkinter", "IPython", "pytest", "schemathesis"],  # not used at run time
 )
 exe = EXE(
