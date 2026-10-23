@@ -220,8 +220,17 @@ def measure(folder):
     return rules, nums
 
 
+# the pinned tables each rule is measured from, named in its text too (AH-37: every rule traced to its public source)
+FROM = {"sex_outcome": ["adult"], "race_outcome": ["adult"], "age_outcome": ["adult"], "marital_outcome": ["adult"],
+        "employment_outcome": ["adult"], "housing_outcome": ["german"], "sex_spread": ["german"], "age_spread": ["insurance"],
+        "smoker_spread": ["insurance"], "far_from_group": ["german", "compas", "insurance"], "group_median_move": ["insurance"],
+        "question_mark": ["adult"], "label_spellings": ["adult_test", "adult"], "top_codes": ["adult"], "age_missing": ["adult"],
+        "sex_missing": ["adult"]}
+
+
 def build(folder):
     rules, nums = measure(folder)
+    rules = [r | {"sources": FROM[r["id"]]} for r in rules]  # a rule with no entry in FROM fails here, before any write
     sources = {k: {kk: v[kk] for kk in ("title", "url", "sha256", "licence")} | {"rows": nums["rows"][k]} for k, v in SOURCES.items()}
     return {"about": "Measured by tools/bias_sources.py from pinned public tables (docs/bias/FINDINGS.md). Each rule describes a real gap "
                      "so it is not mistaken for a typo; none is ever an expectation to correct a value toward.",
