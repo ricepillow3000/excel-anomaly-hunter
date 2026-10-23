@@ -134,9 +134,9 @@ export function fairnessNote(fair) {
   if (gaps.length) return `${kept} Check these gaps between groups: ${gaps.slice(0, 3).map((t) => t.text).join("; ")}${more}.${context.map((c) => ` ${c}`).join("")}`;
   // no gap: name only the checks that ran ("Flags, blanks and outcomes are even" was said on a sheet that ran one
   // flag-rate check, AH-17), then the ones too few rows could prove, never "even" for them
-  const tests = fair.tests || [], ran = ["flag", "missing", "outcome"].filter((m) => tests.some((t) => t.verdict === "even" && t.measure === m));
+  const tests = fair.tests || [], ran = ["flag", "missing", "outcome", "amount"].filter((m) => tests.some((t) => t.verdict === "even" && t.measure === m));
   const unclear = tests.filter((t) => t.verdict === "unclear").slice(0, 3).map((t) => t.text);
-  const kinds = ran.map((m) => ({ flag: "flags", missing: "blanks", outcome: "outcomes" })[m]);
+  const kinds = ran.map((m) => ({ flag: "flags", missing: "blanks", outcome: "outcomes", amount: "amounts" })[m]);
   const list = kinds.length > 1 ? `${kinds.slice(0, -1).join(", ")} and ${kinds.at(-1)}` : kinds[0] || "";
   const said = (list ? ` ${list[0].toUpperCase()}${list.slice(1)} are even across ${cols.length === 1 ? "its" : "their"} groups.` : "") +
     (unclear.length ? ` Not enough rows to tell: ${unclear.join("; ")}.` : "");
@@ -145,7 +145,9 @@ export function fairnessNote(fair) {
 
 // Pure: every fairness test, gaps first, the widest gap (in rate points) first
 export function fairnessTests(fair) {
-  const width = (t) => { const r = Object.values(t.groups || {}).map((g) => g[1]); return r.length ? Math.max(...r) - Math.min(...r) : 0; };
+  // a rate's width in points; an amount's (AH-49: medians, in the column's own units) as a share of its largest median
+  const width = (t) => { const r = Object.values(t.groups || {}).map((g) => g[1]); const w = r.length ? Math.max(...r) - Math.min(...r) : 0;
+    return t.measure === "amount" ? (Math.max(...r) > 0 ? w / Math.max(...r) : 0) : w; };
   return [...(fair?.tests || [])].sort((a, b) => (b.verdict === "gap") - (a.verdict === "gap") || width(b) - width(a));
 }
 

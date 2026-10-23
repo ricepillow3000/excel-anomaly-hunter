@@ -389,4 +389,9 @@ assert.ok(Object.values(COLOR).every((c) => !OLD_COLOR.includes(c)) && OLD_COLOR
 // AH-48: the note for many repeated rows gets its own advice, never "the values are just unusual together"
 assert.match(recommendFix(["hotel", "adr"], [["City", 90]], 0, {}, "600 of 3000 rows repeat an earlier row exactly, all through the sheet - the first is this one, a copy of row 5", 0, 0).explanation,
   /^600 of 3000 rows repeat an earlier row exactly, all through the sheet - the first is this one, a copy of row 5 - this many, spread out, are usually separate real records/);
+// AH-49: amounts compared across groups are named like the other checks, and sorted by their relative width
+assert.equal(fairnessNote({ protected: { Sex: "demographic" }, tests: [even("flag"), even("amount")] }),
+  "Fairness: Sex is never used to decide which rows are unusual. Flags and amounts are even across its groups.");
+assert.deepEqual(fairnessTests({ tests: [{ verdict: "even", measure: "amount", groups: { a: [50, 50000], b: [50, 49000] } },
+  { verdict: "even", measure: "outcome", groups: { a: [50, 0.2], b: [50, 0.4] } }] }).map((t) => t.measure), ["outcome", "amount"]);
 console.log("panel self-check passed");

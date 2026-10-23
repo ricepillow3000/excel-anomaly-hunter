@@ -105,7 +105,8 @@ def test_every_test_says_which_kind_of_check_it_is():
     for i in range(0, 60, 2):
         rows[i][2] = ""  # blanks
     out = report(cols, rows)
-    assert {t["test"]: t["measure"] for t in out["tests"]} == {"flag rate": "flag", "missing Score": "missing", "Approved rate": "outcome"}
+    assert {t["test"]: t["measure"] for t in out["tests"]} == {"flag rate": "flag", "missing Score": "missing", "Approved rate": "outcome",
+                                                               "median Score": "amount"}  # AH-49
 
 
 @pytest.mark.parametrize("yes, no", [("Approved", "Denied"), ("Yes", "No"), ("Pass", "Fail"), (">50K", "<=50K"), ("Hired", "Not hired"),
