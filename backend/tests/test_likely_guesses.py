@@ -129,6 +129,9 @@ def lone_negative(col, lo, hi, v, seed=8, n=36):
     ("Elevation", 800, 2400, -1200), ("Latitude", 20, 60, -45), ("Yield", 2, 6, -4), ("Interest rate", 2, 6, -4),
     ("Spread", 50, 400, -300), ("Anomaly", 50, 400, -300), ("Error", 50, 400, -300), ("Forecast error", 50, 400, -300),
     ("Residual", 50, 400, -300), ("Adjustment", 50, 400, -300), ("Score to par", 2, 9, -6), ("Over/Under", 2, 9, -6),
+    # review 2: Visual Crossing's daily columns, a high with its unit in brackets, an operating loss (each said "likely")
+    ("tempmax", 12, 34, -15), ("tempmin", 12, 34, -15), ("feelslike", 12, 34, -15), ("High (C)", 12, 34, -15),
+    ("Low (F)", 40, 95, -60), ("Daily High", 12, 34, -15), ("Operating income", 800, 2400, -1200),
 ])
 def test_a_lone_negative_where_the_quantity_can_be_negative_is_a_guess_never_likely(col, lo, hi, v):
     rows, r = lone_negative(col, lo, hi, v)
@@ -145,7 +148,9 @@ def test_a_lone_negative_where_the_quantity_can_be_negative_is_a_guess_never_lik
                                             ("Net weight", 50, 110, -70.7), ("Net units", 20, 300, -138), ("Return qty", 20, 300, -138),
                                             ("Returns", 20, 300, -138), ("Change given", 20, 300, -138), ("Income", 800, 2400, -1200),
                                             ("Temp ID", 200, 900, -500), ("Error count", 20, 300, -138), ("Par", 3, 5, -4),
-                                            ("High school GPA", 2.0, 4.0, -3.1)])
+                                            ("High school GPA", 2.0, 4.0, -3.1),
+                                            # review 2: an absolute value is never below zero
+                                            ("Absolute error", 50, 400, -300), ("Abs diff", 50, 400, -300)])
 def test_a_lone_negative_where_the_quantity_cannot_be_negative_is_still_likely(col, lo, hi, v):
     _, r = lone_negative(col, lo, hi, v)
     assert r["likely"] == {col: float(-v)} and f"(likely {-v:g})" in r["reason"], r

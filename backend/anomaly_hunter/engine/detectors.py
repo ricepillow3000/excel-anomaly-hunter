@@ -96,7 +96,7 @@ def likely_value(v, st, lo, hi):
 # Try 2 (Council A's review): P/L, TMAX, Chg, YoY, Var, an elevation, a latitude, a yield, a spread, an error or a score to
 # par still said "likely"; Low stock, High price, Net weight, Return qty, Change given, Income and Temp ID said "maybe"
 TEMP = {"temp", "temps", "temperature", "temperatures", "celsius", "fahrenheit", "tmax", "tmin", "tavg", "dewpoint", "dew",
-        "windchill", "chill"}
+        "windchill", "chill", "tempmax", "tempmin", "feelslike", "feelslikemax", "feelslikemin"}  # tempmax: Visual Crossing
 SIGNED = TEMP | {"profit", "profits", "earnings", "margin", "margins", "gain", "gains", "loss", "losses", "pnl", "balance",
                  "balances", "return", "change", "changes", "chg", "delta", "diff", "difference", "variance", "var", "yoy",
                  "growth", "surplus", "deficit", "cashflow", "ebit", "ebitda", "elevation", "altitude", "latitude",
@@ -105,7 +105,8 @@ SIGNED = TEMP | {"profit", "profits", "earnings", "margin", "margins", "gain", "
 # ...unless the header says it counts or names something else: Return qty, Change given, Temp ID (a temporary worker's),
 # Error count
 NOT_SIGNED = {"qty", "quantity", "units", "count", "counts", "items", "orders", "given", "id", "code", "codes", "type",
-              "reason", "date", "agency", "worker", "workers", "staff", "employee", "employees", "contract"}
+              "reason", "date", "agency", "worker", "workers", "staff", "employee", "employees", "contract",
+              "absolute", "abs"}  # Absolute error, Abs diff: never below zero (AH-25 review 2)
 # "Net" is signed with a money or flow word (Net income, Net change, Net cash flow), never alone with Weight or Units
 NET_WITH = {"income", "change", "flow", "cashflow", "cash", "balance", "gain", "gains", "loss", "losses", "migration",
             "amount", "position", "worth", "value", "result", "profit", "earnings", "margin", "total"}
@@ -120,14 +121,15 @@ def _signed(col, columns=()):
     ws = set(w) | set(re.findall(r"[a-z]+", name))  # PnL, YoY whole as well as split (pn + l, yo + y)
     if "°" in name or "+/-" in name or "over/under" in name.replace(" ", "") or w == ["p", "l"]:  # P/L, P L
         return True
-    if "cash" in ws and "flow" in ws or "net" in ws and ws & NET_WITH or "par" in ws and ws & {"to", "vs", "score"}:
+    if "cash" in ws and "flow" in ws or "net" in ws and ws & NET_WITH or "par" in ws and ws & {"to", "vs", "score"} \
+            or "operating" in ws and "income" in ws:  # an operating loss
         return True
     if ws & NOT_SIGNED:
         return False
     if ws & SIGNED:
         return True
-    if ws & {"high", "highs", "low", "lows"}:  # alone (Highs), on a sheet that is not a stock's prices
-        return len(w) == 1 and not any(set(_words(c)) & PRICES for c in columns if c != col)
+    if ws & {"high", "highs", "low", "lows"}:  # alone (Highs, Daily High, High (C)), on a sheet that is not a stock's prices
+        return len(set(w) - {"daily", "c", "f"}) == 1 and not any(set(_words(c)) & PRICES for c in columns if c != col)
     return False
 
 
