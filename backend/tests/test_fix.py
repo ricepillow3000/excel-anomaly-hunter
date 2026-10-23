@@ -127,8 +127,8 @@ def test_suggest_fix_through_real_sdk(monkeypatch):
         out = client.suggest_fix(COLS, ROWS, 1, 0, 0, "low", "median please")
     finally:
         srv.shutdown()
-    # lower-cased and $-anchored addresses are normalised; sheet-qualified and row 0 are dropped
-    assert out == {"explanation": "Use the median.",
+    # lower-cased and $-anchored addresses are normalised; sheet-qualified and row 0 are left out, and said (AH-34)
+    assert out == {"explanation": "Use the median. (Left out Sheet1!C3, C0: not a single cell of this table.)",
                    "changes": [{"cell": "C3", "new": "=MEDIAN(C2,C4)"}, {"cell": "C4", "new": "50"}]}
     assert sent[0]["model"] == client.MODEL
     assert sent[0]["output_config"]["format"]["type"] == "json_schema"
@@ -202,7 +202,7 @@ def test_an_ai_formula_using_a_function_not_on_the_safe_list_is_left_out(monkeyp
               + [{"cell": f"E{k + 2}", "new": f} for k, f in enumerate(good)]}
     srv, _ = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
     try:
-        out = client.suggest_fix(wide, rows, 1, 0, 0, "", "fill D and E")
+        out = client.suggest_fix(wide, rows, 4, 0, 0, "", "fill D and E")  # row 6 flagged: rows 2-11 all shown (AH-34)
     finally:
         srv.shutdown()
     assert [c["cell"] for c in out["changes"]] == [f"E{k + 2}" for k in range(len(good))]
@@ -250,7 +250,8 @@ def test_with_no_request_a_fix_changes_only_the_flagged_row(monkeypatch):
     finally:
         srv.shutdown()
     assert out["changes"] == [{"cell": "C3", "new": "5"}]
-    assert "C2, C4, A1" in out["explanation"] and "every row" in out["explanation"]
+    # AH-34: the hint once said "type ... 'fix this typo in every row'", but the AI is shown only the rows around it
+    assert "C2, C4, A1" in out["explanation"] and "say so in your request" in out["explanation"]
 
 
 def test_a_typed_request_may_still_change_other_rows(monkeypatch):
