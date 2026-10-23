@@ -1,34 +1,24 @@
-"""AH-30 (blind round 23, now a tuning set): a percentage column let 233.4 through (drought area_pct, 0-100 everywhere
-else), and a race time that is laps x average lap time was never learnt as a rule, because the average is rounded to the
-cent and laps multiply its rounding (16 laps x 0.005 s = 0.08 s, past the rule's 1-cent tolerance), so a qualifying time
-of 26.1 s typed 261 - inside the column's 17-492 s - went unflagged. Synthetic sheets only, shaped like those tables."""
+"""AH-30 (blind round 23, now a tuning set): a race time that is laps x average lap time was never learnt as a rule,
+because the average is rounded to the cent and laps multiply its rounding (16 laps x 0.005 s = 0.08 s, past the rule's
+1-cent tolerance), so a qualifying time of 26.1 s typed 261 - inside the column's 17-492 s - went unflagged. And a
+percentage is not a share of a whole by its name (AH-30 review). Synthetic sheets only, shaped like those tables."""
 import numpy as np
 import pytest
 
 from anomaly_hunter.agents.scan_agent import scan
 
 
-def shares(col, n=400, seed=40):
-    rng = np.random.default_rng(seed)
-    return [[f"W{i:03d}", ("None", "D0", "D1", "D2")[i % 4], round(float(rng.uniform(0, 100)), 2)] for i in range(n)]
-
-
-@pytest.mark.parametrize("col", ["area_pct", "Percent covered", "Share (%)", "PctOwned", "Coverage %"])
-def test_a_percentage_past_100_is_worth_a_check(col):
-    rows = shares(col)
-    rows[123][2] = 101.5  # just past 100, inside any limit
-    r = scan(["week", "level", col], rows, fair=False)[1][123]
-    assert f"{col} 101.5 is outside what {col} can be (0 to 100)" in r["reason"], r
-
-
-@pytest.mark.parametrize("col", ["% chg", "YoY %", "Growth (%)", "Margin %", "Return %", "Change in share (%)",
-                                 "% of target", "Percent of normal", "Pct of budget", "Capacity used (%)"])
-def test_a_percent_change_or_margin_is_not_held_to_0_to_100(col):
-    rows = shares(col)
-    rows[123][2] = 140.0
-    rows[124][2] = -12.0
-    out = scan(["week", "level", col], rows, fair=False)[1]
-    assert not any("can be (0 to 100)" in o["reason"] for o in out), (col, out[123]["reason"], out[124]["reason"])
+@pytest.mark.parametrize("col, lo, hi, real", [
+    # AH-30 review: a percentage is not a share of a whole by its name; each of these passes 0-100 for real
+    ("Attendance %", 55, 99, [104.2, 101.7]), ("Utilization %", 40, 98, [112.0]), ("Markup %", 20, 95, [180.0]),
+    ("ROI %", 1, 60, [310.0]), ("% increase", 0, 40, [-6.0, 150.0]), ("Inflation %", 0.5, 9, [-0.4]),
+    ("CPU %", 2, 95, [340.0]), ("Debt % of GDP", 10, 95, [236.0]), ("Occupancy %", 40, 99, [103.0]),
+    ("Speed (% of limit)", 60, 99, [131.0]), ("Efficiency %", 70, 99, [310.0]), ("Coverage %", 0, 99, [100.5])])
+def test_a_percentage_column_is_never_said_to_be_past_what_it_can_be(col, lo, hi, real):
+    rng = np.random.default_rng(43)
+    vals = [round(float(v), 1) for v in rng.uniform(lo, hi, 400)] + real
+    out = scan(["Id", col], [[f"r{i}", v] for i, v in enumerate(vals)], fair=False)[1]
+    assert not any("can be (0 to 100)" in o["reason"] for o in out), (col, [o["reason"] for o in out if "can be" in o["reason"]])
 
 
 def races(seed=41):

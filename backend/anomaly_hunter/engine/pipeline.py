@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from anomaly_hunter.engine import fairness
-from anomaly_hunter.engine.detectors import _result, _signed, isolation_detector, limits_detector, sequence_detector
+from anomaly_hunter.engine.detectors import _result, isolation_detector, limits_detector, sequence_detector
 from anomaly_hunter.engine.load import EXCEL_ERROR, PLACEHOLDER, _blank, numbers
 
 def summary_rows(df):
@@ -209,8 +209,6 @@ def whole_numbers(df, column_types, skip):
     return out
 
 
-OF_MORE = {"target", "targets", "goal", "goals", "budget", "plan", "quota", "capacity", "baseline", "expected", "forecast",
-           "benchmark", "previous", "prior", "last", "median", "average", "avg", "mean", "normal", "par", "index"}
 BOUNDED = [(r"month", 1, 12), (r"quarter|qtr", 1, 4), (r"hour", 0, 24), (r"minute|second", 0, 59),
            (r"weekday|day of week", 0, 7), (r"lat|latitude", -90, 90), (r"lon|lng|long|longitude", -180, 180)]
 SCALE = re.compile(r"\(\s*(\d+)\s*(?:-|–|to)\s*(\d+)\s*\)|\bout of (\d+)\b", re.I)
@@ -224,12 +222,9 @@ def _bounds(col):
         return None
     if m := SCALE.search(h):
         return (float(m[1]), float(m[2])) if m[1] else (0.0, float(m[3]))
-    # a share of a whole: 0 to 100 (drought area_pct 233.4 passed, blind round 23). A change, a growth or a margin in %
-    # can pass 100 and go below 0 (detectors._signed), so it is left to the limits
-    # ...and so can a share of a target, a budget, a normal or a capacity (120% of target, 300% of normal rain)
-    w = set(fairness._words(col))
-    if ("%" in h or w & {"pct", "percent", "percentage", "perc"}) and not _signed(col) and not w & OF_MORE:
-        return (0.0, 100.0)
+    # Not a percentage: a name says % far more often than it says "share of a whole". Attendance, utilization, occupancy,
+    # markup, ROI, CPU, debt of GDP and a speed's % of its limit pass 100, inflation and a % increase go below 0, and a
+    # 0-100 bound said "outside what it can be" of every one (AH-30 review); a 233.4 among 0-100 stands alone (AH-29)
     whole = re.sub(r"\([^()]*\)", "", h).strip()  # "Month (number)" is still Month
     return next(((float(lo), float(hi)) for pat, lo, hi in BOUNDED if re.fullmatch(pat, whole)), None)
 
