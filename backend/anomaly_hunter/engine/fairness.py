@@ -273,7 +273,80 @@ def _aged(col):
     """A person's age or birth date by its header: plain ("Age", "age_years", "Date of birth") or a person's ("Patient
     age"), never a thing's ("HouseAge", "Account age")."""
     w = set(_words(col))
-    return bool(w & AGED) and w - AGE_WORDS <= PERSON
+    return bool(w & AGED) and (w - AGE_WORDS <= PERSON or _identity(col))  # "What is your age?" (AH-53)
+
+
+# AH-53 (blind round 37): a header that asks or states something is an answer column. 29 opinion questions that mention a
+# religion ("How comfortable would you be seeing someone who practices a different religion from you: ...") and a statement
+# with "sex" in it ('To what extent do you agree ... "our sex life has improved"') were read as who people are, and 48
+# "real gap" sentences followed. A short question that asks who someone is stays one: "What is your present religion,
+# if any?", "What is your gender?", "Which race best describes you?"
+ASKS = {"how", "what", "which", "who", "when", "where", "why", "do", "does", "did", "are", "is", "was", "were", "would", "could",
+        "should", "have", "has", "had", "to", "please", "if", "will", "can"}
+OPINION = {"agree", "disagree", "comfortable", "comfortably", "feel", "feeling", "think", "believe", "opinion", "important",
+           "likely", "often", "familiar", "satisfied", "prefer", "affect", "affects", "worried", "support", "oppose", "approve",
+           "matter", "matters", "talk", "talking", "discuss", "discussing", "seeing", "see", "should", "fair", "unfair"}
+IDENTITY = DEMOGRAPHIC | {"religious", "denomination", "faith", "ethnic", "background"}
+
+
+def _asked(col):
+    """A header that asks or states something (a survey's question), not one that names a column: "Gender", "Q3: Sex" and
+    "Gender:" are names."""
+    s, w = str(col), _words(col)
+    w = w[1:] if w and re.fullmatch(r"q\d*", w[0]) else w  # "Q3: Sex"
+    return (len(w) > 6 or "?" in s and len(w) > 2 or ":" in s and len(w) > 4 or any(q in s for q in "\"\u201c\u201d")
+            or bool(w) and w[0] in ASKS and len(w) > 2 or bool(set(w) & {"agree", "disagree"}))
+
+
+def _identity(col):
+    """A short question that asks who someone is: its demographic word is what it asks for ("your present religion",
+    "which race"), with no opinion in it ("Is your religion important to you?" asks an opinion)."""
+    w = _words(col)
+    if len(w) > 9 or set(w) & OPINION:
+        return False
+    for k, word in enumerate(w):
+        if word in ("your", "which", "what") and set(w[k + 1:k + 3]) & IDENTITY:
+            return True
+    return False
+
+
+ROWLIKE = {"id", "name", "names", "number", "no", "code", "key", "ref", "first", "last", "full", "given", "family"}
+
+
+def _names_rows(col):
+    """A header that names its rows as people: "Customer ID", "Patient", "player_id", "Respondent" - never a count about
+    people ("passengers_per_cabin" made a table of Ferris wheels a people sheet, AH-53)."""
+    w = set(_words(col))
+    return len(_words(col)) <= 3 and bool(w & PERSON) and w - ROWLIKE <= PERSON
+
+
+def _unnamed(col):
+    """A column with no header of its own: "", ".2" (a second blank header, deduplicated), "Unnamed: 3" - never quoted
+    in a sentence ("Age > 60: 89% missing .2", AH-53)."""
+    base = re.sub(r"\.\d+$", "", str(col)).strip()
+    return not re.search(r"[A-Za-z0-9]", base) or bool(re.fullmatch(r"(?i)unnamed:? ?\d+", base))
+
+
+def _subheader(df, types):
+    """The first data row when it is a second header row: a survey export's "Response" under each question. At least 3
+    of its cells, half of those filled, are in category columns where that value never comes again ("too few to
+    compare: Response (1 row)", AH-53)."""
+    if len(df) < 2 * MIN_GROUP:
+        return pd.Series(False, index=df.index)
+    first, filled, alone = df.iloc[0], 0, []
+    for c, t in types.items():
+        v = str(first.get(c, "")).strip()
+        if t != "text" or not v or v.lower() == "nan":
+            continue
+        filled += 1
+        rest = df[c].iloc[1:].astype(str).str.strip()
+        if rest.nunique() <= 50 and not (rest == v).any():
+            alone.append(v)
+    # ...and one of those labels heads 3+ columns ("Response"): a first row of real data (the Tour de France's 1903
+    # winner) has values of its own in a few columns too, never one label over three
+    mask = pd.Series(False, index=df.index)
+    mask.iloc[0] = len(alone) >= 3 and len(alone) >= filled / 2 and max(map(alone.count, alone)) >= 3
+    return mask
 
 
 def _people(df, types):
@@ -286,11 +359,11 @@ def _people(df, types):
     cols = [c for c in types if c in df.columns]
     if any(set(_words(c)) & ANIMALS for c in cols) and not any(set(_words(c)) & (PERSON_ONLY | ROWS_ARE_PEOPLE) for c in cols):
         return {}
-    named = protected(cols)
+    named = {c: why for c, why in protected(cols).items() if not _unnamed(c) and (not _asked(c) or _identity(c))}
     for c in cols:
         w = set(_words(c))
         # a short header only: "Will you shop any Black Friday sales?" is a question, not a race (blind round 36)
-        if c not in named and (w & OTHER_NAMES and len(_words(c)) <= 3 or w & COLOUR and _labels(df[c], 20) is not None
+        if c not in named and not _asked(c) and (w & OTHER_NAMES and len(_words(c)) <= 3 or w & COLOUR and _labels(df[c], 20) is not None
                                and set(_labels(df[c], 20).dropna().str.casefold()) <= RACE_LABELS):
             named[c] = "demographic"
     out = {}
@@ -312,7 +385,7 @@ def _people(df, types):
         out[c] = why
     # ...and the sheet is about people: a person-only column (not an age, not a place), or rows named as people
     strong = any(why == "demographic" and not set(_words(c)) & AGED for c, why in out.items())
-    if not strong and not any(set(_words(c)) & PERSON for c in cols):
+    if not strong and not any(_names_rows(c) for c in cols):
         return {}
     return out
 
@@ -357,9 +430,13 @@ def report(df, types, rows):
     context = one sentence of measured public context (ai/bias_rules.json), only when the rule measured this outcome and
     the sheet's gap runs the same way. Never on a flag-rate gap: that one is ours."""
     from anomaly_hunter.ai.bias_context import pane_note_matching  # here, not at the top: bias_context reads this module's words
+    head = _subheader(df, types)  # a second header row is no person: left out of every group and measure (AH-53)
+    rows = [r for r, h in zip(rows, head) if not h]
+    df = df[~head.to_numpy()]
+    types = {c: t for c, t in types.items() if not _unnamed(c)}  # a column with no name is never quoted
     prot = _people(df, types)
     flagged = pd.Series([r["severity"] in ("High", "Medium", "Low") for r in rows], index=df.index)
-    missing = {c: _missing(df[c]) for c in df.columns if c not in prot}
+    missing = {c: _missing(df[c]) for c in types if c in df.columns and c not in prot}
     blanks = {f"missing {c}": (b, f"missing {c}", c, "missing") for c, b in missing.items() if b.sum() >= 5}
     outcomes = _outcomes(df, types, prot)
     amounts = _amounts(df, types, prot)
@@ -378,6 +455,16 @@ def report(df, types, rows):
             small = {str(k): int(n) for k, n in table.sum(axis=1).items() if n < MIN_GROUP}
             table = table[table.sum(axis=1) >= MIN_GROUP]
             base = {"column": col, "kind": why, "test": name, "measure": kinds[name], "subject": subject, "label": label, "maybe": maybe}
+            # a question one group never answers, every one of its rows blank, is the survey's routing (atheists are
+            # not asked about services): never "a real gap, check why". Said plainly, and the asked groups compared
+            if kinds[name] == "missing" and table.shape[1] == 2 and len(table) > 2:
+                routed = [k for k in table.index if table.loc[k, False] == 0]
+                asked = table.drop(routed)
+                # ...when the groups it is asked of mostly answer it: a column blank for nearly everyone (Thanksgiving's
+                # "Other (please specify)", 93-98% blank) is sparse, not routed
+                if routed and len(asked) >= 2 and asked[True].sum() <= 0.2 * asked.to_numpy().sum():
+                    base["routed"] = "; not asked of " + _named({str(k): int(table.loc[k].sum()) for k in routed}) + ", every row blank"
+                    table = table.drop(routed)
             if len(table) < 2 and len(table) + len(small) >= 2 and hit[ok].any():  # every group, or all but one, too small
                 tests.append({**base, "p": None, "groups": {}, "small": small})
                 continue
@@ -406,7 +493,7 @@ def report(df, types, rows):
             continue
         what = measures[t["test"]][1]
         subject, label, table, small, maybe = t.pop("subject"), t.pop("label"), t.pop("table", None), t.pop("small"), t.pop("maybe")
-        out = f"; too few to compare: {_named(small, maybe)}" if small else ""
+        out = (f"; too few to compare: {_named(small, maybe)}" if small else "") + t.pop("routed", "")
         if t["p"] is None:
             t["verdict"], t["text"] = "unclear", f"{t['column']}: {what} - too few rows to compare: {_named(small, maybe)}"
             continue
