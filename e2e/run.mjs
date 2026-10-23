@@ -117,8 +117,10 @@ if (mode === "flow") {
   const listed = await page.$$eval("#flagged-list button", (bs) => bs.slice(0, 5).map((b) => b.innerText.split("\n")[0]));
   ok(["11", "22", "51", "81", "121"].every((r) => listed.some((l) => l.startsWith(`Row ${r}`))), "all 5 planted problems listed first - " + listed);
   ok(!(await text("#flagged-list")).includes("weird limit"), "no jargon in the list");
-  ok((await text("#fairness-note")).startsWith("Fairness: Region is never used") && (await page.$$("#fairness-list li")).length > 0,
-    "fairness: the protected column is named, every check is listed under All fairness checks");
+  // a sales sheet's Region alone says nothing about people: no fairness sentence, no checks listed (AH-39: a place or an
+  // age alone is a sales sheet's or a house's as often - Texas cities' house sales got "a real gap")
+  ok(!(await page.isVisible("#fairness-note")) && (await page.$$("#fairness-list li")).length === 0,
+    "fairness: a sheet with no column about people claims nothing - " + (await text("#fairness-note")));
   // AH-40: exactly the cells each reason names - row 11's Units, UnitCost and Total (its total does not add up), the
   // duplicate's whole row, the "east " Region, the blank Units - and no other cell of those rows
   const fills = await page.evaluate(() => ["C11", "D11", "E11", "C22", "A51", "E51", "B81", "C121", "A2"].map((a) => __cell("Sales", a).fill));
