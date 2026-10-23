@@ -3,6 +3,7 @@ two bookings with the same hotel, dates, guests and rate - and each was a Medium
 through a sheet (AH-28), max(20, 1% of the rows) repeats found in every fifth of the sheet are one note: how many, and
 where the first is. A few, or a block of them (a range pasted twice), are still each a slip. Synthetic sheets only."""
 import numpy as np
+import pytest
 
 from anomaly_hunter.agents.scan_agent import scan
 
@@ -57,3 +58,39 @@ def test_the_note_colours_its_whole_row():
     out = scan(COLS, rows, fair=False)[1]
     noted = [o for o in out if "repeat an earlier row" in o["reason"]]
     assert len(noted) == 1 and noted[0]["cells"] == COLS, noted
+
+
+def orders(text_id):
+    rng = np.random.default_rng(5)
+    rows = [[f"INV-{50001 + i}" if text_id else 50001 + i, f"2025-{1 + i // 250:02d}-{1 + i // 10 % 25:02d}", f"C{int(rng.integers(1, 400))}",
+             round(float(rng.uniform(5, 900)), 2)] for i in range(3000)]
+    again = [list(r) for k, r in enumerate(rows) if k // 10 % 25 == 3]  # 12 days' orders imported twice
+    return sorted(rows + again, key=lambda r: (r[1], str(r[0]))), len(again)
+
+
+@pytest.mark.parametrize("text_id", [False, True])
+def test_orders_imported_twice_are_each_a_slip_when_an_id_tells_records_apart(text_id):
+    # AH-48 review: 120 orders imported twice, sorted by date, so the copies sat all through the sheet, were one note
+    # saying "nothing like an ID tells them apart" - beside an Order ID column no two different orders share
+    rows, copies = orders(text_id)
+    out = scan(["Order ID", "Order date", "Customer", "Amount"], rows, fair=False)[1]
+    assert len(flagged(out, "Duplicate of row")) == copies and not flagged(out, "repeat an earlier row")
+
+
+def test_ranges_pasted_again_in_every_fifth_of_the_sheet_are_each_a_slip():
+    # AH-48 review: 5 ranges of 12 rows, each pasted below itself, one in each fifth: 60 copies, one note
+    rows = bookings()
+    for k in range(5):
+        s = 300 + 600 * k
+        rows[s + 12:s + 24] = [list(r) for r in rows[s:s + 12]]
+    out = scan(COLS, rows, fair=False)[1]
+    assert set(range(312, 324)) <= set(flagged(out, "Duplicate of row")) and not flagged(out, "repeat an earlier row")
+
+
+def test_real_bookings_repeated_in_pairs_stay_in_the_note():
+    # round 36's hotel table repeats real bookings in pairs (A B A B: 65 runs of 2), never in runs of 5
+    rows, rng = bookings(), np.random.default_rng(8)
+    for i in sorted(rng.choice(np.arange(10, 2990, 6), 300, replace=False)):
+        rows[i + 2], rows[i + 3] = list(rows[i]), list(rows[i + 1])
+    out = scan(COLS, rows, fair=False)[1]
+    assert not flagged(out, "Duplicate of row") and len(flagged(out, "repeat an earlier row")) == 1

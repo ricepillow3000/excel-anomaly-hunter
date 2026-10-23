@@ -41,7 +41,10 @@ def summary_rows(df):
     return mask
 
 
-def duplicates(df, errors_log=()):
+PASTED = 5  # copies of this many consecutive rows in a row: a range pasted again
+
+
+def duplicates(df, errors_log=(), column_types=None):
     """Row equal to an earlier row in every column but source_file. Text typed into a number or date column is compared as
     that text: loading had blanked it, so "R+33.2" and "D+6.3" rows looked equal (513 false duplicates, 2026-10-16).
     -> (reasons per row, notes per row): max(MANY, SHARE of the rows) repeats found in every fifth of the sheet are one
@@ -58,16 +61,37 @@ def duplicates(df, errors_log=()):
     if len(set(keys)) < 0.5 * len(keys):
         return [[] for _ in keys], notes
     first = [seen.setdefault(key, i) for i, key in enumerate(keys)]
-    copies = [i for i, j in enumerate(first) if j != i]
+    n, copies = len(keys), [i for i, j in enumerate(first) if j != i]
     # many repeats through the whole sheet, with nothing (an ID) to tell two real records apart, are how the data is:
     # two bookings of the same room type, dates and rate. A slip is rare, or a range pasted twice, all in one place
-    if len(copies) >= max(MANY, SHARE * len(keys)) and len({i * 5 // len(keys) for i in copies}) == 5:
-        notes[copies[0]].append(Why(f"{len(copies)} of {len(keys)} rows repeat an earlier row exactly, all through the sheet - "
-                                    f"the first is this one, a copy of row {first[copies[0]] + 2}", *cols))
-        return [[] for _ in keys], notes
+    # A range pasted again is copies of 5+ consecutive rows, one after another, wherever it lands: 5 ranges of 12 rows,
+    # one in each fifth of the sheet, were one note (AH-48 review). The hotel table repeats real bookings in pairs and
+    # threes (65 runs of 2, one of 3, one of 4 in round 36), never 5
+    step = [0 < i and first[i] != i and first[i - 1] != i - 1 and first[i] == first[i - 1] + 1 for i in range(n)]
+    pasted, k = set(), 0
+    while k < n:
+        e = k + 1
+        while e < n and step[e]:
+            e += 1
+        if e - k >= PASTED and first[k] != k:
+            pasted.update(range(k, e))
+        k = e
+    spread = [i for i in copies if i not in pasted]
+    # a column no two different rows share (an Order ID, an invoice code) tells records apart: a row that repeats it is the
+    # same record twice. 120 orders imported twice and sorted by date were one note saying "nothing like an ID" (AH-48 review)
+    distinct = df.iloc[[i for i in range(n) if first[i] == i]]
+    def ident(c):
+        t, v = (column_types or {}).get(c), distinct[c]
+        whole = t == "id" or t == "text" or (t == "number" and pd.to_numeric(v, errors="coerce").dropna().mod(1).eq(0).all())
+        return whole and len(v) >= MANY and v.notna().all() and v.is_unique
+    if len(spread) >= max(MANY, SHARE * n) and len({i * 5 // n for i in spread}) == 5 and not any(map(ident, cols)):
+        notes[spread[0]].append(Why(f"{len(spread)} of {n} rows repeat an earlier row exactly, all through the sheet - "
+                                    f"the first is this one, a copy of row {first[spread[0]] + 2}", *cols))
+        copies = set(copies) - set(spread)
+    copies = set(copies)
     for i, j in enumerate(first):
         src = f" ({df['source_file'].iloc[j]})" if "source_file" in df else ""  # CLI path only
-        out.append([Why(f"Duplicate of row {j + 2}{src}", *cols)] if j != i else [])  # the whole row is the copy
+        out.append([Why(f"Duplicate of row {j + 2}{src}", *cols)] if i in copies else [])  # the whole row is the copy
     return out, notes
 
 
@@ -713,7 +737,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
             "isolation": isolation_detector(df, judged, k) if s >= 5 else _result(n, "strength below 5")}
     # DBSCAN cut 2026-10-07: 90s/100k rows, 81% false alarms, bench same without it
     ran = [d for d in dets.values() if d["ran"]]
-    (dup, repeats), (typ, typ_coded), (blank, spread) = duplicates(df, errors_log), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
+    (dup, repeats), (typ, typ_coded), (blank, spread) = duplicates(df, errors_log, column_types), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
     (hole, coded), far = placeholders(df, column_types, skip), far_dates(df, column_types, skip)
     paired, solved = pairs(df, column_types, skip, limits)
     add = [list(dict.fromkeys(s + m)) for s, m in zip(sums(df, column_types, skip), paired, strict=True)]
