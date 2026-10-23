@@ -108,3 +108,16 @@ def test_a_block_of_blanks_is_still_flagged_one_by_one():
         rows[i][2] = ""
     _, out, *_ = scan(cols, rows, fair=False)
     assert flagged(out, "Blank cell in column Age") == list(range(500, 540))
+
+
+def test_a_few_deletions_spread_through_a_big_sheet_are_still_flagged_one_by_one():
+    # 20 values gone from a 20,000-row column (0.1%) met "20+ in every fifth" and became one Low note on the first, so the
+    # other 19 rows went unflagged (Council B, AH-27/28 review). Honest unknowns are a share of the column (Titanic's Age
+    # 20%, Netflix's cast 9% and country 6.5%); a handful in a big sheet is still each a slip
+    rng = np.random.default_rng(5)
+    rows = [[f"r{i}", round(float(rng.uniform(10, 90)), 1), int(rng.integers(1, 9))] for i in range(20000)]
+    gone = sorted(int(i) for i in rng.choice(20000, 20, replace=False))
+    for i in gone:
+        rows[i][1] = ""
+    out = scan(["Id", "Amount", "Units"], rows, fair=False)[1]
+    assert all("Blank cell in column Amount" in out[i]["reason"] for i in gone), [out[i]["reason"] for i in gone][:3]

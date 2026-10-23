@@ -112,6 +112,7 @@ def placeholders(df, column_types, skip):
 
 
 MANY = 20  # blanks in one column: from here, spread through the sheet, they are how the data is (AH-28)
+SHARE = 0.01  # ...and at least 1% of its rows: 20 values gone from a 20,000-row column are still each a slip (AH-28 review)
 
 
 def blanks(df, column_types, skip, errors_log, threshold=0.80):
@@ -168,7 +169,7 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
             for said_so in (True, False):
                 part = b & (coded if said_so else ~coded)
                 pos = np.flatnonzero(part)
-                if len(pos) >= 5 if said_so else len(pos) >= MANY and len(set(pos * 5 // len(b))) == 5:
+                if len(pos) >= 5 if said_so else len(pos) >= max(MANY, SHARE * len(b)) and len(set(pos * 5 // len(b))) == 5:
                     notes[df.index[pos[0]]].append(f'{col} is "{word}" (no value) in {len(pos)} of {n} rows' if said_so
                                                    else f"{col} is blank in {len(pos)} of {n} rows, spread through the sheet")
                     continue
