@@ -141,3 +141,28 @@ def test_a_percentage_column_with_values_below_0_is_no_share():
     rows[7][1] = 200.0
     out = scan(["Name", "diff_percent", "x"], rows, fair=False)[1]
     assert "a share between 0 and 100" not in out[7]["reason"]
+
+
+def store_totals(included, slip=None):
+    # a quarterly Total beside an Adjustment column that is 0 in 96% of rows, either part of the Total or not
+    rng = np.random.default_rng(12)
+    rows = []
+    for i in range(400):
+        a, b, c = int(rng.integers(10, 900)), int(rng.integers(10, 900)), int(rng.integers(10, 900))
+        adj = 0 if rng.random() < 0.96 else int(rng.integers(1, 50))
+        rows.append([f"S{i}", a, b, c, adj, a + b + c + (adj if included else 0)])
+    if slip is not None:
+        rows[slip][5] += 300
+    return ["Store", "A", "B", "C", "Adjustment", "Total"], rows
+
+
+def test_a_mostly_zero_column_beside_a_total_that_leaves_it_out_flags_nothing():
+    # AH-55 review (Council B): "A + B + C + Adjustment" held on the 96% of rows where Adjustment is 0, and the
+    # other 16 honest rows were each a Medium "does not add up"
+    out = scan(*store_totals(included=False), fair=False)[1]
+    assert not [i for i, o in enumerate(out) if "does not add up" in o["reason"]], [o["reason"] for o in out if "add up" in o["reason"]][:2]
+
+
+def test_a_mostly_zero_part_a_total_includes_still_lets_a_slip_be_found():
+    out = scan(*store_totals(included=True, slip=200), fair=False)[1]
+    assert [i for i, o in enumerate(out) if "does not add up" in o["reason"]] == [200], [o["reason"] for o in out if "add up" in o["reason"]][:3]

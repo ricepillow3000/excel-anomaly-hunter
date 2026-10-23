@@ -464,6 +464,11 @@ def _totals(df, cols, skip, out):
                 continue
             p = a[:, [nums[c] for c in parts]]
             ok = ~np.isnan(y) & ~np.isnan(p).any(axis=1)
+            # a part that is 0 in nearly every row cannot show whether the total holds it: an "Adjustment" beside the
+            # total, 0 in 96% of rows and no part of it, "held" and flagged its other rows (AH-55 review). The rows where
+            # such a part is not 0 are left unjudged, whichever way the sheet means it
+            sparse = (p != 0).mean(axis=0) < 0.2
+            ok &= ~(p[:, sparse] != 0).any(axis=1)
             got = p[ok].sum(axis=1)
             live = (p[ok] != 0).any(axis=1)
             bad = np.abs(y[ok] - got) > np.maximum(0.011, 1e-6 * np.abs(y[ok]))  # 1 cent + float slack, as sums
