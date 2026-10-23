@@ -183,12 +183,17 @@ def _sorted_end(s, blank, skip):
     live = np.flatnonzero(~np.asarray(skip))
     tail = len(live) - next((k + 1 for k in range(len(live) - 1, -1, -1) if not blank[live[k]]), 0)
     v = s.iloc[live[:len(live) - tail]][~blank[live[:len(live) - tail]]].dropna()
-    if tail < 2 or len(v) < 20 or v.nunique() < 5:  # a constant or two-label column is in order by itself
+    # a few blanks stay each a slip: 3 deleted invoice numbers at the end of a list in number order are no sort's doing
+    if tail < MANY or len(v) < 20 or v.nunique() < 5:  # a constant or two-label column is in order by itself
         return live[:0]
     v = v.astype(str).str.casefold() if v.dtype.kind not in "biufmM" else v  # A-Z as Excel sorts, any capitals
     # in order but for a slip or two: round 36's x10 plant (528 typed 5280) stood against the order once in 15,280 rows
+    # ...counted against the column's changes of value: Manager grouped by a sorted Region (Dave, Alice, Eve, Bob, Carol)
+    # changes 4 times, 2 of them against any order, and is in no order at all
     step = np.sign(np.diff(v.rank(method="min").to_numpy()))
-    return live[len(live) - tail:] if min((step > 0).sum(), (step < 0).sum()) <= max(2, 0.001 * len(step)) else live[:0]
+    step = step[step != 0]
+    against = min((step > 0).sum(), (step < 0).sum())
+    return live[len(live) - tail:] if against <= max(2, 0.001 * len(v)) and against <= 0.05 * len(step) else live[:0]
 
 
 def blanks(df, column_types, skip, errors_log, threshold=0.80):

@@ -52,9 +52,9 @@ def test_a_block_of_blanks_at_the_end_of_a_column_nothing_is_sorted_by_is_still_
 def test_a_table_sorted_a_to_z_by_a_text_column_keeps_its_blank_tail_as_one_note():
     # Excel sorts text without regard to capitals: "amsterdam" sits between "Aarhus" and "Berlin"
     cities = sorted([f"{w}{k}" for w in ("Aarhus", "amsterdam", "Berlin", "cairo", "Delhi", "Essen", "Faro") for k in range(40)], key=str.casefold)
-    rows = [[f"S{i}", c, 10 + i % 7] for i, c in enumerate(cities)] + [[f"S{280 + i}", "", 10 + i % 7] for i in range(15)]
+    rows = [[f"S{i}", c, 10 + i % 7] for i, c in enumerate(cities)] + [[f"S{280 + i}", "", 10 + i % 7] for i in range(20)]
     out = scan(["Store", "City", "Staff"], rows, fair=False)[1]
-    assert not flagged(out, "Blank cell") and flagged(out, "City is blank in 15 of 295 rows, all at the end") == [280], \
+    assert not flagged(out, "Blank cell") and flagged(out, "City is blank in 20 of 300 rows, all at the end") == [280], \
         [out[i]["reason"] for i in (279, 280, 281)]
 
 
@@ -69,3 +69,33 @@ def test_a_slip_inside_the_sorted_column_still_leaves_its_blank_tail_one_note():
 def test_the_note_colours_its_own_column_only():
     out = scan(*marvel(), fair=False)[1]
     assert out[1870]["cells"] == ["APPEARANCES"], out[1870]
+
+
+@pytest.mark.parametrize("deleted", [3, 25])
+def test_blanks_at_the_end_of_a_column_grouped_by_another_sorted_column_are_each_a_slip(deleted):
+    # AH-46 review: a table sorted by Region, its Manager following the region in no order (Dave, Alice, Eve, Bob, Carol).
+    # The value changes 4 times, 2 of them against any order: no sort put its end blanks there, they are deleted values
+    mgr = {"East": "Dave", "North": "Alice", "South": "Eve", "Upper": "Bob", "West": "Carol"}
+    rng = np.random.default_rng(1)
+    rows = [[f"S{k}", r, m, int(rng.integers(100, 900))] for k, (r, m) in enumerate((r, m) for r, m in mgr.items() for _ in range(60))]
+    for r in rows[-deleted:]:
+        r[2] = ""
+    out = scan(["Store", "Region", "Manager", "Sales"], rows, fair=False)[1]
+    assert flagged(out, "Blank cell in column Manager") == list(range(300 - deleted, 300)) and not flagged(out, "Manager is blank")
+
+
+def test_a_few_values_missing_at_the_end_of_a_column_in_its_own_order_are_each_a_slip():
+    # AH-46 review: invoices in number order (no sort), the last 3 numbers deleted. A few end blanks are no sign of a sort
+    rows = [[1001 + i, f"C{i % 40}", 10 + (i * 37) % 890] for i in range(500)]
+    for r in rows[-3:]:
+        r[0] = ""
+    out = scan(["Invoice No", "Customer", "Amount"], rows, fair=False)[1]
+    assert flagged(out, "Blank cell in column Invoice No") == [497, 498, 499] and not flagged(out, "Invoice No is blank")
+
+
+def test_a_short_column_in_grouped_runs_of_no_order_is_not_read_as_sorted():
+    # AH-46 review: 20 grades in runs (3, 1, 5, 2, 4) are in no order; with 2 end blanks they stayed 2 slips before AH-46
+    vals = [3] * 4 + [1] * 4 + [5] * 4 + [2] * 4 + [4] * 4
+    rows = [[f"R{i}", v, 50 + i] for i, v in enumerate(vals)] + [["R20", "", 70], ["R21", "", 71]]
+    out = scan(["Row", "Grade", "Other"], rows, fair=False)[1]
+    assert flagged(out, "Blank cell in column Grade") == [20, 21] and not flagged(out, "Grade is blank")
