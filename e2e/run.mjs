@@ -22,7 +22,9 @@ const browser = await chromium.launch().catch(() => chromium.launch({ channel: "
 const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width: 360, height: 900 } });
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.stack));
-page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+// a console error names the file that failed: "Failed to load resource: net::ERR_TOO_MANY_RETRIES" came 4 times on
+// 23 Oct with no name, under other test runs' load, and never on a quiet rerun (AH-43)
+page.on("console", (m) => m.type() === "error" && errors.push(m.location().url ? `${m.text()} (${m.location().url})` : m.text()));
 // every unhandled promise rejection and uncaught error, heard by the page itself: window listeners set before any of the
 // pane's scripts run (and again after a reload). Each mode must end with none (AH-13)
 const unhandled = [];
