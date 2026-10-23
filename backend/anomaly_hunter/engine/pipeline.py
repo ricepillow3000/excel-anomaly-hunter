@@ -111,10 +111,16 @@ def placeholders(df, column_types, skip):
     return out
 
 
+MANY = 20  # blanks in one column: from here, spread through the sheet, they are how the data is (AH-28)
+SHARE = 0.01  # ...and at least 1% of its rows: 20 values gone from a 20,000-row column are still each a slip (AH-28 review)
+
+
 def blanks(df, column_types, skip, errors_log, threshold=0.80):
     """Blank cell in a column that is >= 80% filled (summary rows not counted): a required field left empty. Mostly-empty
-    columns (notes, optional extras) are left alone. Was 95%: a credit sheet's Income, 92% filled, hid 39 blanks."""
+    columns (notes, optional extras) are left alone. Was 95%: a credit sheet's Income, 92% filled, hid 39 blanks.
+    -> (blank reasons per row, notes per row): 20+ blanks found in every fifth of the sheet are one note on the first."""
     out, prot = [[] for _ in range(len(df))], fairness.protected(column_types)
+    notes = [[] for _ in range(len(df))]
     wrong = {}  # text/errors already named as such are not blanks
     for i, c, _ in errors_log:
         wrong.setdefault(c, []).append(i)
@@ -127,7 +133,7 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
             labels[g] = lab
     cols = list(column_types)
     if not cols:
-        return out
+        return out, notes
     blank = np.column_stack([(_blank(df[c]) & ~skip & ~df.index.isin(wrong.get(c, []))).to_numpy(bool) for c in cols])
     # blanks per label per column, counted for every column at once: grouping each label column against each column
     # took 168 s on a crafted 64 x 1,500-column sheet (AH-16 build, 2026-10-22)
@@ -151,8 +157,24 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
                     continue
                 now = np.bincount(code[code >= 0], weights=b[code >= 0], minlength=len(size))
                 b &= ~np.isin(code, np.flatnonzero((now == size) & (size >= 5)))
-            for i in df.index[b]:
-                out[i].append(f"Blank cell in column {col}, which is otherwise filled")
+            # an unknown age on 177 of 891 Titanic passengers, a film with no cast listed: one Medium per row was 1,401 rows
+            # on two real tables (blind round 23). Many blanks in every fifth of the sheet are the data; a few, or a block
+            # (a paste or an export that stopped), are still each a slip
+            # Where the export writes "NA" for no value, those cells and the truly empty ones are judged apart: R never
+            # leaves a cell empty, so an empty one among 638 bye-week NAs is a deleted value (blind round 23's NFL plant).
+            # An "NA" the column writes 5+ times is its convention, like a code it repeats (type_errors), even in a block:
+            # the Tour de France's first 8 years have no times, on purpose; a one-off is still a blank
+            said, word = df.attrs.get("no_value", {}).get(col, (frozenset(), ""))
+            coded = df.index.isin(list(said))
+            for said_so in (True, False):
+                part = b & (coded if said_so else ~coded)
+                pos = np.flatnonzero(part)
+                if len(pos) >= 5 if said_so else len(pos) >= max(MANY, SHARE * len(b)) and len(set(pos * 5 // len(b))) == 5:
+                    notes[df.index[pos[0]]].append(f'{col} is "{word}" (no value) in {len(pos)} of {n} rows' if said_so
+                                                   else f"{col} is blank in {len(pos)} of {n} rows, spread through the sheet")
+                    continue
+                for i in df.index[part]:
+                    out[i].append(f"Blank cell in column {col}, which is otherwise filled")
         elif b.any():
             # a long-format sheet fills Value for some indicators and Pct for others, so Value is 2/3 filled, under the bar,
             # and a blank in a GDP row went unseen (AH-17 stress hunt, 9 of 9 missed). A group that fills the column
@@ -169,7 +191,7 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
                     for i in df.index[b & np.isin(code, full)]:
                         out[i].append(f"Blank cell in column {col}, which is otherwise filled for {g} {_short(labels[g][i])}")
                     break
-    return out
+    return out, notes
 
 
 def whole_numbers(df, column_types, skip):
@@ -607,15 +629,15 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
             "isolation": isolation_detector(df, judged, k) if s >= 5 else _result(n, "strength below 5")}
     # DBSCAN cut 2026-10-07: 90s/100k rows, 81% false alarms, bench same without it
     ran = [d for d in dets.values() if d["ran"]]
-    dup, typ, blank = duplicates(df, errors_log), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
+    dup, typ, (blank, spread) = duplicates(df, errors_log), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
     hole, far = placeholders(df, column_types, skip), far_dates(df, column_types, skip)
     paired, solved = pairs(df, column_types, skip, limits)
     add = [list(dict.fromkeys(s + m)) for s, m in zip(sums(df, column_types, skip), paired, strict=True)]
     code = codes(df, column_types, skip)
     spell, spell_fix, missed, spell_maybe, spell_exact = spellings(df, column_types, skip)
-    missed = [m + s + f + w + b for m, s, f, w, b in zip(missed, shifted(df, column_types, skip), fractions(df, column_types, skip),
-                                                          whole_numbers(df, column_types, skip), named_bounds(df, column_types, skip),
-                                                          strict=True)]  # all "worth a check" (Low)
+    missed = [m + s + f + w + b + g for m, s, f, w, b, g in zip(missed, shifted(df, column_types, skip), fractions(df, column_types, skip),
+                                                                 whole_numbers(df, column_types, skip), named_bounds(df, column_types, skip),
+                                                                 spread, strict=True)]  # all "worth a check" (Low)
     missed = [m + t for m, t in zip(missed, lim["top_reasons"], strict=True)]  # a lone top value (AH-29)
     if s >= ALONE:
         missed = [m + a for m, a in zip(missed, lim["alone_reasons"], strict=True)]

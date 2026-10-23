@@ -57,6 +57,9 @@ def _dates(s):
 
 
 # stand-ins for a missing value. Not "NA" (a ticker, a country) or "None" (a real category)
+# ...except in a number or date column, where NA, NaN, null and None are what a program writes for "no value" (R, pandas,
+# JSON): a missing cell, like a blank. Read as text, R's NA made ~3,960 false Medium rows in blind round 23 (AH-27)
+NO_VALUE = re.compile(r"\s*(na|nan|null|none)\s*", re.I)
 PLACEHOLDER = re.compile(r"error|unknown|n/a|null|tbd|\?|-", re.I)
 EXCEL_ERROR = re.compile(r"#(N/A|DIV/0!|REF!|VALUE!|NAME\?|NUM!|NULL!|SPILL!|CALC!)$")
 # money / percent typed as text, the WHOLE cell: "$1,234.00", "12%", "(500)" = -500. Commas must be thousands groups.
@@ -86,6 +89,7 @@ def _kind(s):
     """number / id / date / text: 90% of non-blank cells must parse. id = number column that's an identifier."""
     s = s[~_blank(s)]
     s = s[s.astype(str).str.strip() != "-"]  # an accounting dash counts as 0 in a number column, but says nothing about the type
+    s = s[~s.astype(str).str.fullmatch(NO_VALUE)]  # nor does a missing value
     if not len(s):
         return "text"
     num, err = _num(s), s.astype(str).str.strip().str.match(EXCEL_ERROR)
@@ -97,6 +101,13 @@ def _kind(s):
     return "text"
 
 
+class _Shared(dict):
+    """Set once, never changed: pandas deep-copies a frame's attrs on every operation, and copying 638 row numbers per
+    column each time made a 20,000-row R export scan 2x slower (6 s -> 15 s, AH-27 build). Copies share this one."""
+    def __deepcopy__(self, memo):
+        return self
+
+
 def _coerce(df, cols):
     """-> (types, errors_log). errors_log = (row, col, raw) for text stuck in a number or date column."""
     # remember summary labels before coercion erases them ("Total" in a date column becomes NaT)
@@ -104,6 +115,13 @@ def _coerce(df, cols):
     for key, rx in (("total_rows", TOTAL), ("stat_rows", STAT)):
         df.attrs[key] = frozenset(df.index[df[cols].apply(lambda s, rx=rx: s.astype(str).str.match(rx)).any(axis=1)])
     types, errors = {c: _kind(df[c]) for c in cols}, []
+    no_value = {}  # column -> (rows, the word as most often written): how its export says "no value"
+    for c, t in types.items():
+        said = df[c].astype(str).str.fullmatch(NO_VALUE) if t in ("number", "id", "date") else None
+        if said is not None and said.any():
+            no_value[c] = (frozenset(df.index[said]), df[c][said].astype(str).str.strip().mode()[0])  # comparable, unlike an array
+            df[c] = df[c].mask(said, "")
+    df.attrs["no_value"] = _Shared(no_value)
     for c, t in types.items():
         if t in ("number", "id"):
             num = _num(df[c])

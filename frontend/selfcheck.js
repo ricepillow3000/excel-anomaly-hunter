@@ -293,6 +293,11 @@ rec = recommendFix(["Id", "When"], [["a", "2084-03-01"]], 0, null, "When 2084-03
 assert.ok(rec.explanation.includes("mistyped year") && !rec.explanation.includes("Nothing here"), rec.explanation);
 rec = recommendFix(["Id", "Day"], [["a", 7.3]], 0, null, "Day 7.3 is not a whole number - every other Day is", 0, 0);
 assert.ok(rec.explanation.includes("check the decimal point"), rec.explanation);
+// many blanks spread through a column are one note (AH-28): what they usually are, never a value written in
+rec = recommendFix(["Id", "Age"], [["a", ""]], 0, {}, "Age is blank in 178 of 891 rows, spread through the sheet", 0, 0);
+assert.ok(rec.explanation.includes("not known") && !rec.explanation.includes("Nothing here") && !rec.changes.length, rec.explanation);
+rec = recommendFix(["Id", "Age"], [["a", "NA"]], 0, {}, 'Age is "NA" (no value) in 178 of 891 rows', 0, 0);
+assert.ok(rec.explanation.includes("not known") && !rec.changes.length, rec.explanation);
 // a guess says what kind of guess: a short form is not "a misspelling, one letter off"
 rec = recommendFix(["Id", "Plan"], [["a", "Std"]], 0, null, 'Plan "Std" looks like a short form of "Standard"', 0, 0, null, null, { Plan: "Standard" });
 assert.deepEqual(rec.changes, [{ cell: "B2", new: "Standard" }]);
