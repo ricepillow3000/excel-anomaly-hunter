@@ -41,15 +41,20 @@ def protected(columns):
     return out
 
 
-def _groups(df, col, types):
-    """The column's subgroups (label per row, None = left out): its values, or age bands for a number column."""
+def _groups(df, col, types, place=False):
+    """The column's subgroups (label per row, None = left out): its values, or age bands for a number column. place: a
+    location, whose numbered codes (a state's) may be many."""
     s = df[col]
     if types.get(col) == "number":
         x = pd.to_numeric(s, errors="coerce")
-        # ages: the usual bands; other numbers: quarters of the column (the top edge open, so the largest value is in)
-        edges = [-np.inf, 30, 45, 60, np.inf] if "age" in _words(col) else [*x.quantile([0, .25, .5, .75]).unique(), np.inf]
-        if len(edges) < 3:
-            return None
+        # a demographic written as numbered codes (race 1/2/3, female 0/1, a state's code) is its codes: banded like
+        # ages, race 1, 2, 3 read "race 1-2: 51% vs 18% for 3 and over" (AH-39). Only an age is banded
+        if not _aged(col):
+            v = x.dropna()
+            if not len(v) or (v != v.round()).any() or v.nunique() > (60 if place else 10):
+                return None  # counts or measurements (Females 4,000-60,000 a year), never a person's category
+            return x.map(lambda n: None if pd.isna(n) else f"{n:g}")
+        edges = [-np.inf, 30, 45, 60, np.inf]
         labels = pd.cut(x, edges, right=False, duplicates="drop")  # [30, 45) = "30-44"
         return labels.map(lambda b: None if pd.isna(b) else _band(b))
     if types.get(col) == "text":
@@ -73,6 +78,20 @@ def _labels(s, most):
     return key.map(usual)
 
 
+def _maybe(v):
+    """{rare label: the usual label it is one slip from}: "Femlae" (1 row) beside 400 Female. Never folded into it: "Blank"
+    beside Black is an export's unknown race and "Nigerien" a person from Niger (AH-39 review), so a rare label stays its
+    own group, too few to compare, and is named with what it may be. The spelling check's own rule decides."""
+    from anomaly_hunter.engine.pipeline import _misspelt  # here: pipeline imports this module
+    counts = v.value_counts()
+    big = [k for k, n in counts.items() if n >= 5]
+    out = {}
+    for k, n in counts.items():
+        if n <= 2 and (usual := next((u for u in big if counts[u] >= 5 * n and _misspelt(str(k).casefold(), str(u).casefold())), None)):
+            out[str(k)] = str(usual)
+    return out
+
+
 def _band(b):
     lo, hi = b.left, b.right
     if np.isinf(lo):
@@ -93,7 +112,10 @@ NOT_OUTCOMES = [{"day", "night"}, {"am", "pm"}, {"morning", "evening"}, {"mornin
                 # AH-20: a shift, a way to pay, a sales channel, a device, a term and a survey round say when, how or
                 # where, never how it went. Full-time/Part-time stays an outcome: an employer decides it (a hiring gap)
                 {"morning", "night"}, {"cash", "card"}, {"retail", "wholesale"}, {"mac", "pc"}, {"spring", "fall"},
-                {"spring", "autumn"}, {"pre", "post"}]
+                {"spring", "autumn"}, {"pre", "post"},
+                # AH-39 (blind round 36): a meal is when, a chamber where, a party who ("Female 40% time Lunch")
+                {"lunch", "dinner"}, {"breakfast", "lunch"}, {"breakfast", "dinner"}, {"house", "senate"},
+                {"democrat", "republican"}, {"democratic", "republican"}, {"dem", "rep"}]
 
 
 def _is_outcome(a, b):
@@ -157,14 +179,63 @@ STATUS = {"pending", "open", "closed", "shipped", "delivered", "returned", "canc
           "on hold", "refunded", "submitted", "resolved", "archived"}
 
 
+# AH-39: who the sheet is about. A blind sweep of 39 public tables never used before found the report claiming "a real
+# gap" about Texas cities' missing house sales, reading a town's share of old houses as people's ages and a cat's sex
+# as a person's, and missing people columns named female, nonwhite, colour, maritl or nativeBorn.
+OTHER_NAMES = {"female", "females", "male", "males", "nonwhite", "nwhite", "white", "black", "hispanic", "latino", "latina", "afam",
+               "minority", "maritl", "married", "citizen", "immigrant", "foreign", "native"}
+RACE_LABELS = {"white", "black", "asian", "hispanic", "latino", "latina", "other", "mixed", "native", "indian", "pacific islander",
+               "native american", "american indian", "african american", "caucasian", "multiracial", "non-white", "nonwhite"}
+COLOUR = {"colour", "color"}  # a race only when its labels are races: a car's Red / Silver is not
+ANIMALS = {"species", "breed", "genus", "animal", "animals", "pet", "pets", "dog", "dogs", "cat", "cats", "bird", "birds", "penguin",
+           "penguins", "fish", "horse", "horses", "cattle", "cow", "cows", "livestock", "strain", "litter", "mouse", "mice", "rat", "rats"}
+# a header that says its rows are people (plain "name" is not: products, cities and animals have names too)
+PERSON = {"customer", "customers", "patient", "patients", "employee", "employees", "staff", "student", "students", "applicant",
+          "applicants", "passenger", "passengers", "athlete", "athletes", "respondent", "respondents", "participant", "participants",
+          "person", "persons", "people", "voter", "voters", "member", "members", "client", "clients", "worker", "workers", "player",
+          "players", "resident", "residents", "mother", "father", "firstname", "surname", "lastname", "fullname", "borrower", "tenant",
+          "actor", "actress", "artist", "author", "character", "winner", "laureate", "champion", "rider", "driver", "victim",
+          "suspect", "defendant", "officer", "subject", "child", "children", "kid", "kids", "senator", "candidate", "ceo"}
+AGED = {"age", "dob", "birth", "birthday", "birthdate"}
+# an animal has a sex and an age, never these: a sheet with an animal word in a header is about people only with one of
+# them, or with a header that names its rows as people (a survey's "Dog owner" beside Respondent and Gender, AH-39 review).
+# Not a rider's or an owner's header: a horse table's sex is the horse's
+PERSON_ONLY = {"gender", "race", "ethnicity", "ethnic", "religion", "marital", "maritl", "married", "nationality", "citizenship",
+               "citizen", "veteran", "disability", "disabled", "hispanic", "latino", "latina", "nonwhite", "minority", "immigrant"}
+ROWS_ARE_PEOPLE = {"respondent", "respondents", "participant", "participants", "patient", "patients", "customer", "customers",
+                   "employee", "employees", "student", "students", "applicant", "applicants", "person", "persons", "people",
+                   "voter", "voters", "passenger", "passengers", "client", "clients", "resident", "residents", "borrower", "tenant"}
+PLACES = {"place", "town", "birthplace", "hometown", "village"}
+AGE_WORDS = {"age", "ages", "years", "yrs", "year", "yr", "in", "at", "of", "the", "group", "band", "range", "cat", "category",
+             "current", "dob", "birth", "birthday", "birthdate", "date", "day"}
+
+
+def _aged(col):
+    """A person's age or birth date by its header: plain ("Age", "age_years", "Date of birth") or a person's ("Patient
+    age"), never a thing's ("HouseAge", "Account age")."""
+    w = set(_words(col))
+    return bool(w & AGED) and w - AGE_WORDS <= PERSON
+
+
 def _people(df, types):
-    """protected() for the fairness report: the columns that are about people, read from their names and, for an
-    ambiguous "State", its labels. Only the report uses this: the AI's context (bias_context.rules_for) and the
-    detectors keep protected(), unchanged until their own measurements say otherwise (CLAUDE.md)."""
+    """protected() for the fairness report: the columns that are about people, read from their names, their labels and
+    the rest of the sheet. A sheet is about people only with a column that can only be a person's (sex, race, marital
+    status...: categories, never a measurement), or a header that names its rows as people (Customer, Patient); an age
+    or a place alone is a house's or a sales sheet's as often (Boston's "age", Texas' cities), and an animal sheet's sex
+    is no person's. Only the report uses this: the AI's context (bias_context.rules_for) and the detectors keep
+    protected(), unchanged until their own measurements say otherwise (CLAUDE.md)."""
+    cols = [c for c in types if c in df.columns]
+    if any(set(_words(c)) & ANIMALS for c in cols) and not any(set(_words(c)) & (PERSON_ONLY | ROWS_ARE_PEOPLE) for c in cols):
+        return {}
+    named = protected(cols)
+    for c in cols:
+        w = set(_words(c))
+        # a short header only: "Will you shop any Black Friday sales?" is a question, not a race (blind round 36)
+        if c not in named and (w & OTHER_NAMES and len(_words(c)) <= 3 or w & COLOUR and _labels(df[c], 20) is not None
+                               and set(_labels(df[c], 20).dropna().str.casefold()) <= RACE_LABELS):
+            named[c] = "demographic"
     out = {}
-    for c, why in protected(types).items():
-        if c not in df.columns:
-            continue
+    for c, why in named.items():
         w = _words(c)
         if any(k in w and set(w) & NOT_PEOPLE[k] for k in NOT_PEOPLE):
             continue
@@ -172,7 +243,18 @@ def _people(df, types):
             labels = set(df[c].astype(str).str.strip().str.casefold()[~_missing(df[c])])
             if labels and labels <= STATUS:
                 continue
+        if set(w) & (LOCATION | PLACES):  # birth_city, placeOfBirth, birth_town: a place, never an age
+            why = PROXY
+        elif set(w) & AGED:
+            if not _aged(c):
+                continue
+        elif _groups(df, c, types) is None:
+            continue  # a measurement named like a group (Boston's "black", a town's share): not a person's category
         out[c] = why
+    # ...and the sheet is about people: a person-only column (not an age, not a place), or rows named as people
+    strong = any(why == "demographic" and not set(_words(c)) & AGED for c, why in out.items())
+    if not strong and not any(set(_words(c)) & PERSON for c in cols):
+        return {}
     return out
 
 
@@ -202,8 +284,8 @@ def _big(hi, lo):
     return hi >= RATIO * lo and (hi - lo >= 0.05 or hi >= 2 * lo)
 
 
-def _named(groups):
-    return ", ".join(f"{k} ({n} row{'' if n == 1 else 's'})" for k, n in groups.items())
+def _named(groups, maybe=None):
+    return ", ".join(f"{k} ({n} row{'' if n == 1 else 's'}{f', maybe {maybe[k]}' if k in (maybe or {}) else ''})" for k, n in groups.items())
 
 
 def report(df, types, rows):
@@ -225,16 +307,17 @@ def report(df, types, rows):
     kinds = {name: "outcome" if name in outcomes else "missing" if name in blanks else "flag" for name in measures}
     tests, left = [], MAX_TESTS
     for col, why in prot.items():
-        g = _groups(df, col, types)
+        g = _groups(df, col, types, place=why == PROXY)
         if g is None:
             continue
+        maybe = _maybe(g.dropna()) if types.get(col) == "text" else {}
         for name, (hit, what, subject, label) in list(measures.items())[:left]:
             left -= 1
             ok = g.notna() & hit.notna()
             table = pd.crosstab(g[ok], hit[ok].astype(bool))
             small = {str(k): int(n) for k, n in table.sum(axis=1).items() if n < MIN_GROUP}
             table = table[table.sum(axis=1) >= MIN_GROUP]
-            base = {"column": col, "kind": why, "test": name, "measure": kinds[name], "subject": subject, "label": label}
+            base = {"column": col, "kind": why, "test": name, "measure": kinds[name], "subject": subject, "label": label, "maybe": maybe}
             if len(table) < 2 and len(table) + len(small) >= 2 and hit[ok].any():  # every group, or all but one, too small
                 tests.append({**base, "p": None, "groups": {}, "small": small})
                 continue
@@ -243,15 +326,21 @@ def report(df, types, rows):
             if len(table) < 2 or table.shape[1] < 2 or (table.sum(axis=0) == 0).any():
                 continue
             rates = table[True] / table.sum(axis=1)
+            # groups all or nothing, some at 0% and some at 100%, holding 90%+ of the rows: the measure is worked out
+            # from the group, a definition, not something that happened to people ("subject_race White: 0.0%
+            # person_of_color = 1 vs 83%": only Multi racial, 24 of 487 rows, was mixed; blind round 36)
+            size, pure = table.sum(axis=1), rates.isin([0.0, 1.0])
+            if kinds[name] != "flag" and (rates[pure] == 0).any() and (rates[pure] == 1).any() and size[pure].sum() >= 0.9 * size.sum():
+                continue
             tests.append({**base, "p": float(chi2_contingency(table)[1]), "small": small,
                           "groups": {str(k): [int(table.loc[k].sum()), round(float(v), 4)] for k, v in rates.items()}, "table": table})
     n = sum(t["p"] is not None for t in tests)
     for t in tests:
         what = measures[t["test"]][1]
-        subject, label, table, small = t.pop("subject"), t.pop("label"), t.pop("table", None), t.pop("small")
-        out = f"; too few to compare: {_named(small)}" if small else ""
+        subject, label, table, small, maybe = t.pop("subject"), t.pop("label"), t.pop("table", None), t.pop("small"), t.pop("maybe")
+        out = f"; too few to compare: {_named(small, maybe)}" if small else ""
         if t["p"] is None:
-            t["verdict"], t["text"] = "unclear", f"{t['column']}: {what} - too few rows to compare: {_named(small)}"
+            t["verdict"], t["text"] = "unclear", f"{t['column']}: {what} - too few rows to compare: {_named(small, maybe)}"
             continue
         rates = {k: v[1] for k, v in t["groups"].items()}
         span = f"{_pct(min(rates.values()))} to {_pct(max(rates.values()))}"

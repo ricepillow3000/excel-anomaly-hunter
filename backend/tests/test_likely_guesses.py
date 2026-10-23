@@ -95,7 +95,8 @@ def airports():
 
 def test_a_flipped_sign_as_big_as_the_columns_values_is_still_likely_beside_real_negatives():
     out = airports()
-    assert out[1641]["likely"] == {"reading": 44.48507333} and "(likely 44.4851)" in out[1641]["reason"], out[1641]
+    # the guess is said to the column's own 8 decimals, never :g's 44.4851 (AH-40)
+    assert out[1641]["likely"] == {"reading": 44.48507333} and "(likely 44.48507333)" in out[1641]["reason"], out[1641]
 
 
 def test_real_small_negatives_beside_a_slip_are_not_flipped():

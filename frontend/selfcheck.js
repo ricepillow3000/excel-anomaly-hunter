@@ -1,10 +1,10 @@
 // Pane pure-logic check, no Office/fetch. Run: node frontend/selfcheck.js
 import assert from "node:assert";
 import { esc, asNumber } from "./utils/text.js";
-import { cutNote, tableFromGrid, isDateFormat, excelDate, rowFromAddress, colLetter, cellAt, sameRow, readAs } from "./utils/sheet.js";
+import { cutNote, tableFromGrid, isDateFormat, excelDate, rowFromAddress, colLetter, cellAt, sameRow, readAs, spots } from "./utils/sheet.js";
 import { issuesOf, recommendFix, typoKind, afterFix, unusualColumn } from "./features/fix.js";
 import { plainReason, summaryOf, flaggedRows, fairnessNote, fairnessTests, listOrder, levelChange } from "./features/scan.js";
-import { MEASURED } from "./constants/index.js";
+import { MEASURED, COLOR, OLD_COLOR } from "./constants/index.js";
 import { strengthHint, asStrength, levelAt } from "./pages/strength.js";
 import { exactFixes, safeUndo } from "./features/autofix.js";
 import { readdirSync, readFileSync } from "node:fs";
@@ -380,4 +380,10 @@ assert.ok(both.explanation.includes("Amt is 1000000, past its limit of 2000") &&
 const note = recommendFix(["Name", "Notes"], [["a", ""], ["b", "x"]], 0, {}, "Blank cell in column Notes, which is otherwise filled", 0, 0, null, null);
 assert.ok(note.explanation.startsWith("Notes is blank where the rest of the column is filled"), note.explanation);
 
+// AH-40: only the cells a row's reasons name are coloured; an engine that names none colours the row
+assert.deepEqual(spots({ cells: ["Units", "Total"] }, ["Date", "Region", "Units", "Total"]), [2, 3]);
+assert.deepEqual(spots({ cells: ["Gone"] }, ["A", "B"]), [0, 1], "a name the table no longer has: the whole row");
+assert.deepEqual(spots({}, ["A", "B"]), [0, 1]);
+// our colors are never Excel's own Bad / Neutral / Note fills, so a reopened pane never clears a cell the user styled
+assert.ok(Object.values(COLOR).every((c) => !OLD_COLOR.includes(c)) && OLD_COLOR.length === 3);
 console.log("panel self-check passed");

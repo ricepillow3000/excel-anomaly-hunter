@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from anomaly_hunter.engine import fairness
-from anomaly_hunter.engine.detectors import _result, far_off, isolation_detector, limits_detector, sequence_detector
+from anomaly_hunter.engine.detectors import Why, _result, far_off, isolation_detector, limits_detector, say, sequence_detector
 from anomaly_hunter.engine.load import EXCEL_ERROR, PLACEHOLDER, _blank, numbers
 
 def summary_rows(df):
@@ -57,7 +57,7 @@ def duplicates(df, errors_log=()):
     for i, key in enumerate(keys):
         j = seen.setdefault(key, i)
         src = f" ({df['source_file'].iloc[j]})" if "source_file" in df else ""  # CLI path only
-        out.append([f"Duplicate of row {j + 2}{src}"] if j != i else [])
+        out.append([Why(f"Duplicate of row {j + 2}{src}", *cols)] if j != i else [])  # the whole row is the copy
     return out
 
 
@@ -91,7 +91,7 @@ def type_errors(n, errors_log, column_types):
         if _ != "ERROR" and len(rows) >= max(MANY, SHARE * n) and len({i * 5 // n for i in rows}) == 5:
             coded |= {(i, col) for i in rows}
             raw = next(str(r).strip() for j, c, r in errors_log if j == rows[0] and c == col)
-            notes[rows[0]].append(f'{col} is "{_short(raw)}" (no value) in {len(rows)} of {n} rows')
+            notes[rows[0]].append(Why(f'{col} is "{_short(raw)}" (no value) in {len(rows)} of {n} rows', col))
     code = lambda raw: not (EXCEL_ERROR.match(str(raw).strip()) or PLACEHOLDER.fullmatch(str(raw).strip())
                             or MISSING.fullmatch(str(raw).strip()))
     shapes = collections.Counter((col, _shape(raw)) for _, col, raw in errors_log if code(raw))
@@ -100,8 +100,8 @@ def type_errors(n, errors_log, column_types):
         if code(raw) and shapes[col, _shape(raw)] >= 5 or (i, col) in coded:
             continue
         raw = _short(raw)
-        out[i].append(f"Excel error {raw} in {col}" if EXCEL_ERROR.match(text) else f'Placeholder "{raw}" in column {col}'
-                      if PLACEHOLDER.fullmatch(text) else f'Text "{raw}" in {kind} column {col}')
+        out[i].append(Why(f"Excel error {raw} in {col}" if EXCEL_ERROR.match(text) else f'Placeholder "{raw}" in column {col}'
+                          if PLACEHOLDER.fullmatch(text) else f'Text "{raw}" in {kind} column {col}', col))
     return out, notes
 
 
@@ -131,11 +131,11 @@ def placeholders(df, column_types, skip):
             if len(set(np.flatnonzero((code & (key == k)).to_numpy()) * 5 // len(df))) < 5:
                 code &= key != k
                 continue
-            notes[first[0]].append(f'{col} is "{v[first].mode().iloc[0]}" (no value) in {len(first)} of {(~skip).sum()} rows')
+            notes[first[0]].append(Why(f'{col} is "{v[first].mode().iloc[0]}" (no value) in {len(first)} of {(~skip).sum()} rows', col))
         hit = (err & ~skip) | (ph & rare & ~code)
         if hit.any():
             for i in df.index[hit]:
-                out[i].append(f"Excel error {v[i]} in {col}" if err[i] else f'Placeholder "{v[i]}" in column {col}')
+                out[i].append(Why(f"Excel error {v[i]} in {col}" if err[i] else f'Placeholder "{v[i]}" in column {col}', col))
     return out, notes
 
 
@@ -198,11 +198,11 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
                 part = b & (coded if said_so else ~coded)
                 pos = np.flatnonzero(part)
                 if len(pos) >= 5 if said_so else len(pos) >= max(MANY, SHARE * len(b)) and len(set(pos * 5 // len(b))) == 5:
-                    notes[df.index[pos[0]]].append(f'{col} is "{word}" (no value) in {len(pos)} of {n} rows' if said_so
-                                                   else f"{col} is blank in {len(pos)} of {n} rows, spread through the sheet")
+                    notes[df.index[pos[0]]].append(Why(f'{col} is "{word}" (no value) in {len(pos)} of {n} rows' if said_so
+                                                       else f"{col} is blank in {len(pos)} of {n} rows, spread through the sheet", col))
                     continue
                 for i in df.index[part]:
-                    out[i].append(f"Blank cell in column {col}, which is otherwise filled")
+                    out[i].append(Why(f"Blank cell in column {col}, which is otherwise filled", col))
         elif b.any():
             # a long-format sheet fills Value for some indicators and Pct for others, so Value is 2/3 filled, under the bar,
             # and a blank in a GDP row went unseen (AH-17 stress hunt, 9 of 9 missed). A group that fills the column
@@ -217,7 +217,7 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
                 # for one method) had only 1 of 5 Pulsar rows empty-ish, and 23 real gaps were called a slip (blind round 22)
                 if len(full) and ((fill <= 0.2) & (size >= 20)).any():
                     for i in df.index[b & np.isin(code, full)]:
-                        out[i].append(f"Blank cell in column {col}, which is otherwise filled for {g} {_short(labels[g][i])}")
+                        out[i].append(Why(f"Blank cell in column {col}, which is otherwise filled for {g} {_short(labels[g][i])}", col))
                     break
     return out, notes
 
@@ -247,7 +247,7 @@ def whole_numbers(df, column_types, skip):
                 f"the other {col} values are whole or end in {ends}" if slip.sum() == 1 else \
                 f"only {int(slip.sum())} {col} values are neither whole nor end in {ends}"
             for i in x.index[slip]:
-                out[i].append(f"{col} {x[i]:g} is not a whole number - {rest}")
+                out[i].append(Why(f"{col} {say(x[i])} is not a whole number - {rest}", col))
     return out
 
 
@@ -283,7 +283,7 @@ def named_bounds(df, column_types, skip):
         bad = x[(x < b[0]) | (x > b[1])] if b else ()
         if 1 <= len(bad) <= max(2, 0.01 * len(x)):
             for i in bad.index:
-                out[i].append(f"{col} {x[i]:g} is outside what {col} can be ({b[0]:g} to {b[1]:g})")
+                out[i].append(Why(f"{col} {say(x[i])} is outside what {col} can be ({b[0]:g} to {b[1]:g})", col))
     return out
 
 
@@ -297,7 +297,7 @@ def far_dates(df, column_types, skip):
             continue
         far, lo, hi = far_off(d)
         for i in d.index[far]:
-            out[i].append(f"{col} {d[i]:%Y-%m-%d} is far outside the column's dates ({lo:%Y-%m-%d} to {hi:%Y-%m-%d})")
+            out[i].append(Why(f"{col} {d[i]:%Y-%m-%d} is far outside the column's dates ({lo:%Y-%m-%d} to {hi:%Y-%m-%d})", col))
     return out
 
 
@@ -324,9 +324,9 @@ def sums(df, column_types, skip):
         bad = np.abs(y - got) > np.maximum(0.011, 1e-6 * np.abs(y))  # 1 cent + float slack
         if bad.mean() > 0.05:
             continue
-        parts = " + ".join(c for c, o in zip(np.delete(np.array(cols, dtype=object), t), ones) if o)
-        for i, v, g in zip(x.index[bad], y[bad], got[bad]):
-            out[i].append(f"{col} {v:g} does not add up: {parts} = {g:.10g}")
+        part = [c for c, o in zip(np.delete(np.array(cols, dtype=object), t), ones) if o]
+        for i, v, g in zip(x.index[bad], y[bad], got[bad]):  # the total and every part: any one of them may be the slip
+            out[i].append(Why(f"{col} {say(v)} does not add up: {' + '.join(part)} = {g:.10g}", col, *part))
     return out
 
 
@@ -397,7 +397,7 @@ def pairs(df, column_types, skip, limits=None):
                 if not holds(good):
                     continue
             for i in np.flatnonzero(ok & ~good):
-                out[index[i]].append(f"{cols[t]} {y[i]:g} does not add up: {said} = {got[i]:.10g}")
+                out[index[i]].append(Why(f"{cols[t]} {say(y[i])} does not add up: {said} = {got[i]:.10g}", cols[t], *(cols[c] for c in cs)))
                 odd = [j for j in (t, *cs) if not usual(j, a[i, j])]
                 if len(odd) != 1:
                     continue
@@ -556,7 +556,7 @@ def spellings(df, column_types, skip):
                 if raw == right:
                     continue
                 for i in s.index[s == raw]:
-                    out[i].append(f'{col} "{_short(raw)}" looks like "{_short(right)}" (same word, different capitals/spaces)')
+                    out[i].append(Why(f'{col} "{_short(raw)}" looks like "{_short(right)}" (same word, different capitals/spaces)', col))
                     fix[i][col] = right
                     if counts[right] >= 5 * c:  # auto-fix only when the right spelling is plainly the usual one
                         exact[i][col] = right
@@ -571,7 +571,7 @@ def spellings(df, column_types, skip):
                 continue
             word = s[keys == usual].value_counts().index[0]  # how the usual one is usually written
             for i in keys.index[keys == rare]:
-                missed[i].append(f'{col} "{_short(s[i])}" looks like a misspelling of "{_short(word)}"')
+                missed[i].append(Why(f'{col} "{_short(s[i])}" looks like a misspelling of "{_short(word)}"', col))
                 maybe[i][col] = word
         # a short form of exactly one other label (5+ rows, 2+ letters longer): its start ("EMP" for "Employed"), each
         # word's start ("In Prog" for "In Progress"), or a contraction ("Std" for "Standard": same first letter, the rest
@@ -586,7 +586,7 @@ def spellings(df, column_types, skip):
             longer = [u for u, m in cnt.items() if m >= max(5, 2 * cnt[short]) and len(u) >= len(short) + 2 and _short_for(short, u)]
             if 2 <= len(short.replace(" ", "")) <= 6 and short.replace(" ", "").isalpha() and len(longer) == 1 and not whole(short):
                 for i in keys.index[keys == short]:
-                    missed[i].append(f'{col} "{_short(s[i])}" looks like a short form of "{_short(rights[longer[0]])}"')
+                    missed[i].append(Why(f'{col} "{_short(s[i])}" looks like a short form of "{_short(rights[longer[0]])}"', col))
                     maybe[i][col] = rights[longer[0]]
         # a label written in lowercase where the column's 3+ other labels all start with a capital ("retired" next to
         # "Employed", "Unemployed"): sorts and reads as a different label in a pivot
@@ -595,7 +595,7 @@ def spellings(df, column_types, skip):
                 if right.islower() and right.replace(" ", "").replace("-", "").isalpha() and all(
                         capital(r) for k, r in rights.items() if k != key):
                     for i in keys.index[keys == key]:
-                        missed[i].append(f'{col} "{_short(s[i])}" is lowercase where the column\'s other labels are capitalised')
+                        missed[i].append(Why(f'{col} "{_short(s[i])}" is lowercase where the column\'s other labels are capitalised', col))
                         maybe[i][col] = right[:1].upper() + right[1:]
     return out, fix, missed, maybe, exact
 
@@ -611,7 +611,7 @@ def fractions(df, column_types, skip):
         if len(x) < 20 or inside.all() or inside.mean() < 0.98 or (x[inside] == x[inside].round()).mean() > 0.5:
             continue
         for i in x.index[x > 1]:
-            out[i].append(f"{col} {x[i]:g} is above 100% - the rest of the column stays between 0 and 1")
+            out[i].append(Why(f"{col} {say(x[i])} is above 100% - the rest of the column stays between 0 and 1", col))
     return out
 
 
@@ -627,8 +627,8 @@ def codes(df, column_types, skip):
                 or top[1] < 2 * top[0]:
             continue
         for i in x.index[x == top[1]]:
-            out[i].append(f"{col} {top[1]:g} looks like a code, not a real value (all 9s, over twice the next "
-                          f"highest, {top[0]:g})")
+            out[i].append(Why(f"{col} {say(top[1])} looks like a code, not a real value (all 9s, over twice the next "
+                              f"highest, {say(top[0])})", col))
     return out
 
 
@@ -652,7 +652,7 @@ def shifted(df, column_types, skip):
             for b in keys:
                 if b != a and counts[b].get(v, 0) >= 3 and len(usual[a] & usual[b]) < 0.2 * len(usual[a] | usual[b]):
                     i = sa.index[sa == v][0]
-                    out[i].append(f'{a} "{_short(df[a][i])}" looks like {"an" if b[:1].lower() in "aeiou" else "a"} {b} value')
+                    out[i].append(Why(f'{a} "{_short(df[a][i])}" looks like {"an" if b[:1].lower() in "aeiou" else "a"} {b} value', a))
                     break
     return out
 
@@ -705,6 +705,11 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
     if s >= ALONE:
         missed = [m + a for m, a in zip(missed, lim["alone_reasons"], strict=True)]
     rows = []
+
+    def cells(said):  # the columns the row's reasons are about, in sheet order: the pane colours those cells, no other
+        named = {c for r in said for c in getattr(r, "cols", ())}
+        return [c for c in df.columns if c in named]
+
     for i in range(n):
         if skip[i]:
             rows.append({"severity": None, "bucket": None, "reason": "" if empty[i] else "Totals/summary row - not checked",
@@ -715,13 +720,15 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
         if not voted and not hygiene and not missed[i]:
             noted = lim["noted_reasons"][i]
             rows.append({"severity": "Noted" if noted else None, "bucket": None,
-                         "reason": "; ".join(noted), "magnitude": 0.0})
+                         "reason": "; ".join(noted), "magnitude": 0.0, "cells": cells(noted)})
             continue
         v, weird = len(voted), bool(lim["votes"][i])
+        said = list(dict.fromkeys(hygiene + missed[i] + [r for d in voted for r in d["reasons"][i]]))  # dedupe, keep order
         rows.append({  # a possible misspelling alone is "worth a check" (Low): it may be a real name
             "severity": "High" if v >= 3 else "Medium" if v == 2 or weird or hygiene else "Low",
             "bucket": "Duplicates" if dup[i] else "Irregularities" if weird or typ[i] or blank[i] or hole[i] or code[i] or far[i] or add[i] or spell[i] or missed[i] else "Behavioral",
-            "reason": (f"Flagged by {v} of {len(ran)}: " if v else "") + "; ".join(dict.fromkeys(hygiene + missed[i] + [r for d in voted for r in d["reasons"][i]])),  # dedupe, keep order
+            "reason": (f"Flagged by {v} of {len(ran)}: " if v else "") + "; ".join(said),
+            "cells": cells(said),
             "magnitude": float(max((d["magnitude"][i] for d in voted), default=0.0)),
             "likely": {**lim["likely"][i], **solved[i], **spell_fix[i]},  # the row's own arithmetic beats a typo pattern
             "maybe": {**lim["maybe"][i], **spell_maybe[i]},  # misspelling, or a typo the numbers cannot prove: a guess the user confirms

@@ -32,7 +32,11 @@ export const STRENGTH = [
 
 export const SEV = { High: "Very likely wrong", Medium: "Probably wrong", Low: "Worth a check" }; // Noted = fine, not shown
 
-export const COLOR = { High: "#FFC7CE", Medium: "#FFEB9C", Low: "#FFFFCC" };
+// one step off Excel's own Bad / Neutral / Note fills (#FFC7CE, #FFEB9C, #FFFFCC), which look the same: a reopened pane
+// clears the cells wearing these and never a cell the user styled (AH-40: we colour single cells now, so the old
+// "a full row is ours" test cannot tell them apart). OLD_COLOR: what whole rows were painted in before
+export const COLOR = { High: "#FFC7CF", Medium: "#FFEB9D", Low: "#FFFFCD" };
+export const OLD_COLOR = ["#FFC7CE", "#FFEB9C", "#FFFFCC"];
 
 export const CAP = 50; // rows listed in the pane; all of them are highlighted in the sheet
 

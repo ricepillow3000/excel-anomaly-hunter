@@ -72,7 +72,12 @@ def _num(s):
     # placeholder rule). Excel hands the pane an accounting zero as 0, so a rarer "-" was typed for a missing value: 5 of
     # 6 missed placeholders on 40 real sheets, each silently summed as 0 (2026-10-16)
     dash = s.astype(str).str.strip() == "-"
-    num = pd.to_numeric(s.mask(dash, 0) if dash.sum() >= 0.08 * (~_blank(s)).sum() else s, errors="coerce")
+    src = s.mask(dash, 0) if dash.sum() >= 0.08 * (~_blank(s)).sum() else s
+    num = pd.to_numeric(src, errors="coerce")
+    # ...and read exactly: pandas' own parser is off in the 15th digit (-0.013338153250515461 came back -0.0133381532505154),
+    # so a reason quoted a value no cell holds (AH-40)
+    if num.dtype.kind == "f":  # whole numbers it reads exactly, and keeps as integers
+        num[num.notna()] = src[num.notna()].astype(float)
     m = s[num.isna()].astype(str).str.strip().str.extract(f"^{MONEY.pattern}$")
     ok = m[2].notna() & (m[0].isna() == m[5].isna())  # parentheses come in pairs
     v = (m[2].str.replace(",", "") + m[3].fillna("")).astype(float)
