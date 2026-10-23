@@ -125,6 +125,10 @@ def _is_outcome(a, b):
         return False
     if len(a) == 1 and len(b) == 1 and a.isalpha() and b.isalpha() and {a, b} not in ({"y", "n"}, {"t", "f"}, {"p", "f"}, {"w", "l"}):
         return False  # A/B, X/Y: codes; Y/N, T/F, P/F (pass/fail) and W/L (won/lost) are results
+    # Lottery A / Lottery B, Plan A / Plan B: the same words but a last letter or number, a choice like bare A/B (AH-53 review)
+    sa, sb = a.rsplit(" ", 1), b.rsplit(" ", 1)
+    if len(sa) == len(sb) == 2 and sa[0] == sb[0] and all(len(x[1]) == 1 or x[1].isdigit() for x in (sa, sb)):
+        return False
     digits = lambda w: any(ch.isdigit() for ch in w)
     if digits(a) and digits(b) and {a, b} != {"0", "1"} and not (a[:1] in "<>≤≥=" or b[:1] in "<>≤≥="):
         return False  # Q1/Q2, 2024/2025, Grade 3/Grade 4; "<=50K"/">50K" is a result
@@ -286,7 +290,13 @@ ASKS = {"how", "what", "which", "who", "when", "where", "why", "do", "does", "di
 OPINION = {"agree", "disagree", "comfortable", "comfortably", "feel", "feeling", "think", "believe", "opinion", "important",
            "likely", "often", "familiar", "satisfied", "prefer", "affect", "affects", "worried", "support", "oppose", "approve",
            "matter", "matters", "talk", "talking", "discuss", "discussing", "seeing", "see", "should", "fair", "unfair"}
-IDENTITY = DEMOGRAPHIC | {"religious", "denomination", "faith", "ethnic", "background"}
+# ...a self-identification question names who someone is in any shape: "Do you have a disability?", "Are you a veteran?",
+# "Religion: which one?", "Are you Hispanic or Latino?" (Council A's AH-53 review: all four were silenced)
+IDENTITY = DEMOGRAPHIC | {"denomination", "ethnic", "hispanic", "latino", "latina", "orientation", "transgender"}
+# a sexual orientation by its labels: a page's or a photo's orientation (Portrait, Landscape) is no person's
+ORIENTATIONS = {"straight", "gay", "lesbian", "bisexual", "heterosexual", "homosexual", "asexual", "pansexual", "queer",
+                "other", "gay/bisexual", "gay or lesbian", "prefer not to say", "prefer not to answer", "no answer",
+                "decline to state"}
 
 
 def _asked(col):
@@ -299,15 +309,15 @@ def _asked(col):
 
 
 def _identity(col):
-    """A short question that asks who someone is: its demographic word is what it asks for ("your present religion",
-    "which race"), with no opinion in it ("Is your religion important to you?" asks an opinion)."""
+    """A question that asks who someone is: a word of who someone is, no opinion word ("Is your religion important to
+    you?", "How comfortable ... a different religion"), up to 15 words ("What is your race or ethnicity, as you would
+    describe it in your own words?" is 13)."""
     w = _words(col)
-    if len(w) > 9 or set(w) & OPINION:
+    if len(w) > 15 or set(w) & OPINION or not set(w) & IDENTITY:
         return False
-    for k, word in enumerate(w):
-        if word in ("your", "which", "what") and set(w[k + 1:k + 3]) & IDENTITY:
-            return True
-    return False
+    if set(w) & IDENTITY <= AGED:  # an age must be the person's: "What is your age?", never "the age cutoff at your kids' table"
+        return any(word in ("your", "which", "what") and set(w[k + 1:k + 3]) & AGED for k, word in enumerate(w))
+    return True
 
 
 ROWLIKE = {"id", "name", "names", "number", "no", "code", "key", "ref", "first", "last", "full", "given", "family"}
@@ -362,6 +372,11 @@ def _people(df, types):
     named = {c: why for c, why in protected(cols).items() if not _unnamed(c) and (not _asked(c) or _identity(c))}
     for c in cols:
         w = set(_words(c))
+        # a self-identification question whose word protected() does not know by name ("Are you Hispanic or Latino?"),
+        # and an orientation whose labels are people's. protected() itself, which the detectors use, is unchanged
+        if c not in named and not _unnamed(c) and (_asked(c) and _identity(c) and not "orientation" in w or "orientation" in w and (
+                "sexual" in w or _labels(df[c], 20) is not None and set(_labels(df[c], 20).dropna().str.casefold()) <= ORIENTATIONS)):
+            named[c] = "demographic"
         # a short header only: "Will you shop any Black Friday sales?" is a question, not a race (blind round 36)
         if c not in named and not _asked(c) and (w & OTHER_NAMES and len(_words(c)) <= 3 or w & COLOUR and _labels(df[c], 20) is not None
                                and set(_labels(df[c], 20).dropna().str.casefold()) <= RACE_LABELS):

@@ -44,6 +44,8 @@ def test_an_opinion_question_that_mentions_a_religion_is_never_a_group_of_people
 @pytest.mark.parametrize("header, identity", [
     ("What is your present religion, if any?", True), ("What is your gender?", True), ("Which race best describes you?", True),
     ("What is your age?", True), ("Gender:", True), ("Q3: Sex", True),
+    ("Q12: What is your race/ethnicity? (select one)", True), ("Gender identity (please specify)", True),
+    ("Please indicate your gender:", True),
     ("How comfortable are you talking about race at work?", False), ("Do you think gender affects pay?", False),
     ('To what extent do you agree with the following statement: "our sex life has improved"', False),
     ("Is your religion important to you?", False), ("How often do you: Bring up your religion, unprompted, in conversation", False)])
@@ -131,3 +133,47 @@ def test_a_first_row_of_real_data_is_never_taken_for_a_second_header():
     from anomaly_hunter.engine.fairness import _subheader
     df, types, _ = load_from_records(["year", "winner_name", "team", "birth_town", "nickname", "nationality", "age"], [list(r) for r in rows])
     assert not _subheader(df, types).any()
+
+
+def hiring(question, labels, low):
+    # a hiring sheet: one group hired 15% of the time, the rest 45% (Council A's AH-53 review probe)
+    rng = np.random.default_rng(3)
+    rows = []
+    for i in range(600):
+        g = labels[i % len(labels)]
+        rows.append([f"Applicant {i}", g, "Hired" if rng.random() < (0.15 if g == low else 0.45) else "Rejected", int(rng.integers(20, 60))])
+    return fair(["Applicant ID", question, "Decision", "Age"], rows)
+
+
+@pytest.mark.parametrize("question, labels, low", [
+    ("Do you have a disability?", ["Yes", "No", "No", "No"], "Yes"),
+    ("Are you a veteran?", ["Yes", "No", "No", "No"], "Yes"),
+    ("Religion: which one?", ["Christian", "Muslim", "Jewish", "None"], "Muslim"),
+    ("What is your race or ethnicity, as you would describe it in your own words?", ["White", "Black", "Asian", "Hispanic"], "Black"),
+    ("Are you Hispanic or Latino?", ["Yes", "No", "No", "No"], "Yes"),
+    ("Which of the following best describes your sexual orientation?", ["Straight", "Gay", "Bisexual", "Straight"], "Gay"),
+    ("Do you consider yourself to have a disability?", ["Yes", "No", "No", "No"], "Yes")])
+def test_a_self_identification_question_is_a_group_and_never_an_outcome(question, labels, low):
+    # AH-53 review (Council A): EEO-style yes/no questions were silenced as "opinion", and measured as outcomes instead
+    f = hiring(question, labels, low)
+    assert question in f["protected"], f["protected"]
+    assert any(t["column"] == question and t["verdict"] == "gap" for t in f["tests"]), [t["text"] for t in f["tests"]][:4]
+    assert not any(question in t["test"] for t in f["tests"]), [t["text"] for t in f["tests"] if question in t["test"]][:2]
+
+
+@pytest.mark.parametrize("labels", [["Lottery A", "Lottery B"], ["Plan A", "Plan B"], ["Option 1", "Option 2"]])
+def test_two_labels_that_differ_only_by_a_letter_or_number_are_a_choice_never_an_outcome(labels):
+    rng = np.random.default_rng(10)
+    rows = [[f"R{i}", ["Male", "Female"][i % 2], labels[int(rng.random() < (0.6 if i % 2 else 0.3))]] for i in range(600)]
+    f = fair(["RespondentID", "Gender", "Which would you choose?"], rows)
+    assert not any("Which would you choose?" in t["test"] for t in f["tests"]), [t["text"] for t in f["tests"]]
+
+
+def test_an_orientation_column_is_a_people_column_only_with_its_labels():
+    rng = np.random.default_rng(11)
+    people = [[f"R{i}", ["Straight", "Gay/Bisexual", "Other"][int(rng.integers(0, 3))], ["Yes", "No"][int(rng.random() < 0.4)]] for i in range(600)]
+    df, types, _ = load_from_records(["RespondentID", "orientation", "Employed"], [list(r) for r in people])
+    assert "orientation" in _people(df, types)
+    pages = [[f"P{i}", ["Portrait", "Landscape"][i % 2], ["Yes", "No"][int(rng.random() < 0.4)], ["Male", "Female"][i % 2]] for i in range(600)]
+    df, types, _ = load_from_records(["Page", "orientation", "Printed", "Author gender"], [list(r) for r in pages])
+    assert "orientation" not in _people(df, types)
