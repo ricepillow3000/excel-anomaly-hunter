@@ -616,6 +616,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
     missed = [m + s + f + w + b for m, s, f, w, b in zip(missed, shifted(df, column_types, skip), fractions(df, column_types, skip),
                                                           whole_numbers(df, column_types, skip), named_bounds(df, column_types, skip),
                                                           strict=True)]  # all "worth a check" (Low)
+    missed = [m + t for m, t in zip(missed, lim["top_reasons"], strict=True)]  # a lone top value (AH-29)
     if s >= ALONE:
         missed = [m + a for m, a in zip(missed, lim["alone_reasons"], strict=True)]
     rows = []
