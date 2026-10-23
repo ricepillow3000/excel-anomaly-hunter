@@ -101,3 +101,25 @@ def test_an_amount_is_never_compared_across_a_bucket_cut_from_another_amount():
             for i in range(600)]
     said = [(t["column"], t["test"]) for t in fair(["Victim", "gender", "county_bucket", "h_income"], rows)["tests"] if t["measure"] == "amount"]
     assert ("gender", "median h_income") in said and not any(c == "county_bucket" for c, _ in said), said
+
+
+@pytest.mark.parametrize("sd", [0.05, None])
+def test_the_starkest_gap_two_groups_apart_with_no_overlap_is_named(sd):
+    # AH-49 review: the guard against groups cut from the amount read two groups with no overlap (women paid 30,000-
+    # 45,000, men 46,000-70,000) as a cut, and the plainest pay gap there is had no amount test at all
+    rng = np.random.default_rng(2)
+    pay = (lambda i: round(float(rng.lognormal(np.log(18 if i % 2 == 0 else 24), sd)), 2)) if sd else \
+        (lambda i: int(rng.integers(30000, 45000) if i % 2 == 0 else rng.integers(46000, 70000)))
+    rows = [[f"E{i}", ["Female", "Male"][i % 2], pay(i)] for i in range(400)]
+    t = amounts(fair(["Employee", "Sex", "Salary"], rows), "Sex")
+    assert len(t) == 1 and t[0]["verdict"] == "gap" and t[0]["text"].startswith("Sex Male: median Salary "), t
+
+
+def test_an_amount_is_never_compared_across_numbered_groups_cut_from_it_whatever_their_name():
+    # a cut with no cut word in its name: "income_group" 1-5, each the next fifth of the incomes
+    rng = np.random.default_rng(9)
+    inc = rng.lognormal(10.7, 0.4, 600)
+    edges = np.quantile(inc, [0.2, 0.4, 0.6, 0.8])
+    rows = [[f"V{i}", ["Female", "Male"][i % 2], int(np.searchsorted(edges, inc[i])) + 1, round(float(inc[i]), 0)] for i in range(600)]
+    said = [(t["column"], t["test"]) for t in fair(["Victim", "gender", "income_group", "income"], rows)["tests"] if t["measure"] == "amount"]
+    assert not any(c == "income_group" for c, _ in said), said

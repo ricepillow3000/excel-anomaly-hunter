@@ -205,9 +205,14 @@ def _amount_test(g, x, base):
     # ...nor when the groups are cut from the amount itself: police killings' county_bucket is the county's income
     # quintile, and "bucket 1: median income 29,707 vs 50,280" restated the cut. Sorted by the amount, the groups then
     # follow one another in runs, changing about once per group; any real groups interleave all the way
+    # A cut is numbered in the order of its ranges (1 to 5); two groups apart with no overlap are the starkest gap there
+    # is: women paid 30,000-45,000 and men 46,000-70,000 had no amount test at all (AH-49 review)
     allv = np.concatenate(list(vals.values()))
     lab = np.concatenate([np.full(len(v), k) for k, v in enumerate(vals.values())])[np.argsort(allv, kind="stable")]
-    if (lab[1:] != lab[:-1]).sum() <= 2 * (len(vals) - 1) + 0.01 * len(allv):
+    codes = pd.to_numeric(pd.Series(list(vals)), errors="coerce")
+    meds = pd.Series([np.median(v) for v in vals.values()])
+    ranked = len(vals) >= 3 and codes.notna().all() and abs(codes.corr(meds, method="spearman")) == 1
+    if ranked and (lab[1:] != lab[:-1]).sum() <= 2 * (len(vals) - 1) + 0.01 * len(allv):
         return None
     p = mannwhitneyu(*vals.values()).pvalue if len(vals) == 2 else kruskal(*vals.values()).pvalue
     return {**base, "p": float(p), "small": small, "vals": vals,
