@@ -56,6 +56,24 @@ def _crossed(v, lo, hi):
 BEYOND = 4  # a typo sits this many times past every other value in the column
 
 
+def _alone_top(sv):
+    """(top, next) when a column's top value stands alone above its top run, with an exact x10/x100/x1000 behind it that
+    lands in the column's middle (10th-90th percentile); else None. A two-kind column (tuitions 2k-14k and 15k-60k) gets
+    log-scale limits of 500,000 and 23 million, so a public 10,563 typed as 105,630 - 1.8x the max - passed every limit
+    (blind round 23). An honest tail climbs to its top in steps: the top's gap over the next value (log) is at least 1.5x
+    and 8 times the climb of the next 10 values. Simulated on 11 shapes (log-normal 0.3-1.5, Pareto 1.2-3, gamma, uniform,
+    two kinds) at 60-20,000 rows: 0 honest columns said alone; 57-67% of x10 slips past a two-kind column's max caught."""
+    # a measured column (50+ different values): on a scale or a small count (a 10 among 1-5) the top's company is ties, and
+    # its x10 is the rule John dropped (AH-16); the column's name already says it (named_bounds), as worth a check
+    if len(sv) < 100 or sv[0] < 0 or sv[-12] <= 0 or sv[-1] <= sv[-2] or len(np.unique(sv)) < 50:
+        return None
+    gap, climb = np.log(sv[-1] / sv[-2]), np.log(sv[-2] / sv[-12])
+    p10, p90 = np.quantile(sv, [0.1, 0.9])
+    if gap >= np.log(1.5) and gap >= 8 * climb and any(p10 <= sv[-1] / 10 ** k <= p90 for k in (1, 2, 3)):
+        return float(sv[-1]), float(sv[-2])
+    return None
+
+
 def column_stats(x):
     """What likely_value needs about a column, computed once: sorted |non-zero values|, their log median, signs."""
     x = x[~np.isnan(x)]
@@ -164,6 +182,7 @@ def limits_detector(df, column_types, limits, typos_only=False, listing=False, q
         sv, med = np.sort(x[~np.isnan(x)]), float(np.nanmedian(x)) if len(vals) else 0.0
         crowd = max(5, 0.0005 * len(sv))
         rare_minus = (sv >= 0).sum() >= 0.99 * (len(sv) - 1)  # likely_value's own test for a minus-sign slip
+        top = None if typos_only else _alone_top(sv)
 
         def in_tail(v):
             """Other values crowd the way back to the median (hours 1-99 around a usual 40, survey weights up to 8x
@@ -179,7 +198,7 @@ def limits_detector(df, column_types, limits, typos_only=False, listing=False, q
         for i, v in enumerate(x):
             if np.isnan(v):
                 continue
-            weird, fix = _crossed(v, w_lo, w_hi), None
+            weird, fix, said_before = _crossed(v, w_lo, w_hi), None, len(r["reasons"][i])
             # past the usual limit, alone, with an exact x10/x100 behind it: a typo, even under a skewed column's wide
             # weird limit (First Response 430 hrs for 4.3 by a median 4.9 - blind bench, 3 of 3 seeds only noted)
             if weird is None and v not in common and _crossed(v, b_lo, b_hi) is not None and not in_tail(v):
@@ -221,6 +240,10 @@ def limits_detector(df, column_types, limits, typos_only=False, listing=False, q
                     if others <= max(FEW[0], FEW[1] * len(sv)) and level <= FEW[0]:
                         r["alone_reasons"][i].append(f"{col} {v:g} is {'above' if v > lim else 'below'} its usual limit of {lim:g}, and "
                                                      + ("no other value is too" if not others else f"{others} other value{'s are' if others > 1 else ' is'} too"))
+            if top is not None and v == top[0] and len(r["reasons"][i]) == said_before:  # AH-29, see _alone_top
+                r["votes"][i] = True
+                r["magnitude"][i] = max(r["magnitude"][i], min(BIG, (v - top[1]) / sd))
+                r["reasons"][i].append(f"{col} {v:g} stands alone above the rest of the column, whose next highest is {top[1]:g}")
     # one slip changes one cell: 2+ cells of a row off by the same step (California's fruit, all "/1000", adding up
     # exactly) are a real row or another unit, so none of them is offered as a typo (the card already held them back;
     # the reason still said "likely", AH-21). The cells stay flagged
