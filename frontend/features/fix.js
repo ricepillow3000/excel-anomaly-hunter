@@ -157,6 +157,9 @@ const HINTS = [
   // AH-48: many identical rows through a sheet with no ID, one note for them all
   [/ rows repeat an earlier row exactly, all through the sheet - /, "this many, spread out, are usually separate real records " +
     "that happen to match (nothing like an ID tells them apart); if every row must be unique, check them, then use Data > Remove Duplicates"],
+  // AH-46: a sort puts blank cells last - the block at the end is where the sort put them, not where they went missing
+  [/ is blank in \d+ of \d+ rows, all at the end of the table, which is sorted by /, "sorting puts blank cells last, so these rows " +
+    "simply have no value here; if the column must always be filled, fill them in from the source"],
 ];
 
 // Pure: the column an "only unusual" reason points at (an odd mix across columns, or a break in a series), else null

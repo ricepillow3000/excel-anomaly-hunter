@@ -397,4 +397,7 @@ assert.deepEqual(fairnessTests({ tests: [{ verdict: "even", measure: "amount", g
 // AH-32: a rare ERROR may be a log level; its card never calls it only a stand-in
 assert.match(recommendFix(["Time", "Level"], [["x", "ERROR"]], 0, {}, 'Placeholder "ERROR" in column Level', 0, 0).explanation, /a value of the column's own \(a status, a log level\) or a stand-in/);
 assert.match(recommendFix(["Id", "Stage"], [["x", "TBD"]], 0, {}, 'Placeholder "TBD" in column Stage', 0, 0).explanation, /^Stage says "TBD" - a stand-in for a missing value/);
+// AH-46: the note for a sorted table's blank tail gets its own advice, never "the values are just unusual together"
+assert.match(recommendFix(["Name", "APPEARANCES"], [["Hulk", ""]], 0, {}, "APPEARANCES is blank in 130 of 2000 rows, all at the end of the table, which is sorted by APPEARANCES", 0, 0).explanation,
+  /^APPEARANCES is blank in 130 of 2000 rows, all at the end of the table, which is sorted by APPEARANCES - sorting puts blank cells last/);
 console.log("panel self-check passed");

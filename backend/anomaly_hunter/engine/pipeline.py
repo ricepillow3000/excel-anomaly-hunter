@@ -177,6 +177,20 @@ MANY = 20  # blanks in one column: from here, spread through the sheet, they are
 SHARE = 0.01  # ...and at least 1% of its rows: 20 values gone from a 20,000-row column are still each a slip (AH-28 review)
 
 
+def _sorted_end(s, blank, skip):
+    """The blanks at the very end of a table sorted by this column (Marvel's APPEARANCES, most first): Excel's sort puts
+    blank cells last, both ways (AH-46). -> their positions, or none when the column's values are in no order."""
+    live = np.flatnonzero(~np.asarray(skip))
+    tail = len(live) - next((k + 1 for k in range(len(live) - 1, -1, -1) if not blank[live[k]]), 0)
+    v = s.iloc[live[:len(live) - tail]][~blank[live[:len(live) - tail]]].dropna()
+    if tail < 2 or len(v) < 20 or v.nunique() < 5:  # a constant or two-label column is in order by itself
+        return live[:0]
+    v = v.astype(str).str.casefold() if v.dtype.kind not in "biufmM" else v  # A-Z as Excel sorts, any capitals
+    # in order but for a slip or two: round 36's x10 plant (528 typed 5280) stood against the order once in 15,280 rows
+    step = np.sign(np.diff(v.rank(method="min").to_numpy()))
+    return live[len(live) - tail:] if min((step > 0).sum(), (step < 0).sum()) <= max(2, 0.001 * len(step)) else live[:0]
+
+
 def blanks(df, column_types, skip, errors_log, threshold=0.80):
     """Blank cell in a column that is >= 80% filled (summary rows not counted): a required field left empty. Mostly-empty
     columns (notes, optional extras) are left alone. Was 95%: a credit sheet's Income, 92% filled, hid 39 blanks.
@@ -228,6 +242,10 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
             # the Tour de France's first 8 years have no times, on purpose; a one-off is still a blank
             said, word = df.attrs.get("no_value", {}).get(col, (frozenset(), ""))
             coded = df.index.isin(list(said))
+            end = _sorted_end(df[col], b & ~coded, skip)
+            if len(end):
+                notes[df.index[end[0]]].append(Why(f"{col} is blank in {len(end)} of {n} rows, all at the end of the table, which is sorted by {col}", col))
+                b[end] = False
             for said_so in (True, False):
                 part = b & (coded if said_so else ~coded)
                 pos = np.flatnonzero(part)
