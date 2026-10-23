@@ -1,10 +1,12 @@
 """Robust cutoff + three detectors. Each returns {ran, sit_out_reason, votes, magnitude, reasons}."""
+import re
 import warnings
 
 import numpy as np
 import pandas as pd
 from scipy.stats import skew
 
+from anomaly_hunter.engine.fairness import _words
 from anomaly_hunter.engine.load import numbers
 
 K = 6  # vote when |score - median| > K * spread
@@ -88,6 +90,47 @@ def likely_value(v, st, lo, hi):
     return None
 
 
+# a quantity that can itself go below zero: a loss month among profits, a sub-zero high, an overdrawn balance. There a lone
+# negative looks exactly like a minus typed by mistake, so its flip is a guess the user confirms, never "likely" (AH-25,
+# from Council A's AH-21 review). On Hand, Units, Spend and Weight cannot go negative: a lone minus there is a slip.
+# Try 2 (Council A's review): P/L, TMAX, Chg, YoY, Var, an elevation, a latitude, a yield, a spread, an error or a score to
+# par still said "likely"; Low stock, High price, Net weight, Return qty, Change given, Income and Temp ID said "maybe"
+TEMP = {"temp", "temps", "temperature", "temperatures", "celsius", "fahrenheit", "tmax", "tmin", "tavg", "dewpoint", "dew",
+        "windchill", "chill"}
+SIGNED = TEMP | {"profit", "profits", "earnings", "margin", "margins", "gain", "gains", "loss", "losses", "pnl", "balance",
+                 "balances", "return", "change", "changes", "chg", "delta", "diff", "difference", "variance", "var", "yoy",
+                 "growth", "surplus", "deficit", "cashflow", "ebit", "ebitda", "elevation", "altitude", "latitude",
+                 "longitude", "lat", "lon", "lng", "yield", "yields", "interest", "spread", "spreads", "anomaly",
+                 "anomalies", "error", "errors", "residual", "residuals", "adjustment", "adjustments"}
+# ...unless the header says it counts or names something else: Return qty, Change given, Temp ID (a temporary worker's),
+# Error count
+NOT_SIGNED = {"qty", "quantity", "units", "count", "counts", "items", "orders", "given", "id", "code", "codes", "type",
+              "reason", "date", "agency", "worker", "workers", "staff", "employee", "employees", "contract"}
+# "Net" is signed with a money or flow word (Net income, Net change, Net cash flow), never alone with Weight or Units
+NET_WITH = {"income", "change", "flow", "cashflow", "cash", "balance", "gain", "gains", "loss", "losses", "migration",
+            "amount", "position", "worth", "value", "result", "profit", "earnings", "margin", "total"}
+# High and Low are a weather sheet's on their own (Highs, Lows), never a stock's beside Open and Close, nor a Low stock
+PRICES = {"open", "close", "volume", "adj", "price", "bid", "ask"}
+
+
+def _signed(col, columns=()):
+    """Profit, Net Income, P&L, P/L, Cash flow, Change, Balance, temp_max, TMAX, "High (°F)", Highs, Latitude, Yield, Spread,
+    Error, Score to par: a column whose quantity can be negative."""
+    name, w = str(col).casefold(), _words(col)
+    ws = set(w) | set(re.findall(r"[a-z]+", name))  # PnL, YoY whole as well as split (pn + l, yo + y)
+    if "°" in name or "+/-" in name or "over/under" in name.replace(" ", "") or w == ["p", "l"]:  # P/L, P L
+        return True
+    if "cash" in ws and "flow" in ws or "net" in ws and ws & NET_WITH or "par" in ws and ws & {"to", "vs", "score"}:
+        return True
+    if ws & NOT_SIGNED:
+        return False
+    if ws & SIGNED:
+        return True
+    if ws & {"high", "highs", "low", "lows"}:  # alone (Highs), on a sheet that is not a stock's prices
+        return len(w) == 1 and not any(set(_words(c)) & PRICES for c in columns if c != col)
+    return False
+
+
 def _sentinel(v):
     """0, -1 and all-9 numbers (99, -999, 9999.0): what people type for "missing"."""
     return v in (0, -1) or (v == int(v) and abs(v) >= 99 and set(str(int(abs(v)))) == {"9"})
@@ -154,7 +197,8 @@ def limits_detector(df, column_types, limits, typos_only=False, listing=False, q
                 # 2 to the numbers, and real counts offered a tenth is why the 1-5 scale rule was dropped (John, AH-16)
                 small = fix is not None and fix != -v and abs(fix) < abs(v) and st["whole"] and \
                     st["mags"][-2 if st["mags"][-1] == abs(v) else -1] <= 10
-                said = None if fix is None or small else "maybe" if fix != -v and abs(fix) > abs(v) else "likely"
+                said = None if fix is None or small else "maybe" if (fix != -v and abs(fix) > abs(v)) or (fix == -v and _signed(col, column_types)) \
+                    else "likely"
                 if said:
                     r[said][i][col] = fix
                 r["reasons"][i].append(f"{col} weird limit is {lim:g}; this is {v:g}" + (f" ({said} {fix:g})" if said else ""))
