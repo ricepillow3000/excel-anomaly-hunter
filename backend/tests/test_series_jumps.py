@@ -92,3 +92,18 @@ def test_a_sheet_with_many_real_jumps_keeps_every_one_main_found(share, level):
     rows = [[f"{1900 + k // 12}-{k % 12 + 1:02d}-01", round(float(v), 2)] for k, v in enumerate(s)]
     out = scan(["Month", "Value"], rows, fair=False, strength=level)[1]
     assert sum(1 for j in jumps if out[j]["severity"]) >= MAIN[share, level], (share, level)
+
+
+@pytest.mark.parametrize("level", [5, 10])
+@pytest.mark.parametrize("at", [0, 1, 2, -3, -2, -1])
+def test_a_jump_in_the_first_or_last_rows_is_still_found(level, at):
+    # AH-31 try 2 review: the evenly shrinking window leaves the very first value no neighbour on one side, and a +12
+    # (40 noise sds) in row 1 of a monthly series went unseen at every level; main found it through the one-sided window
+    rng = np.random.default_rng(12)
+    m = 600
+    t = np.arange(m)
+    v = 100 + 0.05 * t + 5 * np.sin(2 * np.pi * t / 12) + rng.normal(0, 0.3, m)
+    v[at] += 12
+    rows = [[f"{1900 + k // 12}-{k % 12 + 1:02d}-01", round(float(x), 2)] for k, x in enumerate(v)]
+    out = scan(["Month", "Value"], rows, fair=False, strength=level)[1]
+    assert out[at]["severity"] in ("Low", "Medium", "High"), (at, level, out[at])

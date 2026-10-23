@@ -344,6 +344,16 @@ def sequence_detector(df, column_types, order_by=None, k=K):
         for p in np.where(votes)[0]:
             if abs(trend[p]) > STEP * usual and not _beat(trend, p):
                 hit(p, mag[p], f"{col} is unusual relative to its local trend")
+        # the very first and last dated values: against the next 3 on their one side, past 4 usual steps (a straight
+        # line puts the end 2 steps from that median, a bend a little more; a slip in row 1 of a series went unseen, AH-31
+        # try 2 review). Rows with no date are no end of the series
+        vals, dated = s.to_numpy(), np.flatnonzero(order.loc[idx].notna().to_numpy() & ~np.isnan(s.to_numpy()))
+        if len(dated) >= 8 and usual > 0:
+            line = k * np.nanmedian(np.abs(trend - np.nanmedian(trend))) * 1.4826
+            for p, side in ((dated[0], dated[1:4]), (dated[-1], dated[-4:-1])):
+                off = vals[p] - np.median(vals[side])
+                if abs(off) > (STEP + 2) * usual and abs(off) > line:
+                    hit(p, abs(off) / usual, f"{col} is unusual relative to its local trend")
         d = s
         for _ in (1, 2, 3):
             d = d.diff()

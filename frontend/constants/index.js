@@ -15,7 +15,7 @@ export const DECISIONS_KEY = "anomalyHunterDecisions"; // rows fixed or dismisse
 // fine rows called probably wrong]. Measured, not estimated:
 // backend/tests/test_strength_promise.py scans the bench at every level and fails when a number here is not what the
 // engine does (AH-15: John read 5 and 10 as the same; the slider mostly moves the borderline list, and says so).
-export const MEASURED = {"sheets":27,"planted":51,"fine":2724,"levels":{"0":[43,42,0,0],"1":[44,44,0,0],"2":[44,44,0,0],"3":[51,45,18,0],"4":[51,46,23,0],"5":[51,48,25,0],"6":[51,48,30,0],"7":[51,48,43,0],"8":[51,48,49,0],"9":[51,51,71,0],"10":[51,51,93,3]}};
+export const MEASURED = {"sheets":27,"planted":51,"fine":2724,"levels":{"0":[43,42,0,0],"1":[44,44,0,0],"2":[44,44,0,0],"3":[51,45,18,0],"4":[51,46,23,0],"5":[51,48,25,0],"6":[51,48,30,0],"7":[51,48,43,0],"8":[51,48,50,0],"9":[51,51,74,0],"10":[51,51,96,3]}};
 export const STRENGTH = [
   [0, "Basics: misspellings, totals that don't add up, duplicates, blanks, text in number columns, obvious typos (extra zeros, minus signs where none belong)."],
   [1, "Basics, plus numbers far outside their column's usual range."],
