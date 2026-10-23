@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from anomaly_hunter.engine import fairness
-from anomaly_hunter.engine.detectors import _result, isolation_detector, limits_detector, sequence_detector
+from anomaly_hunter.engine.detectors import _result, _signed, isolation_detector, limits_detector, sequence_detector
 from anomaly_hunter.engine.load import EXCEL_ERROR, PLACEHOLDER, _blank, numbers
 
 def summary_rows(df):
@@ -209,6 +209,8 @@ def whole_numbers(df, column_types, skip):
     return out
 
 
+OF_MORE = {"target", "targets", "goal", "goals", "budget", "plan", "quota", "capacity", "baseline", "expected", "forecast",
+           "benchmark", "previous", "prior", "last", "median", "average", "avg", "mean", "normal", "par", "index"}
 BOUNDED = [(r"month", 1, 12), (r"quarter|qtr", 1, 4), (r"hour", 0, 24), (r"minute|second", 0, 59),
            (r"weekday|day of week", 0, 7), (r"lat|latitude", -90, 90), (r"lon|lng|long|longitude", -180, 180)]
 SCALE = re.compile(r"\(\s*(\d+)\s*(?:-|–|to)\s*(\d+)\s*\)|\bout of (\d+)\b", re.I)
@@ -222,6 +224,12 @@ def _bounds(col):
         return None
     if m := SCALE.search(h):
         return (float(m[1]), float(m[2])) if m[1] else (0.0, float(m[3]))
+    # a share of a whole: 0 to 100 (drought area_pct 233.4 passed, blind round 23). A change, a growth or a margin in %
+    # can pass 100 and go below 0 (detectors._signed), so it is left to the limits
+    # ...and so can a share of a target, a budget, a normal or a capacity (120% of target, 300% of normal rain)
+    w = set(fairness._words(col))
+    if ("%" in h or w & {"pct", "percent", "percentage", "perc"}) and not _signed(col) and not w & OF_MORE:
+        return (0.0, 100.0)
     whole = re.sub(r"\([^()]*\)", "", h).strip()  # "Month (number)" is still Month
     return next(((float(lo), float(hi)) for pat, lo, hi in BOUNDED if re.fullmatch(pat, whole)), None)
 
@@ -312,6 +320,17 @@ def pairs(df, column_types, skip, limits=None):
     # the first 64 varying columns: pairs x fractions grows with the cube of the width (160 columns took 20 s, 2026-10-16)
     vary = [j for j in range(len(cols)) if len(np.unique(a[:, j][~np.isnan(a[:, j])])) >= 3][:64]
     near = lambda y, got: np.abs(y - got) <= np.maximum(0.011, 1e-6 * np.abs(y))  # 1 cent + float slack
+    # ...or within what rounding can explain, where the exact rule does not hold: a race time = laps x an average lap time
+    # written to the cent, so 16 laps carry 16 x 0.005 s (marbles, blind round 23: never learnt, a 26.1 typed 261 passed).
+    # A column of whole numbers is exact (laps, units); one written to d decimals is off by up to half its last digit
+    half = np.array([0.0 if (d := _decimals(a[:, j])) == 0 else 0.5 * 10.0 ** -d for j in range(len(cols))])
+
+    def rounded(y, cs, op, rows):
+        if len(cs) != 2:
+            return None  # the discount rule stays exact
+        p, q = (a[rows, c] for c in cs)
+        slack = half[cs[0]] * np.abs(q) + half[cs[1]] * np.abs(p) if op is np.multiply else np.full(len(p), half[cs[0]] + half[cs[1]])
+        return slack, 1e-9 * np.abs(y)
     sample = a[:64]
     rules = [((p, q), f"{cols[p]} {sign} {cols[q]}", op) for (p, q), (sign, op) in
              itertools.product(itertools.combinations(vary, 2), (("×", np.multiply), ("+", np.add)))]
@@ -321,18 +340,26 @@ def pairs(df, column_types, skip, limits=None):
     rules += [((p, q, f), f"{cols[p]} × {cols[q]} × (1 - {cols[f]})", lambda x, y, z: x * y * (1 - z))
               for p, q in itertools.combinations([j for j in vary if j not in fracs], 2) for f in fracs]
     for cs, said, op in rules:
-        hits = near(sample, op(*(sample[:, c] for c in cs))[:, None]).mean(axis=0)
+        got_s = op(*(sample[:, c] for c in cs))
+        hits = near(sample, got_s[:, None]).mean(axis=0)
+        if (r := rounded(sample, cs, op, slice(0, len(sample)))) is not None:
+            tol = r[0][:, None] + half[None, :] + r[1]
+            hits = np.maximum(hits, (np.abs(sample - got_s[:, None]) <= tol).mean(axis=0))
         for t in np.flatnonzero(hits >= 0.8):
             if t in cs:
                 continue
             y, got = a[:, t], op(*(a[:, c] for c in cs))
             ok = ~np.isnan(y) & ~np.isnan(got)
-            good = ok & near(y, got)
             # judged where the numbers aren't all zero: 0 = 0 x anything made a rule of three TV-spot columns that were 0
             # in 91% of weeks - it held in 64 of the 120 weeks with spots (real sheet, 2026-10-16)
             live = ok & ((y != 0) | (got != 0))
-            if (good & (y != 0)).sum() < 20 or (good & live).sum() < 0.95 * live.sum():
-                continue
+            holds = lambda good: (good & (y != 0)).sum() >= 20 and (good & live).sum() >= 0.95 * live.sum()
+            good = ok & near(y, got)
+            if not holds(good):  # the exact rule first; then what rounding explains, never looser than that
+                r = rounded(y, cs, op, slice(None))
+                good = ok & (np.abs(y - got) <= r[0] + half[t] + r[1]) if r is not None else good
+                if not holds(good):
+                    continue
             for i in np.flatnonzero(ok & ~good):
                 out[index[i]].append(f"{cols[t]} {y[i]:g} does not add up: {said} = {got[i]:.10g}")
                 odd = [j for j in (t, *cs) if not usual(j, a[i, j])]
