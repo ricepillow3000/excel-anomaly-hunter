@@ -53,7 +53,11 @@ def test_beside_a_columns_own_halves_a_slip_is_still_found_and_said_truly():
     rows, bad = study_days(500, 2, halves=4)
     out = scan(["Subject", "Study day"], rows, fair=False)[1]
     said = [i for i, o in enumerate(out) if "is not a whole number" in o["reason"]]
-    assert said == bad and out[bad[0]]["reason"].endswith("the other Study day values are whole or end in .5"), out[bad[0]]
+    # two slips: each sentence counts them, never "the other values are whole or end in .5" (the other slip is neither)
+    assert said == bad and all(out[i]["reason"].endswith("only 2 Study day values are neither whole nor end in .5") for i in bad), out[bad[0]]
+    rows, bad = study_days(500, 1, halves=4)
+    out = scan(["Subject", "Study day"], rows, fair=False)[1]
+    assert out[bad[0]]["reason"].endswith("Study day values are whole or end in .5") and "the other" in out[bad[0]]["reason"], out[bad[0]]
 
 
 def test_a_column_of_many_decimal_parts_is_never_a_whole_number_column():
