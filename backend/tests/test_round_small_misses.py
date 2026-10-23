@@ -117,6 +117,8 @@ def test_a_crafted_long_cell_in_a_column_of_old_dates_scans_in_under_a_second(ce
     t = time.perf_counter()
     scan(["Person", "born"], rows, fair=False)
     assert time.perf_counter() - t < 1.0
+
+
 @pytest.mark.parametrize("beside", ["Nationality", "Citizenship", "Country of birth"])
 def test_a_rider_roster_beside_a_nationality_is_people(beside):
     # AH-51: a cyclist roster (Rider, Team, Nationality) has no age or sex, and "Thomson" was called a misspelling of
@@ -133,3 +135,15 @@ def test_a_world_cup_winner_beside_a_country_keeps_its_spelling_check():
     rows = [[1930 + 4 * i, labels[i % 6], ["Uruguay", "Italy", "France", "Brazil"][i % 4]] for i in range(90)] + [[2290, "Brazl", "Qatar"]]
     out = scan(["Year", "Winner", "Country"], rows, fair=False)[1]
     assert '"Brazl" looks like a misspelling of "Brazil"' in out[-1]["reason"], out[-1]["reason"]
+
+
+@pytest.mark.parametrize("cols, labels, rare, usual", [
+    (["IMO", "Name", "Nationality"], ["Atlantic Star", "Nordic Queen", "Pacific Dawn", "Baltic Pride"], "Nordic Quene", "Nordic Queen"),
+    (["Id", "Name", "Nationality"], ["Spaghetti Carbonara", "Chicken Tikka", "Beef Bourguignon", "Pad Thai"], "Spagheti Carbonara",
+     "Spaghetti Carbonara"),
+    (["Year", "Winner", "Host nationality"], ["Brazil", "Germany", "Italy", "Argentina", "France", "Uruguay"], "Brazl", "Brazil")])
+def test_a_nationality_never_makes_a_plain_name_or_a_winner_beside_a_longer_header_a_person(cols, labels, rare, usual):
+    # AH-51 review: a ship's Name beside its flag's Nationality and a dish's beside its cuisine's lost their spelling check
+    rows = [[f"R{i}", labels[i % len(labels)], ["Panama", "Malta", "Italy"][i % 3]] for i in range(90)] + [["R99", rare, "Malta"]]
+    out = scan(cols, rows, fair=False)[1]
+    assert f'"{rare}" looks like a misspelling of "{usual}"' in out[-1]["reason"], out[-1]["reason"]

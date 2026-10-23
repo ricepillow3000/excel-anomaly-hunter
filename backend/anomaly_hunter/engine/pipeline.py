@@ -594,14 +594,20 @@ def _person_name(col, columns, labels):
     if PERSON & set(w):
         return True
 
+    role = len(w) <= 2 and set(w) & BESIDE and set(w) <= BESIDE | {"name", "names"}
+
     def personal(c):
         cw = fairness._words(c)
-        # ...or a nationality, which only a person has: a cyclist roster (Rider, Team, Nationality) called "Thomson" a
-        # misspelling of "Thompson" (AH-51). A "Country" alone is a place: a World Cup's winners keep their spelling check
-        if set(cw) & {"sex", "gender", "dob", "birth", "birthday", "birthdate", "nationality", "nationalities", "citizenship"}:
+        if set(cw) & {"sex", "gender", "dob", "birth", "birthday", "birthdate"}:
+            return True
+        # ...or, for a Rider, Winner or Champion, a column that is a nationality and nothing else: a cyclist roster (Rider,
+        # Team, Nationality) called "Thomson" a misspelling of "Thompson" (AH-51). Not for a plain "Name": a ship's
+        # beside its flag's Nationality, a dish's beside its cuisine's, lost their spelling check; nor "Host nationality"
+        # beside a World Cup's winners (AH-51 review). A "Country" alone is a place
+        if role and cw in (["nationality"], ["nationalities"], ["citizenship"]):
             return True
         return "age" in cw and (set(cw) <= YEARS or (len(cw) == 2 and cw[1] == "age" and cw[0] in ROLE))
-    if w in (["name"], ["names"]) or (len(w) <= 2 and set(w) & BESIDE and set(w) <= BESIDE | {"name", "names"}):
+    if w in (["name"], ["names"]) or role:
         return any(personal(c) for c in columns if c != col)
     named = bool(w) and w[-1] in ("name", "names") and len(w) > 1 and w[-2] in PERSON_NAME
     named |= len(w) > 1 and w[0] in ("name", "names") and (w[1] in PERSON_NAME or w[1:2] == ["of"] and w[2:3] and w[2] in PERSON_NAME)
