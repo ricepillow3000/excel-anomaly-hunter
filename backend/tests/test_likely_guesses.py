@@ -3,6 +3,7 @@ held-out tables found 8 "likely" guesses on real values: Seattle's sub-zero high
 given sign flips, California's fruit exports (3 cells, one step) given "/1000", DC's real 4% given "x10". A probe found
 "Floors 20 among 1-5" given "likely 2". Synthetic sheets only, shaped like those tables."""
 import numpy as np
+import pytest
 
 from anomaly_hunter import powerbi
 from anomaly_hunter.agents.scan_agent import scan
@@ -87,14 +88,81 @@ def airports():
     rng = np.random.default_rng(7)
     lat = list(np.round(rng.uniform(18, 71, 3000), 4)) + [-14.331, -7.31, -13.48]
     lat[1641] = -44.48507333
-    return scan(["iata", "latitude"], [[f"A{i:04d}", float(v)] for i, v in enumerate(lat)], fair=False)[1]
+    # (AH-25 try 2: a latitude can be negative, so its flip is now a guess; the rule this guards is the header-free one,
+    # a slip as big as the column's values beside real small negatives, so the column is named neutrally)
+    return scan(["iata", "reading"], [[f"A{i:04d}", float(v)] for i, v in enumerate(lat)], fair=False)[1]
 
 
 def test_a_flipped_sign_as_big_as_the_columns_values_is_still_likely_beside_real_negatives():
     out = airports()
-    assert out[1641]["likely"] == {"latitude": 44.48507333} and "(likely 44.4851)" in out[1641]["reason"], out[1641]
+    assert out[1641]["likely"] == {"reading": 44.48507333} and "(likely 44.4851)" in out[1641]["reason"], out[1641]
 
 
 def test_real_small_negatives_beside_a_slip_are_not_flipped():
     # the territories' -14.3, -7.3 and -13.5 sit below every positive latitude, beside other negatives: real places
-    assert [i for i, _ in likely_on(airports(), "latitude")] == [1641]
+    assert [i for i, _ in likely_on(airports(), "reading")] == [1641]
+
+
+# AH-25: a lone negative where the quantity itself can go below zero - a loss month among profits, a sub-zero day among
+# highs, an overdrawn balance - looks exactly like a minus typed by mistake. The numbers cannot tell, so it is offered as
+# a guess the user confirms ("maybe"), never "likely"; the cell stays flagged. Where the quantity cannot go negative (On
+# Hand, Units, Spend, Weight) a lone minus is still a likely slip
+def lone_negative(col, lo, hi, v, seed=8, n=36):
+    rng = np.random.default_rng(seed)
+    rows = [[f"M{i:02d}", round(float(rng.uniform(lo, hi)), 1)] for i in range(n)]
+    rows[20][1] = v
+    return rows, scan(["Month", col], rows, fair=False)[1][20]
+
+
+@pytest.mark.parametrize("col, lo, hi, v", [
+    ("Profit", 800, 2400, -1200),
+    ("Net Income", 800, 2400, -1500),
+    ("P&L", 800, 2400, -1200),
+    ("Change", 50, 400, -300),
+    ("Balance", 1000, 9000, -3000),
+    ("temp_max", 12, 34, -15),
+    ("High (°F)", 40, 95, -60),
+    # try 2 (Council A's review: each of these still said "likely")
+    ("P/L", 800, 2400, -1200), ("PnL", 800, 2400, -1200), ("P L", 800, 2400, -1200), ("Cash flow", 800, 2400, -1200),
+    ("TMAX", 12, 34, -15), ("TMIN", 12, 34, -15), ("Highs", 12, 34, -15), ("Lows", 12, 34, -15),
+    ("Chg", 50, 400, -300), ("% chg", 50, 400, -300), ("YoY %", 50, 400, -300), ("Var", 50, 400, -300),
+    ("Elevation", 800, 2400, -1200), ("Latitude", 20, 60, -45), ("Yield", 2, 6, -4), ("Interest rate", 2, 6, -4),
+    ("Spread", 50, 400, -300), ("Anomaly", 50, 400, -300), ("Error", 50, 400, -300), ("Forecast error", 50, 400, -300),
+    ("Residual", 50, 400, -300), ("Adjustment", 50, 400, -300), ("Score to par", 2, 9, -6), ("Over/Under", 2, 9, -6),
+    # review 2: Visual Crossing's daily columns, a high with its unit in brackets, an operating loss (each said "likely")
+    ("tempmax", 12, 34, -15), ("tempmin", 12, 34, -15), ("feelslike", 12, 34, -15), ("High (C)", 12, 34, -15),
+    ("Low (F)", 40, 95, -60), ("Daily High", 12, 34, -15), ("Operating income", 800, 2400, -1200),
+])
+def test_a_lone_negative_where_the_quantity_can_be_negative_is_a_guess_never_likely(col, lo, hi, v):
+    rows, r = lone_negative(col, lo, hi, v)
+    assert r["severity"] in ("Medium", "High"), r
+    assert not (r.get("likely") or {}).get(col) and "(likely" not in r["reason"], r
+    assert r["maybe"] == {col: float(-v)} and f"(maybe {-v:g})" in r["reason"], r
+    assert powerbi.suggested_fix(["Month", col], rows[20], r) == f"{col}: {v:g} → {-v:g} (a guess)"
+
+
+@pytest.mark.parametrize("col, lo, hi, v", [("On Hand", 20, 300, -138), ("Units", 24, 34, -29), ("Spend", 200, 9000, -3314),
+                                            ("Weight (kg)", 50, 110, -70.7),
+                                            # try 2: words that named a signed quantity only in other headers (Council A)
+                                            ("Low stock", 20, 300, -138), ("High price", 20, 300, -138), ("High score", 20, 300, -138),
+                                            ("Net weight", 50, 110, -70.7), ("Net units", 20, 300, -138), ("Return qty", 20, 300, -138),
+                                            ("Returns", 20, 300, -138), ("Change given", 20, 300, -138), ("Income", 800, 2400, -1200),
+                                            ("Temp ID", 200, 900, -500), ("Error count", 20, 300, -138), ("Par", 3, 5, -4),
+                                            ("High school GPA", 2.0, 4.0, -3.1),
+                                            # review 2: an absolute value is never below zero
+                                            ("Absolute error", 50, 400, -300), ("Abs diff", 50, 400, -300)])
+def test_a_lone_negative_where_the_quantity_cannot_be_negative_is_still_likely(col, lo, hi, v):
+    _, r = lone_negative(col, lo, hi, v)
+    assert r["likely"] == {col: float(-v)} and f"(likely {-v:g})" in r["reason"], r
+
+
+def test_a_high_or_low_column_beside_open_and_close_is_a_price_and_its_lone_minus_is_still_likely():
+    # a stock's High and Low never go below zero; a weather sheet's do (Highs and Lows above, alone)
+    rng = np.random.default_rng(9)
+    rows = []
+    for i in range(36):
+        o = round(float(rng.uniform(80, 120)), 2)
+        rows.append([f"D{i:02d}", o, round(o + 2, 2), round(o - 2, 2), round(o + 1, 2)])
+    rows[20][2] = -rows[20][2]
+    r = scan(["Date", "Open", "High", "Low", "Close"], rows, fair=False)[1][20]
+    assert (r.get("likely") or {}).get("High") == -rows[20][2], r
