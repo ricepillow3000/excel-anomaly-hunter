@@ -959,7 +959,9 @@ def test_text_codes_a_number_column_uses_many_times_are_its_own_code_system():
     rows[7][1], rows[8][1] = "12O", "NA"
     types, out = _scan(["Row", "Value"], rows)
     assert types["Value"] == "number"
-    assert [i for i, o in enumerate(out) if "Text" in o["reason"]] == [7, 8]
+    # a one-off "NA" is a missing value, a blank, still flagged (AH-27: R writes NA for every missing number)
+    assert [i for i, o in enumerate(out) if "Text" in o["reason"]] == [7]
+    assert out[8]["severity"] == "Medium" and out[8]["reason"] == "Blank cell in column Value, which is otherwise filled", out[8]
 
 
 def test_a_rare_dash_in_a_number_column_is_a_placeholder_never_a_zero():

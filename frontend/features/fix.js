@@ -138,6 +138,9 @@ const HINTS = [
   [/ is above 100% - /, "it may be a whole percent typed where a fraction belongs (85 for 0.85)"],
   [/ looks like an? .+ value$/, "it may have been typed into the wrong column"],
   [/ is not a whole number - /, "check the decimal point"],
+  // AH-28: many blanks spread through a column, one note for them all
+  [/ is (blank in \d+ of \d+ rows, spread through the sheet|"[^"]+" \(no value\) in \d+ of \d+ rows)$/, "blanks this many and this spread out are usually values not known or " +
+    "not needed, not slips; if the column must always be filled, filter it for blanks and fill them in"],
 ];
 
 // Pure: the column an "only unusual" reason points at (an odd mix across columns, or a break in a series), else null
