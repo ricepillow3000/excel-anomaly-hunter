@@ -301,6 +301,12 @@ rec = recommendFix(["Id", "Age"], [["a", ""]], 0, {}, "Age is blank in 178 of 89
 assert.ok(rec.explanation.includes("not known") && !rec.explanation.includes("Nothing here") && !rec.changes.length, rec.explanation);
 rec = recommendFix(["Id", "Age"], [["a", "NA"]], 0, {}, 'Age is "NA" (no value) in 178 of 891 rows', 0, 0);
 assert.ok(rec.explanation.includes("not known") && !rec.changes.length, rec.explanation);
+// AH-45 review: those cells hold the word, so the card says to filter for it, never "for blanks" (it found none)
+assert.ok(rec.explanation.includes('filter it for "NA"') && !rec.explanation.includes("blanks"), rec.explanation);
+rec = recommendFix(["Patient", "Smoking status"], [["a", "Unknown"]], 0, {}, 'Smoking status is "Unknown" (no value) in 300 of 20000 rows', 0, 0);
+assert.ok(rec.explanation.includes('filter it for "Unknown" and fill those in') && !rec.explanation.includes("blanks") && !rec.changes.length, rec.explanation);
+rec = recommendFix(["Id", "Age"], [["a", ""]], 0, {}, "Age is blank in 178 of 891 rows, spread through the sheet", 0, 0);
+assert.ok(rec.explanation.includes("filter it for blanks"), rec.explanation);
 // a guess says what kind of guess: a short form is not "a misspelling, one letter off"
 rec = recommendFix(["Id", "Plan"], [["a", "Std"]], 0, null, 'Plan "Std" looks like a short form of "Standard"', 0, 0, null, null, { Plan: "Standard" });
 assert.deepEqual(rec.changes, [{ cell: "B2", new: "Standard" }]);

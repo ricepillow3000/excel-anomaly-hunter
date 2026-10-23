@@ -78,37 +78,65 @@ def _shape(raw):
 def type_errors(n, errors_log, column_types):
     """Text in a number or date column. A text shape the column repeats 5+ times is its own code system (partisan lean
     "R+51.5", district "16A": 8,000 false rows on one real sheet, 2026-10-16), not a slip; placeholders and missing-value
-    words (N/A, -, NA) never are. The cells stay in errors_log: they are text, for duplicates and blanks alike."""
-    out = [[] for _ in range(n)]
+    words (N/A, -, NA) never are. The cells stay in errors_log: they are text, for duplicates and blanks alike.
+    -> (reasons, notes): a placeholder the column writes max(MANY, SHARE of the rows) times through every fifth of the
+    sheet is its code for "no value", one note (AH-45: a survey's 1-5 rating of Italy's cuisine, "N/A" 67 times)."""
+    out, notes = [[] for _ in range(n)], [[] for _ in range(n)]
+    ph = collections.defaultdict(list)
+    for i, col, raw in errors_log:
+        if PLACEHOLDER.fullmatch(str(raw).strip()):
+            ph[col, str(raw).strip().upper()].append(i)
+    coded = set()
+    for (col, _), rows in ph.items():
+        if _ != "ERROR" and len(rows) >= max(MANY, SHARE * n) and len({i * 5 // n for i in rows}) == 5:
+            coded |= {(i, col) for i in rows}
+            raw = next(str(r).strip() for j, c, r in errors_log if j == rows[0] and c == col)
+            notes[rows[0]].append(f'{col} is "{_short(raw)}" (no value) in {len(rows)} of {n} rows')
     code = lambda raw: not (EXCEL_ERROR.match(str(raw).strip()) or PLACEHOLDER.fullmatch(str(raw).strip())
                             or MISSING.fullmatch(str(raw).strip()))
     shapes = collections.Counter((col, _shape(raw)) for _, col, raw in errors_log if code(raw))
     for i, col, raw in errors_log:
         kind, text = "date" if column_types[col] == "date" else "number", str(raw).strip()
-        if code(raw) and shapes[col, _shape(raw)] >= 5:
+        if code(raw) and shapes[col, _shape(raw)] >= 5 or (i, col) in coded:
             continue
         raw = _short(raw)
         out[i].append(f"Excel error {raw} in {col}" if EXCEL_ERROR.match(text) else f'Placeholder "{raw}" in column {col}'
                       if PLACEHOLDER.fullmatch(text) else f'Text "{raw}" in {kind} column {col}')
-    return out
+    return out, notes
 
 
 def placeholders(df, column_types, skip):
     """ERROR / UNKNOWN / N/A / NULL / ? / - left in a text column, when that word is rare (< 8% of the column: more often
-    it's a real category, like Status "Error"). Excel errors (#N/A) always: they are a broken formula, never a category."""
-    out = [[] for _ in range(len(df))]
+    it's a real category, like Status "Error"). Excel errors (#N/A) always: they are a broken formula, never a category.
+    -> (reasons per row, notes per row): a word the column writes max(MANY, SHARE of it) times through every fifth of the
+    sheet is its own code for "no value", one note on its first row (AH-45): water points' "Unknown" 797 times and "NULL" 436 times, a survey's "N/A"
+    173 times were each a Medium row in blind round 36, like R's NA (AH-27). A rarer one is still each a slip."""
+    out, notes = [[] for _ in range(len(df))], [[] for _ in range(len(df))]
     for col, t in column_types.items():
         if t != "text":
             continue
         v = df[col].astype(str).str.strip()
         err = v.str.match(EXCEL_ERROR)
         ph, key = v.str.fullmatch(PLACEHOLDER) & ~skip, v.str.upper()
-        rare = key.map(key[ph].value_counts()).fillna(0) <= max(1, 0.08 * (~_blank(df[col]) & ~skip).sum())
-        hit = (err & ~skip) | (ph & rare)
+        filled = (~_blank(df[col]) & ~skip).sum()
+        times = key.map(key[ph].value_counts()).fillna(0)
+        rare = times <= max(1, 0.08 * filled)
+        # ...never ERROR: a log's Level ERROR on 3% of rows is a real category, not "no value" (AH-45 review), so it keeps
+        # the rare-word flag it always had
+        code = ph & rare & (times >= max(MANY, SHARE * filled)) & (key != "ERROR")
+        for k in key[code].unique():
+            first = df.index[code & (key == k)]
+            # ...found in every fifth of the sheet, like blanks (AH-28): a block of 50 "?" in a census's first 150 rows is a
+            # paste or an export that went wrong, still each a slip (test_wild_census)
+            if len(set(np.flatnonzero((code & (key == k)).to_numpy()) * 5 // len(df))) < 5:
+                code &= key != k
+                continue
+            notes[first[0]].append(f'{col} is "{v[first].mode().iloc[0]}" (no value) in {len(first)} of {(~skip).sum()} rows')
+        hit = (err & ~skip) | (ph & rare & ~code)
         if hit.any():
             for i in df.index[hit]:
                 out[i].append(f"Excel error {v[i]} in {col}" if err[i] else f'Placeholder "{v[i]}" in column {col}')
-    return out
+    return out, notes
 
 
 MANY = 20  # blanks in one column: from here, spread through the sheet, they are how the data is (AH-28)
@@ -664,8 +692,8 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
             "isolation": isolation_detector(df, judged, k) if s >= 5 else _result(n, "strength below 5")}
     # DBSCAN cut 2026-10-07: 90s/100k rows, 81% false alarms, bench same without it
     ran = [d for d in dets.values() if d["ran"]]
-    dup, typ, (blank, spread) = duplicates(df, errors_log), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
-    hole, far = placeholders(df, column_types, skip), far_dates(df, column_types, skip)
+    dup, (typ, typ_coded), (blank, spread) = duplicates(df, errors_log), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
+    (hole, coded), far = placeholders(df, column_types, skip), far_dates(df, column_types, skip)
     paired, solved = pairs(df, column_types, skip, limits)
     add = [list(dict.fromkeys(s + m)) for s, m in zip(sums(df, column_types, skip), paired, strict=True)]
     code = codes(df, column_types, skip)
@@ -673,7 +701,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
     missed = [m + s + f + w + b + g for m, s, f, w, b, g in zip(missed, shifted(df, column_types, skip), fractions(df, column_types, skip),
                                                                  whole_numbers(df, column_types, skip), named_bounds(df, column_types, skip),
                                                                  spread, strict=True)]  # all "worth a check" (Low)
-    missed = [m + t for m, t in zip(missed, lim["top_reasons"], strict=True)]  # a lone top value (AH-29)
+    missed = [m + t + c + d for m, t, c, d in zip(missed, lim["top_reasons"], coded, typ_coded, strict=True)]  # a lone top value (AH-29), a placeholder code (AH-45)
     if s >= ALONE:
         missed = [m + a for m, a in zip(missed, lim["alone_reasons"], strict=True)]
     rows = []
