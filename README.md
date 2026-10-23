@@ -40,7 +40,7 @@ person called wrong, in 9 s - and its well-known gaps (30% of men vs 11% of wome
 
 **Power BI:** in the pane, turn on **Power BI (optional) > Save each scan for Power BI** (off by default), scan, then double-click `anomaly-hunter.pbids` (the whole sheet) or `anomaly-hunter-flags.pbids` (the flagged rows and the ones you fixed or dismissed; its columns never change); Refresh after each scan. Both sit in `%LOCALAPPDATA%\AnomalyHunter` (AnomalyHunter.exe) or `powerbi\` (`install.bat`). Schema and the steps to check it in Power BI Desktop: [`powerbi/README.md`](powerbi/README.md).
 
-**Use it:** click **Find problems in this sheet**. A progress line shows each step; rows to check are highlighted
+**Use it:** click **Find problems in this sheet**. A progress line shows each step; the cells to check are highlighted
 (orange = probably wrong, pale yellow = worth a quick check) and listed worst first. Click a row (in the list or the
 sheet) for a suggestion card, free and instant (e.g. 900 -> 90, "looks like a typo"; a median is labelled a best
 guess). You see old -> new and choose: **Accept** writes it, then the checker scans the table again and the row's

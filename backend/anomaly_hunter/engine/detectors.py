@@ -12,6 +12,24 @@ from anomaly_hunter.engine.load import numbers
 K = 6  # vote when |score - median| > K * spread
 
 
+class Why(str):
+    """A reason: one plain sentence, and the columns whose cells in its row it is about, which the pane colours and no
+    other (AH-40: it coloured the whole row, so a reason about one cell lit up every cell beside it). A str, so every
+    list, join and comparison of reasons works as before; a string operation on it gives a plain str, without them."""
+    cols = ()
+
+    def __new__(cls, text, *cols):
+        s = super().__new__(cls, text)
+        s.cols = cols
+        return s
+
+
+def say(v):
+    """A number as the cell holds it, to Excel's 15 digits: 1234567.89, never :g's 1.23457e+06 (a reason quotes the
+    cell, AH-40)."""
+    return f"{float(v):.15g}"
+
+
 BIG = 1e12  # spreads from the median: far past any limit, and finite (x / a subnormal spread overflows to infinity)
 
 
@@ -222,10 +240,10 @@ def limits_detector(df, column_types, limits, typos_only=False, listing=False, q
                     else "likely"
                 if said:
                     r[said][i][col] = fix
-                r["reasons"][i].append(f"{col} weird limit is {lim:g}; this is {v:g}" + (f" ({said} {fix:g})" if said else ""))
+                r["reasons"][i].append(Why(f"{col} weird limit is {lim:g}; this is {say(v)}" + (f" ({said} {say(fix)})" if said else ""), col))
             elif (lim := _crossed(v, b_lo, b_hi)) is not None:
                 r["noted"][i] = True
-                r["noted_reasons"][i].append(f"{col} baseline limit is {lim:g}; this is {v:g}")
+                r["noted_reasons"][i].append(Why(f"{col} baseline limit is {lim:g}; this is {say(v)}", col))
                 # a stricter level lists it when few other values are past the same limit: the gains (a 10 on a 1-5 scale,
                 # story points 50 by a usual 30) had 0-1, an honest tail of bulk orders 43-49 (AH-14 review). Counted,
                 # not "near it": "with few values near it" was shown with 32 values between it and the median. Never on a
@@ -238,13 +256,13 @@ def limits_detector(df, column_types, limits, typos_only=False, listing=False, q
                     # limit had under 0.25% of company (129 rows listed); only a column's own extremes stand that alone
                     level = int(len(sv) - np.searchsorted(sv, v, "left") if up else np.searchsorted(sv, v, "right")) - 1
                     if others <= max(FEW[0], FEW[1] * len(sv)) and level <= FEW[0]:
-                        r["alone_reasons"][i].append(f"{col} {v:g} is {'above' if v > lim else 'below'} its usual limit of {lim:g}, and "
-                                                     + ("no other value is too" if not others else f"{others} other value{'s are' if others > 1 else ' is'} too"))
+                        r["alone_reasons"][i].append(Why(f"{col} {say(v)} is {'above' if v > lim else 'below'} its usual limit of {lim:g}, and "
+                                                         + ("no other value is too" if not others else f"{others} other value{'s are' if others > 1 else ' is'} too"), col))
             # AH-29, see _alone_top. Worth a check, never a vote: one real record above a column with a hard top looks the
             # same (a 45,000 wholesale order over orders up to 20,000, a CEO's 400,000 over a pay scale capped at 150,000,
             # a 450 product over prices to 200: each was Medium, "probably wrong", AH-29 review)
             if top is not None and v == top[0] and len(r["reasons"][i]) + len(r["alone_reasons"][i]) == said_before:
-                r["top_reasons"][i].append(f"{col} {v:g} stands alone above the rest of the column, whose next highest is {top[1]:g}")
+                r["top_reasons"][i].append(Why(f"{col} {say(v)} stands alone above the rest of the column, whose next highest is {say(top[1])}", col))
     # one slip changes one cell: 2+ cells of a row off by the same step (California's fruit, all "/1000", adding up
     # exactly) are a real row or another unit, so none of them is offered as a typo (the card already held them back;
     # the reason still said "likely", AH-21). The cells stay flagged
@@ -258,7 +276,8 @@ def limits_detector(df, column_types, limits, typos_only=False, listing=False, q
         for same in steps.values():
             for kind, col, fix in same if len(same) >= 2 else ():
                 del r[kind][i][col]
-                r["reasons"][i] = [s.replace(f" ({kind} {fix:g})", "") if s.startswith(f"{col} weird limit is") else s for s in r["reasons"][i]]
+                r["reasons"][i] = [Why(s.replace(f" ({kind} {say(fix)})", ""), *s.cols) if s.startswith(f"{col} weird limit is") else s
+                                   for s in r["reasons"][i]]
     return r
 
 
@@ -325,12 +344,12 @@ def sequence_detector(df, column_types, order_by=None, k=K):
     if (abs(gap - gap.median()) <= 0.1 * gap.median()).mean() < 0.7:
         return _result(n, f"not a time series ({by} is not evenly spaced)")
 
-    def hit(pos, mag, what):
+    def hit(pos, mag, col, what):
         i = idx[pos]
         r["votes"][i] = True
         r["magnitude"][i] = max(r["magnitude"][i], mag)
-        if (why := f"{what} near {order.iloc[i]}") not in r["reasons"][i]:
-            r["reasons"][i].append(why)
+        if (why := f"{col} {what} near {order.iloc[i]}") not in r["reasons"][i]:
+            r["reasons"][i].append(Why(why, col))
 
     for col in numbers(column_types):
         s = pd.Series(df[col].to_numpy(dtype=float)[idx])
@@ -343,7 +362,7 @@ def sequence_detector(df, column_types, order_by=None, k=K):
         votes, mag = robust_vote(trend, k)
         for p in np.where(votes)[0]:
             if abs(trend[p]) > STEP * usual and not _beat(trend, p):
-                hit(p, mag[p], f"{col} is unusual relative to its local trend")
+                hit(p, mag[p], col, "is unusual relative to its local trend")
         # the very first and last dated values: against the next 3 on their one side, past 4 usual steps (a straight
         # line puts the end 2 steps from that median, a bend a little more; a slip in row 1 of a series went unseen, AH-31
         # try 2 review). Rows with no date are no end of the series
@@ -353,7 +372,7 @@ def sequence_detector(df, column_types, order_by=None, k=K):
             for p, side in ((dated[0], dated[1:4]), (dated[-1], dated[-4:-1])):
                 off = vals[p] - np.median(vals[side])
                 if abs(off) > (STEP + 2) * usual and abs(off) > line:
-                    hit(p, abs(off) / usual, f"{col} is unusual relative to its local trend")
+                    hit(p, abs(off) / usual, col, "is unusual relative to its local trend")
         d = s
         for _ in (1, 2, 3):
             d = d.diff()
@@ -364,7 +383,7 @@ def sequence_detector(df, column_types, order_by=None, k=K):
                 # blame biggest trend gap in last 4 rows, not the diff's own row
                 w = trend[max(0, p - 3):p + 1]
                 b = p if np.isnan(w).all() else max(0, p - 3) + int(np.nanargmax(np.abs(w)))
-                hit(b, mag[p], f"{col} jumped sharply")  # 1st/2nd/3rd differences see the same jump: one reason
+                hit(b, mag[p], col, "jumped sharply")  # 1st/2nd/3rd differences see the same jump: one reason
     return r
 
 
@@ -411,6 +430,6 @@ def isolation_detector(df, column_types, k=K):
     x = _scaled(df, cols)
     votes, mag = robust_vote(_ecod(x.to_numpy()), k)
     worst = x.abs().to_numpy().argmax(axis=1)
-    reasons = [[f"Unusual combination of values, mainly {cols[w]}"] if v else [] for v, w in zip(votes, worst)]
+    reasons = [[Why(f"Unusual combination of values, mainly {cols[w]}", cols[w])] if v else [] for v, w in zip(votes, worst)]
     return {**_result(n), "votes": votes, "magnitude": mag, "reasons": reasons}
 

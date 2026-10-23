@@ -31,7 +31,7 @@ an admin panel, role, operator route or debug switch. The weekly security sweep 
 | 8 | Answer | routes, `powerbi.py` | every error is JSON; the Power BI CSVs never carry a live formula (text always quoted, `inert`) and read back, the way Power BI's import reads them, as exactly what the pane got, each row's Status (Open, Fixed, Dismissed) from the pane's `decisions` (schema: `powerbi/README.md`) | `test_api_security.py`, `test_powerbi.py` |
 | 9 | AI (optional) | `ai/client.py` | one call at a time, deadline, cache (answers only), key never echoed (nor the provider's error text), an AI formula may call only `client.SAFE` functions, headers and the reason go in one line each, no typed request = the flagged row only, a value only where the AI was shown the sheet (never a row or column left out to fit), every change it gives on the card or named in its explanation, a refusal or a cut-off answer said as one | `test_fix.py`, `test_ai_load.py`, `test_text_checks.py`, `test_ai_answers.py` |
 | 10 | Relay | `relay/worker.js` | invite hash, daily caps counted before Google, only `POST /fix`, model and key set by the relay | `relay/test.mjs`; live Worker from outside: `relay/live-probe.mjs` (CI `relay-live.yml`) |
-| 11 | Pane | `frontend/` | every dynamic `innerHTML` value goes through `esc()`; CSP allows only our files + office.js; key and pointer handlers only through `addEventListener` (a DOM0 handler returning false cancels the key); Fixed / Dismissed kept in the workbook as one code per row, never the values (`features/decisions.js`) | `frontend/selfcheck.js`, `e2e/run.mjs` |
+| 11 | Pane | `frontend/` | every dynamic `innerHTML` value goes through `esc()`; CSP allows only our files + office.js; key and pointer handlers only through `addEventListener` (a DOM0 handler returning false cancels the key); Fixed / Dismissed kept in the workbook as one code per row, never the values (`features/decisions.js`); only the cells a row's reasons name (`cells`) are coloured, in colors one step off Excel's own Bad / Neutral / Note so a reopened pane never clears the user's (`features/highlight.js`) | `frontend/selfcheck.js`, `e2e/run.mjs`, `test_every_flag_names_its_cells.py` |
 | 12 | Website | `site/` | every link and anchor lands; nothing loads from outside but the GitHub API for the checksum (CSP meta); no HTML built from data; the support link always fits GitHub's limit | `tools/test_site.mjs` (`--browser` under `--e2e`); `pages.yml` publishes only after it passes |
 
 ## Feature map: what the scan finds, where, and its test
@@ -61,7 +61,9 @@ Adding or removing a check: update this table in the same commit.
 - **Test first, from the failure.** Rebuild the bad sheet as a small synthetic fixture (never a real customer file),
   watch the test fail on the old code, then fix. Name tests as the behaviour in plain words.
 - **A new check** takes `(df, column_types, skip)`, returns `[[reason, ...] per row]`, skips totals rows via `skip`,
-  and is joined into `hygiene` in `pipeline.score`. Reasons are one plain sentence naming the column and the value.
+  and is joined into `hygiene` in `pipeline.score`. Reasons are one plain sentence naming the column and the value,
+  built as `Why(text, column, ...)` (the cells the pane colours) with numbers through `say()` (the cell to 15 digits,
+  never `:g`); `test_every_flag_names_its_cells.py` checks every bench sheet's flags against their cells.
 - **Lists of routes come from Flask** (`APP.url_map`), never typed by hand, so a new route is tested automatically.
   A new route also goes into `backend/openapi.yaml` (`test_the_spec_lists_every_route` fails until it does).
 - **Accuracy is measured, not argued**: `score.py .` (gates) and `score.py . --blind` (held-out domains). A detector
@@ -151,6 +153,10 @@ Adding or removing a check: update this table in the same commit.
   parsing, and a chi-square on an all-zero column broke the fairness report. Both made every scan of the sheet a 500
   (`load._dates`, `fairness.report`; 40 random real tables, 2026-10-16). A new blind round reads every table, not only
   the planted ones.
+- A highlight is a claim about a cell: the pane coloured whole rows, so a reason about one cell lit up every cell
+  beside it, and reasons quoted cells through `:g` (1234567.89 said as 1.23457e+06, 12345.67 as 12345.7), while
+  pandas' parser read -0.013338153250515461 as -0.0133381532505154. Each reason now carries its columns, the pane
+  colours those cells only, and a test reads every bench flag's quoted value back from its cell (AH-40).
 - Office caches ribbon icons per URL and the manifest per `<Version>`: the v0.1.71 logo kept the old file names and
   Version, so an upgraded ribbon would keep the old icon. A new logo gets new file names (now `assets/mark-*.png`, drawn in
   `docs/design/logo/`) and a `<Version>` bump; never clear the

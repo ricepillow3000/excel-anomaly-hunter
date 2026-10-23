@@ -67,3 +67,10 @@ export function cellAt(cell) {
   const m = /^([A-Z]+)(\d+)$/.exec(String(cell));
   return m && { col: [...m[1]].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1, row: +m[2] };
 }
+
+// Pure: the cells (column indexes) a row's reasons are about - the pane colours those, no other (AH-40: it coloured the
+// whole row, so a reason about one cell lit up every cell beside it). An engine from before AH-40 names none: the row.
+export function spots(r, columns) {
+  const j = (r?.cells || []).map((c) => columns.indexOf(c)).filter((k) => k >= 0);
+  return j.length ? j : columns.map((_, k) => k);
+}

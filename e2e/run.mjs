@@ -119,8 +119,12 @@ if (mode === "flow") {
   ok(!(await text("#flagged-list")).includes("weird limit"), "no jargon in the list");
   ok((await text("#fairness-note")).startsWith("Fairness: Region is never used") && (await page.$$("#fairness-list li")).length > 0,
     "fairness: the protected column is named, every check is listed under All fairness checks");
-  const fills = await page.evaluate(() => ["A11", "A22", "A51", "A81", "A121", "A2"].map((a) => __cell("Sales", a).fill));
-  ok(fills.slice(0, 5).every((f) => f === "#FFEB9C") && fills[5] === null, "flagged rows highlighted, clean rows not - " + fills);
+  // AH-40: exactly the cells each reason names - row 11's Units, UnitCost and Total (its total does not add up), the
+  // duplicate's whole row, the "east " Region, the blank Units - and no other cell of those rows
+  const fills = await page.evaluate(() => ["C11", "D11", "E11", "C22", "A51", "E51", "B81", "C121", "A2"].map((a) => __cell("Sales", a).fill));
+  ok(fills.slice(0, 8).every((f) => f === "#FFEB9D") && fills[8] === null, "the named cells highlighted, clean rows not - " + fills);
+  const beside = await page.evaluate(() => ["A11", "B11", "A22", "B22", "A81", "C81", "A121", "B121"].map((a) => __cell("Sales", a).fill));
+  ok(beside.join() === "#00B050,#00B050,,#00B0F0,,,,", "no other cell of a flagged row is coloured; the user's own fills stay - " + beside);
 
   // 2) open a row's card, Accept (Agent 3 checks it again, highlight goes), Undo
   await openRow(11);
@@ -138,7 +142,7 @@ if (mode === "flow") {
   ok(await page.evaluate(() => Object.values(__settings.anomalyHunterDecisions?.Sales || {}).includes("fixed")), "Accept keeps the decision in the workbook");
   ok((await wrote()) === "Sales!C11", "Accept wrote exactly the one targeted cell, nothing else - " + (await wrote()));
   ok((await text("#fix-status")).includes("looks right now"), "checker re-scanned the fixed row - " + (await text("#fix-status")));
-  ok((await cell("A11")).fill === "#00B050", "fixed row: highlight gone, the user's own green back");
+  ok((await cell("C11")).fill === "#00B050" && (await cell("E11")).fill === "#00B050", "fixed row: highlight gone, the user's own green back");
   ok(await page.isVisible("#fix-next") && !(await page.isVisible("#fix-dismiss")), "then Undo / Next row");
   await page.click("#fix-back");
   ok(/1 of \d+ done/.test(await text("#list-title")) && (await text("#flagged-list")).includes("Fixed"), "list keeps its rows and marks the fixed one - " + (await text("#list-title")));
@@ -150,7 +154,8 @@ if (mode === "flow") {
   ok((await cell("C11")).v === 7 && (await text("#fix-status")).includes("changed after the fix"), "Undo never types over a hand edit");
   await page.evaluate((v) => __edit("Sales", "C11", v), fixedTo);
   await page.click("#fix-undo"); await idle();
-  ok((await cell("C11")).v === -5 && !(await page.isVisible("#fix-undo")) && (await cell("A11")).fill === "#FFEB9C", "Undo puts it back, highlight too");
+  ok((await cell("C11")).v === -5 && !(await page.isVisible("#fix-undo")) && (await cell("C11")).fill === "#FFEB9D" && (await cell("A11")).fill === "#00B050",
+    "Undo puts it back, highlight too (on the named cells only)");
   await page.evaluate(() => __edit("Sales", "B11", "North")); // the row changes after the scan (edited / sorted)
   await page.click("#fix-apply"); await idle();
   ok((await cell("C11")).v === -5 && (await text("#fix-status")).includes("changed since the scan"), "changed row: Accept refuses instead of writing into the wrong record");
@@ -166,7 +171,7 @@ if (mode === "flow") {
   await page.click("#fix-dismiss"); await idle();
   ok(calls.slice(c2).every(([p, b]) => p === "/suggest" && b.row_index !== 20) && (await page.evaluate(() => Object.values(__settings.anomalyHunterDecisions?.Sales || {}).includes("dismissed"))),
     "Dismiss asks the engine nothing about the row (the next card may look for a typo: /suggest, never for row 22) and keeps Dismissed in the workbook - " + JSON.stringify(calls.slice(c2).map(([p, b]) => [p, b?.row_index])));
-  ok((await cell("C22")).v === 7777 && (await cell("A22")).fill === null && (await cell("B22")).fill === "#00B0F0", "Dismiss keeps the value and removes only our highlight");
+  ok((await cell("C22")).v === 7777 && (await cell("C22")).fill === null && (await cell("B22")).fill === "#00B0F0", "Dismiss keeps the value and removes only our highlight");
   ok((await page.evaluate(() => __log.length)) === beforeDismiss, "Dismiss (and opening the next row) writes no cell at all");
   ok(/^Row \d+/.test(await text("#fix-title")) && !(await text("#fix-title")).startsWith("Row 22"), "and moves to the next row - " + (await text("#fix-title")));
 
@@ -180,11 +185,13 @@ if (mode === "flow") {
 
   // 5) ...also after the pane was closed and reopened (no memory of what it painted)
   await find();
-  await page.evaluate(() => { __state.painted = null; __fill("Sales", "A30", "#00B050"); __fill("Sales", "D40", "#FFC7CE"); });
+  // ...and a whole row painted by a pane from before AH-40, in Excel's very colors
+  await page.evaluate(() => { __state.painted = null; __fill("Sales", "A30", "#00B050"); __fill("Sales", "D40", "#FFC7CE"); for (const c of "ABCDE") __fill("Sales", c + "60", "#FFEB9C"); });
   await page.click("#clear-highlights"); await idle();
-  const cleared = await page.evaluate(() => ["A22", "A51", "A30", "D40"].map((a) => __cell("Sales", a).fill));
-  ok(cleared[0] === null && cleared[1] === null && cleared[2] === "#00B050", "reopened pane: only OUR colors are removed - " + cleared);
-  ok(cleared[3] === "#FFC7CE", "a single cell in Excel's own 'Bad' style (same pink) is the user's, and stays");
+  const cleared = await page.evaluate(() => ["C11", "A51", "B81", "A30", "D40", "A60", "E60"].map((a) => __cell("Sales", a).fill));
+  ok(cleared.slice(0, 3).every((f) => f === null) && cleared[3] === "#00B050", "reopened pane: only OUR colors are removed - " + cleared);
+  ok(cleared[4] === "#FFC7CE", "a single cell in Excel's own 'Bad' style (same pink) is the user's, and stays");
+  ok(cleared[5] === null && cleared[6] === null, "a whole row an older pane painted is ours too, and goes");
 
   // 6) limits: plain words, bad input refused, saving rescans, "Back to automatic" resets
   const openStrict = () => page.locator("details.more:has(#edit-limits)").evaluate((d) => (d.open = true));
@@ -310,8 +317,8 @@ if (mode === "flow") {
   ok((await cell("C11")).v !== -5, "the reloaded pane sees the same workbook (the fix is in the cell)");
   await find();
   ok((await tag(11)) === "Fixed" && (await tag(22)) === "Dismissed", `after a reload: row 11 Fixed, row 22 Dismissed - ${await tag(11)}, ${await tag(22)}`);
-  ok((await cell("A22")).fill === null && (await cell("A11")).fill === null && (await cell("A51")).fill === "#FFEB9C",
-    "a decided row is not highlighted again; the others are - " + JSON.stringify([await cell("A22"), await cell("A11"), await cell("A51")]));
+  ok((await cell("C22")).fill === null && (await cell("C11")).fill === null && (await cell("A51")).fill === "#FFEB9D",
+    "a decided row is not highlighted again; the others are - " + JSON.stringify([await cell("C22"), await cell("C11"), await cell("A51")]));
   ok(/2 of \d+ done/.test(await text("#list-title")), "and counted done - " + (await text("#list-title")));
   await page.click('#flagged-list button:has-text("Row 11 ")'); await idle();
   ok(await page.isVisible("#results") && (await text("#notice")).includes("Undo is only offered right after a fix"), "a row fixed before only selects its row, and says why there's no Undo - " + (await text("#notice")));
