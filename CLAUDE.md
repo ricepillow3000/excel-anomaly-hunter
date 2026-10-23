@@ -165,6 +165,9 @@ Adding or removing a check: update this table in the same commit.
   countries' gap was stated against whichever one landed lowest (AH-17 bias hunt, 2026-10-22). The first fix swung the
   other way: an outcome allowlist lost Approved/Declined, and pure noise read "not enough rows to tell" in 13 of 20 sheets
   (AH-18 review). The report says only what its numbers show (`fairness.report`, `test_fairness_words.py`).
+- An animation eased per frame takes as long as the machine is slow: the website's cursor light moved 8% a frame, so it
+  needed ~87 frames to settle, 1.9 s on a loaded box and 4 s with the CPU slowed 8x, and the 2.5 s idle check failed 1
+  run in 3 (AH-22). Ease by the clock (`site/home.js`); `tools/test_site.mjs` replays it at 20 frames a second.
 - A cache that outlives a test run tests nothing: e2e/all.sh kept the AI answer cache, so a second run never reached
   the stub. It starts fresh now.
 - A DOM0 key handler returning false cancels the key: `onkeydown = (e) => e.key === "Enter" && e.ctrlKey && askFix()`
