@@ -4,13 +4,15 @@
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import fs from "node:fs";
+import { trustArgs } from "./trust.mjs";
 const pw = await import(process.env.PLAYWRIGHT || "playwright")
   .catch(() => import(pathToFileURL(createRequire(import.meta.url).resolve("playwright", { paths: [process.env.NODE_PATH || ""] })).href));
 const { chromium } = pw.chromium ? pw : pw.default;
 const DIR = fileURLToPath(new URL(".", import.meta.url));
 const ok = (c, m) => { if (!c) { console.error("FAIL:", m); process.exitCode = 1; } else console.log("ok -", m); };
 
-const browser = await chromium.launch().catch(() => chromium.launch({ channel: "msedge" }));
+const args = trustArgs(DIR);
+const browser = await chromium.launch({ args }).catch(() => chromium.launch({ channel: "msedge", args }));
 for (const width of [320, 360, 500]) { // Office's task pane: 320 px at its narrowest
   const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width, height: 600 } });
   const errors = [];

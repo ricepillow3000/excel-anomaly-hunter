@@ -3,6 +3,7 @@
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import fs from "node:fs";
+import { trustArgs } from "./trust.mjs";
 import path from "node:path";
 const pw = await import(process.env.PLAYWRIGHT || "playwright") // local install, else the global one
   .catch(() => import(pathToFileURL(createRequire(import.meta.url).resolve("playwright", { paths: [process.env.NODE_PATH || ""] })).href));
@@ -18,7 +19,8 @@ for (let i = 0; i < 300; i++) { const u = 40 + ((i * 7) % 23), c = 1.99 + (i % 4
 rows[10][2] = -5; rows[21][2] = 7777; rows[50] = [...rows[49]]; rows[80][1] = "east "; rows[120][2] = "";
 
 // Playwright's own Chromium if installed, else the Edge every Windows PC has
-const browser = await chromium.launch().catch(() => chromium.launch({ channel: "msedge" }));
+const args = trustArgs(DIR);
+const browser = await chromium.launch({ args }).catch(() => chromium.launch({ channel: "msedge", args }));
 const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width: 360, height: 900 } });
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.stack));
