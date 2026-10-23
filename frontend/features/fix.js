@@ -150,6 +150,9 @@ const HINTS = [
   // AH-45 review: the cells hold the word, not blanks ("filter it for blanks" found none of R's NA or 300 "Unknown")
   [/ is "([^"]+)" \(no value\) in \d+ of \d+ rows$/, (m) => `a word written this often and this spread out is usually how the ` +
     `source says a value is not known, not a slip; if the column must always hold a value, filter it for "${m[1]}" and fill those in`],
+  // AH-48: many identical rows through a sheet with no ID, one note for them all
+  [/ rows repeat an earlier row exactly, all through the sheet - /, "this many, spread out, are usually separate real records " +
+    "that happen to match (nothing like an ID tells them apart); if every row must be unique, check them, then use Data > Remove Duplicates"],
 ];
 
 // Pure: the column an "only unusual" reason points at (an odd mix across columns, or a break in a series), else null

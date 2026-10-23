@@ -386,4 +386,7 @@ assert.deepEqual(spots({ cells: ["Gone"] }, ["A", "B"]), [0, 1], "a name the tab
 assert.deepEqual(spots({}, ["A", "B"]), [0, 1]);
 // our colors are never Excel's own Bad / Neutral / Note fills, so a reopened pane never clears a cell the user styled
 assert.ok(Object.values(COLOR).every((c) => !OLD_COLOR.includes(c)) && OLD_COLOR.length === 3);
+// AH-48: the note for many repeated rows gets its own advice, never "the values are just unusual together"
+assert.match(recommendFix(["hotel", "adr"], [["City", 90]], 0, {}, "600 of 3000 rows repeat an earlier row exactly, all through the sheet - the first is this one, a copy of row 5", 0, 0).explanation,
+  /^600 of 3000 rows repeat an earlier row exactly, all through the sheet - the first is this one, a copy of row 5 - this many, spread out, are usually separate real records/);
 console.log("panel self-check passed");

@@ -43,7 +43,9 @@ def summary_rows(df):
 
 def duplicates(df, errors_log=()):
     """Row equal to an earlier row in every column but source_file. Text typed into a number or date column is compared as
-    that text: loading had blanked it, so "R+33.2" and "D+6.3" rows looked equal (513 false duplicates, 2026-10-16)."""
+    that text: loading had blanked it, so "R+33.2" and "D+6.3" rows looked equal (513 false duplicates, 2026-10-16).
+    -> (reasons per row, notes per row): max(MANY, SHARE of the rows) repeats found in every fifth of the sheet are one
+    note on the first (AH-48: a hotel table with no ID repeats 4,324 bookings); a few, or a block, are each a slip."""
     cols = [c for c in df.columns if c != "source_file"]
     cells, at = df[cols].astype(str).to_numpy(copy=True), {c: k for k, c in enumerate(cols)}
     for i, c, raw in errors_log:
@@ -52,13 +54,21 @@ def duplicates(df, errors_log=()):
     keys = list(map(tuple, cells))
     # when most rows repeat, a repeat is the data: 4 agree/disagree answers from 1,529 voters gave 199 different rows,
     # and 1,330 were "Duplicate of row N" (real survey, 2026-10-16). A double entry repeats a row that is otherwise unique
+    notes = [[] for _ in keys]
     if len(set(keys)) < 0.5 * len(keys):
-        return [[] for _ in keys]
-    for i, key in enumerate(keys):
-        j = seen.setdefault(key, i)
+        return [[] for _ in keys], notes
+    first = [seen.setdefault(key, i) for i, key in enumerate(keys)]
+    copies = [i for i, j in enumerate(first) if j != i]
+    # many repeats through the whole sheet, with nothing (an ID) to tell two real records apart, are how the data is:
+    # two bookings of the same room type, dates and rate. A slip is rare, or a range pasted twice, all in one place
+    if len(copies) >= max(MANY, SHARE * len(keys)) and len({i * 5 // len(keys) for i in copies}) == 5:
+        notes[copies[0]].append(Why(f"{len(copies)} of {len(keys)} rows repeat an earlier row exactly, all through the sheet - "
+                                    f"the first is this one, a copy of row {first[copies[0]] + 2}", *cols))
+        return [[] for _ in keys], notes
+    for i, j in enumerate(first):
         src = f" ({df['source_file'].iloc[j]})" if "source_file" in df else ""  # CLI path only
         out.append([Why(f"Duplicate of row {j + 2}{src}", *cols)] if j != i else [])  # the whole row is the copy
-    return out
+    return out, notes
 
 
 def _short(t):
@@ -703,7 +713,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
             "isolation": isolation_detector(df, judged, k) if s >= 5 else _result(n, "strength below 5")}
     # DBSCAN cut 2026-10-07: 90s/100k rows, 81% false alarms, bench same without it
     ran = [d for d in dets.values() if d["ran"]]
-    dup, (typ, typ_coded), (blank, spread) = duplicates(df, errors_log), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
+    (dup, repeats), (typ, typ_coded), (blank, spread) = duplicates(df, errors_log), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
     (hole, coded), far = placeholders(df, column_types, skip), far_dates(df, column_types, skip)
     paired, solved = pairs(df, column_types, skip, limits)
     add = [list(dict.fromkeys(s + m)) for s, m in zip(sums(df, column_types, skip), paired, strict=True)]
@@ -712,7 +722,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
     missed = [m + s + f + w + b + g for m, s, f, w, b, g in zip(missed, shifted(df, column_types, skip), fractions(df, column_types, skip),
                                                                  whole_numbers(df, column_types, skip), named_bounds(df, column_types, skip),
                                                                  spread, strict=True)]  # all "worth a check" (Low)
-    missed = [m + t + c + d for m, t, c, d in zip(missed, lim["top_reasons"], coded, typ_coded, strict=True)]  # a lone top value (AH-29), a placeholder code (AH-45)
+    missed = [m + t + c + d + r for m, t, c, d, r in zip(missed, lim["top_reasons"], coded, typ_coded, repeats, strict=True)]  # a lone top value (AH-29), a placeholder code (AH-45), many repeats (AH-48)
     if s >= ALONE:
         missed = [m + a for m, a in zip(missed, lim["alone_reasons"], strict=True)]
     rows = []
