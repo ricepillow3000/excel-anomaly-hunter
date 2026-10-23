@@ -110,7 +110,11 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
   for (const [, raw, kind, col] of reason.matchAll(/Text "([^"]*)" in (number|date) column ([^;]+)/g))
     notes.push(`${col} holds the text "${raw}" where a ${kind} belongs - retype it as a ${kind}.`);
   for (const [, raw, col] of reason.matchAll(/Placeholder "([^"]*)" in column ([^;]+)/g))
-    notes.push(`${col} says "${raw}" - a stand-in for a missing value. Fill in the real value, or leave the cell empty.`);
+    // "ERROR" is a status or a log level as often as a stand-in (AH-45 review: a log's rare ERROR level was called "a
+    // stand-in for a missing value"), so its card says both
+    notes.push(/^error$/i.test(raw.trim()) ? `${col} says "${raw}" - a value of the column's own (a status, a log level) or a stand-in ` +
+      "for a missing one. If it stands in, fill in the real value or leave the cell empty; if it is a real status, leave it."
+      : `${col} says "${raw}" - a stand-in for a missing value. Fill in the real value, or leave the cell empty.`);
   // a limit crossed in a cell typed as text ("$1,000,000.00"): explained, never overwritten
   for (const { text } of issuesOf(reason)) { // anything the loop above didn't explain (text cells, no limits)
     const m = /^(.+?) weird limit is (\S+); this is (\S+)/.exec(text), b = /^Blank cell in column (.+?), which/.exec(text);
@@ -150,6 +154,12 @@ const HINTS = [
   // AH-45 review: the cells hold the word, not blanks ("filter it for blanks" found none of R's NA or 300 "Unknown")
   [/ is "([^"]+)" \(no value\) in \d+ of \d+ rows$/, (m) => `a word written this often and this spread out is usually how the ` +
     `source says a value is not known, not a slip; if the column must always hold a value, filter it for "${m[1]}" and fill those in`],
+  // AH-48: many identical rows through a sheet with no ID, one note for them all
+  [/ rows repeat an earlier row exactly, all through the sheet - /, "this many, spread out, are usually separate real records " +
+    "that happen to match (nothing like an ID tells them apart); if every row must be unique, check them, then use Data > Remove Duplicates"],
+  // AH-46: a sort puts blank cells last - the block at the end is where the sort put them, not where they went missing
+  [/ is blank in \d+ of \d+ rows, all at the end of the table, which is sorted by /, "sorting puts blank cells last, so these rows " +
+    "simply have no value here; if the column must always be filled, fill them in from the source"],
 ];
 
 // Pure: the column an "only unusual" reason points at (an odd mix across columns, or a break in a series), else null

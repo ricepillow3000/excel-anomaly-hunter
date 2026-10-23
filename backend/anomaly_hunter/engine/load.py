@@ -37,7 +37,7 @@ def _is_id(name, num):
 TZ = re.compile(r"(\d:\d\d(?::\d\d(?:\.\d+)?)?)\s*(?:Z|[+-]\d\d:?\d\d)$")  # a time, then its zone: "08:30:00+02:00"
 
 
-def _dates(s):
+def _dates(s, wide=False):
     """Parse dates; years outside 1900-2200 don't count (cost code "03-100" parses as the year 100). Day-first is decided
     once for the column - a 13/01 anywhere (and no 01/13) means 01/02 is the 1st of February, not January 2nd."""
     # A timestamp's own offset ("...T00:00:00Z", "+02:00") is dropped: the date as written. A UTC column with a blank came
@@ -53,7 +53,20 @@ def _dates(s):
     dayfirst = bool((parts[0] > 12).any() and not (parts[1] > 12).any())
     dmy = parts[0].notna()  # only those cells: dayfirst would also flip ISO dates (2024-01-05 -> May 1)
     d = when(s.where(~dmy)).fillna(when(s.where(dmy), dayfirst=dayfirst))
-    return d.where(d.dt.year.between(1900, 2200))
+    if not wide:
+        return d.where(d.dt.year.between(1900, 2200))
+    # wide: also a cell that writes its year in full (1862-06-07, June 7, 1862) from 1000 to 2999, for the far-date check
+    # of a text column: Excel keeps a date before 1900 as text (AH-32)
+    # ...with its day too: a lot code "1045-03" (plant, month) is no date, and its odd "2950-04" was a far "2950-04-01"
+    # (AH-32 review)
+    # Only a cell a date fits in (40 characters), and month words bounded and anchored: the unanchored "[a-z]{3,} +\d"
+    # re-scanned a run of letters from every start, 16,000 letters took 4 s a cell, and a crafted cell hung the scan
+    short = text.str.len() <= 40
+    t = text.where(short, "")
+    day = t.str.contains(r"\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}") | t.str.contains(
+        r"\b\d{1,2}(?:st|nd|rd|th)?,? +[a-z]{3,9}\b|\b[a-z]{3,9}\.? +\d{1,2}(?:st|nd|rd|th)?\b", case=False)
+    full = short & t.str.contains(r"(?<!\d)[12]\d{3}(?!\d)") & day
+    return d.where(d.dt.year.between(1900, 2200) | (full & d.dt.year.between(1000, 2999)))
 
 
 # stand-ins for a missing value. Not "NA" (a ticker, a country) or "None" (a real category)
@@ -61,6 +74,11 @@ def _dates(s):
 # JSON): a missing cell, like a blank. Read as text, R's NA made ~3,960 false Medium rows in blind round 23 (AH-27)
 NO_VALUE = re.compile(r"\s*(na|nan|null|none)\s*", re.I)
 PLACEHOLDER = re.compile(r"error|unknown|n/a|null|tbd|\?|-", re.I)
+# a word that says the value is not known. Never guessed to be another label: Race "Blank" read as a misspelling of
+# "Black" gave a race to people whose race is unknown (AH-39 review, AH-50). A typo of one ("Unknwn") is still a typo
+NO_VALUE_WORD = re.compile(r"\s*(blank|blanks|empty|missing|unknown|unk|none|nil|null|na|n/a|n\.a\.|nan|tbd|tba|tbc|\?+|-+"
+                           r"|(?:not|un)[ -]?(?:known|stated|specified|applicable|available|recorded|reported|given)"
+                           r"|undefined|unspecified|no answer|no data|no response|prefer not to say)\s*", re.I)
 EXCEL_ERROR = re.compile(r"#(N/A|DIV/0!|REF!|VALUE!|NAME\?|NUM!|NULL!|SPILL!|CALC!)$")
 # money / percent typed as text, the WHOLE cell: "$1,234.00", "12%", "(500)" = -500. Commas must be thousands groups.
 MONEY = re.compile(r"(\()?([-+])?[$€£]?\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s*(%)?(\))?")

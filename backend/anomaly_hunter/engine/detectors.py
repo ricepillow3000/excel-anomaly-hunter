@@ -74,6 +74,9 @@ def _crossed(v, lo, hi):
 BEYOND = 4  # a typo sits this many times past every other value in the column
 
 
+ALONE_CLIMB = 4.5
+
+
 def _alone_top(sv):
     """(top, next) when a column's top value stands alone above its top run, with an exact x10/x100/x1000 behind it that
     lands in the column's middle (10th-90th percentile); else None. A two-kind column (tuitions 2k-14k and 15k-60k) gets
@@ -87,7 +90,10 @@ def _alone_top(sv):
         return None
     gap, climb = np.log(sv[-1] / sv[-2]), np.log(sv[-2] / sv[-12])
     p10, p90 = np.quantile(sv, [0.1, 0.9])
-    if gap >= np.log(1.5) and gap >= 8 * climb and any(p10 <= sv[-1] / 10 ** k <= p90 for k in (1, 2, 3)):
+    # 4.5, not 8 (AH-47): a restaurant's 172.9 for 17.29 among bills up to 50.81 stood 3.4x above the next, 4.8 times the
+    # climb of the next 10, and level 5 said nothing. 13 honest shapes at 100-20,000 rows: 0 of 4,000 columns said alone
+    # at 8, 2-3 at 4 (it is Low, worth a check, and true of the top value); x10 slips caught 16-20% -> 23-26%
+    if gap >= np.log(1.5) and gap >= ALONE_CLIMB * climb and any(p10 <= sv[-1] / 10 ** k <= p90 for k in (1, 2, 3)):
         return float(sv[-1]), float(sv[-2])
     return None
 
@@ -117,9 +123,13 @@ def likely_value(v, st, lo, hi):
     # slip stands alone: the only negative, or as big as the column's usual positives (10th percentile up). Seattle's
     # real -1.1 highs and a sea level's -0.44 sat beside other small negatives, under every positive (AH-21: 5 of 5 flips
     # on real values had this shape, 0 of 41 right ones; an airport's -44.5 beside 3 real territories still flips)
+    # ...and as big as a usual value even when it is the only negative (AH-47): a firm's -1 (a code for none) among role
+    # ids of 1,500-50,000 and a hotel's only rate below zero, -6.38 among 30-500, each read "likely" the positive. And
+    # never in a column of years: the years before 1 are written negative (Babylonian numerals appeared in -2000)
     pos = st["pos"]
-    flip = v < 0 and st["nonneg"] >= 0.99 * (st["n"] - 1) and (
-        st["n"] - st["nonneg"] == 1 or (len(pos) > 0 and m >= pos[int(0.1 * (len(pos) - 1))]))
+    years = st["whole"] and len(pos) > 0 and 1000 <= pos[int(0.05 * (len(pos) - 1))] and pos[-1] <= 2200
+    usual = lambda q: len(pos) > 0 and m >= pos[int(q * (len(pos) - 1))]  # the only negative: 5th percentile up (On Hand -26 of 0-230)
+    flip = v < 0 and st["nonneg"] >= 0.99 * (st["n"] - 1) and not years and (usual(0.05) if st["n"] - st["nonneg"] == 1 else usual(0.1))
     for c in ([v / 10 ** k] if 1 <= abs(k) <= 3 and far else []) + ([-v] if flip else []):
         if lo <= c <= hi and (c == round(c) or not st["whole"]):  # 999 in a 1-5 count column is not "likely 0.999"
             return float(c) if c == -v else float(f"{c:.10g}")  # a flipped sign is exact: rounding made it "missing zeros"
@@ -273,8 +283,15 @@ def limits_detector(df, column_types, limits, typos_only=False, listing=False, q
                 v = float(df[col].iloc[i])
                 if fix and v:  # likely_value never offers 0, nor a fix for 0
                     steps.setdefault("sign" if fix == -v else int(round(np.log10(abs(v / fix)))), []).append((kind, col, fix))
+        # ...and every minus sign the row's reasons name counts, offered a flip or not: a child-spending row with 3 cells
+        # below zero kept "likely" on the one big enough to be offered once the smaller two no longer were (AH-47)
+        named = {m[1] for t in r["reasons"][i] if (m := re.match(r"(.+) weird limit is \S+; this is -", t))}
+        offered = {col for kind, col, _ in steps.get("sign", [])}
+        steps.setdefault("sign", []).extend((None, col, None) for col in named - offered)
         for same in steps.values():
             for kind, col, fix in same if len(same) >= 2 else ():
+                if kind is None:
+                    continue
                 del r[kind][i][col]
                 r["reasons"][i] = [Why(s.replace(f" ({kind} {say(fix)})", ""), *s.cols) if s.startswith(f"{col} weird limit is") else s
                                    for s in r["reasons"][i]]

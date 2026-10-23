@@ -6,9 +6,9 @@ import re
 
 import numpy as np
 import pandas as pd
-from scipy.stats import chi2_contingency
+from scipy.stats import chi2_contingency, kruskal, mannwhitneyu
 
-from anomaly_hunter.engine.load import PLACEHOLDER
+from anomaly_hunter.engine.load import NO_VALUE_WORD, PLACEHOLDER
 
 PROXY = "location (can stand in for race or income)"
 DEMOGRAPHIC = {"age", "dob", "birth", "birthday", "birthdate", "gender", "sex", "race", "ethnicity", "ethnic", "religion",
@@ -81,13 +81,14 @@ def _labels(s, most):
 def _maybe(v):
     """{rare label: the usual label it is one slip from}: "Femlae" (1 row) beside 400 Female. Never folded into it: "Blank"
     beside Black is an export's unknown race and "Nigerien" a person from Niger (AH-39 review), so a rare label stays its
-    own group, too few to compare, and is named with what it may be. The spelling check's own rule decides."""
+    own group, too few to compare, and is named with what it may be. The spelling check's own rule decides, and like it
+    never names a word that says no value: "Blank (2 rows, maybe Black)" gave a race to people whose race is unknown (AH-50)."""
     from anomaly_hunter.engine.pipeline import _misspelt  # here: pipeline imports this module
     counts = v.value_counts()
     big = [k for k, n in counts.items() if n >= 5]
     out = {}
     for k, n in counts.items():
-        if n <= 2 and (usual := next((u for u in big if counts[u] >= 5 * n and _misspelt(str(k).casefold(), str(u).casefold())), None)):
+        if n <= 2 and not NO_VALUE_WORD.fullmatch(str(k)) and (usual := next((u for u in big if counts[u] >= 5 * n and _misspelt(str(k).casefold(), str(u).casefold())), None)):
             out[str(k)] = str(usual)
     return out
 
@@ -159,6 +160,64 @@ def _outcomes(df, types, skip):
                 yes = counts.index[-1]
                 out[f"{c} {yes} rate"] = (v.eq(yes).where(v.notna()), f"{c} {yes}", c, yes)
     return out
+
+
+# AH-49: an amount a decision or a test gives a person - pay, an income, a price, a loan, a score. Not every number: a
+# patient's cholesterol or a person's height differs by sex for reasons no one decided
+AMOUNT = {"wage", "wages", "salary", "salaries", "pay", "income", "incomes", "earnings", "bonus", "compensation", "price",
+          "premium", "loan", "amount", "score", "scores", "grade", "grades", "gpa"}
+# a group cut by an amount (police killings' county_bucket: the county's income quintile) is that amount's rank: an
+# amount compared across it says how the cut was made
+CUTS = {"bucket", "quintile", "quartile", "decile", "percentile", "tercile", "tier", "bracket"}
+NOT_AMOUNT = {"term", "id", "code", "number", "no", "count", "year", "years", "month", "months", "day", "days", "date"}  # Loan_Amount_Term
+
+
+def _amounts(df, types, skip):
+    """Amount columns that are not protected -> {test name: (the values, what in words, the column)}: a number column
+    named as one (AMOUNT), with 10+ different values (a 1-5 score or a 3-step pay scale is a code) and none below 0."""
+    out = {}
+    for c, t in types.items():
+        if t != "number" or c in skip or not set(_words(c)) & AMOUNT or set(_words(c)) & NOT_AMOUNT:
+            continue
+        x = pd.to_numeric(df[c], errors="coerce")
+        v = x.dropna()
+        if len(v) >= 2 * MIN_GROUP and v.nunique() >= 10 and (v >= 0).all():
+            out[f"median {c}"] = (x, f"median {c}", c)
+    return out
+
+
+def _say(m):
+    """A median in words: 48,250 and 12.75, as a person would write them."""
+    return f"{m:,.0f}" if abs(m) >= 1000 else f"{m:.4g}"
+
+
+def _amount_test(g, x, base):
+    """One amount compared across a column's groups: groups under MIN_GROUP rows left out and named; none when every
+    group holds one value (the column is a lookup of the group: a country's average income joined onto its people)."""
+    ok = g.notna() & x.notna()
+    sizes = g[ok].value_counts()
+    sizes = sizes[sizes > 0]  # age bands nobody falls in (Swiss ages written in decades) are no group
+    small = {str(k): int(n) for k, n in sizes.items() if n < MIN_GROUP}
+    vals = {str(k): x[ok & (g == k)].to_numpy(dtype=float) for k in sizes.index if sizes[k] >= MIN_GROUP}
+    if len(vals) < 2:
+        return {**base, "p": None, "groups": {}, "small": small} if len(vals) + len(small) >= 2 else None
+    if all(np.ptp(v) == 0 for v in vals.values()) or np.ptp(np.concatenate(list(vals.values()))) == 0:
+        return None
+    # ...nor when the groups are cut from the amount itself: police killings' county_bucket is the county's income
+    # quintile, and "bucket 1: median income 29,707 vs 50,280" restated the cut. Sorted by the amount, the groups then
+    # follow one another in runs, changing about once per group; any real groups interleave all the way
+    # A cut is numbered in the order of its ranges (1 to 5); two groups apart with no overlap are the starkest gap there
+    # is: women paid 30,000-45,000 and men 46,000-70,000 had no amount test at all (AH-49 review)
+    allv = np.concatenate(list(vals.values()))
+    lab = np.concatenate([np.full(len(v), k) for k, v in enumerate(vals.values())])[np.argsort(allv, kind="stable")]
+    codes = pd.to_numeric(pd.Series(list(vals)), errors="coerce")
+    meds = pd.Series([np.median(v) for v in vals.values()])
+    ranked = len(vals) >= 3 and codes.notna().all() and abs(codes.corr(meds, method="spearman")) == 1
+    if ranked and (lab[1:] != lab[:-1]).sum() <= 2 * (len(vals) - 1) + 0.01 * len(allv):
+        return None
+    p = mannwhitneyu(*vals.values()).pvalue if len(vals) == 2 else kruskal(*vals.values()).pvalue
+    return {**base, "p": float(p), "small": small, "vals": vals,
+            "groups": {k: [len(v), round(float(np.median(v)), 4)] for k, v in vals.items()}}
 
 
 def _missing(s):
@@ -303,6 +362,7 @@ def report(df, types, rows):
     missing = {c: _missing(df[c]) for c in df.columns if c not in prot}
     blanks = {f"missing {c}": (b, f"missing {c}", c, "missing") for c, b in missing.items() if b.sum() >= 5}
     outcomes = _outcomes(df, types, prot)
+    amounts = _amounts(df, types, prot)
     measures = {"flag rate": (flagged, "rows flagged", None, None), **blanks, **outcomes}
     kinds = {name: "outcome" if name in outcomes else "missing" if name in blanks else "flag" for name in measures}
     tests, left = [], MAX_TESTS
@@ -334,8 +394,16 @@ def report(df, types, rows):
                 continue
             tests.append({**base, "p": float(chi2_contingency(table)[1]), "small": small,
                           "groups": {str(k): [int(table.loc[k].sum()), round(float(v), 4)] for k, v in rates.items()}, "table": table})
+        for name, (x, what, subject) in list(amounts.items())[:max(0, left)] if not set(_words(col)) & CUTS else ():
+            left -= 1
+            base = {"column": col, "kind": why, "test": name, "measure": "amount", "subject": subject, "label": None, "maybe": maybe}
+            if (t := _amount_test(g, x, base)) is not None:
+                tests.append(t)
     n = sum(t["p"] is not None for t in tests)
     for t in tests:
+        if t["measure"] == "amount":
+            _amount_words(t, n)
+            continue
         what = measures[t["test"]][1]
         subject, label, table, small, maybe = t.pop("subject"), t.pop("label"), t.pop("table", None), t.pop("small"), t.pop("maybe")
         out = f"; too few to compare: {_named(small, maybe)}" if small else ""
@@ -386,3 +454,48 @@ def report(df, types, rows):
         if note:
             t["context"] = note
     return {"protected": prot, "tests": tests}
+
+
+def _amount_words(t, n):
+    """An amount test's verdict and sentence, the yes/no ones' shapes with medians: a gap is the named group(s)' median
+    1.25x the rest's (either way) and a rank test that holds after the correction over every test of the scan; with 3+
+    groups the group that stands out against the rest, by its own test, Bonferroni over the groups too (AH-49)."""
+    small, maybe, vals, what = t.pop("small"), t.pop("maybe"), t.pop("vals", None), t["test"]
+    t.pop("subject"), t.pop("label")
+    out = f"; too few to compare: {_named(small, maybe)}" if small else ""
+    if t["p"] is None:
+        t["verdict"], t["text"] = "unclear", f"{t['column']}: {what} - too few rows to compare: {_named(small, maybe)}"
+        return
+    meds = {k: v[1] for k, v in t["groups"].items()}
+    span = f"{_say(min(meds.values()))} to {_say(max(meds.values()))}"
+    if len(vals) == 2:
+        hi, lo = max(meds, key=meds.get), min(meds, key=meds.get)
+        a, b = meds[hi], meds[lo]
+        real, hint = t["p"] * n < ALPHA, t["p"] < HINT
+        said = f"{t['column']} {hi}: {what} {_say(a)} vs {_say(b)} for {lo}"
+    else:
+        K, rest = len(vals), lambda k: np.concatenate([v for j, v in vals.items() if j != k])
+        pairs = {k: (float(mannwhitneyu(vals[k], rest(k)).pvalue), float(np.median(rest(k)))) for k in vals}
+        sides = {+1: [k for k in pairs if meds[k] > pairs[k][1] and pairs[k][0] * n * K < ALPHA],
+                 -1: [k for k in pairs if meds[k] < pairs[k][1] and pairs[k][0] * n * K < ALPHA]}
+        best = min(pairs, key=lambda k: (pairs[k][0], -abs(meds[k] - pairs[k][1])))
+        side = min((s for s in sides if sides[s]), key=lambda s: (len(sides[s]), -s), default=None)
+        names = [k for k in vals if k in sides[side]] if side else [best]
+        mine = np.concatenate([vals[k] for k in names])
+        others = np.concatenate([v for k, v in vals.items() if k not in names])
+        p_k = float(mannwhitneyu(mine, others).pvalue)
+        t["p_group"] = p_k
+        a, b = float(np.median(mine)), float(np.median(others))
+        real = t["p"] * n < ALPHA and p_k * n * K < ALPHA
+        hint = t["p"] < HINT and p_k * K < HINT
+        said = f"{t['column']} {' and '.join(names)}: {what} {_say(a)} vs {_say(b)} for the other groups"
+    big = max(a, b) >= RATIO * min(a, b) and max(a, b) > 0
+    # a real spread 1.25x wide whose group cannot be singled out is no "small" difference: ISLR's wages by race
+    # (81 to 115) read "close across groups" when no one group passed its own test
+    wide = max(meds.values()) >= RATIO * min(meds.values())
+    t["verdict"] = "gap" if big and real else "unclear" if (big and hint and not real) or (real and wide) else "even"
+    t["text"] = (f"{said} - a real gap, check why" if t["verdict"] == "gap"
+                 else f"{t['column']}: {what} differs across groups ({span}), but there are not enough rows to tell whether that is a real gap"
+                 if t["verdict"] == "unclear"
+                 else f"{t['column']}: {what} close across groups ({span} - a real difference, but small)" if real
+                 else f"{t['column']}: {what} {'no clear difference' if big or wide else 'even'} across groups ({span}, within normal variation)") + out

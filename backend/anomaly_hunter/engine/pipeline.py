@@ -9,7 +9,7 @@ import pandas as pd
 
 from anomaly_hunter.engine import fairness
 from anomaly_hunter.engine.detectors import Why, _result, far_off, isolation_detector, limits_detector, say, sequence_detector
-from anomaly_hunter.engine.load import EXCEL_ERROR, PLACEHOLDER, _blank, numbers
+from anomaly_hunter.engine.load import EXCEL_ERROR, NO_VALUE_WORD, PLACEHOLDER, _blank, _dates, numbers
 
 def summary_rows(df):
     """Rows that summarise the data instead of being data -> bool array: fully blank rows, rows labelled
@@ -41,9 +41,14 @@ def summary_rows(df):
     return mask
 
 
-def duplicates(df, errors_log=()):
+PASTED = 5  # copies of this many consecutive rows in a row: a range pasted again
+
+
+def duplicates(df, errors_log=(), column_types=None):
     """Row equal to an earlier row in every column but source_file. Text typed into a number or date column is compared as
-    that text: loading had blanked it, so "R+33.2" and "D+6.3" rows looked equal (513 false duplicates, 2026-10-16)."""
+    that text: loading had blanked it, so "R+33.2" and "D+6.3" rows looked equal (513 false duplicates, 2026-10-16).
+    -> (reasons per row, notes per row): max(MANY, SHARE of the rows) repeats found in every fifth of the sheet are one
+    note on the first (AH-48: a hotel table with no ID repeats 4,324 bookings); a few, or a block, are each a slip."""
     cols = [c for c in df.columns if c != "source_file"]
     cells, at = df[cols].astype(str).to_numpy(copy=True), {c: k for k, c in enumerate(cols)}
     for i, c, raw in errors_log:
@@ -52,13 +57,42 @@ def duplicates(df, errors_log=()):
     keys = list(map(tuple, cells))
     # when most rows repeat, a repeat is the data: 4 agree/disagree answers from 1,529 voters gave 199 different rows,
     # and 1,330 were "Duplicate of row N" (real survey, 2026-10-16). A double entry repeats a row that is otherwise unique
+    notes = [[] for _ in keys]
     if len(set(keys)) < 0.5 * len(keys):
-        return [[] for _ in keys]
-    for i, key in enumerate(keys):
-        j = seen.setdefault(key, i)
+        return [[] for _ in keys], notes
+    first = [seen.setdefault(key, i) for i, key in enumerate(keys)]
+    n, copies = len(keys), [i for i, j in enumerate(first) if j != i]
+    # many repeats through the whole sheet, with nothing (an ID) to tell two real records apart, are how the data is:
+    # two bookings of the same room type, dates and rate. A slip is rare, or a range pasted twice, all in one place
+    # A range pasted again is copies of 5+ consecutive rows, one after another, wherever it lands: 5 ranges of 12 rows,
+    # one in each fifth of the sheet, were one note (AH-48 review). The hotel table repeats real bookings in pairs and
+    # threes (65 runs of 2, one of 3, one of 4 in round 36), never 5
+    step = [0 < i and first[i] != i and first[i - 1] != i - 1 and first[i] == first[i - 1] + 1 for i in range(n)]
+    pasted, k = set(), 0
+    while k < n:
+        e = k + 1
+        while e < n and step[e]:
+            e += 1
+        if e - k >= PASTED and first[k] != k:
+            pasted.update(range(k, e))
+        k = e
+    spread = [i for i in copies if i not in pasted]
+    # a column no two different rows share (an Order ID, an invoice code) tells records apart: a row that repeats it is the
+    # same record twice. 120 orders imported twice and sorted by date were one note saying "nothing like an ID" (AH-48 review)
+    distinct = df.iloc[[i for i in range(n) if first[i] == i]]
+    def ident(c):
+        t, v = (column_types or {}).get(c), distinct[c]
+        whole = t == "id" or t == "text" or (t == "number" and pd.to_numeric(v, errors="coerce").dropna().mod(1).eq(0).all())
+        return whole and len(v) >= MANY and v.notna().all() and v.is_unique
+    if len(spread) >= max(MANY, SHARE * n) and len({i * 5 // n for i in spread}) == 5 and not any(map(ident, cols)):
+        notes[spread[0]].append(Why(f"{len(spread)} of {n} rows repeat an earlier row exactly, all through the sheet - "
+                                    f"the first is this one, a copy of row {first[spread[0]] + 2}", *cols))
+        copies = set(copies) - set(spread)
+    copies = set(copies)
+    for i, j in enumerate(first):
         src = f" ({df['source_file'].iloc[j]})" if "source_file" in df else ""  # CLI path only
-        out.append([Why(f"Duplicate of row {j + 2}{src}", *cols)] if j != i else [])  # the whole row is the copy
-    return out
+        out.append([Why(f"Duplicate of row {j + 2}{src}", *cols)] if i in copies else [])  # the whole row is the copy
+    return out, notes
 
 
 def _short(t):
@@ -143,6 +177,25 @@ MANY = 20  # blanks in one column: from here, spread through the sheet, they are
 SHARE = 0.01  # ...and at least 1% of its rows: 20 values gone from a 20,000-row column are still each a slip (AH-28 review)
 
 
+def _sorted_end(s, blank, skip):
+    """The blanks at the very end of a table sorted by this column (Marvel's APPEARANCES, most first): Excel's sort puts
+    blank cells last, both ways (AH-46). -> their positions, or none when the column's values are in no order."""
+    live = np.flatnonzero(~np.asarray(skip))
+    tail = len(live) - next((k + 1 for k in range(len(live) - 1, -1, -1) if not blank[live[k]]), 0)
+    v = s.iloc[live[:len(live) - tail]][~blank[live[:len(live) - tail]]].dropna()
+    # a few blanks stay each a slip: 3 deleted invoice numbers at the end of a list in number order are no sort's doing
+    if tail < MANY or len(v) < 20 or v.nunique() < 5:  # a constant or two-label column is in order by itself
+        return live[:0]
+    v = v.astype(str).str.casefold() if v.dtype.kind not in "biufmM" else v  # A-Z as Excel sorts, any capitals
+    # in order but for a slip or two: round 36's x10 plant (528 typed 5280) stood against the order once in 15,280 rows
+    # ...counted against the column's changes of value: Manager grouped by a sorted Region (Dave, Alice, Eve, Bob, Carol)
+    # changes 4 times, 2 of them against any order, and is in no order at all
+    step = np.sign(np.diff(v.rank(method="min").to_numpy()))
+    step = step[step != 0]
+    against = min((step > 0).sum(), (step < 0).sum())
+    return live[len(live) - tail:] if against <= max(2, 0.001 * len(v)) and against <= 0.05 * len(step) else live[:0]
+
+
 def blanks(df, column_types, skip, errors_log, threshold=0.80):
     """Blank cell in a column that is >= 80% filled (summary rows not counted): a required field left empty. Mostly-empty
     columns (notes, optional extras) are left alone. Was 95%: a credit sheet's Income, 92% filled, hid 39 blanks.
@@ -194,6 +247,10 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
             # the Tour de France's first 8 years have no times, on purpose; a one-off is still a blank
             said, word = df.attrs.get("no_value", {}).get(col, (frozenset(), ""))
             coded = df.index.isin(list(said))
+            end = _sorted_end(df[col], b & ~coded, skip)
+            if len(end):
+                notes[df.index[end[0]]].append(Why(f"{col} is blank in {len(end)} of {n} rows, all at the end of the table, which is sorted by {col}", col))
+                b[end] = False
             for said_so in (True, False):
                 part = b & (coded if said_so else ~coded)
                 pos = np.flatnonzero(part)
@@ -251,8 +308,18 @@ def whole_numbers(df, column_types, skip):
     return out
 
 
+PERSON_AGE = {"patient", "participant", "victim", "actor", "actress", "employee", "customer", "respondent", "applicant", "student",
+              "member", "client", "worker", "player", "passenger", "athlete", "person", "child", "mother", "father", "driver",
+              "rider", "voter", "resident", "subject", "defendant", "suspect", "officer", "candidate", "ceo", "senator", "artist",
+              "author", "winner", "borrower", "tenant", "user", "donor", "inmate", "pupil", "teacher", "nurse", "doctor", "spouse"}
 BOUNDED = [(r"month", 1, 12), (r"quarter|qtr", 1, 4), (r"hour", 0, 24), (r"minute|second", 0, 59),
-           (r"weekday|day of week", 0, 7), (r"lat|latitude", -90, 90), (r"lon|lng|long|longitude", -180, 180)]
+           (r"weekday|day of week", 0, 7), (r"lat|latitude", -90, 90), (r"lon|lng|long|longitude", -180, 180),
+           # a person's age: "age" alone or after a word for a person (victim age, actor 1 age, age years): LA riots' 310
+           # for 31 in 62 rows was said nothing at level 5 (AH-47). A thing's age is not a person's: a tree's 180, a
+           # building's 135, an account's or a bond's could each be said "outside what it can be" (AH-47 review). Not one
+           # in days, weeks or months, and not Average, Mileage or Age group
+           (r"(?:(?:" + "|".join(sorted(PERSON_AGE)) + r") )?(?:\d+ )?age(?: years| in years| yrs)?", 0, 120)]
+AGE_UNITS = re.compile(r"\b(days?|weeks?|months?|hours?|minutes?|seconds?|hrs?|mins?|ms|d|wk|mo)\b")
 SCALE = re.compile(r"\(\s*(\d+)\s*(?:-|–|to)\s*(\d+)\s*\)|\bout of (\d+)\b", re.I)
 
 
@@ -268,7 +335,8 @@ def _bounds(col):
     # markup, ROI, CPU, debt of GDP and a speed's % of its limit pass 100, inflation and a % increase go below 0, and a
     # 0-100 bound said "outside what it can be" of every one (AH-30 review); a 233.4 among 0-100 stands alone (AH-29)
     whole = re.sub(r"\([^()]*\)", "", h).strip()  # "Month (number)" is still Month
-    return next(((float(lo), float(hi)) for pat, lo, hi in BOUNDED if re.fullmatch(pat, whole)), None)
+    return next(((float(lo), float(hi)) for pat, lo, hi in BOUNDED if re.fullmatch(pat, whole)
+                 and not (hi == 120 and AGE_UNITS.search(h))), None)
 
 
 def named_bounds(df, column_types, skip):
@@ -293,6 +361,13 @@ def far_dates(df, column_types, skip):
     out = [[] for _ in range(len(df))]
     for col, t in column_types.items():
         d = df[col][~skip].dropna() if t == "date" else ()
+        if t == "text":
+            # a column of dates before 1900 is text (Excel keeps them so): read for this check alone, its type unchanged,
+            # so a Nobel laureate born in 2862 among the 1800s is caught (blind round 23, AH-32)
+            v = df[col][~skip & ~_blank(df[col])]
+            # a cell too long for a date is none, unparsed: a crafted 100,000-character cell doubled the scan (AH-32 review)
+            w = _dates(v.where(v.astype(str).str.len() <= 40), wide=True) if len(v) >= 30 else v.iloc[:0]
+            d = w.dropna() if len(w) and w.notna().mean() >= 0.9 and (w.dt.year < 1900).any() else ()
         if len(d) < 30:
             continue
         far, lo, hi = far_off(d)
@@ -438,7 +513,7 @@ def _dropped(rare, usual, vowel=False):
     (consonant) of 5-letter words - one wrong letter, which _one_edit allows, does for 60.8% of them."""
     if len(usual) != len(rare) + 1:
         return False
-    return any(usual[:k] + usual[k + 1:] == rare and usual[k].isalpha() and usual[k - 1] != " " and usual[k + 1] != " "
+    return any(usual[:k] + usual[k + 1:] == rare and usual[k].isalpha() and usual[k - 1] not in " -" and usual[k + 1] not in " -"
                and (not vowel or usual[k] in "aeiou") for k in range(1, len(usual) - 1))
 
 
@@ -454,6 +529,12 @@ def _misspelt(rare, usual):
     neighbours swapped (4.9% of 4-letter words have such a twin: form/from) or a vowel dropped from a 5-letter label
     ("japn" for "japan": 7.2%, plan/plain). Never one wrong letter in 4 (89%: Iran/Iraq, Mark/Mary), a consonant
     dropped (14.8%: Chad/Chard) or anything in 3 (Jon/John)."""
+    # words joined by hyphens are read word by word: "Month-to-mnoth" was never read as words (blind round 36), and the
+    # word that differs is judged by its own length, so a region "Russia-SW" is no slip of "Russia-SE" (round 22, AH-32)
+    if "-" in rare + usual:
+        a, b = re.split(r"[\s-]+", rare), re.split(r"[\s-]+", usual)
+        diff = [(x, y) for x, y in zip(a, b) if x != y]
+        return len(a) == len(b) and len(diff) == 1 and _misspelt(*diff[0])
     word = lambda w, lo: lo <= len(w) <= 60 and w.replace(" ", "").isalpha()
     if word(rare, 5) and word(usual, 5):
         return _one_edit(rare, usual) or _dropped(rare, usual)
@@ -491,6 +572,11 @@ ROLE = {"customer", "client", "employee", "emp", "staff", "patient", "student", 
 # "<this> name" is a person's; on their own these are often not ("Agent" is a browser's in a log, a "Partner" a company)
 PERSON_NAME = ROLE | {"first", "last", "given", "family", "middle", "full", "maiden", "nick", "christian", "legal", "preferred",
                       "agent", "seller", "parent", "partner", "donor"}
+# a winner, a champion, a laureate or a rider is a person only beside a person's age, sex or birth date, like a plain
+# "Name": a Tour de France winner (age, born) and a Nobel laureate (gender, birth_date) are people (blind round 23 called a
+# winner's name a misspelling), but a World Cup's winner is a country, an election's a party, a product test's a phone and
+# an insurance policy's rider a cover ("Accidentl Death"): all silenced as people (AH-32 review)
+BESIDE = {"winner", "winners", "champion", "champions", "laureate", "laureates", "rider", "riders"}
 # a customer or client that is a company: its names are checked like any label
 COMPANY = {"inc", "ltd", "llc", "llp", "corp", "corporation", "co", "company", "gmbh", "plc", "group", "pty", "ag", "sa", "bv"}
 
@@ -507,17 +593,26 @@ def _person_name(col, columns, labels):
     w = fairness._words(col)
     if PERSON & set(w):
         return True
+
+    role = len(w) <= 2 and set(w) & BESIDE and set(w) <= BESIDE | {"name", "names"}
+
+    def personal(c):
+        cw = fairness._words(c)
+        if set(cw) & {"sex", "gender", "dob", "birth", "birthday", "birthdate"}:
+            return True
+        # ...or, for a Rider, Winner or Champion, a column that is a nationality and nothing else: a cyclist roster (Rider,
+        # Team, Nationality) called "Thomson" a misspelling of "Thompson" (AH-51). Not for a plain "Name": a ship's
+        # beside its flag's Nationality, a dish's beside its cuisine's, lost their spelling check; nor "Host nationality"
+        # beside a World Cup's winners (AH-51 review). A "Country" alone is a place
+        if role and cw in (["nationality"], ["nationalities"], ["citizenship"]):
+            return True
+        return "age" in cw and (set(cw) <= YEARS or (len(cw) == 2 and cw[1] == "age" and cw[0] in ROLE))
+    if w in (["name"], ["names"]) or role:
+        return any(personal(c) for c in columns if c != col)
     named = bool(w) and w[-1] in ("name", "names") and len(w) > 1 and w[-2] in PERSON_NAME
     named |= len(w) > 1 and w[0] in ("name", "names") and (w[1] in PERSON_NAME or w[1:2] == ["of"] and w[2:3] and w[2] in PERSON_NAME)
     if named:
         return True
-    if w in (["name"], ["names"]):
-        def personal(c):
-            cw = fairness._words(c)
-            if set(cw) & {"sex", "gender", "dob", "birth", "birthday", "birthdate"}:
-                return True
-            return "age" in cw and (set(cw) <= YEARS or (len(cw) == 2 and cw[1] == "age" and cw[0] in ROLE))
-        return any(personal(c) for c in columns if c != col)
     if w and len(w) <= 2 and (w[-1] in ROLE or w[-2:] == ["assigned", "to"]):
         companies = sum(bool(set(fairness._words(v)) & COMPANY) for v in labels)
         return companies < max(1, len(labels) / 10)
@@ -541,7 +636,11 @@ def spellings(df, column_types, skip):
             continue
         s = df[col][~skip].dropna().astype(str)
         s = s[(s.str.strip() != "") & ~s.str.lstrip().str[:1].isin(list("=+-@"))]  # formula-like text is never a "spelling"
-        if s.nunique() > 50:
+        # category-like: 50 labels; and for a misspelling guess (below), up to 200 that repeat 10 times each on average -
+        # 68 countries over 2,530 bars of chocolate hid "Frnace", 51 menu items over 4,622 orders "Chiken Bowl" (blind
+        # rounds 36 and 23, AH-32). Not for capitals: 1,222 Medium rows of "Yes"/"yes" and "9th place Match" came with it
+        many = s.nunique() > 50
+        if many and (s.nunique() > 200 or len(s) < 10 * s.nunique()):
             continue
         keys = s.map(lambda v: " ".join(v.split()).casefold())
         capital = lambda v: v.strip()[:1].isupper()
@@ -553,7 +652,7 @@ def spellings(df, column_types, skip):
         for key, counts in spelt.items():
             right = rights[key] = max(counts, key=lambda v: (capital(v) == caps and v == " ".join(v.split()), counts[v]))
             for raw, c in counts.items():
-                if raw == right:
+                if raw == right or many:
                     continue
                 for i in s.index[s == raw]:
                     out[i].append(Why(f'{col} "{_short(raw)}" looks like "{_short(right)}" (same word, different capitals/spaces)', col))
@@ -565,6 +664,8 @@ def spellings(df, column_types, skip):
             continue
         # over 60 characters is a note, not a label: crafted 32,000-character labels took 58 s here (council, 2026-10-16)
         for rare, c in cnt[cnt <= 2].items():
+            if NO_VALUE_WORD.fullmatch(rare):  # "Blank" is no race, never a misspelling of "Black" (AH-50)
+                continue
             usual = next((u for u, m in cnt.items() if m >= max(5, 5 * c) and len(u) <= 60 and len(rare) <= 60
                           and _misspelt(rare, u)), None)
             if usual is None:
@@ -573,6 +674,8 @@ def spellings(df, column_types, skip):
             for i in keys.index[keys == rare]:
                 missed[i].append(Why(f'{col} "{_short(s[i])}" looks like a misspelling of "{_short(word)}"', col))
                 maybe[i][col] = word
+        if many:  # past 50 labels the misspelling guess alone (see the cap above)
+            continue
         # a short form of exactly one other label (5+ rows, 2+ letters longer): its start ("EMP" for "Employed"), each
         # word's start ("In Prog" for "In Progress"), or a contraction ("Std" for "Standard": same first letter, the rest
         # in order, at most one vowel - "Fee" is not short for "Free")
@@ -584,7 +687,8 @@ def spellings(df, column_types, skip):
             # a short form is the rarer spelling - the full label at least twice as common: "CAF" (51 rows) is not short
             # for "CONCACAF" (30), nor "VI" for "VIII" - 71 cards would have overwritten correct labels (real sheets, 2026-10-16)
             longer = [u for u, m in cnt.items() if m >= max(5, 2 * cnt[short]) and len(u) >= len(short) + 2 and _short_for(short, u)]
-            if 2 <= len(short.replace(" ", "")) <= 6 and short.replace(" ", "").isalpha() and len(longer) == 1 and not whole(short):
+            if 2 <= len(short.replace(" ", "")) <= 6 and short.replace(" ", "").isalpha() and len(longer) == 1 and not whole(short) \
+                    and not NO_VALUE_WORD.fullmatch(short):
                 for i in keys.index[keys == short]:
                     missed[i].append(Why(f'{col} "{_short(s[i])}" looks like a short form of "{_short(rights[longer[0]])}"', col))
                     maybe[i][col] = rights[longer[0]]
@@ -692,7 +796,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
             "isolation": isolation_detector(df, judged, k) if s >= 5 else _result(n, "strength below 5")}
     # DBSCAN cut 2026-10-07: 90s/100k rows, 81% false alarms, bench same without it
     ran = [d for d in dets.values() if d["ran"]]
-    dup, (typ, typ_coded), (blank, spread) = duplicates(df, errors_log), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
+    (dup, repeats), (typ, typ_coded), (blank, spread) = duplicates(df, errors_log, column_types), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
     (hole, coded), far = placeholders(df, column_types, skip), far_dates(df, column_types, skip)
     paired, solved = pairs(df, column_types, skip, limits)
     add = [list(dict.fromkeys(s + m)) for s, m in zip(sums(df, column_types, skip), paired, strict=True)]
@@ -701,7 +805,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
     missed = [m + s + f + w + b + g for m, s, f, w, b, g in zip(missed, shifted(df, column_types, skip), fractions(df, column_types, skip),
                                                                  whole_numbers(df, column_types, skip), named_bounds(df, column_types, skip),
                                                                  spread, strict=True)]  # all "worth a check" (Low)
-    missed = [m + t + c + d for m, t, c, d in zip(missed, lim["top_reasons"], coded, typ_coded, strict=True)]  # a lone top value (AH-29), a placeholder code (AH-45)
+    missed = [m + t + c + d + r for m, t, c, d, r in zip(missed, lim["top_reasons"], coded, typ_coded, repeats, strict=True)]  # a lone top value (AH-29), a placeholder code (AH-45), many repeats (AH-48)
     if s >= ALONE:
         missed = [m + a for m, a in zip(missed, lim["alone_reasons"], strict=True)]
     rows = []

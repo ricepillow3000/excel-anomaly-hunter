@@ -360,7 +360,7 @@ assert.equal(cutNote([250001, 1048576]), "Too large to scan at once: checked dow
 
 // Batch 3: text cells are never overwritten; placeholders and text get a plain-English note
 const ph = recommendFix(["Pay", "Amt"], [["ERROR", 5], ["Card", 6]], 0, {}, 'Placeholder "ERROR" in column Pay', 0, 0, null, null);
-assert.ok(ph.explanation.includes('Pay says "ERROR" - a stand-in for a missing value') && !ph.changes.length);
+assert.ok(ph.explanation.includes('Pay says "ERROR" - a value of the column\'s own (a status, a log level) or a stand-in for a missing one') && !ph.changes.length);
 const tx = recommendFix(["When"], [["UNKNOWN"]], 0, {}, 'Text "UNKNOWN" in date column When', 0, 0, null, null);
 assert.ok(tx.explanation.includes("where a date belongs - retype it as a date"));
 const money = recommendFix(["Price"], [["$1,000,000.00"], ["$1,200.00"]], 0, { Price: [900, 1500, 500, 2000] },
@@ -386,4 +386,18 @@ assert.deepEqual(spots({ cells: ["Gone"] }, ["A", "B"]), [0, 1], "a name the tab
 assert.deepEqual(spots({}, ["A", "B"]), [0, 1]);
 // our colors are never Excel's own Bad / Neutral / Note fills, so a reopened pane never clears a cell the user styled
 assert.ok(Object.values(COLOR).every((c) => !OLD_COLOR.includes(c)) && OLD_COLOR.length === 3);
+// AH-48: the note for many repeated rows gets its own advice, never "the values are just unusual together"
+assert.match(recommendFix(["hotel", "adr"], [["City", 90]], 0, {}, "600 of 3000 rows repeat an earlier row exactly, all through the sheet - the first is this one, a copy of row 5", 0, 0).explanation,
+  /^600 of 3000 rows repeat an earlier row exactly, all through the sheet - the first is this one, a copy of row 5 - this many, spread out, are usually separate real records/);
+// AH-49: amounts compared across groups are named like the other checks, and sorted by their relative width
+assert.equal(fairnessNote({ protected: { Sex: "demographic" }, tests: [even("flag"), even("amount")] }),
+  "Fairness: Sex is never used to decide which rows are unusual. Flags and amounts are even across its groups.");
+assert.deepEqual(fairnessTests({ tests: [{ verdict: "even", measure: "amount", groups: { a: [50, 50000], b: [50, 49000] } },
+  { verdict: "even", measure: "outcome", groups: { a: [50, 0.2], b: [50, 0.4] } }] }).map((t) => t.measure), ["outcome", "amount"]);
+// AH-32: a rare ERROR may be a log level; its card never calls it only a stand-in
+assert.match(recommendFix(["Time", "Level"], [["x", "ERROR"]], 0, {}, 'Placeholder "ERROR" in column Level', 0, 0).explanation, /a value of the column's own \(a status, a log level\) or a stand-in/);
+assert.match(recommendFix(["Id", "Stage"], [["x", "TBD"]], 0, {}, 'Placeholder "TBD" in column Stage', 0, 0).explanation, /^Stage says "TBD" - a stand-in for a missing value/);
+// AH-46: the note for a sorted table's blank tail gets its own advice, never "the values are just unusual together"
+assert.match(recommendFix(["Name", "APPEARANCES"], [["Hulk", ""]], 0, {}, "APPEARANCES is blank in 130 of 2000 rows, all at the end of the table, which is sorted by APPEARANCES", 0, 0).explanation,
+  /^APPEARANCES is blank in 130 of 2000 rows, all at the end of the table, which is sorted by APPEARANCES - sorting puts blank cells last/);
 console.log("panel self-check passed");
