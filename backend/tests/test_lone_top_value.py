@@ -49,6 +49,21 @@ def test_a_slip_past_the_max_of_a_long_price_index_is_flagged(strength):
     assert r["severity"] in ("Low", "Medium", "High") and "price_index" in r["reason"], r
 
 
+@pytest.mark.parametrize("name, col, bulk, record", [
+    # one honest record above a column with a hard top looks exactly like a slip: worth a check, never "probably wrong"
+    ("wholesale order", "Order value", lambda g: list(np.exp(g.normal(np.log(80), 0.8, 1400)).clip(10, 500))
+     + list(g.uniform(5000, 20000, 400)), 45000),
+    ("CEO over a capped pay scale", "Salary", lambda g: list(np.round(np.exp(g.normal(np.log(60000), 0.35, 2000)), -2)
+                                                         .clip(25000, 150000)), 400000),
+    ("premium product", "Price", lambda g: list(g.uniform(5, 200, 800)), 450),
+    ("long haul", "Distance (km)", lambda g: list(g.uniform(1, 30, 700)) + list(g.uniform(100, 300, 200)), 900),
+])
+def test_one_real_record_above_a_hard_top_is_worth_a_check_never_probably_wrong(name, col, bulk, record):
+    vals = [round(float(v), 2) for v in bulk(np.random.default_rng(1))] + [float(record)]
+    r = scan(["Id", col], [[f"r{i}", v] for i, v in enumerate(vals)], fair=False)[1][-1]
+    assert ALONE in r["reason"] and r["severity"] == "Low", (name, r)
+
+
 @pytest.mark.parametrize("shape", ["lognormal", "pareto", "two_kinds"])
 def test_an_honest_top_value_is_never_said_to_stand_alone(shape):
     rng = np.random.default_rng(31)

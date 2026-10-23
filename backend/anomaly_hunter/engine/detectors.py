@@ -168,7 +168,7 @@ def limits_detector(df, column_types, limits, typos_only=False, listing=False, q
     n = len(df)
     r = {**_result(n), "noted": np.zeros(n, bool), "noted_reasons": [[] for _ in range(n)], "likely": [{} for _ in range(n)],
          "maybe": [{} for _ in range(n)],
-         "alone_reasons": [[] for _ in range(n)]}
+         "alone_reasons": [[] for _ in range(n)], "top_reasons": [[] for _ in range(n)]}
     for col in numbers(column_types):
         if not limits.get(col):
             continue
@@ -198,7 +198,7 @@ def limits_detector(df, column_types, limits, typos_only=False, listing=False, q
         for i, v in enumerate(x):
             if np.isnan(v):
                 continue
-            weird, fix, said_before = _crossed(v, w_lo, w_hi), None, len(r["reasons"][i])
+            weird, fix, said_before = _crossed(v, w_lo, w_hi), None, len(r["reasons"][i]) + len(r["alone_reasons"][i])
             # past the usual limit, alone, with an exact x10/x100 behind it: a typo, even under a skewed column's wide
             # weird limit (First Response 430 hrs for 4.3 by a median 4.9 - blind bench, 3 of 3 seeds only noted)
             if weird is None and v not in common and _crossed(v, b_lo, b_hi) is not None and not in_tail(v):
@@ -240,10 +240,11 @@ def limits_detector(df, column_types, limits, typos_only=False, listing=False, q
                     if others <= max(FEW[0], FEW[1] * len(sv)) and level <= FEW[0]:
                         r["alone_reasons"][i].append(f"{col} {v:g} is {'above' if v > lim else 'below'} its usual limit of {lim:g}, and "
                                                      + ("no other value is too" if not others else f"{others} other value{'s are' if others > 1 else ' is'} too"))
-            if top is not None and v == top[0] and len(r["reasons"][i]) == said_before:  # AH-29, see _alone_top
-                r["votes"][i] = True
-                r["magnitude"][i] = max(r["magnitude"][i], min(BIG, (v - top[1]) / sd))
-                r["reasons"][i].append(f"{col} {v:g} stands alone above the rest of the column, whose next highest is {top[1]:g}")
+            # AH-29, see _alone_top. Worth a check, never a vote: one real record above a column with a hard top looks the
+            # same (a 45,000 wholesale order over orders up to 20,000, a CEO's 400,000 over a pay scale capped at 150,000,
+            # a 450 product over prices to 200: each was Medium, "probably wrong", AH-29 review)
+            if top is not None and v == top[0] and len(r["reasons"][i]) + len(r["alone_reasons"][i]) == said_before:
+                r["top_reasons"][i].append(f"{col} {v:g} stands alone above the rest of the column, whose next highest is {top[1]:g}")
     # one slip changes one cell: 2+ cells of a row off by the same step (California's fruit, all "/1000", adding up
     # exactly) are a real row or another unit, so none of them is offered as a typo (the card already held them back;
     # the reason still said "likely", AH-21). The cells stay flagged
