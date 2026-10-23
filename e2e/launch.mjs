@@ -15,7 +15,9 @@ for (const width of [320, 360, 500]) { // Office's task pane: 320 px at its narr
   const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width, height: 600 } });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  // a console error names the file that failed: "Failed to load resource: net::ERR_TOO_MANY_RETRIES" came 4 times on
+  // 23 Oct with no name, under other test runs' load, and never on a quiet rerun (AH-43)
+  page.on("console", (m) => m.type() === "error" && errors.push(m.location().url ? `${m.text()} (${m.location().url})` : m.text()));
   await page.route("https://appsforoffice.microsoft.com/**", (r) => r.fulfill({ contentType: "text/javascript", body: fs.readFileSync(DIR + "fake-office.js", "utf8") }));
   const t0 = Date.now();
   await page.goto("https://127.0.0.1:5055/taskpane.html");
