@@ -107,7 +107,10 @@
     "pay"
    ],
    "pane_high": "Male",
-   "pane_low": "Female"
+   "pane_low": "Female",
+   "sources": [
+    "adult"
+   ]
   },
   {
    "id": "race_outcome",
@@ -127,7 +130,10 @@
     "pay"
    ],
    "pane_high": "Asian-Pac-Islander",
-   "pane_low": "Black"
+   "pane_low": "Black",
+   "sources": [
+    "adult"
+   ]
   },
   {
    "id": "age_outcome",
@@ -147,7 +153,10 @@
     "pay"
    ],
    "pane_high": "45-59",
-   "pane_low": "under 30"
+   "pane_low": "under 30",
+   "sources": [
+    "adult"
+   ]
   },
   {
    "id": "marital_outcome",
@@ -167,67 +176,103 @@
     "pay"
    ],
    "pane_high": "Married-civ-spouse",
-   "pane_low": "Never-married"
+   "pane_low": "Never-married",
+   "sources": [
+    "adult"
+   ]
   },
   {
    "id": "employment_outcome",
    "topic": "employment",
    "kind": "outcome",
-   "text": "In public US census data (UCI Adult, 48,842 people) 55.3% of the self-employed (incorporated) and 21.8% of private-sector workers earn over 50K: a gap between groups is common in real data and is not by itself a data error."
+   "text": "In public US census data (UCI Adult, 48,842 people) 55.3% of the self-employed (incorporated) and 21.8% of private-sector workers earn over 50K: a gap between groups is common in real data and is not by itself a data error.",
+   "sources": [
+    "adult"
+   ]
   },
   {
    "id": "housing_outcome",
    "topic": "housing",
    "kind": "outcome",
-   "text": "In public German credit data (Statlog, 1,000 loans) 40.7% of people housed for free and 26.1% of home owners have bad credit: a gap between groups is common in real data and is not by itself a data error."
+   "text": "In public German credit data (Statlog, 1,000 loans) 40.7% of people housed for free and 26.1% of home owners have bad credit: a gap between groups is common in real data and is not by itself a data error.",
+   "sources": [
+    "german"
+   ]
   },
   {
    "id": "sex_spread",
    "topic": "sex",
    "kind": "spread",
-   "text": "In public German credit data (Statlog, 1,000 loans) the median loan is 1,959 for women and 2,444 for men, and the middle half of each group overlaps widely (1,248-3,606 and 1,442-4,266): a value outside its group's usual range is common and real."
+   "text": "In public German credit data (Statlog, 1,000 loans) the median loan is 1,959 for women and 2,444 for men, and the middle half of each group overlaps widely (1,248-3,606 and 1,442-4,266): a value outside its group's usual range is common and real.",
+   "sources": [
+    "german"
+   ]
   },
   {
    "id": "age_spread",
    "topic": "age",
    "kind": "spread",
-   "text": "In a public medical-cost teaching table (1,338 people, simulated from US census figures) the median yearly cost is 3,214 under 30 and 14,255 at 60 and over: amounts that rise with age are real, not typos."
+   "text": "In a public medical-cost teaching table (1,338 people, simulated from US census figures) the median yearly cost is 3,214 under 30 and 14,255 at 60 and over: amounts that rise with age are real, not typos.",
+   "sources": [
+    "insurance"
+   ]
   },
   {
    "id": "smoker_spread",
    "topic": "smoker",
    "kind": "spread",
-   "text": "In a public medical-cost teaching table (1,338 people, simulated from US census figures) smokers' median yearly cost is 34,456, 4.7 times non-smokers' 7,345: a situation can change amounts this much in real data."
+   "text": "In a public medical-cost teaching table (1,338 people, simulated from US census figures) smokers' median yearly cost is 34,456, 4.7 times non-smokers' 7,345: a situation can change amounts this much in real data.",
+   "sources": [
+    "insurance"
+   ]
   },
   {
    "id": "far_from_group",
    "topic": "any",
    "kind": "far",
-   "text": "In public tables (German credit 1,000 loans, COMPAS 7,214 people, simulated medical costs 1,338 people) 7.5%, 8.9% and 3.4% of values sit past their own group's usual range (1.5 IQR) and are real records: unusual for its group is not a typo."
+   "text": "In public tables (German credit 1,000 loans, COMPAS 7,214 people, simulated medical costs 1,338 people) 7.5%, 8.9% and 3.4% of values sit past their own group's usual range (1.5 IQR) and are real records: unusual for its group is not a typo.",
+   "sources": [
+    "german",
+    "compas",
+    "insurance"
+   ]
   },
   {
    "id": "group_median_move",
    "topic": "any",
    "kind": "far",
-   "text": "Setting each cost in a public medical-cost teaching table (1,338 people, simulated) to its smoker group's median would move a typical real value by 41%: a group's average is never a fix for one person's value."
+   "text": "Setting each cost in a public medical-cost teaching table (1,338 people, simulated) to its smoker group's median would move a typical real value by 41%: a group's average is never a fix for one person's value.",
+   "sources": [
+    "insurance"
+   ]
   },
   {
    "id": "question_mark",
    "topic": "any",
    "kind": "hygiene",
-   "text": "In UCI Adult '?' means unknown in 5.7% of workclass, 5.8% of occupation and 1.8% of country cells: a '?' is a missing value, never a group and never a value to fill from a group."
+   "text": "In UCI Adult '?' means unknown in 5.7% of workclass, 5.8% of occupation and 1.8% of country cells: a '?' is a missing value, never a group and never a value to fill from a group.",
+   "sources": [
+    "adult"
+   ]
   },
   {
    "id": "label_spellings",
    "topic": "any",
    "kind": "hygiene",
-   "text": "UCI Adult's own test part (16,281 rows) writes every label with a leading space and its income labels with a dot (' >50K.'), the main part without: case, space and dot variants are one label, not different groups."
+   "text": "UCI Adult's own test part (16,281 rows) writes every label with a leading space and its income labels with a dot (' >50K.'), the main part without: case, space and dot variants are one label, not different groups.",
+   "sources": [
+    "adult_test",
+    "adult"
+   ]
   },
   {
    "id": "top_codes",
    "topic": "any",
    "kind": "hygiene",
-   "text": "In UCI Adult the top values are caps: 55 people are exactly 90 (only 2 are 89), 137 work exactly 99 hours and 244 have capital gain 99999: a cap is a recorded code, not a typing slip."
+   "text": "In UCI Adult the top values are caps: 55 people are exactly 90 (only 2 are 89), 137 work exactly 99 hours and 244 have capital gain 99999: a cap is a recorded code, not a typing slip.",
+   "sources": [
+    "adult"
+   ]
   },
   {
    "id": "age_missing",
@@ -244,7 +289,10 @@
     "employment"
    ],
    "pane_high": "60 and over",
-   "pane_low": "30-44"
+   "pane_low": "30-44",
+   "sources": [
+    "adult"
+   ]
   },
   {
    "id": "sex_missing",
@@ -261,7 +309,10 @@
     "employment"
    ],
    "pane_high": "Female",
-   "pane_low": "Male"
+   "pane_low": "Male",
+   "sources": [
+    "adult"
+   ]
   }
  ]
 }

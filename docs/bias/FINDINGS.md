@@ -19,7 +19,8 @@ No model is trained; every number is a count, a rate, a median or a quartile.
 | Medical costs teaching table (Lantz, Machine Learning with R) | 1,338 | `stedy/Machine-Learning-with-R-datasets@ff93323` `insurance.csv` (54 KB) | `505c1cbc...` | none stated; mirror README: public domain. Simulated from US census figures, not real people |
 | ProPublica COMPAS, Broward County 2013-2014 | 7,214 | `propublica/compas-analysis@bafff5d` `compas-scores-two-years.csv` (2.5 MB) | `c451db85...` | no licence file; published by ProPublica for analysis of its "Machine Bias" story |
 
-Full commit SHAs and hashes are in `tools/bias_sources.py` and in the JSON's `sources`. Only GitHub was reachable
+Full commit SHAs and hashes are in `tools/bias_sources.py` and in the JSON's `sources`. Each rule lists the tables it
+is measured from in its own `sources`, and names them in its sentence (`test_every_rule_names_the_pinned_public_tables_it_was_measured_from`, AH-37). Only GitHub was reachable
 from the machine that measured this (UCI, Kaggle, data.gov and census.gov were blocked), so mirrors on GitHub were
 used; each has the original's columns (Adult 15, Statlog German credit 20 plus the outcome).
 

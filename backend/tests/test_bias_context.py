@@ -138,3 +138,15 @@ def test_a_real_gap_in_an_outcome_gets_one_sentence_of_public_context_and_a_flag
 def test_the_fairness_sentence_comes_only_from_a_rule_for_that_column(column, kind, has):
     note = bias_context.pane_note(column, kind)
     assert (note is None) if has is None else (has in note and note in {r.get("pane") for r in DATA["rules"]})
+
+
+def test_every_rule_names_the_pinned_public_tables_it_was_measured_from():
+    # AH-37: each sentence is traced to its source: the tables tools/bias_sources.py measures it from (pinned by commit
+    # and SHA-256 in "sources"), named in the sentence itself. A rule with no source, or one its text doesn't name, fails
+    data = json.loads((Path(__file__).resolve().parents[1] / "anomaly_hunter" / "ai" / "bias_rules.json").read_text(encoding="utf-8"))
+    said = {"adult": ("UCI Adult", "US census"), "adult_test": ("test part",), "german": ("German credit",),
+            "insurance": ("medical-cost", "medical costs"), "compas": ("COMPAS",)}
+    assert set(said) == set(data["sources"]) and all(s["sha256"] and "/" in s["url"] for s in data["sources"].values())
+    for r in data["rules"]:
+        assert r["sources"] and set(r["sources"]) <= set(data["sources"]), r["id"]
+        assert all(any(w in r["text"] for w in said[s]) for s in r["sources"]), (r["id"], r["sources"])
