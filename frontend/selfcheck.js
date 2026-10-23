@@ -360,7 +360,7 @@ assert.equal(cutNote([250001, 1048576]), "Too large to scan at once: checked dow
 
 // Batch 3: text cells are never overwritten; placeholders and text get a plain-English note
 const ph = recommendFix(["Pay", "Amt"], [["ERROR", 5], ["Card", 6]], 0, {}, 'Placeholder "ERROR" in column Pay', 0, 0, null, null);
-assert.ok(ph.explanation.includes('Pay says "ERROR" - a stand-in for a missing value') && !ph.changes.length);
+assert.ok(ph.explanation.includes('Pay says "ERROR" - a value of the column\'s own (a status, a log level) or a stand-in for a missing one') && !ph.changes.length);
 const tx = recommendFix(["When"], [["UNKNOWN"]], 0, {}, 'Text "UNKNOWN" in date column When', 0, 0, null, null);
 assert.ok(tx.explanation.includes("where a date belongs - retype it as a date"));
 const money = recommendFix(["Price"], [["$1,000,000.00"], ["$1,200.00"]], 0, { Price: [900, 1500, 500, 2000] },
@@ -394,4 +394,7 @@ assert.equal(fairnessNote({ protected: { Sex: "demographic" }, tests: [even("fla
   "Fairness: Sex is never used to decide which rows are unusual. Flags and amounts are even across its groups.");
 assert.deepEqual(fairnessTests({ tests: [{ verdict: "even", measure: "amount", groups: { a: [50, 50000], b: [50, 49000] } },
   { verdict: "even", measure: "outcome", groups: { a: [50, 0.2], b: [50, 0.4] } }] }).map((t) => t.measure), ["outcome", "amount"]);
+// AH-32: a rare ERROR may be a log level; its card never calls it only a stand-in
+assert.match(recommendFix(["Time", "Level"], [["x", "ERROR"]], 0, {}, 'Placeholder "ERROR" in column Level', 0, 0).explanation, /a value of the column's own \(a status, a log level\) or a stand-in/);
+assert.match(recommendFix(["Id", "Stage"], [["x", "TBD"]], 0, {}, 'Placeholder "TBD" in column Stage', 0, 0).explanation, /^Stage says "TBD" - a stand-in for a missing value/);
 console.log("panel self-check passed");

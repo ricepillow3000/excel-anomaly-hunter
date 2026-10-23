@@ -9,7 +9,7 @@ import pandas as pd
 
 from anomaly_hunter.engine import fairness
 from anomaly_hunter.engine.detectors import Why, _result, far_off, isolation_detector, limits_detector, say, sequence_detector
-from anomaly_hunter.engine.load import EXCEL_ERROR, PLACEHOLDER, _blank, numbers
+from anomaly_hunter.engine.load import EXCEL_ERROR, PLACEHOLDER, _blank, _dates, numbers
 
 def summary_rows(df):
     """Rows that summarise the data instead of being data -> bool array: fully blank rows, rows labelled
@@ -338,6 +338,12 @@ def far_dates(df, column_types, skip):
     out = [[] for _ in range(len(df))]
     for col, t in column_types.items():
         d = df[col][~skip].dropna() if t == "date" else ()
+        if t == "text":
+            # a column of dates before 1900 is text (Excel keeps them so): read for this check alone, its type unchanged,
+            # so a Nobel laureate born in 2862 among the 1800s is caught (blind round 23, AH-32)
+            v = df[col][~skip & ~_blank(df[col])]
+            w = _dates(v, wide=True) if len(v) >= 30 else v.iloc[:0]
+            d = w.dropna() if len(w) and w.notna().mean() >= 0.9 and (w.dt.year < 1900).any() else ()
         if len(d) < 30:
             continue
         far, lo, hi = far_off(d)
@@ -483,7 +489,7 @@ def _dropped(rare, usual, vowel=False):
     (consonant) of 5-letter words - one wrong letter, which _one_edit allows, does for 60.8% of them."""
     if len(usual) != len(rare) + 1:
         return False
-    return any(usual[:k] + usual[k + 1:] == rare and usual[k].isalpha() and usual[k - 1] != " " and usual[k + 1] != " "
+    return any(usual[:k] + usual[k + 1:] == rare and usual[k].isalpha() and usual[k - 1] not in " -" and usual[k + 1] not in " -"
                and (not vowel or usual[k] in "aeiou") for k in range(1, len(usual) - 1))
 
 
@@ -499,6 +505,12 @@ def _misspelt(rare, usual):
     neighbours swapped (4.9% of 4-letter words have such a twin: form/from) or a vowel dropped from a 5-letter label
     ("japn" for "japan": 7.2%, plan/plain). Never one wrong letter in 4 (89%: Iran/Iraq, Mark/Mary), a consonant
     dropped (14.8%: Chad/Chard) or anything in 3 (Jon/John)."""
+    # words joined by hyphens are read word by word: "Month-to-mnoth" was never read as words (blind round 36), and the
+    # word that differs is judged by its own length, so a region "Russia-SW" is no slip of "Russia-SE" (round 22, AH-32)
+    if "-" in rare + usual:
+        a, b = re.split(r"[\s-]+", rare), re.split(r"[\s-]+", usual)
+        diff = [(x, y) for x, y in zip(a, b) if x != y]
+        return len(a) == len(b) and len(diff) == 1 and _misspelt(*diff[0])
     word = lambda w, lo: lo <= len(w) <= 60 and w.replace(" ", "").isalpha()
     if word(rare, 5) and word(usual, 5):
         return _one_edit(rare, usual) or _dropped(rare, usual)
@@ -531,6 +543,8 @@ ROLE = {"customer", "client", "employee", "emp", "staff", "patient", "student", 
         "owner", "manager", "author", "applicant", "candidate", "teacher", "doctor", "driver", "rep", "buyer", "player",
         "guest", "passenger", "mother", "father", "spouse", "tenant", "volunteer", "attendee", "participant", "respondent",
         "recipient", "sender", "holder",
+        # AH-32: a Tour de France winner, a Nobel laureate (blind round 23 called a winner's name a misspelling)
+        "winner", "champion", "laureate", "rider",
         # AH-26 (Council A, AH-24 try 2: these still called Thomson a misspelling of Thompson)
         "physician", "nurse", "assignee", "salesperson", "athlete", "coach", "instructor", "reviewer"}
 # "<this> name" is a person's; on their own these are often not ("Agent" is a browser's in a log, a "Partner" a company)
@@ -586,7 +600,11 @@ def spellings(df, column_types, skip):
             continue
         s = df[col][~skip].dropna().astype(str)
         s = s[(s.str.strip() != "") & ~s.str.lstrip().str[:1].isin(list("=+-@"))]  # formula-like text is never a "spelling"
-        if s.nunique() > 50:
+        # category-like: 50 labels; and for a misspelling guess (below), up to 200 that repeat 10 times each on average -
+        # 68 countries over 2,530 bars of chocolate hid "Frnace", 51 menu items over 4,622 orders "Chiken Bowl" (blind
+        # rounds 36 and 23, AH-32). Not for capitals: 1,222 Medium rows of "Yes"/"yes" and "9th place Match" came with it
+        many = s.nunique() > 50
+        if many and (s.nunique() > 200 or len(s) < 10 * s.nunique()):
             continue
         keys = s.map(lambda v: " ".join(v.split()).casefold())
         capital = lambda v: v.strip()[:1].isupper()
@@ -598,7 +616,7 @@ def spellings(df, column_types, skip):
         for key, counts in spelt.items():
             right = rights[key] = max(counts, key=lambda v: (capital(v) == caps and v == " ".join(v.split()), counts[v]))
             for raw, c in counts.items():
-                if raw == right:
+                if raw == right or many:
                     continue
                 for i in s.index[s == raw]:
                     out[i].append(Why(f'{col} "{_short(raw)}" looks like "{_short(right)}" (same word, different capitals/spaces)', col))
@@ -618,6 +636,8 @@ def spellings(df, column_types, skip):
             for i in keys.index[keys == rare]:
                 missed[i].append(Why(f'{col} "{_short(s[i])}" looks like a misspelling of "{_short(word)}"', col))
                 maybe[i][col] = word
+        if many:  # past 50 labels the misspelling guess alone (see the cap above)
+            continue
         # a short form of exactly one other label (5+ rows, 2+ letters longer): its start ("EMP" for "Employed"), each
         # word's start ("In Prog" for "In Progress"), or a contraction ("Std" for "Standard": same first letter, the rest
         # in order, at most one vowel - "Fee" is not short for "Free")

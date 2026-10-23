@@ -110,7 +110,11 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
   for (const [, raw, kind, col] of reason.matchAll(/Text "([^"]*)" in (number|date) column ([^;]+)/g))
     notes.push(`${col} holds the text "${raw}" where a ${kind} belongs - retype it as a ${kind}.`);
   for (const [, raw, col] of reason.matchAll(/Placeholder "([^"]*)" in column ([^;]+)/g))
-    notes.push(`${col} says "${raw}" - a stand-in for a missing value. Fill in the real value, or leave the cell empty.`);
+    // "ERROR" is a status or a log level as often as a stand-in (AH-45 review: a log's rare ERROR level was called "a
+    // stand-in for a missing value"), so its card says both
+    notes.push(/^error$/i.test(raw.trim()) ? `${col} says "${raw}" - a value of the column's own (a status, a log level) or a stand-in ` +
+      "for a missing one. If it stands in, fill in the real value or leave the cell empty; if it is a real status, leave it."
+      : `${col} says "${raw}" - a stand-in for a missing value. Fill in the real value, or leave the cell empty.`);
   // a limit crossed in a cell typed as text ("$1,000,000.00"): explained, never overwritten
   for (const { text } of issuesOf(reason)) { // anything the loop above didn't explain (text cells, no limits)
     const m = /^(.+?) weird limit is (\S+); this is (\S+)/.exec(text), b = /^Blank cell in column (.+?), which/.exec(text);

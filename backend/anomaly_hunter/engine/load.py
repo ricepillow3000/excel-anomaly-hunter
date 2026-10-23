@@ -37,7 +37,7 @@ def _is_id(name, num):
 TZ = re.compile(r"(\d:\d\d(?::\d\d(?:\.\d+)?)?)\s*(?:Z|[+-]\d\d:?\d\d)$")  # a time, then its zone: "08:30:00+02:00"
 
 
-def _dates(s):
+def _dates(s, wide=False):
     """Parse dates; years outside 1900-2200 don't count (cost code "03-100" parses as the year 100). Day-first is decided
     once for the column - a 13/01 anywhere (and no 01/13) means 01/02 is the 1st of February, not January 2nd."""
     # A timestamp's own offset ("...T00:00:00Z", "+02:00") is dropped: the date as written. A UTC column with a blank came
@@ -53,7 +53,12 @@ def _dates(s):
     dayfirst = bool((parts[0] > 12).any() and not (parts[1] > 12).any())
     dmy = parts[0].notna()  # only those cells: dayfirst would also flip ISO dates (2024-01-05 -> May 1)
     d = when(s.where(~dmy)).fillna(when(s.where(dmy), dayfirst=dayfirst))
-    return d.where(d.dt.year.between(1900, 2200))
+    if not wide:
+        return d.where(d.dt.year.between(1900, 2200))
+    # wide: also a cell that writes its year in full (1862-06-07, June 7, 1862) from 1000 to 2999, for the far-date check
+    # of a text column: Excel keeps a date before 1900 as text (AH-32)
+    full = text.str.contains(r"(?<!\d)[12]\d{3}(?!\d)") & text.str.contains(r"[-/., ]")
+    return d.where(d.dt.year.between(1900, 2200) | (full & d.dt.year.between(1000, 2999)))
 
 
 # stand-ins for a missing value. Not "NA" (a ticker, a country) or "None" (a real category)
