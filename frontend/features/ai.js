@@ -4,6 +4,7 @@ import { post } from "../services/api.js";
 import { showFix } from "../components/fix-preview.js";
 import { checkFix } from "./fix.js";
 import { plainReason } from "./scan.js";
+import { colLetter } from "../utils/sheet.js";
 
 // Ask AI: the API client in the workflow (the engine forwards to Gemini). Optional; fixes work without it.
 export function setAi(on) {
@@ -59,11 +60,14 @@ export async function askFix() { // talks to the engine only; the sheet is touch
 // The AI word check: a value that is a different KIND of thing from the rest of its column ("London" among products).
 // The engine sends only each text column's distinct words. Worth a look, not proof: nothing is changed in the sheet.
 export async function checkWords() {
-  const { columns, rows, startRow } = state.lastScan;
+  const { columns, rows, startRow, startCol } = state.lastScan;
+  // AH-35: each line says it is the AI's view, and names the cell by the sheet's own header and column letter: the
+  // engine's name for a repeated header ("Item.1") or a blank one ("") is not one the user can find
+  const at = (o) => `Row ${startRow + o.row + 2}, column ${colLetter(startCol + o.col)}${String(columns[o.col] ?? "").trim() ? ` (${columns[o.col]})` : ""}`;
   const item = (text) => Object.assign(document.createElement("li"), { textContent: text }); // AI text is never HTML
   try {
     const { odd, partial } = await post("/odd-text", { columns, rows }, 300);
-    $("odd-list").replaceChildren(...(odd.length ? odd.map((o) => item(`Row ${startRow + o.row + 2}: ${o.column} "${o.value}" - ${o.why}`))
+    $("odd-list").replaceChildren(...(odd.length ? odd.map((o) => item(`${at(o)}: "${o.value}" - the AI says: ${o.why}`))
       : [item(partial ? "Nothing out of place so far." : "Nothing looks out of place.")]),
     ...(partial ? [item("Google got busy before every word was checked. Click again to check the rest - the finished part is kept.")] : []));
   } catch (e) { // Google busy (it often is), no key...: said right here, like Ask AI does

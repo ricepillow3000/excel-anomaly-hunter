@@ -490,7 +490,7 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
   await page.click("#odd-check"); await idle();
   ok(posts.join() === "/odd-text", "Check words with AI sends only /odd-text - " + posts);
   const odd = await page.$$eval("#odd-list li", (lis) => lis.map((li) => li.textContent));
-  ok(odd.length === 100 && odd.every((t) => /^Row \d+: Region "Central" - <img src=x onerror=/.test(t)), `each row with the odd word listed (${odd.length}) - ${odd[0]}`);
+  ok(odd.length === 100 && odd.every((t) => /^Row \d+, column [A-Z]+ \(Region\): "Central" - the AI says: <img src=x onerror=/.test(t)), `each row with the odd word listed (${odd.length}) - ${odd[0]}`);
   ok(!(await page.$("#odd-list img")) && !(await page.evaluate(() => window.__pwned)) && !odd.some((t) => t.includes("Atlantis")),
     "the AI's words are text, never markup; a word the AI made up is dropped");
   const sent = fs.readFileSync(DIR + "claude.log", "utf8").trim().split("\n").map(JSON.parse).find((l) => l.prompt.includes("distinct values"));

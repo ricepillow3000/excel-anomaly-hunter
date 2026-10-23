@@ -268,6 +268,13 @@ def _ask(prompt, out=Fix, schema=FIX_SCHEMA, name="fix", deadline=None):
     return answer
 
 
+class _Said(ValueError):
+    """Our own words for an answer that came back but can't be used: passed on as they are."""
+
+
+TOO_LONG = "The AI's answer was too long to come back whole - ask for fewer cells at a time."
+
+
 def _call(prompt, out, schema, name, deadline):
     if provider() not in ("gemini", "relay"):
         try:
@@ -278,7 +285,9 @@ def _call(prompt, out, schema, name, deadline):
         except ValidationError:  # answer cut off mid-JSON
             raise ValueError("Claude's answer came back incomplete - try again or shorten the request.") from None
         if resp.parsed_output is None:  # refusal
-            raise ValueError(f"Claude gave no usable answer (stop_reason={resp.stop_reason}).")
+            raise ValueError("Claude gave no usable answer: " + (
+                "it declined this request - try different words, or fix it by hand." if resp.stop_reason == "refusal"
+                else TOO_LONG[4:].replace("AI's answer was", "it was", 1) if resp.stop_reason == "max_tokens" else "try again."))
         return resp.parsed_output
     data = _wire(prompt, schema, name)
     if len(data) > BUDGET:  # the callers trim to fit; this is the last guard (the relay refuses over 8 KB)
@@ -293,8 +302,18 @@ def _call(prompt, out, schema, name, deadline):
             left = max(1, deadline - time.monotonic())
             # nosemgrep: dynamic-urllib-use-detected - GEMINI_URL constant, or RELAY_URL that provider() only allows over https
             with urllib.request.urlopen(req, timeout=left if relay or slow else min(90, left)) as r:  # noqa: S310 - same request
-                text = json.load(r)["choices"][0]["message"]["content"]
+                choices = json.load(r)["choices"]
+            # AH-34: a refusal (safety filter, or a prompt blocked with no choices) and an answer cut at its length were
+            # "came back incomplete - try again", and trying again gets the same answer
+            choice = choices[0] if choices else {}
+            text, why = (choice.get("message") or {}).get("content"), str(choice.get("finish_reason") or "").lower()
+            if why == "length":
+                raise _Said(TOO_LONG)
+            if not text:
+                raise _Said("Google AI declined to answer this request - try different words, or fix it by hand.")
             return out.model_validate_json(text)
+        except _Said:
+            raise
         except urllib.error.HTTPError as e:
             said = e.read().decode("utf-8", "replace")
             if relay:  # the relay's own words: invalid code, today's cap reached, Google busy. Never retried here:
@@ -334,7 +353,7 @@ def _call(prompt, out, schema, name, deadline):
             if timed_out:
                 raise ValueError("Google AI is slow right now - try again in a minute.") from None
             raise ValueError("Could not reach Google AI - check the internet connection.") from None
-        except (KeyError, IndexError, TypeError, ValueError):  # no answer, or not the JSON asked for
+        except (KeyError, IndexError, TypeError, AttributeError, ValueError):  # no answer, or not the JSON asked for
             raise ValueError("Google AI's answer came back incomplete - try again.") from None
 
 
@@ -425,25 +444,46 @@ def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent, 
         if _fits(prompt):
             break
     else:
+        if _fits(_fix_prompt(columns, rows, row_index, start_row, start_col, reason, "", formulas, ctx=0, keep=[flagged], cut=set(), flagged=flagged)):
+            raise ValueError("Your request is too long to send to the free AI - shorten it (a sentence or two is enough).")
         raise ValueError("This row is too big to send to the free AI in one piece - shorten its longest cell, or fix it by hand.")
     fix = _ask(prompt)
+    # AH-34: a change the card can't show was dropped without a word under an explanation that claimed it
+    # ("I set B4 to Sales" over an empty card for "Sheet1!B4"): each one is shown, or named in the explanation
     changes = [{"cell": c.cell.strip().replace("$", "").upper(), "new": c.new} for c in fix.changes]
-    changes = [c for c in changes if CELL.fullmatch(c["cell"])][:MAX_CHANGES]
+    odd = [" ".join(c.cell.split())[:30] for c in fix.changes if not CELL.fullmatch(c.cell.strip().replace("$", "").upper())]
+    told = {}
+    for c in (c for c in changes if CELL.fullmatch(c["cell"])):
+        told.setdefault(c["cell"], set()).add(c["new"])
+    twice = [cell for cell, said in told.items() if len(said) > 1]  # which one did it mean? neither is written
+    changes = [{"cell": cell, "new": next(iter(said))} for cell, said in told.items() if len(said) == 1]
+    more, changes = len(changes) - MAX_CHANGES, changes[:MAX_CHANGES]
+    # the cells the AI was shown: the rows and columns around the flagged cell that fitted, and their headers. A
+    # value anywhere else is written blind ("fix this typo in every row" wrote B62 and B90 without seeing them)
+    shown_rows = {start_row + 1} | {start_row + 2 + k for k in range(max(0, row_index - ctx), min(len(rows), row_index + ctx + 1))}
+    shown_cols = {get_column_letter(1 + start_col + j) for j in nearest[:n]}
     loops = [c["cell"] for c in changes if refers_to_itself(c["cell"], c["new"])]
     outside = [c["cell"] for c in changes if c["new"].lstrip()[:1] in "=+-@" and OUTSIDE.search(c["new"])]
     unknown = [c["cell"] for c in changes if c["cell"] not in outside and unsafe_call(c["new"])]
     away = [c["cell"] for c in changes if not _in_table(c["cell"], start_row, start_col, len(rows), len(columns))]
     part = [c["cell"] for c in changes if c["cell"] in cut]  # it saw only the start of that cell: a rewrite could lose text
+    at = lambda cell: re.fullmatch(r"([A-Z]+)(\d+)", cell).groups()
+    blind = [c["cell"] for c in changes if c["cell"] not in set(loops + outside + unknown + away + part)
+             and (at(c["cell"])[0] not in shown_cols or int(at(c["cell"])[1]) not in shown_rows)]
     # John, 2026-10-16: with no typed request, only the flagged row. An injected cell could talk a default Ask AI into
     # plain writes all over the table, and the pane's re-check looks at the flagged row only. A typed request may.
     row = str(start_row + 2 + row_index)
-    seen = set(loops + outside + unknown + away + part)
+    seen = set(loops + outside + unknown + away + part + blind)
     others = [] if intent.strip() else [c["cell"] for c in changes
                                         if c["cell"] not in seen and re.fullmatch(r"[A-Z]+(\d+)", c["cell"]).group(1) != row]
     note = "".join(f" (Left out {', '.join(cells)}: {why}.)" for cells, why in (
         (loops, "the formula referred to its own cell, which Excel can't calculate"), (outside, "the formula reached outside this workbook"),
         (unknown, "the formula used a function that is not on this add-in's safe list"),
         (away, "outside the table"), (part, "only part of that cell could be sent to the AI, so it is left as it is"),
-        (others, "not in the flagged row - to change other rows, type what you want, e.g. 'fix this typo in every row'")) if cells)
+        (blind, "the AI is shown only the rows and columns near the flagged cell, so it can't know what is there - for a "
+                "change in every row, use Excel's Find and Replace (Ctrl+H)"),
+        (others, "not in the flagged row - to change the rows shown around it too, say so in your request"),
+        (odd, "not a single cell of this table"), (twice, f"the AI gave {'each' if len(twice) > 1 else 'it'} two different values")) if cells) + (
+        f" (Left out {more} more changes: one fix writes at most {MAX_CHANGES} cells.)" if more > 0 else "")
     drop = seen | set(others)
     return {"explanation": fix.explanation + note, "changes": [c for c in changes if c["cell"] not in drop]}
