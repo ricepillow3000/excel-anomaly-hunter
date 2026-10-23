@@ -203,9 +203,23 @@ def whole_numbers(df, column_types, skip):
         if len(x) < 30 or x.nunique() < 3:
             continue
         odd = (x - x.round()).abs() > 1e-9 * x.abs().clip(lower=1)  # float noise (2.99 - 1.99) is still whole
-        if 1 <= odd.sum() <= max(1, 0.005 * len(x)):
-            for i in x.index[odd]:
-                out[i].append(f"{col} {x[i]:g} is not a whole number - every other {col} is")
+        # A part the column writes 3+ times is its own way of writing: 69 honest half-kilo weights among 15,553 athletes
+        # each read "not a whole number - every other weight is" (blind round 23, AH-38), untrue. A slip's part is its
+        # own (73 typed 7.3, 42 typed 4.2): a few of those, up to 0.5% of the column, are each worth a check. Counting
+        # every decimal instead, with a fixed 2, lost 3 slips on 1,000 rows and 8 on 2,000 (AH-38 review); 3 are allowed on
+        # any sheet (3 on 300 rows were lost too): on 158 real tables it still names only mpg's displacement 97.5
+        part = (x - np.floor(x)).round(6)
+        usual = [f for f, c in part[odd].value_counts().items() if c >= 3]
+        slip = odd & ~part.isin(usual)
+        # ...one or two such parts (halves; quarters); more is a column of decimals (fares, prices), never "whole"
+        if len(usual) <= 2 and 1 <= slip.sum() <= max(3, 0.005 * len(x)):
+            ends = " or ".join(f"{f:g}".lstrip("0") for f in sorted(usual))
+            # with 2+ slips, "the other values are whole or end in .5" is untrue: the other slip is neither (AH-38 try 2 review)
+            rest = (f"every other {col} is" if slip.sum() == 1 else f"only {int(slip.sum())} {col} values are not") if not usual else \
+                f"the other {col} values are whole or end in {ends}" if slip.sum() == 1 else \
+                f"only {int(slip.sum())} {col} values are neither whole nor end in {ends}"
+            for i in x.index[slip]:
+                out[i].append(f"{col} {x[i]:g} is not a whole number - {rest}")
     return out
 
 

@@ -293,6 +293,9 @@ rec = recommendFix(["Id", "When"], [["a", "2084-03-01"]], 0, null, "When 2084-03
 assert.ok(rec.explanation.includes("mistyped year") && !rec.explanation.includes("Nothing here"), rec.explanation);
 rec = recommendFix(["Id", "Day"], [["a", 7.3]], 0, null, "Day 7.3 is not a whole number - every other Day is", 0, 0);
 assert.ok(rec.explanation.includes("check the decimal point"), rec.explanation);
+// a lone top value (AH-29) is told what it is, never "just unusual together", and nothing is written
+rec = recommendFix(["Id", "Fee"], [["a", 106500]], 0, { Fee: [5, 500000, 5, 22970000] }, "Fee 106500 stands alone above the rest of the column, whose next highest is 59985", 0, 0);
+assert.ok(rec.explanation.includes("an extra zero or a slipped decimal point") && !rec.explanation.includes("unusual together") && !rec.changes.length, rec.explanation);
 // many blanks spread through a column are one note (AH-28): what they usually are, never a value written in
 rec = recommendFix(["Id", "Age"], [["a", ""]], 0, {}, "Age is blank in 178 of 891 rows, spread through the sheet", 0, 0);
 assert.ok(rec.explanation.includes("not known") && !rec.explanation.includes("Nothing here") && !rec.changes.length, rec.explanation);
