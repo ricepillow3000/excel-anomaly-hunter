@@ -400,12 +400,18 @@ PERSON = {"surname", "surnames", "forename", "forenames", "firstname", "lastname
 ROLE = {"customer", "client", "employee", "emp", "staff", "patient", "student", "pupil", "contact", "person", "member", "user",
         "owner", "manager", "author", "applicant", "candidate", "teacher", "doctor", "driver", "rep", "buyer", "player",
         "guest", "passenger", "mother", "father", "spouse", "tenant", "volunteer", "attendee", "participant", "respondent",
-        "recipient", "sender", "holder"}
+        "recipient", "sender", "holder",
+        # AH-26 (Council A, AH-24 try 2: these still called Thomson a misspelling of Thompson)
+        "physician", "nurse", "assignee", "salesperson", "athlete", "coach", "instructor", "reviewer"}
 # "<this> name" is a person's; on their own these are often not ("Agent" is a browser's in a log, a "Partner" a company)
 PERSON_NAME = ROLE | {"first", "last", "given", "family", "middle", "full", "maiden", "nick", "christian", "legal", "preferred",
                       "agent", "seller", "parent", "partner", "donor"}
 # a customer or client that is a company: its names are checked like any label
 COMPANY = {"inc", "ltd", "llc", "llp", "corp", "corporation", "co", "company", "gmbh", "plc", "group", "pty", "ag", "sa", "bv"}
+
+
+# a person's age, in years: "Age", "Age (years)", "Patient age". A stock's "Age (days)" or "Stock age" is not (AH-26)
+YEARS = {"age", "years", "year", "yrs", "yr", "in"}
 
 
 def _person_name(col, columns, labels):
@@ -421,8 +427,13 @@ def _person_name(col, columns, labels):
     if named:
         return True
     if w in (["name"], ["names"]):
-        return any(set(fairness._words(c)) & {"age", "sex", "gender", "dob", "birth", "birthday", "birthdate"} for c in columns if c != col)
-    if w and len(w) <= 2 and w[-1] in ROLE:
+        def personal(c):
+            cw = fairness._words(c)
+            if set(cw) & {"sex", "gender", "dob", "birth", "birthday", "birthdate"}:
+                return True
+            return "age" in cw and (set(cw) <= YEARS or (len(cw) == 2 and cw[1] == "age" and cw[0] in ROLE))
+        return any(personal(c) for c in columns if c != col)
+    if w and len(w) <= 2 and (w[-1] in ROLE or w[-2:] == ["assigned", "to"]):
         companies = sum(bool(set(fairness._words(v)) & COMPANY) for v in labels)
         return companies < max(1, len(labels) / 10)
     return False

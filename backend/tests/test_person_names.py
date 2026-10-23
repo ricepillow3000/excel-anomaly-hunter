@@ -79,3 +79,48 @@ def test_a_misspelling_in_a_column_that_is_not_peoples_names_is_still_caught(col
 def test_a_text_column_whose_header_has_no_letters_is_still_checked_and_never_breaks_the_scan(col):
     out = scan(["Id", col, "Units"], column("Germany", "Grmany", ["Alpha label", "Second label", "Third label"]), fair=False)[1]
     assert 'looks like a misspelling of "Germany"' in out[-1]["reason"], out[-1]
+
+
+# AH-26 (Council A's notes on AH-24 try 2): roles the list missed, companies with no Inc or Ltd, and an age that is not a
+# person's
+@pytest.mark.parametrize("col", ["Physician", "Nurse", "Assignee", "Assigned to", "Salesperson", "Athlete", "Coach",
+                                 "Instructor", "Reviewer"])
+def test_a_role_header_the_first_list_missed_holds_people_too(col):
+    out = scan(["Id", col, "Units"], column("Thompson", "Thomson", PEOPLE), fair=False)[1]
+    assert not any(g in o["reason"] for o in out for g in GUESS), (col, out[-1]["reason"])
+
+
+@pytest.mark.parametrize("col, people", [
+    ("Customer", ["Jones", "Brown", "Garcia", "Miller"]),            # surnames
+    ("Owner", ["Ann Jones", "Bob Brown", "Maria Garcia", "Li Wei"]),   # full names, one not in a US list
+    ("Client", ["Jones, Ann", "Brown, Bob", "Garcia, Maria", "Okafor, Chidi"]),
+])
+def test_a_customer_or_owner_column_of_peoples_names_stays_quiet(col, people):
+    out = scan(["Id", col, "Units"], column("Thompson", "Thomson", people), fair=False)[1]
+    assert not any(g in o["reason"] for o in out for g in GUESS), (col, out[-1]["reason"])
+
+
+@pytest.mark.parametrize("other", ["Age (days)", "Age in days", "Stock age", "Age (hours)", "Age_weeks"])
+def test_a_plain_name_beside_an_age_that_is_not_a_persons_is_still_checked(other):
+    out = scan(["Id", "Name", other], column("Stapler", "Staplre", ["Desk Lamp", "Office Chair", "Monitor Arm"],
+               extra=lambda i: i % 90), fair=False)[1]
+    assert 'Name "Staplre" looks like a misspelling of "Stapler"' in out[-1]["reason"], (other, out[-1])
+
+
+@pytest.mark.parametrize("other", ["Age (years)", "Age in years", "Patient age", "AGE"])
+def test_a_plain_name_beside_a_persons_age_in_years_is_still_peoples_names(other):
+    out = scan(["Id", "Name", other], column("Katherine", "Kathrine", PEOPLE, extra=lambda i: 20 + i % 50), fair=False)[1]
+    assert not any(g in o["reason"] for o in out for g in GUESS), (other, out[-1]["reason"])
+
+
+# AH-26 review (Council B): a list of common US names decided whether a Customer column held people, so the same honest
+# twin was left alone in a US roster (Thomson/Thompson) and called a misspelling in a Nigerian or Indian one: 0 of 200
+# synthetic Nigerian rosters and every Indian first-name column read as companies. A person's name is a person's name
+@pytest.mark.parametrize("col, usual, odd, others", [
+    ("Customer", "Adeola", "Adeolu", ["Okafor", "Eze", "Nwosu", "Balogun"]),
+    ("Client", "Oluwaseun", "Oluwasen", ["Chinedu", "Ngozi", "Emeka", "Tunde"]),
+    ("Owner", "Ananya", "Anaya", ["Priya", "Rohan", "Kavya", "Arjun"]),
+])
+def test_names_from_outside_a_us_list_are_peoples_names_too(col, usual, odd, others):
+    out = scan(["Id", col, "Units"], column(usual, odd, others), fair=False)[1]
+    assert not any(g in o["reason"] for o in out for g in GUESS), (col, out[-1]["reason"])
