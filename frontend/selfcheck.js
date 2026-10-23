@@ -293,6 +293,11 @@ rec = recommendFix(["Id", "When"], [["a", "2084-03-01"]], 0, null, "When 2084-03
 assert.ok(rec.explanation.includes("mistyped year") && !rec.explanation.includes("Nothing here"), rec.explanation);
 rec = recommendFix(["Id", "Day"], [["a", 7.3]], 0, null, "Day 7.3 is not a whole number - every other Day is", 0, 0);
 assert.ok(rec.explanation.includes("check the decimal point"), rec.explanation);
+// AH-55: a name's bound and a share over 100 say what to look for, and write nothing
+rec = recommendFix(["Id", "Birth month"], [["a", 13]], 0, null, "Birth month 13 is outside what Birth month can be (1 to 12)", 0, 0);
+assert.ok(rec.explanation.includes("a typing slip is the usual cause") && !rec.explanation.includes("Nothing here") && !rec.changes.length, rec.explanation);
+rec = recommendFix(["Id", "Percent"], [["a", 200]], 0, null, "Percent 200 is over 100, and every other Percent is a share between 0 and 100", 0, 0);
+assert.ok(rec.explanation.includes("a share of a whole over 100") && !rec.explanation.includes("Nothing here") && !rec.changes.length, rec.explanation);
 // a lone top value (AH-29) is told what it is, never "just unusual together", and nothing is written
 rec = recommendFix(["Id", "Fee"], [["a", 106500]], 0, { Fee: [5, 500000, 5, 22970000] }, "Fee 106500 stands alone above the rest of the column, whose next highest is 59985", 0, 0);
 assert.ok(rec.explanation.includes("an extra zero or a slipped decimal point") && !rec.explanation.includes("unusual together") && !rec.changes.length, rec.explanation);

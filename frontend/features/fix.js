@@ -145,6 +145,10 @@ const HINTS = [
   [/ is above 100% - /, "it may be a whole percent typed where a fraction belongs (85 for 0.85)"],
   [/ looks like an? .+ value$/, "it may have been typed into the wrong column"],
   [/ is not a whole number - /, "check the decimal point"],
+  // AH-55: a Birth month of 13 and a share of 200 got "the values are just unusual together", the cross-column check's words
+  [/ is outside what .+ can be \(-?[\d.]+ to -?[\d.]+\)$/, "its column's name allows no such value, so a typing slip is the usual cause"],
+  [/ is over 100, and every other .+ is a share between 0 and 100$/, "a share of a whole over 100 is usually a slip (an extra digit, " +
+    "a doubled value); if it is a real figure over 100, leave it"],
   // AH-29: a top value far above the rest got "the values are just unusual together", the cross-column check's words
   [/ stands alone above the rest of the column, whose next highest is /, "an extra zero or a slipped decimal point is the usual " +
     "cause, but one real record above all the others looks the same"],

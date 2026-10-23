@@ -166,7 +166,9 @@ def _coerce(df, cols):
             else:  # ...but an ID like "A-17" among numbers is fine: keep it as it is
                 df[c] = num.astype(object).where(~bad, df[c]) if bad.any() else num
         elif t == "date":  # text in a date column is an error too, not a "blank"
-            d = _dates(df[c])
+            # ...but a date written in full from 1000 to 2999 is a date: deaths since 1791 among a column of 1900s dates
+            # were 176 "text" cells, whose shape excused a year 2955 typo as the column's own code (round 37, AH-55)
+            d = _dates(df[c], wide=True)
             errors += [(i, c, df.at[i, c]) for i in df.index[d.isna() & ~_blank(df[c])]]
             df[c] = d
     return types, errors

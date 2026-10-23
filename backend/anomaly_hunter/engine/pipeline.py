@@ -312,7 +312,9 @@ PERSON_AGE = {"patient", "participant", "victim", "actor", "actress", "employee"
               "member", "client", "worker", "player", "passenger", "athlete", "person", "child", "mother", "father", "driver",
               "rider", "voter", "resident", "subject", "defendant", "suspect", "officer", "candidate", "ceo", "senator", "artist",
               "author", "winner", "borrower", "tenant", "user", "donor", "inmate", "pupil", "teacher", "nurse", "doctor", "spouse"}
-BOUNDED = [(r"month", 1, 12), (r"quarter|qtr", 1, 4), (r"hour", 0, 24), (r"minute|second", 0, 59),
+# "Birth month", "birth_month", "start month": a month too (round 37 missed a 13 in both; AH-55), never a count of months
+# ("Months", "Months since"), a day of it, or what happened in one ("per month", "last month")
+BOUNDED = [(r"(?:(?!(?:of|per|a|an|each|every|this|last|next|prev|previous|current|same|prior|that|in|by|the)\b)[a-z]+ )?month", 1, 12), (r"quarter|qtr", 1, 4), (r"hour", 0, 24), (r"minute|second", 0, 59),
            (r"weekday|day of week", 0, 7), (r"lat|latitude", -90, 90), (r"lon|lng|long|longitude", -180, 180),
            # a person's age: "age" alone or after a word for a person (victim age, actor 1 age, age years): LA riots' 310
            # for 31 in 62 rows was said nothing at level 5 (AH-47). A thing's age is not a person's: a tree's 180, a
@@ -339,6 +341,26 @@ def _bounds(col):
                  and not (hi == 120 and AGE_UNITS.search(h))), None)
 
 
+# A share of a whole by its name: "Percent", "cocoa_percent", "Rate (%)". Never a percentile (a wage), "Tax 5%" (an
+# amount), or one the CLAUDE.md list says can pass 100: a change, a return, attendance, occupancy, utilization, markup,
+# ROI, CPU, debt of GDP, a % of a target or a limit (AH-30 review)
+PERCENT = re.compile(r"percent(?:age)?\b|\bper cent\b|\bpct\b|(?<![\d.\s])\s*%|\(%\)|^%")
+NOT_SHARE = re.compile(r"chang|growth|increas|decreas|diff|return|\broi\b|markup|margin|gain|loss|yoy|\bvar|attend|occupan|"
+                       r"utili[sz]|cpu|gdp|debt|limit|speed|target|goal|budget|quota|plan\b|capacity|over|above|error")
+
+
+def _share_over(col, x):
+    """A percentage far past 100 in a column whose every other value is a share of a whole (0 to 100): a 200 among 40
+    rows was found only at level 10, as an odd combination (round 37, AH-55). Far past: more than 150, as a slip writes
+    it (x2, x10, 233.4); an honest 100.4 (a bonus share rounded up, 1 of 48,711 real rows in round 36) stays quiet, and
+    a column with a third value over 100, or any below 0, is not a share at all."""
+    h = " ".join(re.sub(r"[_.]+", " ", str(col)).split()).lower()
+    if len(h) > 200 or not PERCENT.search(h) or NOT_SHARE.search(h) or len(x) < 20 or x.min() < 0:
+        return ()
+    over = x[x > 100]
+    return over.index if 1 <= len(over) <= 2 and (over > 150).all() else ()
+
+
 def named_bounds(df, column_types, skip):
     """A number past what its column's name allows: Month 13, Hour 25, a 6 on "Rating (1-5)" - each just past the other
     values, so no limit can call it (John's "syntactically correct but contextually impossible", AI council 2026-10-16).
@@ -352,6 +374,11 @@ def named_bounds(df, column_types, skip):
         if 1 <= len(bad) <= max(2, 0.01 * len(x)):
             for i in bad.index:
                 out[i].append(Why(f"{col} {say(x[i])} is outside what {col} can be ({b[0]:g} to {b[1]:g})", col))
+        if t == "number" and not b:
+            x = df[col][~skip].dropna()
+            for i in _share_over(col, x):
+                rest = "every other" if len(x[x > 100]) == 1 else "every other but one"
+                out[i].append(Why(f"{col} {say(x[i])} is over 100, and {rest} {col} is a share between 0 and 100", col))
     return out
 
 
@@ -382,11 +409,14 @@ def sums(df, column_types, skip):
     side). ponytail: plain sums only - a weighted rule (tax 8.25%) or a difference written as a sum of +1s only."""
     out = [[] for _ in range(len(df))]
     cols = numbers(column_types)
+    done = _totals(df, cols, skip, out)
     x = df[cols][~skip].dropna()
     if len(cols) < 3 or len(x) < 20 * len(cols):  # few rows: least squares "fits" anything
         return out
     a = x.to_numpy(dtype=float)
     for t, col in enumerate(cols):
+        if col in done:
+            continue
         y, rest = a[:, t], np.delete(a, t, axis=1)
         w = np.linalg.lstsq(rest, y, rcond=None)[0]
         res = np.abs(y - rest @ w)
@@ -403,6 +433,49 @@ def sums(df, column_types, skip):
         for i, v, g in zip(x.index[bad], y[bad], got[bad]):  # the total and every part: any one of them may be the slip
             out[i].append(Why(f"{col} {say(v)} does not add up: {' + '.join(part)} = {g:.10g}", col, *part))
     return out
+
+
+# a header that says its column adds others up: "Total", "Total population", "All ages", "Sum", "TOTAL_CASES"
+TOTAL_HEAD = re.compile(r"\b(?:totals?|sum|all)\b")
+
+
+def _totals(df, cols, skip, out):
+    """A column headed Total, Sum or All that is, to the cent, the other number columns added up, or the 3+ number
+    columns beside it, on 95% of rows: the other rows don't add up. Round 37 missed Male + Female + Intersex = Total on 48
+    rows and 8 age groups = Total on 200: least squares needs 20 rows a column, and an extra Year or Area column bends
+    it. An exact sum cannot hold by chance on 10 rows with something to add, so no such minimum; two parts are pairs'.
+    Capped in sheet order (20 totals, 40 columns a side), never by a clock: the same sheet gives the same answer.
+    Adds its reasons to out; -> the totals it explained, so least squares does not judge them again (AH-55)."""
+    done, order, nums = set(), list(df.columns), {c: k for k, c in enumerate(cols)}
+    heads = [c for c in cols if len(h := " ".join(re.sub(r"[_.]+", " ", str(c)).split()).lower()) <= 200 and TOTAL_HEAD.search(h)]
+    rows = df.index[~skip]
+    a = df.loc[rows, cols].to_numpy(dtype=float) if heads else None
+    for col in heads[:20]:
+        y, at, tries = a[:, nums[col]], order.index(col), [[c for c in cols if c != col]]
+        for step in (-1, 1):  # the number columns right beside it, nearest first, up to the first other column
+            run, j = [], at + step
+            while 0 <= j < len(order) and order[j] in nums and len(run) < 40:
+                run.append(order[j])
+                j += step
+            tries += [run[:k] for k in range(3, len(run) + 1)]
+        best = None
+        for parts in tries:  # one column more each try: a sum of a few thousand rows, not a copy of the sheet
+            if len(parts) < 3:
+                continue
+            p = a[:, [nums[c] for c in parts]]
+            ok = ~np.isnan(y) & ~np.isnan(p).any(axis=1)
+            got = p[ok].sum(axis=1)
+            live = (p[ok] != 0).any(axis=1)
+            bad = np.abs(y[ok] - got) > np.maximum(0.011, 1e-6 * np.abs(y[ok]))  # 1 cent + float slack, as sums
+            if (~bad[live]).sum() < 10 or bad.mean() > 0.05 or (best and bad.mean() >= best[0]):
+                continue
+            if (p[ok] != 0).any(axis=0).all():  # every part counts somewhere
+                best = (bad.mean(), sorted(parts, key=order.index), rows[ok][bad], y[ok][bad], got[bad])
+        if best:
+            done.add(col)
+            for i, v, g in zip(*best[2:]):
+                out[i].append(Why(f"{col} {say(v)} does not add up: {' + '.join(best[1])} = {g:.10g}", col, *best[1]))
+    return done
 
 
 def _decimals(x):
