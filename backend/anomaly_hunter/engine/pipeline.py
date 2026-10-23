@@ -203,9 +203,12 @@ def whole_numbers(df, column_types, skip):
         if len(x) < 30 or x.nunique() < 3:
             continue
         odd = (x - x.round()).abs() > 1e-9 * x.abs().clip(lower=1)  # float noise (2.99 - 1.99) is still whole
-        if 1 <= odd.sum() <= max(1, 0.005 * len(x)):
+        # lone: 1 or 2 in the column. 0.5% of it let 69 honest half-kilo weights among 15,553 athletes each read "not a
+        # whole number - every other weight is" (blind round 23, AH-38): untrue, and the column's own way of writing
+        if 1 <= odd.sum() <= 2:
             for i in x.index[odd]:
-                out[i].append(f"{col} {x[i]:g} is not a whole number - every other {col} is")
+                out[i].append(f"{col} {x[i]:g} is not a whole number - " + (f"every other {col} is" if odd.sum() == 1 else
+                                                                           f"only 2 {col} values are not"))
     return out
 
 
