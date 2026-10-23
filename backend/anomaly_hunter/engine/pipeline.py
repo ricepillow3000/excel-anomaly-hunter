@@ -366,7 +366,7 @@ def far_dates(df, column_types, skip):
             # so a Nobel laureate born in 2862 among the 1800s is caught (blind round 23, AH-32)
             v = df[col][~skip & ~_blank(df[col])]
             # a cell too long for a date is none, unparsed: a crafted 100,000-character cell doubled the scan (AH-32 review)
-            w = _dates(v.where(v.astype(str).str.len() <= 40), wide=True) if len(v) >= 30 else v.iloc[:0]
+            w = _dates(v.where(v.astype(str).str.strip().str.len() <= 40), wide=True) if len(v) >= 30 else v.iloc[:0]
             d = w.dropna() if len(w) and w.notna().mean() >= 0.9 and (w.dt.year < 1900).any() else ()
         if len(d) < 30:
             continue

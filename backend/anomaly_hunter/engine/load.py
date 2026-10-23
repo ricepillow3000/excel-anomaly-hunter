@@ -44,6 +44,16 @@ def _dates(s, wide=False):
     # back as plain objects and mixed offsets made pandas raise: every scan of a real clinical export failed (2026-10-16).
     # utc=True then no zone covers the rest ("GMT"): pandas never gets two kinds of timestamp to merge.
     text = s.astype(str)
+    # a cell a date fits in (64 characters) and no more: dateutil reads a long run of digits in quadratic time, and every
+    # text cell is asked whether it is a date. One 400,000-digit cell took 13 s of a 16 s scan (AH-32 review, AH-52)
+    # ...measured without its padding: a fixed-width export writes "2024-01-05" and 70 spaces, and pandas reads it (AH-52
+    # review, Council A). A run of 400,000 spaces strips to nothing, a run of digits stays as long as it is
+    # The parser gets the cell without its padding too: 400,000 spaces handed to dateutil took a second
+    bare = text.str.strip()
+    fits = bare.str.len() <= 64
+    if not fits.all() or (bare.str.len() < text.str.len()).any():
+        s = s.where(~s.map(lambda v: isinstance(v, str)), bare).where(fits)
+        text = bare.where(fits, "")
     timed = text.str.contains(":", regex=False)  # only a time can carry a zone: the regex runs on those cells alone
     if timed.any():
         s = s.copy()
@@ -61,7 +71,7 @@ def _dates(s, wide=False):
     # (AH-32 review)
     # Only a cell a date fits in (40 characters), and month words bounded and anchored: the unanchored "[a-z]{3,} +\d"
     # re-scanned a run of letters from every start, 16,000 letters took 4 s a cell, and a crafted cell hung the scan
-    short = text.str.len() <= 40
+    short = text.str.strip().str.len() <= 40
     t = text.where(short, "")
     day = t.str.contains(r"\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}") | t.str.contains(
         r"\b\d{1,2}(?:st|nd|rd|th)?,? +[a-z]{3,9}\b|\b[a-z]{3,9}\.? +\d{1,2}(?:st|nd|rd|th)?\b", case=False)

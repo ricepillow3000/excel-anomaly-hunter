@@ -25,7 +25,7 @@ an admin panel, role, operator route or debug switch. The weekly security sweep 
 | 2 | Who may call | `own_panel_only` | Host must be localhost; Origin must be the pane (other websites, DNS rebinding) | `test_every_route_refuses_other_websites` |
 | 3 | Body shape | `_JSON`, `_bad`, `MAX_CONTENT_LENGTH`, `MAX_CELLS` | any malformed body is a clear 400, never a 500 | `test_every_post_route_answers_a_hostile_body_with_a_clear_4xx`, `test_fuzz_api.py` |
 | 4 | Route fields | each route in `create_app` | extra fields (`row_index`, `changes`, `start_col`, `/scan`'s `decisions`...) checked before any work | `test_fix.py`, `test_agents.py`, `test_powerbi.py` |
-| 5 | Load | `engine/load.py` | text/number/date/id per column; Excel errors logged, not crashed on | `test_engine.py` |
+| 5 | Load | `engine/load.py` | text/number/date/id per column; Excel errors logged, not crashed on; a cell over 64 characters is never parsed as a date (dateutil is quadratic on a long digit run) | `test_engine.py`, `test_long_cells.py` |
 | 6 | Checks | `engine/pipeline.py`, `engine/detectors.py`, `engine/limits.py` | each check returns one list of plain-sentence reasons per row | see the feature map |
 | 7 | Severity | `pipeline.score` | hygiene or weird limit = Medium; 2 votes = Medium; 3 = High; 1 = Low | `test_strength.py` |
 | 8 | Answer | routes, `powerbi.py` | every error is JSON; the Power BI CSVs never carry a live formula (text always quoted, `inert`) and read back, the way Power BI's import reads them, as exactly what the pane got, each row's Status (Open, Fixed, Dismissed) from the pane's `decisions` (schema: `powerbi/README.md`) | `test_api_security.py`, `test_powerbi.py` |
