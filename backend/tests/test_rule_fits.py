@@ -91,3 +91,21 @@ def test_a_long_column_still_says_likely_for_its_lone_x100():
     rows[30][1], want = 364.0, 3.64
     out = scan(["id", "frequency", "group"], rows, fair=False)[1]
     assert out[30].get("likely") == {"frequency": want}, out[30]
+
+
+@pytest.mark.parametrize("n, zero", [(60, 0.8), (60, 0.9), (200, 0.9)])
+@pytest.mark.parametrize("on_zero", [True, False])
+def test_a_sum_whose_term_is_often_zero_on_a_short_sheet_still_catches_its_slip(n, zero, on_zero):
+    # AH-54 review (Council A): New + Reactivated = Net adds, Reactivated 0 in 80-90% of 60 months; 29975ea found a +7
+    # slip in Net adds, try 1 lost the rule (it asked 20 rows where no term is 0)
+    rng = np.random.default_rng(3)
+    rows = []
+    for i in range(n):
+        a = int(rng.integers(10, 500))
+        b = 0 if rng.random() < zero else int(rng.integers(1, 80))
+        rows.append([f"Month {i}", a, b, a + b, int(rng.integers(1, 9))])
+    cand = [i for i, r in enumerate(rows) if (r[2] == 0) == on_zero]
+    s = cand[len(cand) // 2]
+    rows[s][3] += 7
+    out = scan(["Month", "New", "Reactivated", "Net adds", "Reps"], rows, fair=False)[1]
+    assert adds(out) == [s], [out[i]["reason"][:120] for i in adds(out)[:3]]

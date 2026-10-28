@@ -574,10 +574,12 @@ def pairs(df, column_types, skip, limits=None):
             live = ok & ((y != 0) | (got != 0))
             # ...and a sum where every term carries weight: tornado records' sn (0/1) "= ns + f3" held in 97% of rows
             # only because f3, a third county's code, is 0 in 97.5% of them (648 Medium rows, blind round 37, AH-54).
-            # A sum is judged on the rows where none of its terms is 0, and must hold there too
+            # A sum must also hold on the rows where none of its terms is 0: on 5 of them at least, all but 5% or one.
+            # The tornado rule breaks on nearly all of f3's own rows; an honest New + Reactivated = Net adds, Reactivated
+            # 0 in 80-90% of 60 months, holds on its 6-12 (a 20-row minimum there lost the rule and its slip, AH-54 review)
             full = ok & np.all([a[:, c] != 0 for c in cs], axis=0) if op is np.add else live
             holds = lambda good: ((good & (y != 0)).sum() >= 20 and (good & live).sum() >= 0.95 * live.sum()
-                                  and (good & full).sum() >= 20 and (good & full).sum() >= 0.95 * full.sum())
+                                  and (good & full).sum() >= 5 and (full & ~good).sum() <= max(1, 0.05 * full.sum()))
             good = ok & near(y, got, cent[t])
             if not holds(good):  # the exact rule first; then what rounding explains, never looser than that
                 r = rounded(y, cs, op, slice(None))
