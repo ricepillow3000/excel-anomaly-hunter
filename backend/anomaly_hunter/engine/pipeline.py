@@ -321,10 +321,13 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
 def _unanswered(df, col, kind, pos, n, survey, notes):
     """In a survey, a question left blank is one the respondent skipped: the religion survey's 175 Medium+ rows were 144
     respondents who answered nearly everything and left a question or two (round 37, AH-56). One note for the column, not
-    a Medium a cell; never an ID's blank, and never on a data table (20 deleted values stay each a slip, AH-28)."""
+    a Medium a cell; never an ID's blank, and never on a data table (20 deleted values stay each a slip, AH-28). Each
+    skipped answer is a note on its own row (many spread ones are already one note, above): one note on the first hid
+    the others' rows and cells, and a data table with three questions for headers lost a deleted Revenue (AH-56 review)."""
     if not survey or not len(pos) or kind == "id" or _ID_HEAD.search(str(col)):
         return False
-    notes[df.index[pos[0]]].append(Why(f"{col} is unanswered in {len(pos)} of {n} rows: a survey question a respondent may skip", col))
+    for i in df.index[pos]:
+        notes[i].append(Why(f"{col} is unanswered in {len(pos)} of {n} rows: a survey question a respondent may skip", col))
     return True
 
 

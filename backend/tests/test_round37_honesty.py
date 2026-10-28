@@ -90,7 +90,27 @@ def test_a_survey_question_some_respondents_skip_is_one_note_not_a_medium_each()
     out = scan(cols, rows, fair=False)[1]
     assert flagged(out, ("Medium", "High")) == [], [out[i]["reason"] for i in flagged(out, ("Medium", "High"))][:3]
     said = [o["reason"] for o in out if "is unanswered in" in o["reason"]]
-    assert 1 <= len(said) <= 6 and all("a survey question a respondent may skip" in s for s in said), said
+    assert said and all("a survey question a respondent may skip" in s for s in said), said
+
+
+def test_every_skipped_answer_under_the_many_bar_keeps_its_own_row_and_cell():
+    # AH-56 review: one note on the first row hid the other skipped answers' rows and cells
+    cols, rows = survey(skips=0)
+    for i in (50, 500, 900):
+        rows[i][4] = ""
+    out = scan(cols, rows, fair=False)[1]
+    assert flagged(out) == [50, 500, 900], [out[i]["reason"] for i in flagged(out)]
+    for i in (50, 500, 900):
+        assert out[i]["severity"] == "Low" and "unanswered in 3 of 1000 rows" in out[i]["reason"], out[i]
+        assert out[i]["cells"] == [cols[4]], out[i]["cells"]
+
+
+def test_many_skipped_answers_spread_through_a_survey_are_one_note_for_the_column():
+    cols, rows = survey(skips=0)
+    for i in range(5, 1000, 40):  # 25 spread, past max(20, 1%)
+        rows[i][2] = ""
+    out = scan(cols, rows, fair=False)[1]
+    assert flagged(out) == [5] and "in 25 of 1000 rows" in out[5]["reason"], [out[i]["reason"] for i in flagged(out)]
 
 
 def test_a_blank_respondent_id_in_a_survey_is_still_a_slip():
