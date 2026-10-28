@@ -426,7 +426,7 @@ def sums(df, column_types, skip):
         if (np.abs(w - ones) > 0.02).any() or not set(ones) <= {0.0, 1.0} or ones.sum() < 2:
             continue
         got = rest @ ones
-        bad = np.abs(y - got) > np.maximum(0.011, 1e-6 * np.abs(y))  # 1 cent + float slack
+        bad = np.abs(y - got) > np.maximum(_cent(y), 1e-6 * np.abs(y))  # 1 cent (or the column's own last digit) + float slack
         if bad.mean() > 0.05:
             continue
         part = [c for c, o in zip(np.delete(np.array(cols, dtype=object), t), ones) if o]
@@ -501,6 +501,13 @@ def _totals(df, cols, skip, out):
     return done
 
 
+def _cent(x):
+    """How near counts as equal "to the cent": a cent, or one unit of the column's own last digit when it is written finer.
+    College admissions' rates, all under 0.06, were each within a cent of any product of two others: 474 Medium rows and
+    10 wrong "likely" values from rules no column follows (blind round 37, AH-54)."""
+    return min(0.011, 1.1 * 10.0 ** -_decimals(x))
+
+
 def _decimals(x):
     """How many decimals a column is written with: the fewest that hold 95% of its values (0 = whole numbers)."""
     x = x[np.isfinite(x)]
@@ -526,11 +533,16 @@ def pairs(df, column_types, skip, limits=None):
     usual = lambda j, v: (bounds(j)[0] is None or v >= bounds(j)[0]) and (bounds(j)[1] is None or v <= bounds(j)[1])
     # the first 64 varying columns: pairs x fractions grows with the cube of the width (160 columns took 20 s, 2026-10-16)
     vary = [j for j in range(len(cols)) if len(np.unique(a[:, j][~np.isnan(a[:, j])])) >= 3][:64]
-    near = lambda y, got: np.abs(y - got) <= np.maximum(0.011, 1e-6 * np.abs(y))  # 1 cent + float slack
+    cent = np.array([_cent(a[:, j]) for j in range(len(cols))])  # 1 cent, or the column's own last digit (AH-54)
+    near = lambda y, got, c: np.abs(y - got) <= np.maximum(c, 1e-6 * np.abs(y))  # + float slack
     # ...or within what rounding can explain, where the exact rule does not hold: a race time = laps x an average lap time
     # written to the cent, so 16 laps carry 16 x 0.005 s (marbles, blind round 23: never learnt, a 26.1 typed 261 passed).
     # A column of whole numbers is exact (laps, units); one written to d decimals is off by up to half its last digit
     half = np.array([0.0 if (d := _decimals(a[:, j])) == 0 else 0.5 * 10.0 ** -d for j in range(len(cols))])
+    # ...and where rounding explains it, the total is rounded too: a gross written to the dollar from one with cents. Its
+    # own half unit, whole numbers included: Broadway's gross missed avg ticket price (to the cent) x seats by 1.0004-1.009
+    # times the half cent per seat, 62 Medium rows in blind round 37 (AH-54)
+    own = np.array([0.5 * 10.0 ** -_decimals(a[:, j]) for j in range(len(cols))])
 
     def rounded(y, cs, op, rows):
         if len(cs) != 2:
@@ -548,9 +560,9 @@ def pairs(df, column_types, skip, limits=None):
               for p, q in itertools.combinations([j for j in vary if j not in fracs], 2) for f in fracs]
     for cs, said, op in rules:
         got_s = op(*(sample[:, c] for c in cs))
-        hits = near(sample, got_s[:, None]).mean(axis=0)
+        hits = near(sample, got_s[:, None], cent[None, :]).mean(axis=0)
         if (r := rounded(sample, cs, op, slice(0, len(sample)))) is not None:
-            tol = r[0][:, None] + half[None, :] + r[1]
+            tol = r[0][:, None] + own[None, :] + r[1]
             hits = np.maximum(hits, (np.abs(sample - got_s[:, None]) <= tol).mean(axis=0))
         for t in np.flatnonzero(hits >= 0.8):
             if t in cs:
@@ -560,11 +572,16 @@ def pairs(df, column_types, skip, limits=None):
             # judged where the numbers aren't all zero: 0 = 0 x anything made a rule of three TV-spot columns that were 0
             # in 91% of weeks - it held in 64 of the 120 weeks with spots (real sheet, 2026-10-16)
             live = ok & ((y != 0) | (got != 0))
-            holds = lambda good: (good & (y != 0)).sum() >= 20 and (good & live).sum() >= 0.95 * live.sum()
-            good = ok & near(y, got)
+            # ...and a sum where every term carries weight: tornado records' sn (0/1) "= ns + f3" held in 97% of rows
+            # only because f3, a third county's code, is 0 in 97.5% of them (648 Medium rows, blind round 37, AH-54).
+            # A sum is judged on the rows where none of its terms is 0, and must hold there too
+            full = ok & np.all([a[:, c] != 0 for c in cs], axis=0) if op is np.add else live
+            holds = lambda good: ((good & (y != 0)).sum() >= 20 and (good & live).sum() >= 0.95 * live.sum()
+                                  and (good & full).sum() >= 20 and (good & full).sum() >= 0.95 * full.sum())
+            good = ok & near(y, got, cent[t])
             if not holds(good):  # the exact rule first; then what rounding explains, never looser than that
                 r = rounded(y, cs, op, slice(None))
-                good = ok & (np.abs(y - got) <= r[0] + half[t] + r[1]) if r is not None else good
+                good = ok & (np.abs(y - got) <= r[0] + own[t] + r[1]) if r is not None else good
                 if not holds(good):
                     continue
             for i in np.flatnonzero(ok & ~good):

@@ -106,6 +106,9 @@ def column_stats(x):
             "whole": bool((x == np.round(x)).mean() >= 0.95), "pos": np.sort(x[x > 0])}
 
 
+PROVE = 20  # values a column needs before a slip in it is "likely" (the 20 rows every other rule asks): fewer is a guess the user confirms (AH-54)
+
+
 def likely_value(v, st, lo, hi):
     """The typo behind v, if one is obvious: extra/missing 0s (x10^k, |k|<=3: % typed as 85 for 0.85, g for kg)
     or a flipped sign - one slip, not both - landing inside the baseline [lo, hi]. None when unsure. Never "corrects"
@@ -246,8 +249,10 @@ def limits_detector(df, column_types, limits, typos_only=False, listing=False, q
                 # 2 to the numbers, and real counts offered a tenth is why the 1-5 scale rule was dropped (John, AH-16)
                 small = fix is not None and fix != -v and abs(fix) < abs(v) and st["whole"] and \
                     st["mags"][-2 if st["mags"][-1] == abs(v) else -1] <= 10
+                # ...and a column too short to prove its usual size gets a guess, never "likely": drug use by age, 17 age
+                # groups, read the oldest's real median of 364 days as "likely 3.64" (blind round 37, AH-54)
                 said = None if fix is None or small else "maybe" if (fix != -v and abs(fix) > abs(v)) or (fix == -v and _signed(col, column_types)) \
-                    else "likely"
+                    or st["n"] < PROVE else "likely"
                 if said:
                     r[said][i][col] = fix
                 r["reasons"][i].append(Why(f"{col} weird limit is {lim:g}; this is {say(v)}" + (f" ({said} {say(fix)})" if said else ""), col))
