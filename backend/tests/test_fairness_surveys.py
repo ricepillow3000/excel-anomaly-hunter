@@ -152,7 +152,12 @@ def hiring(question, labels, low):
     ("What is your race or ethnicity, as you would describe it in your own words?", ["White", "Black", "Asian", "Hispanic"], "Black"),
     ("Are you Hispanic or Latino?", ["Yes", "No", "No", "No"], "Yes"),
     ("Which of the following best describes your sexual orientation?", ["Straight", "Gay", "Bisexual", "Straight"], "Gay"),
-    ("Do you consider yourself to have a disability?", ["Yes", "No", "No", "No"], "Yes")])
+    ("Do you consider yourself to have a disability?", ["Yes", "No", "No", "No"], "Yes"),
+    # AH-53 review 3 (Council A's probe): the rest of the self-identification forms it tried keep their gap too
+    ("Do you identify as transgender?", ["Yes", "No", "No", "No"], "Yes"), ("Are you a protected veteran?", ["Yes", "No", "No", "No"], "Yes"),
+    ("Marital status:", ["Married", "Single", "Divorced"], "Single"), ("Sexual orientation", ["Straight", "Gay", "Bisexual"], "Gay"),
+    ("What is your citizenship status?", ["Citizen", "Permanent resident", "Visa"], "Visa"),
+    ("Do you consider yourself to be a person with a disability?", ["Yes", "No", "No", "No"], "Yes")])
 def test_a_self_identification_question_is_a_group_and_never_an_outcome(question, labels, low):
     # AH-53 review (Council A): EEO-style yes/no questions were silenced as "opinion", and measured as outcomes instead
     f = hiring(question, labels, low)
@@ -196,3 +201,15 @@ def test_a_us_citizen_question_is_a_group_and_never_an_outcome():
     assert "Are you a U.S. citizen?" in f["protected"], f["protected"]
     assert any(t["column"] == "Are you a U.S. citizen?" and t["verdict"] == "gap" for t in f["tests"]), [t["text"] for t in f["tests"]][:3]
     assert not any("citizen" in t["test"] for t in f["tests"])
+
+
+@pytest.mark.parametrize("head", ["How many citizens live in the district?", "What share of citizens voted?"])
+def test_a_question_about_citizens_that_asks_no_one_who_they_are_is_no_group_of_people(head):
+    # AH-53 review 3 (Council A): "citizen" made a district's size band a people column and a grants sheet a people sheet
+    rng = np.random.default_rng(1)
+    rows = []
+    for i in range(300):
+        band = ["Under 1,000", "1,000-5,000", "Over 5,000"][i % 3]
+        rows.append([f"District {i}", band, "Funded" if rng.random() < (0.7 if band == "Over 5,000" else 0.2) else "Not funded", int(rng.integers(1, 90))])
+    f = fair(["District", head, "Grant", "Parks"], rows)
+    assert f["protected"] == {} and f["tests"] == [], (f["protected"], [t["text"] for t in f["tests"]][:2])

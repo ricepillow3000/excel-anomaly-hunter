@@ -296,6 +296,7 @@ IDENTITY = DEMOGRAPHIC | {"denomination", "ethnic", "hispanic", "latino", "latin
                           "citizens"}  # "Are you a U.S. citizen?" (AH-53 review 2)
 # a sexual orientation by its labels: a page's or a photo's orientation (Portrait, Landscape) is no person's, and a road
 # segment's Straight / Other is no one's (AH-53 review 2): at least one label must name an orientation and nothing else
+ADDRESSED = {"you", "your", "yours", "yourself"}  # a question put to the person the row is about
 NAMES_ORIENTATION = {"gay", "lesbian", "bisexual", "heterosexual", "homosexual", "asexual", "pansexual", "queer", "gay/bisexual",
                      "gay or lesbian"}
 ORIENTATIONS = {"straight", "gay", "lesbian", "bisexual", "heterosexual", "homosexual", "asexual", "pansexual", "queer",
@@ -377,9 +378,11 @@ def _people(df, types):
     for c in cols:
         w = set(_words(c))
         # a self-identification question whose word protected() does not know by name ("Are you Hispanic or Latino?"),
-        # and an orientation whose labels are people's. protected() itself, which the detectors use, is unchanged
+        # and an orientation whose labels are people's. protected() itself, which the detectors use, is unchanged.
+        # A question asks who someone is only when it asks them: "How many citizens live in the district?" made a grants
+        # sheet a people sheet, "Over 5,000: 74% Grant Funded vs 21% - a real gap, check why" (AH-53 review 3)
         labels = set(_labels(df[c], 20).dropna().str.casefold()) if "orientation" in w and _labels(df[c], 20) is not None else set()
-        if c not in named and not _unnamed(c) and (_asked(c) and _identity(c) and not "orientation" in w or "orientation" in w and (
+        if c not in named and not _unnamed(c) and (_asked(c) and _identity(c) and w & ADDRESSED and not "orientation" in w or "orientation" in w and (
                 "sexual" in w or labels <= ORIENTATIONS and bool(labels & NAMES_ORIENTATION))):
             named[c] = "demographic"
         # a short header only: "Will you shop any Black Friday sales?" is a question, not a race (blind round 36)
