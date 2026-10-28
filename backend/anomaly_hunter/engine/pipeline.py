@@ -460,26 +460,35 @@ def _totals(df, cols, skip, out):
             tries += [run[:k] for k in range(3, len(run) + 1)]
         best = None
         for parts in tries:  # one column more each try: a sum of a few thousand rows, not a copy of the sheet
-            if len(parts) < 3:
+            judged = None
+            for _ in range(2):  # a second pass judges the candidate again without the parts the first showed are none
+                if len(parts) < 3:
+                    break
+                p = a[:, [nums[c] for c in parts]]
+                ok = ~np.isnan(y) & ~np.isnan(p).any(axis=1)
+                if not (p[ok] != 0).any(axis=0).all():  # every part counts somewhere
+                    break
+                got = p[ok].sum(axis=1)
+                bad = np.abs(y[ok] - got) > np.maximum(0.011, 1e-6 * np.abs(y[ok]))  # 1 cent + float slack, as sums
+                # a part that is 0 in most rows shows it belongs only on the rows where it is not. One that adds up on
+                # none of them is no part: an "Adjustment" beside the total, 0 in 96% of rows, "held" on the rest and
+                # flagged its 16 other rows (AH-55 review); left in, it was named in the sentence, "Food + Drinks + Merch
+                # + Adjustment" (AH-55 review 3), so the candidate is judged again without it. One that adds up on most
+                # of them (all but 20%, or under 5 rows all but a minority) is a part, every row judged: Refunds on 9-14
+                # of a stand's 90 days, a slip on one found. Between (1 of 2 days adds up) nothing shows which: those
+                # rows are left unjudged, never called wrong
+                none, judged = [], np.ones(len(bad), dtype=bool)
+                for k in np.flatnonzero((p[ok] != 0).mean(axis=0) < 0.2):
+                    on = p[ok][:, k] != 0
+                    if not (~bad[on]).any():
+                        none.append(parts[k])
+                    elif bad[on].sum() > (0.2 * on.sum() if on.sum() >= 5 else (on.sum() - 1) // 2):
+                        judged &= ~on
+                if not none:
+                    break
+                parts, judged = [c for c in parts if c not in none], None
+            if judged is None:
                 continue
-            p = a[:, [nums[c] for c in parts]]
-            ok = ~np.isnan(y) & ~np.isnan(p).any(axis=1)
-            if not (p[ok] != 0).any(axis=0).all():  # every part counts somewhere
-                continue
-            got = p[ok].sum(axis=1)
-            bad = np.abs(y[ok] - got) > np.maximum(0.011, 1e-6 * np.abs(y[ok]))  # 1 cent + float slack, as sums
-            # a part that is 0 in most rows is shown to belong only by the rows where it is not: an "Adjustment" beside
-            # the total, 0 in 96% of rows and no part of it, "held" on the rest and flagged its 16 other rows (AH-55
-            # review). Where such a part does not add up on most of its own rows (all but 20%, or under 5 rows all but a
-            # minority), those rows are left unjudged: nothing shows whether the total holds it. Where it does, every row
-            # is judged: Refunds on 9-14 of a stand's 90 days, a slip on one of them found (try 2 left every Refunds row
-            # out, and then the rule: both slips were missed, AH-55 review 2)
-            allowed = lambda n: 0.2 * n if n >= 5 else (n - 1) // 2
-            judged = np.ones(len(bad), dtype=bool)
-            for k in np.flatnonzero((p[ok] != 0).mean(axis=0) < 0.2):
-                on = p[ok][:, k] != 0
-                if bad[on].sum() > allowed(on.sum()):
-                    judged &= ~on
             live, bad = (p[ok] != 0).any(axis=1) & judged, bad & judged
             share = bad[judged].mean() if judged.any() else 1.0
             if (~bad[live]).sum() < 10 or share > 0.05 or (best and share >= best[0]):

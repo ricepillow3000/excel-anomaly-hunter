@@ -183,10 +183,10 @@ def test_a_total_with_refunds_on_a_few_days_finds_slips_on_refund_and_ordinary_d
     rows[s2][5] += 37
     out = scan(["Store", "Food", "Drinks", "Merch", "Refunds", "Total"], rows, fair=False)[1]
     found = [i for i, o in enumerate(out) if "does not add up" in o["reason"]]
-    # a single Refunds day that does not add up cannot show that Refunds is in the total (an Adjustment that is not
-    # looks the same): that day is left unjudged; with 2+ Refunds days, the slip on one of them is found
+    # a single Refunds day that does not add up shows Refunds is no part: the day is judged without it, and found (try 4).
+    # With 2 Refunds days, 1 adding up, nothing shows which way: those days are left unjudged, never called wrong
     refund_days = sum(1 for x in rows if x[4])
-    assert found == (sorted([s1, s2]) if refund_days >= 3 else [s2]), (refund_days, [o["reason"] for o in out if "add up" in o["reason"]])
+    assert found == (sorted([s1, s2]) if refund_days != 2 else [s2]), (refund_days, [o["reason"] for o in out if "add up" in o["reason"]])
 
 
 @pytest.mark.parametrize("nonzero", [1, 3])
@@ -198,3 +198,43 @@ def test_a_column_beside_a_total_that_is_not_0_once_or_thrice_and_no_part_of_it_
         rows.append([f"S{i}", a, b, c, int(rng.integers(1, 50)) if i < nonzero else 0, a + b + c])
     out = scan(["Store", "A", "B", "C", "Adjustment", "Total"], rows, fair=False)[1]
     assert not [i for i, o in enumerate(out) if "does not add up" in o["reason"]], [o["reason"] for o in out if "add up" in o["reason"]][:2]
+
+
+def stand(n, adjustment_before_total, seed=7):
+    # Food + Drinks + Merch = Total, an Adjustment column 0 on 94% of days and no part of it, a +37 slip on a plain day
+    rng = np.random.default_rng(seed)
+    rows = []
+    for i in range(n):
+        a, b, c = int(rng.integers(100, 900)), int(rng.integers(100, 900)), int(rng.integers(50, 400))
+        adj = int(rng.integers(5, 60)) if rng.random() < 0.06 else 0
+        rows.append([f"Day {i}", a, b, c, adj, a + b + c] if adjustment_before_total else [f"Day {i}", a, b, c, a + b + c, adj])
+    total = 5 if adjustment_before_total else 4
+    slip = [i for i, r in enumerate(rows) if not r[9 - total]][5]
+    rows[slip][total] += 37
+    cols = ["Day", "Food", "Drinks", "Merch"] + (["Adjustment", "Total"] if adjustment_before_total else ["Total", "Adjustment"])
+    return cols, rows, slip
+
+
+@pytest.mark.parametrize("n", [90, 400])
+@pytest.mark.parametrize("before", [True, False])
+def test_a_column_that_adds_up_on_none_of_its_own_rows_is_never_named_as_a_part_of_the_total(n, before):
+    # AH-55 review 3 (Council A): try 3 said "Total 1456 does not add up: Food + Drinks + Merch + Adjustment = 1419" and
+    # coloured the Adjustment cell; at 400 rows least squares had it right
+    cols, rows, slip = stand(n, before)
+    out = scan(cols, rows, fair=False)[1]
+    said = [(i, o["reason"]) for i, o in enumerate(out) if "does not add up" in o["reason"]]
+    assert len(said) == 1 and said[0][0] == slip and "does not add up: Food + Drinks + Merch = " in said[0][1], said
+    assert "Adjustment" not in out[slip]["cells"], out[slip]["cells"]
+
+
+def test_two_refund_days_one_adding_up_are_left_unjudged_and_the_honest_one_never_called_wrong():
+    rng = np.random.default_rng(21)
+    rows = []
+    for i in range(90):
+        a, b, c = int(rng.integers(100, 900)), int(rng.integers(100, 900)), int(rng.integers(50, 400))
+        r = -int(rng.integers(10, 80)) if i in (20, 60) else 0
+        rows.append([f"Day {i}", a, b, c, r, a + b + c + r])
+    rows[60][5] += 37
+    rows[40][5] += 37
+    out = scan(["Day", "Food", "Drinks", "Merch", "Refunds", "Total"], rows, fair=False)[1]
+    assert [i for i, o in enumerate(out) if "does not add up" in o["reason"]] == [40], [o["reason"] for o in out if "add up" in o["reason"]]
