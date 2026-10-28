@@ -297,6 +297,8 @@ IDENTITY = DEMOGRAPHIC | {"denomination", "ethnic", "hispanic", "latino", "latin
 # a sexual orientation by its labels: a page's or a photo's orientation (Portrait, Landscape) is no person's, and a road
 # segment's Straight / Other is no one's (AH-53 review 2): at least one label must name an orientation and nothing else
 ADDRESSED = {"you", "your", "yours", "yourself"}  # a question put to the person the row is about
+# ...and one that counts things is never who someone is: "How many citizens live in your district?" (John, AH-53 try 5)
+COUNTS = re.compile(r"(?i)%|\b(?:how many|how much|share|percent|percentage|proportion|number of|rate of|count of|total)\b")
 NAMES_ORIENTATION = {"gay", "lesbian", "bisexual", "heterosexual", "homosexual", "asexual", "pansexual", "queer", "gay/bisexual",
                      "gay or lesbian"}
 ORIENTATIONS = {"straight", "gay", "lesbian", "bisexual", "heterosexual", "homosexual", "asexual", "pansexual", "queer",
@@ -311,6 +313,15 @@ def _asked(col):
     w = w[1:] if w and re.fullmatch(r"q\d*", w[0]) else w  # "Q3: Sex"
     return (len(w) > 6 or "?" in s and len(w) > 2 or ":" in s and len(w) > 4 or any(q in s for q in "\"\u201c\u201d")
             or bool(w) and w[0] in ASKS and len(w) > 2 or bool(set(w) & {"agree", "disagree"}))
+
+
+def _who(col):
+    """A question that asks who someone is, by John's rules (AH-53 try 5): it names who someone is with no opinion word
+    (_identity), asks about the person (you, your, this person, the respondent) or is 4 words or fewer ("Hispanic or
+    Latino?", "Of Hispanic origin?"), and counts nothing (how many, share, percent...)."""
+    w = _words(col)
+    person = set(w) & (ADDRESSED | {"respondent", "respondents"}) or "this person" in " ".join(w)
+    return _identity(col) and bool(person or len(w) <= 4) and not COUNTS.search(str(col))
 
 
 def _identity(col):
@@ -374,15 +385,16 @@ def _people(df, types):
     cols = [c for c in types if c in df.columns]
     if any(set(_words(c)) & ANIMALS for c in cols) and not any(set(_words(c)) & (PERSON_ONLY | ROWS_ARE_PEOPLE) for c in cols):
         return {}
-    named = {c: why for c, why in protected(cols).items() if not _unnamed(c) and (not _asked(c) or _identity(c))}
+    named = {c: why for c, why in protected(cols).items() if not _unnamed(c) and (not _asked(c) or _who(c))}
     for c in cols:
         w = set(_words(c))
         # a self-identification question whose word protected() does not know by name ("Are you Hispanic or Latino?"),
         # and an orientation whose labels are people's. protected() itself, which the detectors use, is unchanged.
-        # A question asks who someone is only when it asks them: "How many citizens live in the district?" made a grants
-        # sheet a people sheet, "Over 5,000: 74% Grant Funded vs 21% - a real gap, check why" (AH-53 review 3)
+        # A question asks who someone is only by _who: "How many citizens live in the district?" made a grants sheet a
+        # people sheet, "Over 5,000: 74% Grant Funded vs 21% - a real gap, check why" (AH-53 review 3), and try 4's
+        # "you" alone lost "Hispanic or Latino?" and kept "How many citizens live in your district?" (AH-53 review 4)
         labels = set(_labels(df[c], 20).dropna().str.casefold()) if "orientation" in w and _labels(df[c], 20) is not None else set()
-        if c not in named and not _unnamed(c) and (_asked(c) and _identity(c) and w & ADDRESSED and not "orientation" in w or "orientation" in w and (
+        if c not in named and not _unnamed(c) and (_asked(c) and _who(c) and not "orientation" in w or "orientation" in w and (
                 "sexual" in w or labels <= ORIENTATIONS and bool(labels & NAMES_ORIENTATION))):
             named[c] = "demographic"
         # a short header only: "Will you shop any Black Friday sales?" is a question, not a race (blind round 36)

@@ -213,3 +213,57 @@ def test_a_question_about_citizens_that_asks_no_one_who_they_are_is_no_group_of_
         rows.append([f"District {i}", band, "Funded" if rng.random() < (0.7 if band == "Over 5,000" else 0.2) else "Not funded", int(rng.integers(1, 90))])
     f = fair(["District", head, "Grant", "Parks"], rows)
     assert f["protected"] == {} and f["tests"] == [], (f["protected"], [t["text"] for t in f["tests"]][:2])
+
+
+# AH-53 try 5: John's rules, each header of his classification list a test. A question is who someone is only when it
+# names who someone is with no opinion word, asks about the person (you, this person, the respondent) or is 4 words or
+# fewer, and counts nothing (how many, share, percent...). A short header that is no question keeps protected()
+YN, RACES, FAITHS = (["Yes", "No", "No", "No"], "Yes"), (["White", "Black", "Asian", "Hispanic"], "Black"), (["Christian", "Muslim", "Jewish", "None"], "Muslim")
+CITIZEN, STATUS = (["Yes", "Yes", "Yes", "No"], "No"), (["Citizen", "Permanent resident", "Visa"], "Visa")
+JOHN_YES = [("Hispanic or Latino?", *YN), ("Of Hispanic origin?", *YN), ("Are you Hispanic or Latino?", *YN),
+            ("Is this person of Hispanic, Latino, or Spanish origin?", *YN), ("Is the respondent Hispanic or Latino?", *YN),
+            ("What is your race or ethnicity, as you would describe it in your own words?", *RACES),
+            ("Which race best describes you?", *RACES), ("Race?", *RACES), ("What is your gender?", ["Male", "Female"], "Female"),
+            ("Gender:", ["Male", "Female"], "Female"), ("Do you identify as transgender?", *YN),
+            ("Sexual orientation", ["Straight", "Gay", "Bisexual"], "Gay"), ("Religion: which one?", *FAITHS),
+            ("What is your present religion, if any?", *FAITHS), ("Do you have a disability?", *YN), ("Are you a veteran?", *YN),
+            ("Are you a protected veteran?", *YN), ("Are you a U.S. citizen?", *CITIZEN),
+            ("Is this person a citizen of the United States?", *CITIZEN), ("Citizenship status", *STATUS),
+            ("Respondent's citizenship", *STATUS), ("Marital status:", ["Married", "Single", "Divorced"], "Single"),
+            ("What is your age?", [24, 36, 50, 65], 65)]
+
+
+@pytest.mark.parametrize("question, labels, low", JOHN_YES)
+def test_johns_list_a_question_that_asks_who_someone_is_keeps_its_real_gap_and_is_never_an_outcome(question, labels, low):
+    f = hiring(question, labels, low)
+    assert question in f["protected"], f["protected"]
+    said = [t["text"] for t in f["tests"] if t["column"] == question and t["verdict"] == "gap"]
+    assert any("a real gap, check why" in s for s in said), [t["text"] for t in f["tests"]][:4]
+    assert not any(question in t["test"] for t in f["tests"]), [t["text"] for t in f["tests"] if question in t["test"]][:2]
+
+
+@pytest.mark.parametrize("head", ["How many citizens live in your district?", "How many citizens live in the district?",
+                                  "What share of citizens voted?", "What percent of residents are Hispanic?",
+                                  "Number of citizens served", "Hispanic share of the county (%)"])
+def test_johns_list_a_header_that_counts_people_is_no_group_and_a_districts_sheet_gets_no_report(head):
+    rng = np.random.default_rng(1)
+    rows = []
+    for i in range(300):
+        band = ["Under 1,000", "1,000-5,000", "Over 5,000"][i % 3]
+        rows.append([f"District {i}", band, "Funded" if rng.random() < (0.7 if band == "Over 5,000" else 0.2) else "Not funded", int(rng.integers(1, 90))])
+    f = fair(["District", head, "Grant", "Parks"], rows)
+    assert f["protected"] == {} and f["tests"] == [], (f["protected"], [t["text"] for t in f["tests"]][:2])
+
+
+@pytest.mark.parametrize("question, labels", [
+    ("How comfortable would you be seeing someone who practices a different religion from you: Tell someone \"I'll pray for you\"",
+     ["Very comfortable", "Somewhat comfortable", "Not so comfortable", "Not at all comfortable"]),
+    ("Do you think gender affects pay?", ["Yes", "No", "No", "No"]),
+    ("To what extent do you agree with the following statement: \"our sex life has improved as a result of sleeping in separate beds.\"",
+     ["Strongly agree", "Somewhat agree", "Somewhat disagree", "Strongly disagree"]),
+    ("Is your religion important to you?", ["Yes", "No", "No", "No"])])
+def test_johns_list_an_opinion_question_that_names_a_religion_or_gender_is_no_group(question, labels):
+    f = hiring(question, labels, labels[0])
+    assert question not in f["protected"], f["protected"]
+    assert not any(t["column"] == question for t in f["tests"]), [t["text"] for t in f["tests"] if t["column"] == question][:2]
+# ...and the road segments' Orientation (Straight / Other) on John's list: test_a_road_segments_straight_or_other_orientation_is_no_people_column
