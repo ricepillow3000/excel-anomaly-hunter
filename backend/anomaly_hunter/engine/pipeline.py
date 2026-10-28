@@ -196,6 +196,19 @@ def _sorted_end(s, blank, skip):
     return live[len(live) - tail:] if against <= max(2, 0.001 * len(v)) and against <= 0.05 * len(step) else live[:0]
 
 
+# a header that asks: "Do you ever gamble?", "How worried are you about the Big One?" - never "Paid?" or "Shipped?", an
+# orders sheet's yes/no columns, which are one or two words
+ASKING = re.compile(r"(?i)^\s*(?:q\d+[.:)]?\s*)?(?:how|what|which|who|whom|whose|when|where|why|do|does|did|are|is|was|were|"
+                    r"would|could|should|have|has|had|will|can|please|to what|in general|if you)\b")
+
+
+def _survey(cols):
+    """A sheet is a survey when 3+ of its headers, and a quarter of them, are questions (3+ words ending in "?", or 4+
+    words opening as one): its answers may be left unanswered, a blank is no slip (AH-56)."""
+    asked = [c for c in cols if len(w := str(c).split()) >= 3 and str(c).strip().endswith("?") or len(w) >= 4 and ASKING.match(str(c))]
+    return len(asked) >= 3 and len(asked) >= 0.25 * len(cols)
+
+
 def blanks(df, column_types, skip, errors_log, threshold=0.80):
     """Blank cell in a column that is >= 80% filled (summary rows not counted): a required field left empty. Mostly-empty
     columns (notes, optional extras) are left alone. Was 95%: a credit sheet's Income, 92% filled, hid 39 blanks.
@@ -216,6 +229,7 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
     if not cols:
         return out, notes
     blank = np.column_stack([(_blank(df[c]) & ~skip & ~df.index.isin(wrong.get(c, []))).to_numpy(bool) for c in cols])
+    n = max(1, (~skip).sum())
     # blanks per label per column, counted for every column at once: grouping each label column against each column
     # took 168 s on a crafted 64 x 1,500-column sheet (AH-16 build, 2026-10-22)
     groups = {}
@@ -228,7 +242,7 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
         starts = np.flatnonzero(np.r_[True, np.diff(code[order]) != 0])
         size = np.diff(np.r_[starts, len(order)])
         groups[g] = (code, size, np.add.reduceat(blank[order].astype(np.int32), starts, axis=0))
-    n = max(1, (~skip).sum())
+    survey, pend = _survey(cols), []  # pend: (column, its blanks each a slip, the sentence for one) - said after the loop
     for j, col in enumerate(cols):
         b = blank[:, j].copy()
         if b.any() and 1 - b.sum() / n >= threshold:
@@ -258,8 +272,7 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
                     notes[df.index[pos[0]]].append(Why(f'{col} is "{word}" (no value) in {len(pos)} of {n} rows' if said_so
                                                        else f"{col} is blank in {len(pos)} of {n} rows, spread through the sheet", col))
                     continue
-                for i in df.index[part]:
-                    out[i].append(Why(f"Blank cell in column {col}, which is otherwise filled", col))
+                pend.append((j, pos, lambda i, col=col: f"Blank cell in column {col}, which is otherwise filled"))
         elif b.any():
             # a long-format sheet fills Value for some indicators and Pct for others, so Value is 2/3 filled, under the bar,
             # and a blank in a GDP row went unseen (AH-17 stress hunt, 9 of 9 missed). A group that fills the column
@@ -272,11 +285,50 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
                 full = np.flatnonzero((fill >= 0.95) & (size >= 20))
                 # ...and the empty group is layout only with 20+ rows of its own: a real planets table's distance (96% filled
                 # for one method) had only 1 of 5 Pulsar rows empty-ish, and 23 real gaps were called a slip (blind round 22)
-                if len(full) and ((fill <= 0.2) & (size >= 20)).any():
-                    for i in df.index[b & np.isin(code, full)]:
-                        out[i].append(Why(f"Blank cell in column {col}, which is otherwise filled for {g} {_short(labels[g][i])}", col))
+                empty = (fill <= 0.2) & (size >= 20)
+                # ...and only when the groups explain the column's blanks: in a long-format sheet nearly every blank is in
+                # a group that never fills it. DC's HAIR is blank for an eye colour or two and for many others besides:
+                # "otherwise filled for EYE Brown Eyes" was 43 honest unknowns on a wide sheet (round 37, AH-56)
+                if len(full) and empty.any() and per[empty, j].sum() >= 0.8 * b.sum():
+                    pos = np.flatnonzero(b & np.isin(code, full))
+                    if len(pos) >= max(MANY, SHARE * len(b)) and len(set(pos * 5 // len(b))) == 5:  # many and spread: the data
+                        notes[df.index[pos[0]]].append(Why(f"{col} is blank in {len(pos)} of {n} rows where {g} would fill it, spread through the sheet", col))
+                    else:
+                        pend.append((j, pos, lambda i, col=col, g=g: f"Blank cell in column {col}, which is otherwise filled for {g} {_short(labels[g][i])}"))
                     break
+    # A row with a blank in most of the columns that are otherwise filled, each a blank no layout, sort or export explains,
+    # is one unfinished record (a respondent who stopped the survey): one note, not a Medium a column. Round 37: 25 of
+    # sleeping alone's 27 flagged rows were 80-100% blank, the earthquake survey's 12 were 50-80% blank; round 36's
+    # Thanksgiving's 6 were 63 of 65. Counted after the layouts: a respondent routed past a page is not one (AH-56)
+    slip = np.zeros_like(blank)
+    for j, pos, _ in pend:
+        slip[pos, j] = True
+    full = np.flatnonzero(1 - blank.sum(axis=0) / n >= threshold)
+    gone = slip[:, full].sum(axis=1)
+    quit = (gone >= 3) & (gone >= 0.5 * len(full)) & (len(full) >= 4)
+    for i in np.flatnonzero(quit):
+        miss = [cols[k] for k in full if slip[i, k]]
+        notes[df.index[i]].append(Why(f"{len(miss)} of the {len(full)} usually filled cells in this row are blank: an unfinished "
+                                      "record (in a survey, a respondent who stopped answering)", *miss))
+    for j, pos, say_it in pend:
+        pos = pos[~quit[pos]]
+        if len(pos) and not _unanswered(df, cols[j], column_types[cols[j]], pos, n, survey, notes):
+            for i in df.index[pos]:
+                out[i].append(Why(say_it(i), cols[j]))
     return out, notes
+
+
+def _unanswered(df, col, kind, pos, n, survey, notes):
+    """In a survey, a question left blank is one the respondent skipped: the religion survey's 175 Medium+ rows were 144
+    respondents who answered nearly everything and left a question or two (round 37, AH-56). One note for the column, not
+    a Medium a cell; never an ID's blank, and never on a data table (20 deleted values stay each a slip, AH-28)."""
+    if not survey or not len(pos) or kind == "id" or _ID_HEAD.search(str(col)):
+        return False
+    notes[df.index[pos[0]]].append(Why(f"{col} is unanswered in {len(pos)} of {n} rows: a survey question a respondent may skip", col))
+    return True
+
+
+_ID_HEAD = re.compile(r"(?i)(?:^|[\s_])(?:id|key|respondent ?id|code|no\.?|number|#)$")
 
 
 def whole_numbers(df, column_types, skip):
@@ -925,6 +977,23 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
         missed = [m + a for m, a in zip(missed, lim["alone_reasons"], strict=True)]
     rows = []
 
+    typed = df.attrs.get("typed", {})
+
+    def as_typed(said, i):
+        """A percent typed as text is quoted with its own words beside the number it holds: Pulitzer's "+22%" was said
+        as 0.22 and "-100%" as -1, numbers the user never typed (round 37, AH-56). The limits stay in the held units.
+        Not a sum's sentence: the pane reads its total and rule back from it (fix.addUps)."""
+        out = []
+        for r in said:
+            for c in getattr(r, "cols", ()) if " does not add up: " not in r else ():
+                raw = typed.get(c, {}).get(df.index[i])
+                if raw is not None and pd.notna(df[c].iat[i]):
+                    v = re.escape(say(df[c].iat[i]))
+                    text = re.sub(rf"((?:^|; |\b){re.escape(str(c))} |this is ){v}(?![\d.])", lambda m: f"{m[0]} ({raw} as typed)", r, count=1)
+                    r = Why(text, *r.cols) if text != r else r
+            out.append(r)
+        return out
+
     def cells(said):  # the columns the row's reasons are about, in sheet order: the pane colours those cells, no other
         named = {c for r in said for c in getattr(r, "cols", ())}
         return [c for c in df.columns if c in named]
@@ -937,12 +1006,12 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
         voted = [d for d in ran if d["votes"][i]]
         hygiene = dup[i] + typ[i] + blank[i] + hole[i] + code[i] + far[i] + add[i] + spell[i]
         if not voted and not hygiene and not missed[i]:
-            noted = lim["noted_reasons"][i]
+            noted = as_typed(lim["noted_reasons"][i], i)
             rows.append({"severity": "Noted" if noted else None, "bucket": None,
                          "reason": "; ".join(noted), "magnitude": 0.0, "cells": cells(noted)})
             continue
         v, weird = len(voted), bool(lim["votes"][i])
-        said = list(dict.fromkeys(hygiene + missed[i] + [r for d in voted for r in d["reasons"][i]]))  # dedupe, keep order
+        said = as_typed(list(dict.fromkeys(hygiene + missed[i] + [r for d in voted for r in d["reasons"][i]])), i)  # dedupe, keep order
         rows.append({  # a possible misspelling alone is "worth a check" (Low): it may be a real name
             "severity": "High" if v >= 3 else "Medium" if v == 2 or weird or hygiene else "Low",
             "bucket": "Duplicates" if dup[i] else "Irregularities" if weird or typ[i] or blank[i] or hole[i] or code[i] or far[i] or add[i] or spell[i] or missed[i] else "Behavioral",

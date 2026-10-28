@@ -161,6 +161,13 @@ const HINTS = [
   // AH-48: many identical rows through a sheet with no ID, one note for them all
   [/ rows repeat an earlier row exactly, all through the sheet - /, "this many, spread out, are usually separate real records " +
     "that happen to match (nothing like an ID tells them apart); if every row must be unique, check them, then use Data > Remove Duplicates"],
+  // AH-56: an unfinished record, a survey's skipped question, and many blanks where a layout would fill the column
+  [/ usually filled cells in this row are blank: an unfinished record/, "the rest of this record was never entered; fill it in " +
+    "from the source, or delete the row if it is not a real record"],
+  [/ is unanswered in \d+ of \d+ rows: a survey question a respondent may skip$/, "a blank answer is usually a question the " +
+    "respondent chose to skip, not a slip; leave it blank unless the answer is known"],
+  [/ is blank in \d+ of \d+ rows where .+ would fill it, spread through the sheet$/, "blanks this many and this spread out are " +
+    "usually values the source does not have, not slips; if the column must always be filled there, filter it for blanks and fill them in"],
   // AH-46: a sort puts blank cells last - the block at the end is where the sort put them, not where they went missing
   [/ is blank in \d+ of \d+ rows, all at the end of the table, which is sorted by /, "sorting puts blank cells last, so these rows " +
     "simply have no value here; if the column must always be filled, fill them in from the source"],

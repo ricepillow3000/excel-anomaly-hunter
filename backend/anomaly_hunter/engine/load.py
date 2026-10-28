@@ -155,8 +155,12 @@ def _coerce(df, cols):
             no_value[c] = (frozenset(df.index[said]), df[c][said].astype(str).str.strip().mode()[0])  # comparable, unlike an array
             df[c] = df[c].mask(said, "")
     df.attrs["no_value"] = _Shared(no_value)
+    typed = {}  # column -> {row: the cell as typed}, for a percent typed as text: "+22%" is held as 0.22 (AH-56)
     for c, t in types.items():
         if t in ("number", "id"):
+            pct = df[c].astype(str).str.contains("%", regex=False)
+            if t == "number" and pct.any():
+                typed[c] = {i: str(df.at[i, c]).strip() for i in df.index[pct]}
             num = _num(df[c])
             num = num.where(num.abs() < 1e100)  # "inf", 1e160: no real measurement - and they break the math downstream
             bad = num.isna() & ~_blank(df[c])
@@ -171,6 +175,7 @@ def _coerce(df, cols):
             d = _dates(df[c], wide=True)
             errors += [(i, c, df.at[i, c]) for i in df.index[d.isna() & ~_blank(df[c])]]
             df[c] = d
+    df.attrs["typed"] = _Shared(typed)
     return types, errors
 
 
