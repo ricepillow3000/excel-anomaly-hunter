@@ -5,9 +5,10 @@ flags wrong cells and suggests fixes. Optional AI help goes to Google directly o
 
 ## Work comes from the agent dashboard
 This repo's tickets are the `AH-` rows of `90-System/agent_dashboard.md` in John's vault (`second-brain-vault`; live
-board https://claude.ai/artifact/L89gYPxD8feZu5PeN6cUrs). Log a request there as tickets, lock one, then work it the way
-the vault's `90-System/Pod-Workflow.md` says (Orchestrator, Researcher, Builder; 2 revision cycles); the gates below
-still decide when it is done.
+board https://claude.ai/artifact/L89gYPxD8feZu5PeN6cUrs). Every prompt runs the vault's `90-System/Pod-Workflow.md` (John, 2026-10-28):
+you are the Orchestrator of one pod, a Researcher and a Builder subagent do the reading and building, a fail is written
+as anatomy / unmet criteria / resolution path, 2 fix rounds, then John. Log a request there as tickets, lock one, then
+work it; the gates below still decide when it is done.
 
 ## Before every commit: one command
 `python tools/check.py` runs every gate, fastest first, and stops at the first red layer (`--e2e` adds the browser
