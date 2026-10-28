@@ -202,11 +202,17 @@ ASKING = re.compile(r"(?i)^\s*(?:q\d+[.:)]?\s*)?(?:how|what|which|who|whom|whose
                     r"would|could|should|have|has|had|will|can|please|to what|in general|if you)\b")
 
 
+def _asks(col):
+    """A header that is a question: 3+ words ending in "?", or 4+ words opening as one."""
+    return len(w := str(col).split()) >= 3 and str(col).strip().endswith("?") or len(w) >= 4 and bool(ASKING.match(str(col)))
+
+
 def _survey(cols):
-    """A sheet is a survey when 3+ of its headers, and a quarter of them, are questions (3+ words ending in "?", or 4+
-    words opening as one): its answers may be left unanswered, a blank is no slip (AH-56)."""
-    asked = [c for c in cols if len(w := str(c).split()) >= 3 and str(c).strip().endswith("?") or len(w) >= 4 and ASKING.match(str(c))]
-    return len(asked) >= 3 and len(asked) >= 0.25 * len(cols)
+    """A sheet is a survey when 3+ of its headers, and half of them, are questions: its answers may be left unanswered,
+    a blank is no slip (AH-56). Half, not a quarter: an orders sheet with 3 of its 8 headers worded as questions ("Is this
+    a repeat customer?") passed a quarter, and its deleted Revenue cells were read as skipped answers (AH-56 review)."""
+    asked = [c for c in cols if _asks(c)]
+    return len(asked) >= 3 and len(asked) >= 0.5 * len(cols)
 
 
 def blanks(df, column_types, skip, errors_log, threshold=0.80):
@@ -324,7 +330,9 @@ def _unanswered(df, col, kind, pos, n, survey, notes):
     a Medium a cell; never an ID's blank, and never on a data table (20 deleted values stay each a slip, AH-28). Each
     skipped answer is a note on its own row (many spread ones are already one note, above): one note on the first hid
     the others' rows and cells, and a data table with three questions for headers lost a deleted Revenue (AH-56 review)."""
-    if not survey or not len(pos) or kind == "id" or _ID_HEAD.search(str(col)):
+    # ...and only an answer: a column whose header is a question, or a survey's category answer (US Region, an age band:
+    # the religion survey's top 50); never a number its header does not ask for, an order's Revenue (AH-56 review)
+    if not survey or not len(pos) or kind == "id" or _ID_HEAD.search(str(col)) or not (_asks(col) or kind == "text"):
         return False
     for i in df.index[pos]:
         notes[i].append(Why(f"{col} is unanswered in {len(pos)} of {n} rows: a survey question a respondent may skip", col))

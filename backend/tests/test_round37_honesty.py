@@ -172,3 +172,29 @@ def test_rows_where_an_export_writes_na_for_no_value_are_no_unfinished_records()
         rows[i][3:] = ["NA"] * 3
     out = scan(["state", "variable", "year", "raw", "inf_adj", "inf_adj_perchild"], rows, fair=False)[1]
     assert not any("unfinished record" in o["reason"] for o in out)
+
+
+def test_a_deleted_amount_on_an_orders_sheet_with_a_few_question_headers_stays_a_slip_each():
+    # AH-56 review (Council B): 3 of 8 headers worded as questions made an orders sheet a survey, and two deleted Revenue
+    # cells became one note (row 100 Low, row 300 nothing; both Medium on 29975ea)
+    rng = np.random.default_rng(15)
+    cols = ["Order ID", "Customer", "Region", "Revenue", "Units", "Is this a repeat customer?", "Did the order ship late?",
+            "Was a coupon used today?"]
+    rows = [[f"O{i}", f"C{int(rng.integers(1, 300))}", str(rng.choice(["North", "South", "East"])), round(float(rng.uniform(10, 900)), 2),
+             int(rng.integers(1, 9))] + [str(rng.choice(["Yes", "No"])) for _ in range(3)] for i in range(1000)]
+    for i in (100, 300):
+        rows[i][3] = ""
+    out = scan(cols, rows, fair=False)[1]
+    for i in (100, 300):
+        assert "Blank cell in column Revenue, which is otherwise filled" in out[i]["reason"] and out[i]["severity"] == "Medium", out[i]
+        assert out[i]["cells"] == ["Revenue"]
+
+
+def test_a_number_a_survey_does_not_ask_for_keeps_its_blank_a_slip():
+    # even on a sheet of questions, a blank Revenue is no skipped answer: only a question's or a category answer's is
+    cols, rows = survey(skips=0)
+    cols = cols + ["Donation"]
+    rows = [r + [round(5 + i * 0.37, 2)] for i, r in enumerate(rows)]
+    rows[250][-1] = ""
+    out = scan(cols, rows, fair=False)[1]
+    assert "Blank cell in column Donation, which is otherwise filled" in out[250]["reason"] and out[250]["severity"] == "Medium", out[250]
