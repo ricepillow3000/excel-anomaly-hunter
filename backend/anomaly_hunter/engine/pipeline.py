@@ -464,18 +464,27 @@ def _totals(df, cols, skip, out):
                 continue
             p = a[:, [nums[c] for c in parts]]
             ok = ~np.isnan(y) & ~np.isnan(p).any(axis=1)
-            # a part that is 0 in nearly every row cannot show whether the total holds it: an "Adjustment" beside the
-            # total, 0 in 96% of rows and no part of it, "held" and flagged its other rows (AH-55 review). The rows where
-            # such a part is not 0 are left unjudged, whichever way the sheet means it
-            sparse = (p != 0).mean(axis=0) < 0.2
-            ok &= ~(p[:, sparse] != 0).any(axis=1)
-            got = p[ok].sum(axis=1)
-            live = (p[ok] != 0).any(axis=1)
-            bad = np.abs(y[ok] - got) > np.maximum(0.011, 1e-6 * np.abs(y[ok]))  # 1 cent + float slack, as sums
-            if (~bad[live]).sum() < 10 or bad.mean() > 0.05 or (best and bad.mean() >= best[0]):
+            if not (p[ok] != 0).any(axis=0).all():  # every part counts somewhere
                 continue
-            if (p[ok] != 0).any(axis=0).all():  # every part counts somewhere
-                best = (bad.mean(), sorted(parts, key=order.index), rows[ok][bad], y[ok][bad], got[bad])
+            got = p[ok].sum(axis=1)
+            bad = np.abs(y[ok] - got) > np.maximum(0.011, 1e-6 * np.abs(y[ok]))  # 1 cent + float slack, as sums
+            # a part that is 0 in most rows is shown to belong only by the rows where it is not: an "Adjustment" beside
+            # the total, 0 in 96% of rows and no part of it, "held" on the rest and flagged its 16 other rows (AH-55
+            # review). Where such a part does not add up on most of its own rows (all but 20%, or under 5 rows all but a
+            # minority), those rows are left unjudged: nothing shows whether the total holds it. Where it does, every row
+            # is judged: Refunds on 9-14 of a stand's 90 days, a slip on one of them found (try 2 left every Refunds row
+            # out, and then the rule: both slips were missed, AH-55 review 2)
+            allowed = lambda n: 0.2 * n if n >= 5 else (n - 1) // 2
+            judged = np.ones(len(bad), dtype=bool)
+            for k in np.flatnonzero((p[ok] != 0).mean(axis=0) < 0.2):
+                on = p[ok][:, k] != 0
+                if bad[on].sum() > allowed(on.sum()):
+                    judged &= ~on
+            live, bad = (p[ok] != 0).any(axis=1) & judged, bad & judged
+            share = bad[judged].mean() if judged.any() else 1.0
+            if (~bad[live]).sum() < 10 or share > 0.05 or (best and share >= best[0]):
+                continue
+            best = (share, sorted(parts, key=order.index), rows[ok][bad], y[ok][bad], got[bad])
         if best:
             done.add(col)
             for i, v, g in zip(*best[2:]):

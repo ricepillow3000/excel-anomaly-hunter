@@ -166,3 +166,35 @@ def test_a_mostly_zero_column_beside_a_total_that_leaves_it_out_flags_nothing():
 def test_a_mostly_zero_part_a_total_includes_still_lets_a_slip_be_found():
     out = scan(*store_totals(included=True, slip=200), fair=False)[1]
     assert [i for i, o in enumerate(out) if "does not add up" in o["reason"]] == [200], [o["reason"] for o in out if "add up" in o["reason"]][:3]
+
+
+@pytest.mark.parametrize("share", [0.1, 0.15, 0.25])
+def test_a_total_with_refunds_on_a_few_days_finds_slips_on_refund_and_ordinary_days(share):
+    # AH-55 review 2 (Council A): Food + Drinks + Merch + Refunds = Total, Refunds non-zero on 10-15% of 90 days; try 2
+    # left out every Refunds row and with them the whole rule: both slips were missed
+    rng = np.random.default_rng(4)
+    rows = []
+    for i in range(90):
+        a, b, c = int(rng.integers(100, 900)), int(rng.integers(100, 900)), int(rng.integers(50, 400))
+        r = -int(rng.integers(10, 80)) if rng.random() < share else 0
+        rows.append([f"Store {i}", a, b, c, r, a + b + c + r])
+    s1, s2 = [i for i, x in enumerate(rows) if x[4]][0], [i for i, x in enumerate(rows) if not x[4]][10]
+    rows[s1][5] += 37
+    rows[s2][5] += 37
+    out = scan(["Store", "Food", "Drinks", "Merch", "Refunds", "Total"], rows, fair=False)[1]
+    found = [i for i, o in enumerate(out) if "does not add up" in o["reason"]]
+    # a single Refunds day that does not add up cannot show that Refunds is in the total (an Adjustment that is not
+    # looks the same): that day is left unjudged; with 2+ Refunds days, the slip on one of them is found
+    refund_days = sum(1 for x in rows if x[4])
+    assert found == (sorted([s1, s2]) if refund_days >= 3 else [s2]), (refund_days, [o["reason"] for o in out if "add up" in o["reason"]])
+
+
+@pytest.mark.parametrize("nonzero", [1, 3])
+def test_a_column_beside_a_total_that_is_not_0_once_or_thrice_and_no_part_of_it_flags_nothing(nonzero):
+    rng = np.random.default_rng(13)
+    rows = []
+    for i in range(200):
+        a, b, c = int(rng.integers(10, 900)), int(rng.integers(10, 900)), int(rng.integers(10, 900))
+        rows.append([f"S{i}", a, b, c, int(rng.integers(1, 50)) if i < nonzero else 0, a + b + c])
+    out = scan(["Store", "A", "B", "C", "Adjustment", "Total"], rows, fair=False)[1]
+    assert not [i for i, o in enumerate(out) if "does not add up" in o["reason"]], [o["reason"] for o in out if "add up" in o["reason"]][:2]
