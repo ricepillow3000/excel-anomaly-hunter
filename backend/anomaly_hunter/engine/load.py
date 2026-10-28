@@ -155,8 +155,12 @@ def _coerce(df, cols):
             no_value[c] = (frozenset(df.index[said]), df[c][said].astype(str).str.strip().mode()[0])  # comparable, unlike an array
             df[c] = df[c].mask(said, "")
     df.attrs["no_value"] = _Shared(no_value)
+    typed = {}  # column -> {row: the cell as typed}, for a percent typed as text: "+22%" is held as 0.22 (AH-56)
     for c, t in types.items():
         if t in ("number", "id"):
+            pct = df[c].astype(str).str.contains("%", regex=False)
+            if t == "number" and pct.any():
+                typed[c] = {i: str(df.at[i, c]).strip() for i in df.index[pct]}
             num = _num(df[c])
             num = num.where(num.abs() < 1e100)  # "inf", 1e160: no real measurement - and they break the math downstream
             bad = num.isna() & ~_blank(df[c])
@@ -166,9 +170,12 @@ def _coerce(df, cols):
             else:  # ...but an ID like "A-17" among numbers is fine: keep it as it is
                 df[c] = num.astype(object).where(~bad, df[c]) if bad.any() else num
         elif t == "date":  # text in a date column is an error too, not a "blank"
-            d = _dates(df[c])
+            # ...but a date written in full from 1000 to 2999 is a date: deaths since 1791 among a column of 1900s dates
+            # were 176 "text" cells, whose shape excused a year 2955 typo as the column's own code (round 37, AH-55)
+            d = _dates(df[c], wide=True)
             errors += [(i, c, df.at[i, c]) for i in df.index[d.isna() & ~_blank(df[c])]]
             df[c] = d
+    df.attrs["typed"] = _Shared(typed)
     return types, errors
 
 

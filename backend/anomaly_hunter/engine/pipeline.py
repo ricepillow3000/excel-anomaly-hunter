@@ -196,6 +196,25 @@ def _sorted_end(s, blank, skip):
     return live[len(live) - tail:] if against <= max(2, 0.001 * len(v)) and against <= 0.05 * len(step) else live[:0]
 
 
+# a header that asks: "Do you ever gamble?", "How worried are you about the Big One?" - never "Paid?" or "Shipped?", an
+# orders sheet's yes/no columns, which are one or two words
+ASKING = re.compile(r"(?i)^\s*(?:q\d+[.:)]?\s*)?(?:how|what|which|who|whom|whose|when|where|why|do|does|did|are|is|was|were|"
+                    r"would|could|should|have|has|had|will|can|please|to what|in general|if you)\b")
+
+
+def _asks(col):
+    """A header that is a question: 3+ words ending in "?", or 4+ words opening as one."""
+    return len(w := str(col).split()) >= 3 and str(col).strip().endswith("?") or len(w) >= 4 and bool(ASKING.match(str(col)))
+
+
+def _survey(cols):
+    """A sheet is a survey when 3+ of its headers, and half of them, are questions: its answers may be left unanswered,
+    a blank is no slip (AH-56). Half, not a quarter: an orders sheet with 3 of its 8 headers worded as questions ("Is this
+    a repeat customer?") passed a quarter, and its deleted Revenue cells were read as skipped answers (AH-56 review)."""
+    asked = [c for c in cols if _asks(c)]
+    return len(asked) >= 3 and len(asked) >= 0.5 * len(cols)
+
+
 def blanks(df, column_types, skip, errors_log, threshold=0.80):
     """Blank cell in a column that is >= 80% filled (summary rows not counted): a required field left empty. Mostly-empty
     columns (notes, optional extras) are left alone. Was 95%: a credit sheet's Income, 92% filled, hid 39 blanks.
@@ -216,6 +235,7 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
     if not cols:
         return out, notes
     blank = np.column_stack([(_blank(df[c]) & ~skip & ~df.index.isin(wrong.get(c, []))).to_numpy(bool) for c in cols])
+    n = max(1, (~skip).sum())
     # blanks per label per column, counted for every column at once: grouping each label column against each column
     # took 168 s on a crafted 64 x 1,500-column sheet (AH-16 build, 2026-10-22)
     groups = {}
@@ -228,7 +248,7 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
         starts = np.flatnonzero(np.r_[True, np.diff(code[order]) != 0])
         size = np.diff(np.r_[starts, len(order)])
         groups[g] = (code, size, np.add.reduceat(blank[order].astype(np.int32), starts, axis=0))
-    n = max(1, (~skip).sum())
+    survey, pend = _survey(cols), []  # pend: (column, its blanks each a slip, the sentence for one) - said after the loop
     for j, col in enumerate(cols):
         b = blank[:, j].copy()
         if b.any() and 1 - b.sum() / n >= threshold:
@@ -258,8 +278,7 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
                     notes[df.index[pos[0]]].append(Why(f'{col} is "{word}" (no value) in {len(pos)} of {n} rows' if said_so
                                                        else f"{col} is blank in {len(pos)} of {n} rows, spread through the sheet", col))
                     continue
-                for i in df.index[part]:
-                    out[i].append(Why(f"Blank cell in column {col}, which is otherwise filled", col))
+                pend.append((j, pos, lambda i, col=col: f"Blank cell in column {col}, which is otherwise filled"))
         elif b.any():
             # a long-format sheet fills Value for some indicators and Pct for others, so Value is 2/3 filled, under the bar,
             # and a blank in a GDP row went unseen (AH-17 stress hunt, 9 of 9 missed). A group that fills the column
@@ -272,11 +291,55 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
                 full = np.flatnonzero((fill >= 0.95) & (size >= 20))
                 # ...and the empty group is layout only with 20+ rows of its own: a real planets table's distance (96% filled
                 # for one method) had only 1 of 5 Pulsar rows empty-ish, and 23 real gaps were called a slip (blind round 22)
-                if len(full) and ((fill <= 0.2) & (size >= 20)).any():
-                    for i in df.index[b & np.isin(code, full)]:
-                        out[i].append(Why(f"Blank cell in column {col}, which is otherwise filled for {g} {_short(labels[g][i])}", col))
+                empty = (fill <= 0.2) & (size >= 20)
+                # ...and only when the groups explain the column's blanks: in a long-format sheet nearly every blank is in
+                # a group that never fills it. DC's HAIR is blank for an eye colour or two and for many others besides:
+                # "otherwise filled for EYE Brown Eyes" was 43 honest unknowns on a wide sheet (round 37, AH-56)
+                if len(full) and empty.any() and per[empty, j].sum() >= 0.8 * b.sum():
+                    pos = np.flatnonzero(b & np.isin(code, full))
+                    if len(pos) >= max(MANY, SHARE * len(b)) and len(set(pos * 5 // len(b))) == 5:  # many and spread: the data
+                        notes[df.index[pos[0]]].append(Why(f"{col} is blank in {len(pos)} of {n} rows where {g} would fill it, spread through the sheet", col))
+                    else:
+                        pend.append((j, pos, lambda i, col=col, g=g: f"Blank cell in column {col}, which is otherwise filled for {g} {_short(labels[g][i])}"))
                     break
+    # A row with a blank in most of the columns that are otherwise filled, each a blank no layout, sort or export explains,
+    # is one unfinished record (a respondent who stopped the survey): one note, not a Medium a column. Round 37: 25 of
+    # sleeping alone's 27 flagged rows were 80-100% blank, the earthquake survey's 12 were 50-80% blank; round 36's
+    # Thanksgiving's 6 were 63 of 65. Counted after the layouts: a respondent routed past a page is not one (AH-56)
+    slip = np.zeros_like(blank)
+    for j, pos, _ in pend:
+        slip[pos, j] = True
+    full = np.flatnonzero(1 - blank.sum(axis=0) / n >= threshold)
+    gone = slip[:, full].sum(axis=1)
+    quit = (gone >= 3) & (gone >= 0.5 * len(full)) & (len(full) >= 4)
+    for i in np.flatnonzero(quit):
+        miss = [cols[k] for k in full if slip[i, k]]
+        notes[df.index[i]].append(Why(f"{len(miss)} of the {len(full)} usually filled cells in this row are blank: an unfinished "
+                                      "record (in a survey, a respondent who stopped answering)", *miss))
+    for j, pos, say_it in pend:
+        pos = pos[~quit[pos]]
+        if len(pos) and not _unanswered(df, cols[j], column_types[cols[j]], pos, n, survey, notes):
+            for i in df.index[pos]:
+                out[i].append(Why(say_it(i), cols[j]))
     return out, notes
+
+
+def _unanswered(df, col, kind, pos, n, survey, notes):
+    """In a survey, a question left blank is one the respondent skipped: the religion survey's 175 Medium+ rows were 144
+    respondents who answered nearly everything and left a question or two (round 37, AH-56). One note for the column, not
+    a Medium a cell; never an ID's blank, and never on a data table (20 deleted values stay each a slip, AH-28). Each
+    skipped answer is a note on its own row (many spread ones are already one note, above): one note on the first hid
+    the others' rows and cells, and a data table with three questions for headers lost a deleted Revenue (AH-56 review)."""
+    # ...and only an answer: a column whose header is a question, or a survey's category answer (US Region, an age band:
+    # the religion survey's top 50); never a number its header does not ask for, an order's Revenue (AH-56 review)
+    if not survey or not len(pos) or kind == "id" or _ID_HEAD.search(str(col)) or not (_asks(col) or kind == "text"):
+        return False
+    for i in df.index[pos]:
+        notes[i].append(Why(f"{col} is unanswered in {len(pos)} of {n} rows: a survey question a respondent may skip", col))
+    return True
+
+
+_ID_HEAD = re.compile(r"(?i)(?:^|[\s_])(?:id|key|respondent ?id|code|no\.?|number|#)$")
 
 
 def whole_numbers(df, column_types, skip):
@@ -312,7 +375,9 @@ PERSON_AGE = {"patient", "participant", "victim", "actor", "actress", "employee"
               "member", "client", "worker", "player", "passenger", "athlete", "person", "child", "mother", "father", "driver",
               "rider", "voter", "resident", "subject", "defendant", "suspect", "officer", "candidate", "ceo", "senator", "artist",
               "author", "winner", "borrower", "tenant", "user", "donor", "inmate", "pupil", "teacher", "nurse", "doctor", "spouse"}
-BOUNDED = [(r"month", 1, 12), (r"quarter|qtr", 1, 4), (r"hour", 0, 24), (r"minute|second", 0, 59),
+# "Birth month", "birth_month", "start month": a month too (round 37 missed a 13 in both; AH-55), never a count of months
+# ("Months", "Months since"), a day of it, or what happened in one ("per month", "last month")
+BOUNDED = [(r"(?:(?!(?:of|per|a|an|each|every|this|last|next|prev|previous|current|same|prior|that|in|by|the)\b)[a-z]+ )?month", 1, 12), (r"quarter|qtr", 1, 4), (r"hour", 0, 24), (r"minute|second", 0, 59),
            (r"weekday|day of week", 0, 7), (r"lat|latitude", -90, 90), (r"lon|lng|long|longitude", -180, 180),
            # a person's age: "age" alone or after a word for a person (victim age, actor 1 age, age years): LA riots' 310
            # for 31 in 62 rows was said nothing at level 5 (AH-47). A thing's age is not a person's: a tree's 180, a
@@ -339,6 +404,26 @@ def _bounds(col):
                  and not (hi == 120 and AGE_UNITS.search(h))), None)
 
 
+# A share of a whole by its name: "Percent", "cocoa_percent", "Rate (%)". Never a percentile (a wage), "Tax 5%" (an
+# amount), or one the CLAUDE.md list says can pass 100: a change, a return, attendance, occupancy, utilization, markup,
+# ROI, CPU, debt of GDP, a % of a target or a limit (AH-30 review)
+PERCENT = re.compile(r"percent(?:age)?\b|\bper cent\b|\bpct\b|(?<![\d.\s])\s*%|\(%\)|^%")
+NOT_SHARE = re.compile(r"chang|growth|increas|decreas|diff|return|\broi\b|markup|margin|gain|loss|yoy|\bvar|attend|occupan|"
+                       r"utili[sz]|cpu|gdp|debt|limit|speed|target|goal|budget|quota|plan\b|capacity|over|above|error")
+
+
+def _share_over(col, x):
+    """A percentage far past 100 in a column whose every other value is a share of a whole (0 to 100): a 200 among 40
+    rows was found only at level 10, as an odd combination (round 37, AH-55). Far past: more than 150, as a slip writes
+    it (x2, x10, 233.4); an honest 100.4 (a bonus share rounded up, 1 of 48,711 real rows in round 36) stays quiet, and
+    a column with a third value over 100, or any below 0, is not a share at all."""
+    h = " ".join(re.sub(r"[_.]+", " ", str(col)).split()).lower()
+    if len(h) > 200 or not PERCENT.search(h) or NOT_SHARE.search(h) or len(x) < 20 or x.min() < 0:
+        return ()
+    over = x[x > 100]
+    return over.index if 1 <= len(over) <= 2 and (over > 150).all() else ()
+
+
 def named_bounds(df, column_types, skip):
     """A number past what its column's name allows: Month 13, Hour 25, a 6 on "Rating (1-5)" - each just past the other
     values, so no limit can call it (John's "syntactically correct but contextually impossible", AI council 2026-10-16).
@@ -352,6 +437,11 @@ def named_bounds(df, column_types, skip):
         if 1 <= len(bad) <= max(2, 0.01 * len(x)):
             for i in bad.index:
                 out[i].append(Why(f"{col} {say(x[i])} is outside what {col} can be ({b[0]:g} to {b[1]:g})", col))
+        if t == "number" and not b:
+            x = df[col][~skip].dropna()
+            for i in _share_over(col, x):
+                rest = "every other" if len(x[x > 100]) == 1 else "every other but one"
+                out[i].append(Why(f"{col} {say(x[i])} is over 100, and {rest} {col} is a share between 0 and 100", col))
     return out
 
 
@@ -382,11 +472,14 @@ def sums(df, column_types, skip):
     side). ponytail: plain sums only - a weighted rule (tax 8.25%) or a difference written as a sum of +1s only."""
     out = [[] for _ in range(len(df))]
     cols = numbers(column_types)
+    done = _totals(df, cols, skip, out)
     x = df[cols][~skip].dropna()
     if len(cols) < 3 or len(x) < 20 * len(cols):  # few rows: least squares "fits" anything
         return out
     a = x.to_numpy(dtype=float)
     for t, col in enumerate(cols):
+        if col in done:
+            continue
         y, rest = a[:, t], np.delete(a, t, axis=1)
         w = np.linalg.lstsq(rest, y, rcond=None)[0]
         res = np.abs(y - rest @ w)
@@ -396,13 +489,86 @@ def sums(df, column_types, skip):
         if (np.abs(w - ones) > 0.02).any() or not set(ones) <= {0.0, 1.0} or ones.sum() < 2:
             continue
         got = rest @ ones
-        bad = np.abs(y - got) > np.maximum(0.011, 1e-6 * np.abs(y))  # 1 cent + float slack
+        bad = np.abs(y - got) > np.maximum(_cent(y), 1e-6 * np.abs(y))  # 1 cent (or the column's own last digit) + float slack
         if bad.mean() > 0.05:
             continue
         part = [c for c, o in zip(np.delete(np.array(cols, dtype=object), t), ones) if o]
         for i, v, g in zip(x.index[bad], y[bad], got[bad]):  # the total and every part: any one of them may be the slip
             out[i].append(Why(f"{col} {say(v)} does not add up: {' + '.join(part)} = {g:.10g}", col, *part))
     return out
+
+
+# a header that says its column adds others up: "Total", "Total population", "All ages", "Sum", "TOTAL_CASES"
+TOTAL_HEAD = re.compile(r"\b(?:totals?|sum|all)\b")
+
+
+def _totals(df, cols, skip, out):
+    """A column headed Total, Sum or All that is, to the cent, the other number columns added up, or the 3+ number
+    columns beside it, on 95% of rows: the other rows don't add up. Round 37 missed Male + Female + Intersex = Total on 48
+    rows and 8 age groups = Total on 200: least squares needs 20 rows a column, and an extra Year or Area column bends
+    it. An exact sum cannot hold by chance on 10 rows with something to add, so no such minimum; two parts are pairs'.
+    Capped in sheet order (20 totals, 40 columns a side), never by a clock: the same sheet gives the same answer.
+    Adds its reasons to out; -> the totals it explained, so least squares does not judge them again (AH-55)."""
+    done, order, nums = set(), list(df.columns), {c: k for k, c in enumerate(cols)}
+    heads = [c for c in cols if len(h := " ".join(re.sub(r"[_.]+", " ", str(c)).split()).lower()) <= 200 and TOTAL_HEAD.search(h)]
+    rows = df.index[~skip]
+    a = df.loc[rows, cols].to_numpy(dtype=float) if heads else None
+    for col in heads[:20]:
+        y, at, tries = a[:, nums[col]], order.index(col), [[c for c in cols if c != col]]
+        for step in (-1, 1):  # the number columns right beside it, nearest first, up to the first other column
+            run, j = [], at + step
+            while 0 <= j < len(order) and order[j] in nums and len(run) < 40:
+                run.append(order[j])
+                j += step
+            tries += [run[:k] for k in range(3, len(run) + 1)]
+        best = None
+        for parts in tries:  # one column more each try: a sum of a few thousand rows, not a copy of the sheet
+            judged = None
+            for _ in range(2):  # a second pass judges the candidate again without the parts the first showed are none
+                if len(parts) < 3:
+                    break
+                p = a[:, [nums[c] for c in parts]]
+                ok = ~np.isnan(y) & ~np.isnan(p).any(axis=1)
+                if not (p[ok] != 0).any(axis=0).all():  # every part counts somewhere
+                    break
+                got = p[ok].sum(axis=1)
+                bad = np.abs(y[ok] - got) > np.maximum(0.011, 1e-6 * np.abs(y[ok]))  # 1 cent + float slack, as sums
+                # a part that is 0 in most rows shows it belongs only on the rows where it is not. One that adds up on
+                # none of them is no part: an "Adjustment" beside the total, 0 in 96% of rows, "held" on the rest and
+                # flagged its 16 other rows (AH-55 review); left in, it was named in the sentence, "Food + Drinks + Merch
+                # + Adjustment" (AH-55 review 3), so the candidate is judged again without it. One that adds up on most
+                # of them (all but 20%, or under 5 rows all but a minority) is a part, every row judged: Refunds on 9-14
+                # of a stand's 90 days, a slip on one found. Between (1 of 2 days adds up) nothing shows which: those
+                # rows are left unjudged, never called wrong
+                none, judged = [], np.ones(len(bad), dtype=bool)
+                for k in np.flatnonzero((p[ok] != 0).mean(axis=0) < 0.2):
+                    on = p[ok][:, k] != 0
+                    if not (~bad[on]).any():
+                        none.append(parts[k])
+                    elif bad[on].sum() > (0.2 * on.sum() if on.sum() >= 5 else (on.sum() - 1) // 2):
+                        judged &= ~on
+                if not none:
+                    break
+                parts, judged = [c for c in parts if c not in none], None
+            if judged is None:
+                continue
+            live, bad = (p[ok] != 0).any(axis=1) & judged, bad & judged
+            share = bad[judged].mean() if judged.any() else 1.0
+            if (~bad[live]).sum() < 10 or share > 0.05 or (best and share >= best[0]):
+                continue
+            best = (share, sorted(parts, key=order.index), rows[ok][bad], y[ok][bad], got[bad])
+        if best:
+            done.add(col)
+            for i, v, g in zip(*best[2:]):
+                out[i].append(Why(f"{col} {say(v)} does not add up: {' + '.join(best[1])} = {g:.10g}", col, *best[1]))
+    return done
+
+
+def _cent(x):
+    """How near counts as equal "to the cent": a cent, or one unit of the column's own last digit when it is written finer.
+    College admissions' rates, all under 0.06, were each within a cent of any product of two others: 474 Medium rows and
+    10 wrong "likely" values from rules no column follows (blind round 37, AH-54)."""
+    return min(0.011, 1.1 * 10.0 ** -_decimals(x))
 
 
 def _decimals(x):
@@ -430,11 +596,16 @@ def pairs(df, column_types, skip, limits=None):
     usual = lambda j, v: (bounds(j)[0] is None or v >= bounds(j)[0]) and (bounds(j)[1] is None or v <= bounds(j)[1])
     # the first 64 varying columns: pairs x fractions grows with the cube of the width (160 columns took 20 s, 2026-10-16)
     vary = [j for j in range(len(cols)) if len(np.unique(a[:, j][~np.isnan(a[:, j])])) >= 3][:64]
-    near = lambda y, got: np.abs(y - got) <= np.maximum(0.011, 1e-6 * np.abs(y))  # 1 cent + float slack
+    cent = np.array([_cent(a[:, j]) for j in range(len(cols))])  # 1 cent, or the column's own last digit (AH-54)
+    near = lambda y, got, c: np.abs(y - got) <= np.maximum(c, 1e-6 * np.abs(y))  # + float slack
     # ...or within what rounding can explain, where the exact rule does not hold: a race time = laps x an average lap time
     # written to the cent, so 16 laps carry 16 x 0.005 s (marbles, blind round 23: never learnt, a 26.1 typed 261 passed).
     # A column of whole numbers is exact (laps, units); one written to d decimals is off by up to half its last digit
     half = np.array([0.0 if (d := _decimals(a[:, j])) == 0 else 0.5 * 10.0 ** -d for j in range(len(cols))])
+    # ...and where rounding explains it, the total is rounded too: a gross written to the dollar from one with cents. Its
+    # own half unit, whole numbers included: Broadway's gross missed avg ticket price (to the cent) x seats by 1.0004-1.009
+    # times the half cent per seat, 62 Medium rows in blind round 37 (AH-54)
+    own = np.array([0.5 * 10.0 ** -_decimals(a[:, j]) for j in range(len(cols))])
 
     def rounded(y, cs, op, rows):
         if len(cs) != 2:
@@ -452,9 +623,9 @@ def pairs(df, column_types, skip, limits=None):
               for p, q in itertools.combinations([j for j in vary if j not in fracs], 2) for f in fracs]
     for cs, said, op in rules:
         got_s = op(*(sample[:, c] for c in cs))
-        hits = near(sample, got_s[:, None]).mean(axis=0)
+        hits = near(sample, got_s[:, None], cent[None, :]).mean(axis=0)
         if (r := rounded(sample, cs, op, slice(0, len(sample)))) is not None:
-            tol = r[0][:, None] + half[None, :] + r[1]
+            tol = r[0][:, None] + own[None, :] + r[1]
             hits = np.maximum(hits, (np.abs(sample - got_s[:, None]) <= tol).mean(axis=0))
         for t in np.flatnonzero(hits >= 0.8):
             if t in cs:
@@ -464,11 +635,18 @@ def pairs(df, column_types, skip, limits=None):
             # judged where the numbers aren't all zero: 0 = 0 x anything made a rule of three TV-spot columns that were 0
             # in 91% of weeks - it held in 64 of the 120 weeks with spots (real sheet, 2026-10-16)
             live = ok & ((y != 0) | (got != 0))
-            holds = lambda good: (good & (y != 0)).sum() >= 20 and (good & live).sum() >= 0.95 * live.sum()
-            good = ok & near(y, got)
+            # ...and a sum where every term carries weight: tornado records' sn (0/1) "= ns + f3" held in 97% of rows
+            # only because f3, a third county's code, is 0 in 97.5% of them (648 Medium rows, blind round 37, AH-54).
+            # A sum must also hold on the rows where none of its terms is 0: on 5 of them at least, all but 5% or one.
+            # The tornado rule breaks on nearly all of f3's own rows; an honest New + Reactivated = Net adds, Reactivated
+            # 0 in 80-90% of 60 months, holds on its 6-12 (a 20-row minimum there lost the rule and its slip, AH-54 review)
+            full = ok & np.all([a[:, c] != 0 for c in cs], axis=0) if op is np.add else live
+            holds = lambda good: ((good & (y != 0)).sum() >= 20 and (good & live).sum() >= 0.95 * live.sum()
+                                  and (good & full).sum() >= 5 and (full & ~good).sum() <= max(1, 0.05 * full.sum()))
+            good = ok & near(y, got, cent[t])
             if not holds(good):  # the exact rule first; then what rounding explains, never looser than that
                 r = rounded(y, cs, op, slice(None))
-                good = ok & (np.abs(y - got) <= r[0] + half[t] + r[1]) if r is not None else good
+                good = ok & (np.abs(y - got) <= r[0] + own[t] + r[1]) if r is not None else good
                 if not holds(good):
                     continue
             for i in np.flatnonzero(ok & ~good):
@@ -810,6 +988,23 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
         missed = [m + a for m, a in zip(missed, lim["alone_reasons"], strict=True)]
     rows = []
 
+    typed = df.attrs.get("typed", {})
+
+    def as_typed(said, i):
+        """A percent typed as text is quoted with its own words beside the number it holds: Pulitzer's "+22%" was said
+        as 0.22 and "-100%" as -1, numbers the user never typed (round 37, AH-56). The limits stay in the held units.
+        Not a sum's sentence: the pane reads its total and rule back from it (fix.addUps)."""
+        out = []
+        for r in said:
+            for c in getattr(r, "cols", ()) if " does not add up: " not in r else ():
+                raw = typed.get(c, {}).get(df.index[i])
+                if raw is not None and pd.notna(df[c].iat[i]):
+                    v = re.escape(say(df[c].iat[i]))
+                    text = re.sub(rf"((?:^|; |\b){re.escape(str(c))} |this is ){v}(?![\d.])", lambda m: f"{m[0]} ({raw} as typed)", r, count=1)
+                    r = Why(text, *r.cols) if text != r else r
+            out.append(r)
+        return out
+
     def cells(said):  # the columns the row's reasons are about, in sheet order: the pane colours those cells, no other
         named = {c for r in said for c in getattr(r, "cols", ())}
         return [c for c in df.columns if c in named]
@@ -822,12 +1017,12 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
         voted = [d for d in ran if d["votes"][i]]
         hygiene = dup[i] + typ[i] + blank[i] + hole[i] + code[i] + far[i] + add[i] + spell[i]
         if not voted and not hygiene and not missed[i]:
-            noted = lim["noted_reasons"][i]
+            noted = as_typed(lim["noted_reasons"][i], i)
             rows.append({"severity": "Noted" if noted else None, "bucket": None,
                          "reason": "; ".join(noted), "magnitude": 0.0, "cells": cells(noted)})
             continue
         v, weird = len(voted), bool(lim["votes"][i])
-        said = list(dict.fromkeys(hygiene + missed[i] + [r for d in voted for r in d["reasons"][i]]))  # dedupe, keep order
+        said = as_typed(list(dict.fromkeys(hygiene + missed[i] + [r for d in voted for r in d["reasons"][i]])), i)  # dedupe, keep order
         rows.append({  # a possible misspelling alone is "worth a check" (Low): it may be a real name
             "severity": "High" if v >= 3 else "Medium" if v == 2 or weird or hygiene else "Low",
             "bucket": "Duplicates" if dup[i] else "Irregularities" if weird or typ[i] or blank[i] or hole[i] or code[i] or far[i] or add[i] or spell[i] or missed[i] else "Behavioral",

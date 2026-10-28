@@ -72,6 +72,12 @@ def _log_shaped(pos, med, q10, q90):
 
 def _limits(x, k):
     """One column's (b_lo, b_hi, w_lo, w_hi) - see suggest_limits_dict."""
+    # A column of 0s and 1s is a yes/no flag: a rare 1 is a "yes", never a value past a limit. Bob Ross's MOON, 1 in 3
+    # of 403 paintings, read "weird limit is 0.056; this is 1", 36 Medium+ rows on a clean table (round 37, AH-56).
+    # Its limits are its two values, so a 2 or a 10 typed into it (a few, as a slip) is still weird
+    flag = x.isin((0, 1))
+    if len(x) >= 10 and x.eq(0).any() and x.eq(1).any() and (~flag).sum() <= max(2, 0.005 * len(x)):
+        return (0.0, 1.0, 0.0, 1.0)
     med, sd = float(x.median()), spread(x)
     step = 10 ** math.floor(math.log10(sd)) if sd > 0 else None
     v = [_round(med + m * sd, step, m > 0) for m in (-3, 3, -k, k)]
