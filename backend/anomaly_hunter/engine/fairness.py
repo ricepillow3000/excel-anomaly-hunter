@@ -292,8 +292,12 @@ OPINION = {"agree", "disagree", "comfortable", "comfortably", "feel", "feeling",
            "matter", "matters", "talk", "talking", "discuss", "discussing", "seeing", "see", "should", "fair", "unfair"}
 # ...a self-identification question names who someone is in any shape: "Do you have a disability?", "Are you a veteran?",
 # "Religion: which one?", "Are you Hispanic or Latino?" (Council A's AH-53 review: all four were silenced)
-IDENTITY = DEMOGRAPHIC | {"denomination", "ethnic", "hispanic", "latino", "latina", "orientation", "transgender"}
-# a sexual orientation by its labels: a page's or a photo's orientation (Portrait, Landscape) is no person's
+IDENTITY = DEMOGRAPHIC | {"denomination", "ethnic", "hispanic", "latino", "latina", "orientation", "transgender", "citizen",
+                          "citizens"}  # "Are you a U.S. citizen?" (AH-53 review 2)
+# a sexual orientation by its labels: a page's or a photo's orientation (Portrait, Landscape) is no person's, and a road
+# segment's Straight / Other is no one's (AH-53 review 2): at least one label must name an orientation and nothing else
+NAMES_ORIENTATION = {"gay", "lesbian", "bisexual", "heterosexual", "homosexual", "asexual", "pansexual", "queer", "gay/bisexual",
+                     "gay or lesbian"}
 ORIENTATIONS = {"straight", "gay", "lesbian", "bisexual", "heterosexual", "homosexual", "asexual", "pansexual", "queer",
                 "other", "gay/bisexual", "gay or lesbian", "prefer not to say", "prefer not to answer", "no answer",
                 "decline to state"}
@@ -374,8 +378,9 @@ def _people(df, types):
         w = set(_words(c))
         # a self-identification question whose word protected() does not know by name ("Are you Hispanic or Latino?"),
         # and an orientation whose labels are people's. protected() itself, which the detectors use, is unchanged
+        labels = set(_labels(df[c], 20).dropna().str.casefold()) if "orientation" in w and _labels(df[c], 20) is not None else set()
         if c not in named and not _unnamed(c) and (_asked(c) and _identity(c) and not "orientation" in w or "orientation" in w and (
-                "sexual" in w or _labels(df[c], 20) is not None and set(_labels(df[c], 20).dropna().str.casefold()) <= ORIENTATIONS)):
+                "sexual" in w or labels <= ORIENTATIONS and bool(labels & NAMES_ORIENTATION))):
             named[c] = "demographic"
         # a short header only: "Will you shop any Black Friday sales?" is a question, not a race (blind round 36)
         if c not in named and not _asked(c) and (w & OTHER_NAMES and len(_words(c)) <= 3 or w & COLOUR and _labels(df[c], 20) is not None

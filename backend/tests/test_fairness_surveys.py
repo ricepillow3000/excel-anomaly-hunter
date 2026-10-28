@@ -177,3 +177,22 @@ def test_an_orientation_column_is_a_people_column_only_with_its_labels():
     pages = [[f"P{i}", ["Portrait", "Landscape"][i % 2], ["Yes", "No"][int(rng.random() < 0.4)], ["Male", "Female"][i % 2]] for i in range(600)]
     df, types, _ = load_from_records(["Page", "orientation", "Printed", "Author gender"], [list(r) for r in pages])
     assert "orientation" not in _people(df, types)
+
+
+def test_a_road_segments_straight_or_other_orientation_is_no_people_column():
+    # AH-53 review 2 (Council A): Straight / Other are road shapes as often as orientations; try 2 read the sheet as
+    # people and said "Orientation Other: 44% Status Closed vs 6.5% for Straight - a real gap, check why"
+    rng = np.random.default_rng(14)
+    rows = []
+    for i in range(400):
+        o = ["Straight", "Other"][int(rng.random() < 0.3)]
+        rows.append([f"Seg {i}", o, int(rng.integers(50, 900)), "Closed" if rng.random() < (0.44 if o == "Other" else 0.065) else "Open"])
+    f = fair(["Segment", "Orientation", "Length m", "Status"], rows)
+    assert f["protected"] == {} and f["tests"] == [], (f["protected"], [t["text"] for t in f["tests"]][:2])
+
+
+def test_a_us_citizen_question_is_a_group_and_never_an_outcome():
+    f = hiring("Are you a U.S. citizen?", ["Yes", "Yes", "Yes", "No"], "No")
+    assert "Are you a U.S. citizen?" in f["protected"], f["protected"]
+    assert any(t["column"] == "Are you a U.S. citizen?" and t["verdict"] == "gap" for t in f["tests"]), [t["text"] for t in f["tests"]][:3]
+    assert not any("citizen" in t["test"] for t in f["tests"])
