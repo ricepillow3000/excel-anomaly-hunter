@@ -322,9 +322,10 @@ def _beat(x, p):
 # real CO2 and jobs-report months unusual at level 5, each 17-30x past its line (AH-31 review). A spike or a level
 # shift still moves further in one row than the series usually does: 1-20% planted jumps are found as before.
 STEP = 2
-# ...and 3 where the cycle is taken out: what is left carries the error of the cycle's own median and its year-to-year
-# shape, so at 2 steps the real CO2 series (vega) got 17 new Low months at level 5; at 3, none, and Council B's planted
-# in-range jumps are all found that main finds, at every level (AH-64 try 1 review)
+# ...and 3 where the cycle is taken out, both for the one-row step and for the spread at the row's position: what is
+# left carries the error of the cycle's own median and its year-to-year shape. At 2 steps the real CO2 series (vega)
+# stood out on 17 more honest months; at 4, 21 of Council B's planted jumps that main finds went unconfirmed and were
+# lost; at 3 every one is kept (AH-64 try 1 and 2 reviews)
 CYCLE_STEP = 3
 # A cycle is a period whose cycle (what a moving average of that length leaves) correlates this well with itself one
 # period on: Seattle's hourly bike counts, small and noisy, reach 0.63 by the day and 0.65 by the week (0.8 found none,
@@ -392,15 +393,17 @@ def sequence_detector(df, column_types, order_by=None, k=K):
     when = order.loc[idx]
     when = ((when - when.min()).dt.total_seconds() if when.dtype.kind == "M" else when.astype(float)).to_numpy()
 
-    def judge(col, s, keep, ends, bar=STEP):
-        """main's checks on the series s, hitting only the rows keep allows; ends: also the first and last values."""
+    def judge(s, keep, ends, bar=STEP):
+        """main's checks on the series s -> [(row, magnitude, what)] for the rows keep allows; ends: also the first and
+        last values."""
+        found = []
         trend = s.to_numpy() - _centred_median(s.to_numpy())
         step = np.abs(s.diff().to_numpy())
         usual = np.nanmedian(step) if (~np.isnan(step)).any() else 0.0
         votes, mag = robust_vote(trend, k)
         for p in np.where(votes & keep)[0]:
             if abs(trend[p]) > bar * usual and not _beat(trend, p):
-                hit(p, mag[p], col, "is unusual relative to its local trend")
+                found.append((p, mag[p], "is unusual relative to its local trend"))
         # the very first and last dated values: against the next 3 on their one side, past 4 usual steps (a straight
         # line puts the end 2 steps from that median, a bend a little more; a slip in row 1 of a series went unseen, AH-31
         # try 2 review). Rows with no date are no end of the series
@@ -410,7 +413,7 @@ def sequence_detector(df, column_types, order_by=None, k=K):
             for p, side in ((dated[0], dated[1:4]), (dated[-1], dated[-4:-1])):
                 off = vals[p] - np.median(vals[side])
                 if abs(off) > (STEP + 2) * usual and abs(off) > line:
-                    hit(p, abs(off) / usual, col, "is unusual relative to its local trend")
+                    found.append((p, abs(off) / usual, "is unusual relative to its local trend"))
         d = s
         for _ in (1, 2, 3):
             d = d.diff()
@@ -422,7 +425,8 @@ def sequence_detector(df, column_types, order_by=None, k=K):
                 w = trend[max(0, p - 3):p + 1]
                 b = p if np.isnan(w).all() else max(0, p - 3) + int(np.nanargmax(np.abs(w)))
                 if keep[b]:
-                    hit(b, mag[p], col, "jumped sharply")  # 1st/2nd/3rd differences see the same jump: one reason
+                    found.append((b, mag[p], "jumped sharply"))  # 1st/2nd/3rd differences see the same jump: one reason
+        return found
 
     for col in numbers(column_types):
         s = pd.Series(df[col].to_numpy(dtype=float)[idx])
@@ -436,10 +440,9 @@ def sequence_detector(df, column_types, order_by=None, k=K):
         # CYCLE_FIT+ with itself P rows on: the first that does, read on every value, zeros too (Seattle's night hours
         # are the cycle's, masked they hid it), or a multiple of it that fits 0.01 better (a plain cycle's multiples fit
         # 0.003 better at most on Council B's probe; Seattle's week 0.023). A row with 3 full periods on each side is then
-        # judged without its part of the cycle: the median of what the moving average leaves at the same position in
-        # those 7 periods (a trend cancels, a growing swing is followed, one slip cannot move it), with the checks' own
-        # one-row step and centred median on what is left. Other rows, and every series without a cycle, are judged
-        # exactly as before: a step read off the raw series let a 35 jump on a swing of 60 pass (Council B, AH-64 try 1)
+        # also judged without its part of the cycle: the median of what the moving average leaves at the same position
+        # in those 7 periods (a trend cancels, a growing swing is followed, one slip cannot move it), with the checks' own
+        # one-row step and centred median on what is left; see "The cycle only takes away" below
         inside, fits = np.zeros(len(s), dtype=bool), {}
         for per in CYCLES:
             if whole.notna().sum() < 8 * per or len(dated_at) < 8 * per:
@@ -468,18 +471,29 @@ def sequence_detector(df, column_types, order_by=None, k=K):
             inside &= (~np.isnan(shifted)).sum(axis=0) >= 5  # a moving average has no value half a period from either end
             cycle = np.full(len(s), np.nan)
             cycle[inside] = np.nanmedian(shifted[:, inside], axis=0)
-            # ...and a row is a jump only where it stands further from its position's median than the 7 at that
-            # position usually stand from theirs (the median over every period of the same month, or hour of the week):
-            # Mauna Loa's Septembers vary by 0.4 ppm year to year, and a 2002 one 0.4 off was a "sharp jump" on the
-            # one-row step alone; Seattle's 5 pm counts vary far more than its 3 am ones (AH-64 try 1 review)
+            # ...and a row stands out only where it is further from its position's median than the 7 at that position
+            # usually stand from theirs, read near it (the median of that spread at the same position in the 7 nearest
+            # periods): Mauna Loa's Septembers vary by 0.4 ppm year to year (AH-64 try 1 review), and Seattle's summer
+            # evenings far more than its winter ones: one spread for the whole year confirmed 13 of 159 honest summer
+            # evenings on a synthetic year, read near them 6 (AH-64 try 2 review)
             mad = np.full(len(s), np.nan)
             mad[inside] = np.nanmedian(np.abs(shifted[:, inside] - cycle[inside]), axis=0)
-            phase = np.round(when / usual_gap) % per
-            spread_at = pd.Series(mad).groupby(phase).transform("median").to_numpy()
+            spread_at = np.full(len(s), np.nan)
+            near_mad = np.stack([np.where((at + j * per >= 0) & (at + j * per < len(s)), mad[np.clip(at + j * per, 0, len(s) - 1)], np.nan)
+                                 for j in range(-3, 4)])
+            seen = (~np.isnan(near_mad)).any(axis=0)
+            spread_at[seen] = np.nanmedian(near_mad[:, seen], axis=0)
             far = inside & (np.abs(rest - cycle) > CYCLE_STEP * 1.4826 * spread_at)
-        judge(col, s, ~inside, True)
-        if inside.any():
-            judge(col, pd.Series(np.where(inside, whole.to_numpy() - cycle, np.nan)), inside & far, False, CYCLE_STEP)
+        # The cycle only takes away: every row is judged exactly as before, and where a cycle is proven around a row,
+        # those reasons stay only if the row also stands out without its cycle. Read off the cycle alone (try 1), an
+        # in-range 35 on a swing of 60 was found that main misses, but Seattle's honest summer evenings (a year's swing
+        # on top of the week's) were 184 new Lows (AH-64 try 2 review): a highlight is a claim about a cell, so the cycle
+        # never makes one the series check did not
+        confirmed = {p for p, _, _ in judge(pd.Series(np.where(inside, whole.to_numpy() - cycle, np.nan)), inside & far, False, CYCLE_STEP)} \
+            if inside.any() else set()
+        for p, mag, what in judge(s, np.ones(len(s), dtype=bool), True):
+            if not inside[p] or p in confirmed:
+                hit(p, mag, col, what)
     return r
 
 

@@ -130,10 +130,36 @@ def swing(seed=0, n=240):
 
 
 @pytest.mark.parametrize("level", [3, 5, 10])
-def test_a_jump_inside_a_wide_monthly_swing_is_found_against_the_same_month_of_other_years(level):
-    # main found only 183 (the raw one-row step, cycle and all, was a bar of ~44); try 1 found none of the three
+def test_a_jump_main_finds_inside_a_wide_monthly_swing_is_still_found(level):
+    # the cycle only takes away (AH-64 try 2 review): what main finds on a cycle it keeps where the row also stands out
+    # without the cycle; 47 and 169, which main misses, stay missed rather than be found at the cost of honest rows
     found = listed(scan(["date", "value"], swing(), fair=False, strength=level)[1])
-    assert {47, 169, 183} <= set(found), (level, found)
+    assert 183 in found, (level, found)
+
+
+def summer(days=364, seed=64):
+    # one crossing's hourly bike counts for a year: weekday commuter peaks, weekend middays, zeros at night, and a
+    # summer that doubles the evening ride home (Seattle's bikes: a year's swing on top of the week's)
+    rng = np.random.default_rng(seed)
+    t0 = np.datetime64("2014-01-06T00:00")
+    rows = []
+    for h in range(24 * days):
+        hr, wd, day = h % 24, (h // 24) % 7, h // 24
+        season = 0.5 + 0.5 * np.sin(2 * np.pi * (day - 100) / 365)  # 0 in January, 1 in July
+        mean = (0.3 + 14 * np.exp(-((hr - 8) / 1.2) ** 2) + (16 + 20 * season) * np.exp(-((hr - 17.5) / 1.8) ** 2) if wd < 5
+                else 0.2 + (6 + 10 * season) * np.exp(-((hr - 14) / 3) ** 2))
+        rows.append([str(t0 + np.timedelta64(h, "h")), int(rng.poisson(mean * (0.7 + 0.6 * season)))])
+    return rows
+
+
+@pytest.mark.parametrize("level, most", [(5, 6), (10, 12)])
+def test_honest_summer_evenings_on_a_weekly_cycle_are_not_called_jumps(level, most):
+    # main lists 159 (level 5) and 313 (level 10) of these May-October 4-9 pm hours, try 1 45 and 48; the cycle now
+    # only takes main's away, read against the spread near each row: 6 and 12 stay, every one of them also main's
+    rows = summer()
+    found = listed(scan(["date", "bike_count"], rows, fair=False, strength=level)[1])
+    evenings = [i for i in found if rows[i][0][5:7] in ("05", "06", "07", "08", "09", "10") and 16 <= int(rows[i][0][11:13]) <= 21]
+    assert len(evenings) <= most, (level, len(evenings), evenings[:10])
 
 
 def mauna(seed=58, n=740):
