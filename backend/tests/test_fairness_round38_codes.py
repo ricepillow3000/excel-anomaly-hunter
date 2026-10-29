@@ -50,3 +50,85 @@ def test_a_real_skip_gap_among_those_a_number_coded_answer_asked_is_still_found(
     f = fair(*voters(skip={"Black": 0.3, "White": 0.03, "Hispanic": 0.03}))
     t = next(t for t in f["tests"] if t["column"] == "race" and t["test"] == "missing Q29_1")
     assert t["verdict"] == "gap" and t["text"].startswith("race Black:") and "counted where it was asked (Q26: 2, 3, 4)" in t["text"], t["text"]
+
+
+STATES = ["AL", "CA", "GA", "NV", "NY", "OH", "OK", "PA", "TX", "VA"]
+
+
+def candidates(seed=31):
+    # a primary's candidates, sorted by state: the source recorded each candidate's race for some states only (NV, NY, OH
+    # half blank), so the scan flags those blanks, and by State the flag rate looked like "TX: 0.9% vs 25%"
+    rng = np.random.default_rng(seed)
+    cols = ["Candidate", "State", "Primary Status", "Primary %", "Race", "Veteran?"]
+    rows = []
+    for st in STATES:
+        for i in range(90 if st != "TX" else 120):
+            race = "" if st in ("NV", "NY", "OH") and rng.random() < 0.5 else str(rng.choice(["White", "Nonwhite"]))
+            rows.append([f"{st} candidate {i}", st, str(rng.choice(["Advanced", "Lost"])), round(float(rng.uniform(5, 60)), 1),
+                         race, str(rng.choice(["Yes", "No"]))])
+    return cols, rows
+
+
+def test_a_flag_rate_by_state_that_is_only_blanks_where_a_source_kept_a_column_is_never_a_gap():
+    f = fair(*candidates())
+    assert not [t for t in f["tests"] if t["measure"] == "flag" and t["verdict"] == "gap"], gaps(f)
+
+
+def test_a_real_flag_rate_gap_from_wrong_values_is_still_found_and_says_what_it_counts():
+    # line totals mistyped on women's orders far more often: the scan flags their rows more, a gap to report; and a few
+    # blank phones are counted under their column, so the sentence says it counts the rows flagged for a value
+    rng = np.random.default_rng(32)
+    cols, rows = ["Customer", "Gender", "Units", "Price", "Total", "Phone"], []
+    for i in range(2000):
+        sex = str(rng.choice(["Female", "Male"]))
+        units, price = int(rng.integers(1, 20)), round(float(rng.uniform(2, 90)), 2)
+        total = round(units * price, 2)
+        if rng.random() < (0.05 if sex == "Female" else 0.005):
+            total = round(total + float(rng.choice([1, -1])) * round(float(rng.uniform(5, 40)), 2), 2)
+        rows.append([f"C{i}", sex, units, price, total, "" if i % 300 == 7 else f"555-{i:04d}"])
+    t = next(t for t in fair(cols, rows)["tests"] if t["column"] == "Gender" and t["test"] == "flag rate")
+    assert t["verdict"] == "gap" and t["text"].startswith("Gender Female:") and "rows flagged for a value" in t["text"], t["text"]
+
+
+def medals(seed=33, guide_gap=False):
+    # medal rows of a games: an individual event has 3 rows (Gold, Silver, Bronze), a team event 3 teams of 4 numbered
+    # members (grp_id 1-4); women entered fewer team events, so they had more blank grp_id, the event's layout
+    rng = np.random.default_rng(seed)
+    cols, rows = ["gender", "event", "medal", "athlete", "grp_id", "classification"], []
+    k = 0
+    for e in range(300):
+        sex = "Men" if e % 5 < 3 else "Women"
+        team = rng.random() < (0.3 if sex == "Men" else 0.15)
+        for medal in ["Gold", "Silver", "Bronze"]:
+            for member in range(1, 5) if team else [None]:
+                k += 1
+                blank = rng.random() < ((0.3 if sex == "Women" else 0.05) if guide_gap else 0.02)
+                rows.append([sex, f"{sex} event {e}{' team' if team else ''}", medal, f"Athlete {k}", member if team else "NA",
+                             "" if blank else str(rng.choice(["T11", "T12", "T13"]))])
+    return cols, rows
+
+
+def test_a_team_members_number_blank_for_every_individual_event_is_the_events_layout_never_a_gap():
+    f = fair(*medals())
+    said = [t["text"] for t in f["tests"] if t["test"] == "missing grp_id"]
+    assert not [s for s in said if "a real gap" in s], said
+
+
+def test_a_real_gap_in_blanks_beside_an_events_layout_is_still_found():
+    f = fair(*medals(guide_gap=True))
+    t = next(t for t in f["tests"] if t["column"] == "gender" and t["test"] == "missing classification")
+    assert t["verdict"] == "gap" and t["text"].startswith("gender Women:"), t["text"]
+
+
+def test_a_persons_own_id_never_explains_their_blanks():
+    # a panel: each member on 6 terms under an id whose header names no person (congress terms' bioguide), Income blank
+    # for all of a member's terms, far more often for women. Every member's rows are all blank or all filled, like an
+    # event's, but who someone is never gates their own blanks
+    rng = np.random.default_rng(34)
+    cols, rows = ["bioguide", "Sex", "Term", "Income"], []
+    for p in range(400):
+        sex = str(rng.choice(["F", "M"]))
+        none = rng.random() < (0.4 if sex == "F" else 0.1)
+        rows += [[f"P{p:03d}", sex, v, "" if none else round(float(rng.normal(50000, 9000)), 0)] for v in range(1, 7)]
+    t = next((t for t in fair(cols, rows)["tests"] if t["column"] == "Sex" and t["test"] == "missing Income"), None)
+    assert t and t["verdict"] == "gap" and t["text"].startswith("Sex F:") and "counted where" not in t["text"], t

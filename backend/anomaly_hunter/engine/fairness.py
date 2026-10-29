@@ -493,6 +493,8 @@ def _named(groups, maybe=None):
 ALL_THAT_APPLY = re.compile(r"(?i)\b(?:select|check|tick|mark|choose)\s+all\s+that\s+apply\b")
 
 
+OCCASIONS = {"event", "events", "competition", "contest", "tournament", "match", "game", "games", "round", "stage", "heat",
+             "edition", "season", "episode", "meet", "championship", "championships"}
 ASKERS = 150  # the first 150 in sheet order: nonvoters' party (Q30) is its 110th column (AH-65); a crafted wide sheet stays fast
 
 
@@ -515,6 +517,14 @@ def _askers(df, types, blank_of):
         if q not in df.columns:
             continue
         lab = _labels(df[q], 20) if t == "text" else _codes(df[q], blank_of[q]) if t == "number" else None
+        least = (5, 1)  # rows an answer needs to be read as routed past, and as asked
+        if lab is None and t == "text" and set(_words(q)) & OCCASIONS:
+            # ...or an event's name, of many labels each written 3+ times: a team member's number is blank for every
+            # individual event ("gender Women: 79% missing grp_id vs 71%", round 38, AH-66). Only an occasion: by the data
+            # alone a person's own id gates too (congress terms' bioguide: a member's middle name is blank on every term)
+            lab, least = df[q].astype(str).str.strip().where(~blank_of[q]), (3, 3)
+            if lab.dropna().value_counts().ge(3).sum() < 2:
+                continue
         if lab is None or not lab.notna().any():
             continue
         if t == "number":  # in their order: "Q26: 2, 3, 4"
@@ -525,7 +535,7 @@ def _askers(df, types, blank_of):
             names = list(names)
         on = codes >= 0
         onehot = csr_matrix((np.ones(int(on.sum())), (codes[on], np.flatnonzero(on))), shape=(len(names), n))
-        out.append((q, codes, names, np.bincount(codes[on], minlength=len(names)), onehot))
+        out.append((q, codes, names, np.bincount(codes[on], minlength=len(names)), onehot, least))
         if len(out) == ASKERS:
             break
     return out
@@ -538,7 +548,7 @@ def _gates(askers, blanks):
         return {}
     cols = [blanks[k][2] for k in names]
     b = np.column_stack([blanks[k][0].to_numpy(bool) for k in names]).astype(float)
-    per = [(q, codes, labels, size, np.asarray(onehot @ b)) for q, codes, labels, size, onehot in askers]
+    per = [(q, codes, labels, size, np.asarray(onehot @ b), least) for q, codes, labels, size, onehot, least in askers]
     index = blanks[names[0]][0].index
     return {k: _gate(per, cols[j], j, b[:, j].sum(), index) for j, k in enumerate(names)}
 
@@ -551,11 +561,11 @@ def _gate(per, col, j, total, index):
     blank ones 60% of this column's blanks (Thanksgiving's 78 who do not celebrate are 73% of "How far will you
     travel?"'s blanks, the rest respondents who stopped) -> (gate, the rows asked, the answers asked)."""
     best = None
-    for q, codes, names, size, counts in per:
+    for q, codes, names, size, counts, least in per:
         if q == col:
             continue
         share = counts[:, j] / np.maximum(size, 1)
-        routed, asked = (size >= 5) & (share >= 0.95), share <= 0.5
+        routed, asked = (size >= least[0]) & (share >= 0.95), (size >= least[1]) & (share <= 0.5)
         if not routed.any() or not asked.any() or size[routed | asked].sum() < 0.9 * size.sum():
             continue
         why = int(round(counts[routed, j].sum()))
@@ -600,15 +610,24 @@ def report(df, types, rows):
     df = df[~head.to_numpy()]
     types = {c: t for c, t in types.items() if not _unnamed(c)}  # a column with no name is never quoted
     prot = _people(df, types)
-    flagged = pd.Series([r["severity"] in ("High", "Medium", "Low") for r in rows], index=df.index)
     blank_of = {c: _missing(df[c]) for c in types if c in df.columns}  # once a column: nonvoters' 119 were read 3 times (AH-65)
+    # a row flagged only for its blank cells is counted under each column's blanks, where coverage and routing are
+    # judged: "State TX: 0.9% rows flagged vs 25% - a real gap" was 150 blank Race cells in the states whose candidates'
+    # race the source never recorded (round 38, AH-66). A flag on a value stays the scan's own judgement of the row
+    flagged = pd.Series([r["severity"] in ("High", "Medium", "Low") for r in rows], index=df.index)
+    blank_at = {c: b.to_numpy(bool) for c, b in blank_of.items()}
+    for i, r in enumerate(rows):
+        cells = r.get("cells") or []
+        if flagged.iat[i] and cells and all(c in blank_at and blank_at[c][i] for c in cells):
+            flagged.iat[i] = False
+    counted = "rows flagged" if flagged.sum() == sum(r["severity"] in ("High", "Medium", "Low") for r in rows) else "rows flagged for a value"
     missing = {c: b for c, b in blank_of.items() if c not in prot}
     # ...never an option of a "select all that apply" question, whose blank is an answer (not chosen): "Male: 58% missing
     # Will you watch ... Macy's Parade vs 45% - a real gap" said who watches as if it were who skipped (AH-63)
     blanks = {f"missing {c}": (b, f"missing {c}", c, "missing") for c, b in missing.items() if b.sum() >= 5 and not ALL_THAT_APPLY.search(str(c))}
     outcomes = _outcomes(df, types, prot)
     amounts = _amounts(df, types, prot)
-    measures = {"flag rate": (flagged, "rows flagged", None, None), **blanks, **outcomes}
+    measures = {"flag rate": (flagged, counted, None, None), **blanks, **outcomes}
     kinds = {name: "outcome" if name in outcomes else "missing" if name in blanks else "flag" for name in measures}
     # a row left unrecorded: blank in 3+ of the columns that are 90% filled (a candidate with no profile, AH-63)
     full = [c for c, b in blank_of.items() if b.mean() <= 0.1]
