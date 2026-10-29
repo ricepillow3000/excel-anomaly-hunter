@@ -133,3 +133,36 @@ def test_a_survey_routed_past_by_one_answer_and_left_by_a_few_who_stopped_is_sti
     f = fair(cols, rows)
     said = [t["text"] for t in f["tests"] if t["test"] == f"missing {cols[2]}" and t["column"] == "Age"]
     assert said and not any("real gap" in s for s in said) and all("counted where it was asked" in s for s in said), said
+
+
+def ships(sex=False, seed=5):
+    # a ship registry: the flag's 60 nationalities, its home port and a tonnage; no person on it unless a crew's sex is
+    rng = np.random.default_rng(seed)
+    cols = ["Vessel", "Nationality", "Port city", "Gross tonnage"] + (["sex"] if sex else [])
+    rows = [[f"Vessel {i}", f"Flag {i % 60}", ["Rotterdam", "Hamburg", "Antwerp", "Le Havre"][i % 4],
+             float(round(rng.lognormal(9, 1), 0)) if i % 7 else ""] + ([str(rng.choice(["F", "M"]))] if sex else [])
+            for i in range(600)]
+    return cols, rows
+
+
+def test_a_column_too_wide_to_compare_never_makes_a_sheet_about_people():
+    # AH-63 review 1: a 60-label Nationality was kept to be named as left out, and that alone made the registry a people
+    # sheet whose ports got gap tests; on main it fell out and the sheet had no report
+    assert fair(*ships()) == {"protected": {}, "tests": []}  # as on main: no report
+    f = fair(*ships(sex=True))
+    said = [t["text"] for t in f["tests"] if t["column"] == "Nationality"]
+    assert said == ["Nationality: 60 different values, too many to compare as groups (50 at most) - left out"], said
+
+
+def test_a_left_out_column_is_written_in_the_downloaded_report_as_left_out_never_even(tmp_path):
+    # AH-63 review 1: report.py wrote every verdict it did not know as "Even", a comparison that never ran
+    from openpyxl import load_workbook
+
+    from anomaly_hunter.engine.report import write_report
+    cols, rows = ships(sex=True)
+    df, out, *_, f = scan(cols, rows)
+    write_report(df, out, {}, tmp_path / "r.xlsx", None, [], f)
+    lines = [[c.value for c in r] for r in load_workbook(tmp_path / "r.xlsx")["Fairness"].iter_rows()]
+    left = [r for r in lines if r[1] == "Nationality: groups"]
+    assert left and left[0][0] == "Left out - too many groups", left
+    assert not any(r[0] == "Even" and r[2] and "left out" in str(r[2]) for r in lines), lines

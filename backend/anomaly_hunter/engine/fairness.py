@@ -413,7 +413,7 @@ def _people(df, types):
         if c not in named and not _asked(c) and (w & OTHER_NAMES and len(_words(c)) <= 3 or w & COLOUR and _labels(df[c], 20) is not None
                                and set(_labels(df[c], 20).dropna().str.casefold()) <= RACE_LABELS):
             named[c] = "demographic"
-    out = {}
+    out, wide = {}, set()
     for c, why in named.items():
         w = _words(c)
         if any(k in w and set(w) & NOT_PEOPLE[k] for k in NOT_PEOPLE):
@@ -431,11 +431,15 @@ def _people(df, types):
         elif set(w) & AGED:
             if not _aged(c):
                 continue
-        elif _groups(df, c, types) is None and not _many(df, c, types):
-            continue  # a measurement named like a group (Boston's "black", a town's share): not a person's category
+        elif _groups(df, c, types) is None:
+            if not _many(df, c, types):
+                continue  # a measurement named like a group (Boston's "black", a town's share): not a person's category
+            wide.add(c)
         out[c] = why
-    # ...and the sheet is about people: a person-only column (not an age, not a place), or rows named as people
-    strong = any(why == "demographic" and not set(_words(c)) & AGED for c, why in out.items())
+    # ...and the sheet is about people: a person-only column (not an age, not a place), or rows named as people. A column
+    # kept only to be named as left out never makes it so: a ship registry's 60 flag Nationalities made its ports gap
+    # tests (AH-63 review 1)
+    strong = any(why == "demographic" and not set(_words(c)) & AGED and c not in wide for c, why in out.items())
     if not strong and not any(_names_rows(c) for c in cols):
         return {}
     return out

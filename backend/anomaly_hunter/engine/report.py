@@ -12,6 +12,10 @@ FILL = {s: PatternFill("solid", fgColor=c) for s, c in
 RANK = {"High": 3, "Medium": 2, "Low": 1}
 
 
+# "left out" is a column too wide to compare: never "Even", a comparison that never ran (AH-63 review 1)
+VERDICT = {"gap": "Gap - check why", "unclear": "Not enough rows to tell", "left out": "Left out - too many groups"}
+
+
 def write_report(df, rows, status, out_path, limits_path, warnings, fair=None):
     wb = Workbook()
     data = wb.active
@@ -56,7 +60,7 @@ def write_report(df, rows, status, out_path, limits_path, warnings, fair=None):
     fairness.append([])
     fairness.append(["Result", "What was compared", "Finding", "Groups (rows, rate)", "p-value", "In real data"])
     for t in (fair or {}).get("tests", []):
-        fairness.append([{"gap": "Gap - check why", "unclear": "Not enough rows to tell"}.get(t["verdict"], "Even"), f"{t['column']}: {t['test']}",
+        fairness.append([VERDICT.get(t["verdict"], "Even"), f"{t['column']}: {t['test']}",
                          t["text"], "; ".join(f"{g} ({n}, {r:.0%})" for g, (n, r) in t["groups"].items()),
                          "" if t["p"] is None else round(t["p"], 4), t.get("context", "")])
     for ws in wb:  # a scanned cell "=HYPERLINK(...)" or "=cmd|..." stays text: opening the report never runs it
