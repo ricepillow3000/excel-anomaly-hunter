@@ -62,6 +62,14 @@ for (const f of panes) {
   assert.ok(!cancels, `${f}: "${cancels?.[0]}" - use addEventListener and call preventDefault yourself`);
   const falsy = /\.on[a-z]+\s*=\s*(?:async\s*)?(?:\([^)]*\)|\w+)\s*=>\s*(?!\{)[^\n;]*(?:&&|\|\|)/.exec(src);
   assert.ok(!falsy, `${f}: "${falsy?.[0]}" can return false, which cancels the event - give it a { body }`);
+  // Excel refuses Excel.run while the user is typing in a cell: one left unawaited, unreturned and uncaught was an
+  // unhandled rejection when the pane opened mid-edit (AH-58)
+  for (const m of src.matchAll(/(\b(?:await|return)\s+)?Excel\.run\(/g)) {
+    if (m[1]) continue;
+    let depth = 0, k = m.index + m[0].length - 1;
+    do depth += { "(": 1, ")": -1 }[src[k]] || 0; while (depth && ++k < src.length);
+    assert.match(src.slice(k + 1), /^\s*\.catch\(/, `${f}: an Excel.run that is not awaited, returned or caught (line ${src.slice(0, m.index).split("\n").length})`);
+  }
 }
 
 // fairness line: protected columns named; a real gap spelled out; nothing at all without a protected column

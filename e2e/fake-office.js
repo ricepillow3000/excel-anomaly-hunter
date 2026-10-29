@@ -70,7 +70,12 @@
     HostType: { Excel: "Excel" }, onReady: (cb) => setTimeout(() => cb({ host: "Excel" }), 0),
     context: { document: { settings: { get: (k) => settings[k] ?? null, set: (k, v) => (settings[k] = v), remove: (k) => delete settings[k], saveAsync, refreshAsync: (cb) => cb() } } },
   };
-  window.Excel = { run: async (a, b) => (b || a)(ctx) };
+  // window.__cellEdit = n (set before the pane loads): the next n Excel.run calls reject as real Excel does while the
+  // user is typing in a cell
+  window.Excel = { run: async (a, b) => {
+    if (window.__cellEdit > 0) { window.__cellEdit--; throw Object.assign(new Error("InvalidOperationInCellEditMode"), { code: "InvalidOperationInCellEditMode" }); }
+    return (b || a)(ctx);
+  } };
   // test hooks
   window.__load = (name, rows, dateCols = []) => {
     const ws = (sheets[name] = makeSheet(name)); active = name;

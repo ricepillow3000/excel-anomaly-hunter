@@ -560,6 +560,29 @@ if (mode === "nokey") {
   await page.fill("#ai-key", "");
 }
 
+if (mode === "flow") {
+  // the pane opened while the user is typing in a cell: real Excel rejects Excel.run (InvalidOperationInCellEditMode),
+  // and the start-up sheet-name read left that rejection unhandled. A page of its own: its first Excel.run fails (AH-58)
+  const busy = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width: 360, height: 900 } });
+  const heard = [];
+  busy.on("pageerror", (e) => heard.push(`pageerror: ${e.message}`));
+  await busy.exposeFunction("__unhandled", (kind, what) => heard.push(`${kind}: ${what}`));
+  await busy.addInitScript(() => {
+    window.__cellEdit = 1;
+    addEventListener("unhandledrejection", (e) => __unhandled("unhandledrejection", String(e.reason?.stack || e.reason)));
+    addEventListener("error", (e) => __unhandled("error", String(e.error?.stack || e.message)));
+  });
+  await busy.route("https://appsforoffice.microsoft.com/**", (r) => r.fulfill({ contentType: "text/javascript", body: fs.readFileSync(DIR + "fake-office.js", "utf8") }));
+  await busy.goto("https://127.0.0.1:5055/taskpane.html");
+  const ready = await busy.waitForSelector("#main-ui", { state: "visible", timeout: 10000 }).then(() => true, () => false);
+  await busy.waitForTimeout(300);
+  const st = await busy.evaluate(() => ({ failed: window.__cellEdit === 0, name: document.getElementById("sheet-name").textContent,
+    empty: document.getElementById("empty-state").offsetParent !== null }));
+  ok(ready && st.failed && st.empty && st.name === "" && heard.length === 0,
+    "opened mid cell-edit: the sheet-name read fails quietly, the pane still gets ready - " + JSON.stringify({ ready, ...st, heard }));
+  await busy.close();
+}
+
 if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/pane-${mode}.png`, fullPage: true }); // proof for people
 const real = errors.filter((e) => !(mode === "nokey" && e.includes("status of 400"))); // the junk key gets the engine's 400 on purpose
 ok(real.length === 0, "no page errors " + JSON.stringify(real));
