@@ -186,3 +186,62 @@ def test_an_unknown_label_that_marks_the_same_unknown_people_is_never_their_rout
             for i, r in enumerate(rows)]
     said = [t["text"] for t in fair(cols, rows)["tests"] if t["column"] == "artist_race_nwi" and t["verdict"] == "gap"]
     assert any(s.startswith("artist_race_nwi Non-White:") and "missing artist_gender" in s for s in said), said
+
+
+def test_a_label_that_says_no_value_is_never_a_group_of_people():
+    # AH-66 review 2: "artist_ethnicity NA: 43% missing artist_race vs 0.1% - a real gap" was the same unknown people
+    # counted twice, a group defined by its own missing identity; so was tate's "gender NA: 24% missing yearOfBirth"
+    cols, rows = artists()
+    cols = cols + ["artist_ethnicity"]
+    rows = [r + ["NA" if r[3] == "N/A" else ("Hispanic or Latino origin" if i % 20 == 0 else "Not Hispanic or Latino origin")]
+            for i, r in enumerate(rows)]
+    f = fair(cols, rows)
+    assert not [t["text"] for t in f["tests"] if "NA" in t.get("groups", {}) or " NA:" in t["text"]], [t["text"] for t in f["tests"]]
+    said = [t["text"] for t in f["tests"] if t["column"] == "artist_race_nwi" and t["verdict"] == "gap"]
+    assert any(s.startswith("artist_race_nwi Non-White:") and "missing artist_gender" in s for s in said), said
+
+
+def games(seed=36):
+    # athletes of 12 Games: the early Games kept no age for a quarter of their (mostly male) athletes, the later ones kept
+    # every age. By host city that is which Games recorded ages, never a gap; by sex it is the men's ages that are missing
+    rng = np.random.default_rng(seed)
+    cities = ["Athens", "Paris", "St. Louis", "London", "Stockholm", "Antwerp", "Sydney", "Athens 2004", "Beijing", "London 2012",
+              "Rio de Janeiro", "Tokyo"]
+    cols, rows = ["Name", "sex", "age", "city", "medal"], []
+    for k, city in enumerate(cities):
+        early = k < 6
+        for i in range(150):
+            sex = "M" if rng.random() < (0.97 if early else 0.55) else "F"
+            rows.append([f"Athlete {k}-{i}", sex, "" if early and rng.random() < 0.25 else int(rng.integers(16, 40)), city,
+                         str(rng.choice(["Gold", "Silver", "Bronze", "None"]))])
+    return cols, rows
+
+
+def test_a_host_city_never_measures_a_peoples_column_blanks_and_the_sex_gap_stays():
+    f = fair(*games())
+    assert not [t["text"] for t in f["tests"] if t["column"] == "city" and t["test"] == "missing age"], f["tests"]
+    t = next(t for t in f["tests"] if t["column"] == "sex" and t["test"] == "missing age")
+    assert t["verdict"] == "gap" and t["text"].startswith("sex M:"), t["text"]
+
+
+def test_a_people_column_of_mostly_or_only_no_value_labels_never_breaks_the_report():
+    rng = np.random.default_rng(37)
+    for share in (0.9, 1.0):
+        rows = [[f"C{i}", "NA" if rng.random() < share else str(rng.choice(["White", "Black"])), str(rng.choice(["F", "M"])),
+                 "Yes" if rng.random() < 0.3 else "No"] for i in range(600)]
+        f = fair(["Customer", "race", "sex", "Churned"], rows)
+        assert any(t["column"] == "sex" for t in f["tests"]), f["tests"]
+        assert not any("NA" in t.get("groups", {}) for t in f["tests"]), f["tests"]
+
+
+def test_those_who_declined_to_say_who_they_are_are_never_a_group_for_another_identity_columns_blanks():
+    # salary survey: "gender Other or prefer not to answer: 2.2% missing race vs 0.4% - a real gap" was one refusal twice
+    rng = np.random.default_rng(38)
+    rows = []
+    for i in range(3000):
+        sex = str(rng.choice(["Woman", "Man", "Other or prefer not to answer"], p=[0.6, 0.3, 0.1]))
+        race = "" if rng.random() < (0.05 if sex.startswith("Other") else 0.004) else str(rng.choice(["White", "Black", "Asian"]))
+        rows.append([f"R{i}", sex, race, round(float(rng.normal(80000, 15000)), 0)])
+    f = fair(["Respondent", "gender", "race", "annual_salary"], rows)
+    assert not [t["text"] for t in f["tests"] if t["column"] == "gender" and t["test"] == "missing race" and t["verdict"] == "gap"], f["tests"]
+    assert any(t["column"] == "gender" and "Other or prefer not to answer" in t.get("groups", {}) for t in f["tests"]), f["tests"]

@@ -59,8 +59,20 @@ def _groups(df, col, types, place=False):
         return labels.map(lambda b: None if pd.isna(b) else _band(b))
     if types.get(col) == "text":
         v = _labels(s, 50)  # category-like: groups under 20 rows drop out
-        return None if v is None else v.where(v.notna(), None)
+        return None if v is None else v.where(v.notna() & ~_unknown(v), None)
     return None
+
+
+REFUSAL = re.compile(r"(?i)prefer(?:red)? not to|decline[sd]? to|rather not")
+
+
+def _unknown(s):
+    """Labels that say no value (NA, N/A, Unknown, Not stated, Blank...): never a group of people, counted as missing as
+    "?" is. "artist_ethnicity NA: 43% missing artist_race vs 0.1% - a real gap" was the same unknown artists counted
+    twice, tate's "gender NA: 24% missing yearOfBirth" the anonymous and the collectives (AH-66 review 2). "None" and
+    "Nil" stay: a religion of None is an answer."""
+    v = s.astype(str).str.strip()
+    return v.str.fullmatch(NO_VALUE_WORD) & ~v.str.casefold().isin(["none", "nil"]) & s.notna()
 
 
 def _many(df, col, types):
@@ -642,7 +654,10 @@ def report(df, types, rows):
     # ...and a column about people has its blanks measured too, by the other groups: artists' gender, nationality and
     # race left "N/A" for 25% of Non-White artists and 0.03% of White ones was "Non-White: 27% rows flagged vs 0.1% - a
     # real gap", and with blank-only rows out of the flag rate it was said nowhere (AH-66 review 1)
-    missing = dict(blank_of)
+    missing = {c: b for c, b in blank_of.items() if prot.get(c) != PROXY}  # a place's blanks are where a source kept it
+    for c in prot:  # ...an unknown person's "NA" too
+        if types.get(c) == "text" and c in missing:
+            missing[c] = missing[c] | _unknown(df[c])
     # ...never an option of a "select all that apply" question, whose blank is an answer (not chosen): "Male: 58% missing
     # Will you watch ... Macy's Parade vs 45% - a real gap" said who watches as if it were who skipped (AH-63)
     blanks = {f"missing {c}": (b, f"missing {c}", c, "missing") for c, b in missing.items() if b.sum() >= 5 and not ALL_THAT_APPLY.search(str(c))}
@@ -667,9 +682,14 @@ def report(df, types, rows):
         gcodes, gnames = pd.factorize(g, sort=True)
         for name, (hit, what, subject, label) in list(measures.items())[:left]:
             left -= 1
+            if kinds[name] == "missing" and subject in prot and why == PROXY:
+                continue  # host cities only say which Games kept ages: coverage by place, never a gap (AH-66 review 2)
             if kinds[name] == "missing" and subject in prot and _coarser(g, df[subject], hit):
                 continue  # "Non-White: 16% missing artist_race vs 0.0% for White" is how the source coded an unknown race
             ok = g.notna() & hit.notna()
+            if kinds[name] == "missing" and subject in prot:  # ...nor by those who declined to say who they are: "gender
+                # Other or prefer not to answer: 2.2% missing race" is the same refusal twice (AH-66 review 2)
+                ok &= ~g.astype(str).str.contains(REFUSAL)
             gate = gates.get(name) if kinds[name] == "missing" else None
             # ...but never for a group whose own rows are 90%+ of those it routes past: 2 of every 5 women's events never
             # had their times kept, and "event" read that real gap as the events' layout; artists' ethnicity "NA" (57 of

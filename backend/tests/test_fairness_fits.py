@@ -179,18 +179,21 @@ def test_a_real_rare_group_one_letter_from_a_usual_one_is_never_counted_in_it(co
     f = fair(["Employee", col, "Promoted"], rows)
     tests = [t for t in f["tests"] if t["column"] == col]
     assert tests and all(t["groups"][g][0] == sum(r[1] == g for r in rows) for t in tests for g in t["groups"]), [t["groups"] for t in tests]
-    assert all(f"{rare} (2 rows" in t["text"] for t in tests), [t["text"] for t in tests]
+    # ...a real group is named as too few; "Blank" says no value, so it is no group at all (AH-66 review 2)
+    assert all((rare not in t["text"]) if rare == "Blank" else (f"{rare} (2 rows" in t["text"]) for t in tests), [t["text"] for t in tests]
 
 
-@pytest.mark.parametrize("col, big, rare, said", [("Race", ["White", "Black"], "Blank", "Blank (2 rows)"),
+@pytest.mark.parametrize("col, big, rare, said", [("Race", ["White", "Black"], "Blank", None),
                                                   ("Nationality", ["Nigerian", "Ghanaian"], "Nigerien", "Nigerien (2 rows, maybe Nigerian)")])
 def test_a_word_that_says_no_value_is_never_named_as_a_group_it_may_be(col, big, rare, said):
-    # AH-50: "Blank (2 rows, maybe Black)" gave a race to people whose race is unknown; a demonym keeps its honest "maybe"
+    # AH-50: "Blank (2 rows, maybe Black)" gave a race to people whose race is unknown; a demonym keeps its honest "maybe".
+    # AH-66 review 2: a word that says no value is no group at all, counted as missing (said None: never named)
     rng = np.random.default_rng(12)
     rows = [[f"E{i}", big[i % 2], int(rng.random() < 0.4)] for i in range(600)]
     rows[7][1] = rows[8][1] = rare
     tests = [t for t in fair(["Employee", col, "Promoted"], rows)["tests"] if t["column"] == col]
-    assert tests and all(f"{said}" in t["text"] and (", maybe" in said or f"{rare} (2 rows, maybe" not in t["text"]) for t in tests), [t["text"] for t in tests]
+    assert tests and all((rare not in t["text"]) if said is None else (said in t["text"]) for t in tests), [t["text"] for t in tests]
+    assert not any(f"{rare} (2 rows, maybe" in t["text"] for t in tests if ", maybe" not in (said or "")), [t["text"] for t in tests]
 
 
 def test_a_place_of_birth_is_a_place_never_an_age():
