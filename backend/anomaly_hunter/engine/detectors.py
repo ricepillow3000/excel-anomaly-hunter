@@ -103,7 +103,7 @@ def column_stats(x):
     x = x[~np.isnan(x)]
     mags = np.sort(np.abs(x[x != 0]))
     return {"n": len(x), "nonneg": int((x >= 0).sum()), "mags": mags, "logmed": np.median(np.log10(mags)) if len(mags) else 0.0,
-            "whole": bool((x == np.round(x)).mean() >= 0.95), "pos": np.sort(x[x > 0])}
+            "whole": bool((x == np.round(x)).mean() >= 0.95), "pos": np.sort(x[x > 0]), "negs": np.sort(-x[x < 0])}
 
 
 PROVE = 20  # values a column needs before a slip in it is "likely" (the 20 rows every other rule asks): fewer is a guess the user confirms (AH-54)
@@ -132,7 +132,13 @@ def likely_value(v, st, lo, hi):
     pos = st["pos"]
     years = st["whole"] and len(pos) > 0 and 1000 <= pos[int(0.05 * (len(pos) - 1))] and pos[-1] <= 2200
     usual = lambda q: len(pos) > 0 and m >= pos[int(q * (len(pos) - 1))]  # the only negative: 5th percentile up (On Hand -26 of 0-230)
-    flip = v < 0 and st["nonneg"] >= 0.99 * (st["n"] - 1) and not years and (usual(0.05) if st["n"] - st["nonneg"] == 1 else usual(0.1))
+    # ...and beside other negatives only one that stands alone among them, twice the next deepest: BEA's real
+    # disinvestments, 6 in one column (-194, -175.9 twice, -134, -59.7 twice), each read "likely" positive (round 38,
+    # AH-62), while the airport's -44.5 beside its territories' -14.3 still flips. A code the column writes is no value at
+    # all (load._code)
+    negs = st["negs"]
+    alone = v < 0 and len(negs) > 0 and (len(negs) == 1 or m >= 2 * (negs[-2] if negs[-1] == m else negs[-1]))
+    flip = v < 0 and st["nonneg"] >= 0.99 * (st["n"] - 1) and not years and alone and (usual(0.05) if len(negs) == 1 else usual(0.1))
     for c in ([v / 10 ** k] if 1 <= abs(k) <= 3 and far else []) + ([-v] if flip else []):
         if lo <= c <= hi and (c == round(c) or not st["whole"]):  # 999 in a 1-5 count column is not "likely 0.999"
             return float(c) if c == -v else float(f"{c:.10g}")  # a flipped sign is exact: rounding made it "missing zeros"

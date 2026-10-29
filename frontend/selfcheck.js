@@ -313,6 +313,9 @@ for (const [reason, says] of [["7 of the 9 usually filled cells in this row are 
   rec = recommendFix(["Id", "Q"], [["a", ""]], 0, {}, reason, 0, 0);
   assert.ok(rec.explanation.includes(says) && !rec.explanation.includes("Nothing here") && !rec.changes.length, rec.explanation);
 }
+// AH-62: a column's own code for no value says what it means, and nothing is written over it
+rec = recommendFix(["Id", "t_hh"], [["a", -9999]], 0, { t_hh: [60, 115, 50, 125] }, "t_hh -9999 is written 1375 times: the column's code for no value", 0, 0);
+assert.ok(rec.explanation.includes('-9999 is how this sheet writes "no value"') && !rec.explanation.includes("Nothing here") && !rec.changes.length, rec.explanation);
 // a lone top value (AH-29) is told what it is, never "just unusual together", and nothing is written
 rec = recommendFix(["Id", "Fee"], [["a", 106500]], 0, { Fee: [5, 500000, 5, 22970000] }, "Fee 106500 stands alone above the rest of the column, whose next highest is 59985", 0, 0);
 assert.ok(rec.explanation.includes("an extra zero or a slipped decimal point") && !rec.explanation.includes("unusual together") && !rec.changes.length, rec.explanation);
