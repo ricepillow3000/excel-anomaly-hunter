@@ -236,7 +236,11 @@ def _amount_test(g, x, base):
 
 
 def _missing(s):
-    """Blank, or a stand-in for blank ("?", "N/A", "unknown"): census rows give "?" for an unknown occupation."""
+    """Blank, or a stand-in for blank ("?", "N/A", "unknown"): census rows give "?" for an unknown occupation. A number
+    or a yes/no is never text, so its blank is its NaN: the text pass on nonvoters' 110 number columns was most of the
+    report's time (AH-65)."""
+    if pd.api.types.is_numeric_dtype(s) or pd.api.types.is_bool_dtype(s):
+        return s.isna()
     v = s.astype(str).str.strip()
     return s.isna() | (v == "") | v.str.fullmatch(PLACEHOLDER)
 
@@ -489,40 +493,86 @@ def _named(groups, maybe=None):
 ALL_THAT_APPLY = re.compile(r"(?i)\b(?:select|check|tick|mark|choose)\s+all\s+that\s+apply\b")
 
 
-def _askers(df, types):
-    """The text columns of 20 labels or fewer a later question can hang on, the first 40 in sheet order (a wide sheet
-    stays fast): [(column, label codes, labels, rows per label)]."""
-    out = []
+ASKERS = 150  # the first 150 in sheet order: nonvoters' party (Q30) is its 110th column (AH-65); a crafted wide sheet stays fast
+
+
+def _codes(s, blank):
+    """A number column of 20 whole-number codes or fewer ("How often do you vote?" 1-4) as its labels, else None:
+    nonvoters' Q29_1..Q29_10 hang on Q26 = 2, 3 or 4, and only text could gate (round 38, AH-65)."""
+    v = pd.to_numeric(s, errors="coerce").where(~blank)
+    seen = v.dropna()
+    if seen.empty or not (seen == seen.round()).all() or seen.nunique() > 20:
+        return None
+    return v
+
+
+def _askers(df, types, blank_of):
+    """The text columns of 20 labels or fewer, and the number columns of 20 whole-number codes or fewer, a later question
+    can hang on, the first ASKERS in sheet order: [(column, label codes, labels, rows per label, rows x labels)]."""
+    from scipy.sparse import csr_matrix
+    out, n = [], len(df)
     for q, t in types.items():
-        lab = _labels(df[q], 20) if t == "text" and q in df.columns else None
+        if q not in df.columns:
+            continue
+        lab = _labels(df[q], 20) if t == "text" else _codes(df[q], blank_of[q]) if t == "number" else None
         if lab is None or not lab.notna().any():
             continue
-        codes, names = pd.factorize(lab)
-        out.append((q, codes, list(names), np.bincount(codes[codes >= 0], minlength=len(names))))
-        if len(out) == 40:
+        if t == "number":  # in their order: "Q26: 2, 3, 4"
+            codes, names = pd.factorize(lab, sort=True)
+            names = [str(int(k)) for k in names]
+        else:
+            codes, names = pd.factorize(lab)
+            names = list(names)
+        on = codes >= 0
+        onehot = csr_matrix((np.ones(int(on.sum())), (codes[on], np.flatnonzero(on))), shape=(len(names), n))
+        out.append((q, codes, names, np.bincount(codes[on], minlength=len(names)), onehot))
+        if len(out) == ASKERS:
             break
     return out
 
 
-def _gate(askers, col, blank):
+def _gates(askers, blanks):
+    """_gate for every measured blank at once: each asker's blanks per label, for all the columns, in one product."""
+    names = list(blanks)
+    if not names or not askers:
+        return {}
+    cols = [blanks[k][2] for k in names]
+    b = np.column_stack([blanks[k][0].to_numpy(bool) for k in names]).astype(float)
+    per = [(q, codes, labels, size, np.asarray(onehot @ b)) for q, codes, labels, size, onehot in askers]
+    index = blanks[names[0]][0].index
+    return {k: _gate(per, cols[j], j, b[:, j].sum(), index) for j, k in enumerate(names)}
+
+
+def _gate(per, col, j, total, index):
     """The earlier question a later one hangs on: Star Wars' "Which character shot first?" is blank for everyone who had
     seen none of the films, so women, who more often had not, were "28% missing vs 15% - a real gap" (round 38, AH-63).
-    One whose answers (5+ rows each) either leave this column blank (95%+) or fill it (80%+), those answers 90% of its
-    answered rows, and the blank ones 60% of this column's blanks (Thanksgiving's 78 who do not celebrate are 73% of
-    "How far will you travel?"'s blanks, the rest respondents who stopped) -> (gate, the rows asked, the answers asked)."""
-    b, best = blank.to_numpy(bool), None
-    for q, codes, names, size in askers:
+    One whose answers (5+ rows each) either leave this column blank (95%+) or fill it (half the time or more: nonvoters'
+    Q30 = 5 left Q33 blank 21% of the time, refusals coded -1, AH-65), those answers 90% of its answered rows, and the
+    blank ones 60% of this column's blanks (Thanksgiving's 78 who do not celebrate are 73% of "How far will you
+    travel?"'s blanks, the rest respondents who stopped) -> (gate, the rows asked, the answers asked)."""
+    best = None
+    for q, codes, names, size, counts in per:
         if q == col:
             continue
-        on = codes >= 0
-        share = np.bincount(codes[on], weights=b[on], minlength=len(names)) / np.maximum(size, 1)
-        routed, asked = (size >= 5) & (share >= 0.95), share <= 0.2
+        share = counts[:, j] / np.maximum(size, 1)
+        routed, asked = (size >= 5) & (share >= 0.95), share <= 0.5
         if not routed.any() or not asked.any() or size[routed | asked].sum() < 0.9 * size.sum():
             continue
-        why = int(b[on & np.isin(codes, np.flatnonzero(routed))].sum())
-        if why >= 0.6 * b.sum() and (best is None or why > best[0]):
-            best = (why, q, pd.Series(np.isin(codes, np.flatnonzero(asked)), index=blank.index), [names[k] for k in np.flatnonzero(asked)])
-    return best[1:] if best else None
+        why = int(round(counts[routed, j].sum()))
+        if why >= 0.6 * total and (best is None or why > best[0]):
+            best = (why, q, codes, [names[k] for k in np.flatnonzero(asked)], np.flatnonzero(asked))
+    if best is None:
+        return None
+    return best[1], pd.Series(np.isin(best[2], best[4]), index=index), best[3]
+
+
+def _table(codes, names, ok, hit):
+    """pd.crosstab(group[ok], hit[ok].astype(bool)), counted with numpy: the same table (groups in order, a False or
+    True column only when it occurs), at a tenth of the time. Nonvoters' 202 crosstabs were half the report (AH-65)."""
+    c = np.bincount(codes[ok] * 2 + hit[ok].astype(bool).to_numpy(int), minlength=2 * len(names)).reshape(len(names), 2)
+    keep = c.sum(axis=1) > 0
+    cols = [k for k in (False, True) if c[:, int(k)].sum()]
+    return pd.DataFrame(c[keep][:, [int(k) for k in cols]], index=pd.Index(np.asarray(names, dtype=object)[keep]), columns=cols)
 
 
 def _coverage(blank, table, unrecorded):
@@ -551,7 +601,8 @@ def report(df, types, rows):
     types = {c: t for c, t in types.items() if not _unnamed(c)}  # a column with no name is never quoted
     prot = _people(df, types)
     flagged = pd.Series([r["severity"] in ("High", "Medium", "Low") for r in rows], index=df.index)
-    missing = {c: _missing(df[c]) for c in types if c in df.columns and c not in prot}
+    blank_of = {c: _missing(df[c]) for c in types if c in df.columns}  # once a column: nonvoters' 119 were read 3 times (AH-65)
+    missing = {c: b for c, b in blank_of.items() if c not in prot}
     # ...never an option of a "select all that apply" question, whose blank is an answer (not chosen): "Male: 58% missing
     # Will you watch ... Macy's Parade vs 45% - a real gap" said who watches as if it were who skipped (AH-63)
     blanks = {f"missing {c}": (b, f"missing {c}", c, "missing") for c, b in missing.items() if b.sum() >= 5 and not ALL_THAT_APPLY.search(str(c))}
@@ -560,11 +611,10 @@ def report(df, types, rows):
     measures = {"flag rate": (flagged, "rows flagged", None, None), **blanks, **outcomes}
     kinds = {name: "outcome" if name in outcomes else "missing" if name in blanks else "flag" for name in measures}
     # a row left unrecorded: blank in 3+ of the columns that are 90% filled (a candidate with no profile, AH-63)
-    full = [c for c in types if c in df.columns and _missing(df[c]).mean() <= 0.1]
-    gone = sum((_missing(df[c]).astype(int) for c in full), pd.Series(0, index=df.index))
+    full = [c for c, b in blank_of.items() if b.mean() <= 0.1]
+    gone = sum((blank_of[c].astype(int) for c in full), pd.Series(0, index=df.index))
     unrecorded = {c: b & (gone - (b.astype(int) if c in full else 0) >= 3) for c, b in missing.items() if f"missing {c}" in blanks}
-    askers = _askers(df, types)
-    gates = {name: _gate(askers, c, b) for name, (b, _, c, _) in blanks.items()}
+    gates = _gates(_askers(df, types, blank_of), blanks)
     tests, left, out_of_reach = [], MAX_TESTS, []
     for col, why in prot.items():
         g = _groups(df, col, types, place=why == PROXY)
@@ -574,13 +624,14 @@ def report(df, types, rows):
                                      "verdict": "left out", "text": f"{col}: {k} different values, too many to compare as groups (50 at most) - left out"})
             continue
         maybe = _maybe(g.dropna()) if types.get(col) == "text" else {}
+        gcodes, gnames = pd.factorize(g, sort=True)
         for name, (hit, what, subject, label) in list(measures.items())[:left]:
             left -= 1
             ok = g.notna() & hit.notna()
             gate = gates.get(name) if kinds[name] == "missing" else None
             if gate and gate[0] != col:  # an earlier answer skipped it: compared among the rows it was asked of
                 ok &= gate[1]
-            table = pd.crosstab(g[ok], hit[ok].astype(bool))
+            table = _table(gcodes, gnames, ok.to_numpy(bool), hit)
             small = {str(k): int(n) for k, n in table.sum(axis=1).items() if n < MIN_GROUP}
             table = table[table.sum(axis=1) >= MIN_GROUP]
             base = {"column": col, "kind": why, "test": name, "measure": kinds[name], "subject": subject, "label": label, "maybe": maybe}
