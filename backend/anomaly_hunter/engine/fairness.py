@@ -59,8 +59,20 @@ def _groups(df, col, types, place=False):
         return labels.map(lambda b: None if pd.isna(b) else _band(b))
     if types.get(col) == "text":
         v = _labels(s, 50)  # category-like: groups under 20 rows drop out
-        return None if v is None else v.where(v.notna(), None)
+        return None if v is None else v.where(v.notna() & ~_unknown(v), None)
     return None
+
+
+REFUSAL = re.compile(r"(?i)prefer(?:red)? not to|decline[sd]? to|rather not")
+
+
+def _unknown(s):
+    """Labels that say no value (NA, N/A, Unknown, Not stated, Blank...): never a group of people, counted as missing as
+    "?" is. "artist_ethnicity NA: 43% missing artist_race vs 0.1% - a real gap" was the same unknown artists counted
+    twice, tate's "gender NA: 24% missing yearOfBirth" the anonymous and the collectives (AH-66 review 2). "None" and
+    "Nil" stay: a religion of None is an answer."""
+    v = s.astype(str).str.strip()
+    return v.str.fullmatch(NO_VALUE_WORD) & ~v.str.casefold().isin(["none", "nil"]) & s.notna()
 
 
 def _many(df, col, types):
@@ -493,6 +505,8 @@ def _named(groups, maybe=None):
 ALL_THAT_APPLY = re.compile(r"(?i)\b(?:select|check|tick|mark|choose)\s+all\s+that\s+apply\b")
 
 
+OCCASIONS = {"event", "events", "competition", "contest", "tournament", "match", "game", "games", "round", "stage", "heat",
+             "edition", "season", "episode", "meet", "championship", "championships"}
 ASKERS = 150  # the first 150 in sheet order: nonvoters' party (Q30) is its 110th column (AH-65); a crafted wide sheet stays fast
 
 
@@ -515,6 +529,14 @@ def _askers(df, types, blank_of):
         if q not in df.columns:
             continue
         lab = _labels(df[q], 20) if t == "text" else _codes(df[q], blank_of[q]) if t == "number" else None
+        least = (5, 1)  # rows an answer needs to be read as routed past, and as asked
+        if lab is None and t == "text" and set(_words(q)) & OCCASIONS:
+            # ...or an event's name, of many labels each written 3+ times: a team member's number is blank for every
+            # individual event ("gender Women: 79% missing grp_id vs 71%", round 38, AH-66). Only an occasion: by the data
+            # alone a person's own id gates too (congress terms' bioguide: a member's middle name is blank on every term)
+            lab, least = df[q].astype(str).str.strip().where(~blank_of[q]), (3, 3)
+            if lab.dropna().value_counts().ge(3).sum() < 2:
+                continue
         if lab is None or not lab.notna().any():
             continue
         if t == "number":  # in their order: "Q26: 2, 3, 4"
@@ -525,7 +547,7 @@ def _askers(df, types, blank_of):
             names = list(names)
         on = codes >= 0
         onehot = csr_matrix((np.ones(int(on.sum())), (codes[on], np.flatnonzero(on))), shape=(len(names), n))
-        out.append((q, codes, names, np.bincount(codes[on], minlength=len(names)), onehot))
+        out.append((q, codes, names, np.bincount(codes[on], minlength=len(names)), onehot, least))
         if len(out) == ASKERS:
             break
     return out
@@ -538,7 +560,7 @@ def _gates(askers, blanks):
         return {}
     cols = [blanks[k][2] for k in names]
     b = np.column_stack([blanks[k][0].to_numpy(bool) for k in names]).astype(float)
-    per = [(q, codes, labels, size, np.asarray(onehot @ b)) for q, codes, labels, size, onehot in askers]
+    per = [(q, codes, labels, size, np.asarray(onehot @ b), least) for q, codes, labels, size, onehot, least in askers]
     index = blanks[names[0]][0].index
     return {k: _gate(per, cols[j], j, b[:, j].sum(), index) for j, k in enumerate(names)}
 
@@ -551,19 +573,37 @@ def _gate(per, col, j, total, index):
     blank ones 60% of this column's blanks (Thanksgiving's 78 who do not celebrate are 73% of "How far will you
     travel?"'s blanks, the rest respondents who stopped) -> (gate, the rows asked, the answers asked)."""
     best = None
-    for q, codes, names, size, counts in per:
+    for q, codes, names, size, counts, least in per:
         if q == col:
             continue
         share = counts[:, j] / np.maximum(size, 1)
-        routed, asked = (size >= 5) & (share >= 0.95), share <= 0.5
+        routed, asked = (size >= least[0]) & (share >= 0.95), (size >= least[1]) & (share <= 0.5)
         if not routed.any() or not asked.any() or size[routed | asked].sum() < 0.9 * size.sum():
             continue
         why = int(round(counts[routed, j].sum()))
         if why >= 0.6 * total and (best is None or why > best[0]):
-            best = (why, q, codes, [names[k] for k in np.flatnonzero(asked)], np.flatnonzero(asked))
+            best = (why, q, codes, [names[k] for k in np.flatnonzero(asked)], np.flatnonzero(asked), np.flatnonzero(routed))
     if best is None:
         return None
-    return best[1], pd.Series(np.isin(best[2], best[4]), index=index), best[3]
+    # -> (gate, rows asked, answers asked, rows routed past)
+    return best[1], pd.Series(np.isin(best[2], best[4]), index=index), best[3], pd.Series(np.isin(best[2], best[5]), index=index)
+
+
+def _coarser(g, s, blank):
+    """The groups are cut from the column measured: each of its labels, and its blank, falls in one group, and it has
+    more labels than there are groups (artist_race_nwi from artist_race, an unknown race counted Non-White)."""
+    d = pd.DataFrame({"g": g, "s": s.astype(str).str.strip().where(~blank, "")}).dropna()
+    return bool(len(d)) and d["s"].nunique() > d["g"].nunique() and d.groupby("s")["g"].nunique().max() == 1
+
+
+def _nested(g, routed, asked):
+    """The rows a gate routed past are one group's: 90%+ of them share a value of the group column that holds at most
+    half of the rows it asked. A group most of the sheet is (Himalaya's men, 90% of the climbers) stays gated."""
+    r, a = g[routed.to_numpy(bool)].dropna(), g[asked.to_numpy(bool)].dropna()
+    if not len(r):
+        return False
+    share = r.value_counts(normalize=True)
+    return share.iloc[0] >= 0.9 and (a == share.index[0]).mean() <= 0.5
 
 
 def _table(codes, names, ok, hit):
@@ -600,15 +640,30 @@ def report(df, types, rows):
     df = df[~head.to_numpy()]
     types = {c: t for c, t in types.items() if not _unnamed(c)}  # a column with no name is never quoted
     prot = _people(df, types)
-    flagged = pd.Series([r["severity"] in ("High", "Medium", "Low") for r in rows], index=df.index)
     blank_of = {c: _missing(df[c]) for c in types if c in df.columns}  # once a column: nonvoters' 119 were read 3 times (AH-65)
-    missing = {c: b for c, b in blank_of.items() if c not in prot}
+    # a row flagged only for its blank cells is counted under each column's blanks, where coverage and routing are
+    # judged: "State TX: 0.9% rows flagged vs 25% - a real gap" was 150 blank Race cells in the states whose candidates'
+    # race the source never recorded (round 38, AH-66). A flag on a value stays the scan's own judgement of the row
+    flagged = pd.Series([r["severity"] in ("High", "Medium", "Low") for r in rows], index=df.index)
+    blank_at = {c: b.to_numpy(bool) for c, b in blank_of.items()}
+    for i, r in enumerate(rows):
+        cells = r.get("cells") or []
+        if flagged.iat[i] and cells and all(c in blank_at and blank_at[c][i] for c in cells):
+            flagged.iat[i] = False
+    counted = "rows flagged" if flagged.sum() == sum(r["severity"] in ("High", "Medium", "Low") for r in rows) else "rows flagged for a value"
+    # ...and a column about people has its blanks measured too, by the other groups: artists' gender, nationality and
+    # race left "N/A" for 25% of Non-White artists and 0.03% of White ones was "Non-White: 27% rows flagged vs 0.1% - a
+    # real gap", and with blank-only rows out of the flag rate it was said nowhere (AH-66 review 1)
+    missing = {c: b for c, b in blank_of.items() if prot.get(c) != PROXY}  # a place's blanks are where a source kept it
+    for c in prot:  # ...an unknown person's "NA" too
+        if types.get(c) == "text" and c in missing:
+            missing[c] = missing[c] | _unknown(df[c])
     # ...never an option of a "select all that apply" question, whose blank is an answer (not chosen): "Male: 58% missing
     # Will you watch ... Macy's Parade vs 45% - a real gap" said who watches as if it were who skipped (AH-63)
     blanks = {f"missing {c}": (b, f"missing {c}", c, "missing") for c, b in missing.items() if b.sum() >= 5 and not ALL_THAT_APPLY.search(str(c))}
     outcomes = _outcomes(df, types, prot)
     amounts = _amounts(df, types, prot)
-    measures = {"flag rate": (flagged, "rows flagged", None, None), **blanks, **outcomes}
+    measures = {"flag rate": (flagged, counted, None, None), **blanks, **outcomes}
     kinds = {name: "outcome" if name in outcomes else "missing" if name in blanks else "flag" for name in measures}
     # a row left unrecorded: blank in 3+ of the columns that are 90% filled (a candidate with no profile, AH-63)
     full = [c for c, b in blank_of.items() if b.mean() <= 0.1]
@@ -627,8 +682,21 @@ def report(df, types, rows):
         gcodes, gnames = pd.factorize(g, sort=True)
         for name, (hit, what, subject, label) in list(measures.items())[:left]:
             left -= 1
+            if kinds[name] == "missing" and subject in prot and why == PROXY:
+                continue  # host cities only say which Games kept ages: coverage by place, never a gap (AH-66 review 2)
+            if kinds[name] == "missing" and subject in prot and _coarser(g, df[subject], hit):
+                continue  # "Non-White: 16% missing artist_race vs 0.0% for White" is how the source coded an unknown race
             ok = g.notna() & hit.notna()
+            if kinds[name] == "missing" and subject in prot:  # ...nor by those who declined to say who they are: "gender
+                # Other or prefer not to answer: 2.2% missing race" is the same refusal twice (AH-66 review 2)
+                ok &= ~g.astype(str).str.contains(REFUSAL)
             gate = gates.get(name) if kinds[name] == "missing" else None
+            # ...but never for a group whose own rows are 90%+ of those it routes past: 2 of every 5 women's events never
+            # had their times kept, and "event" read that real gap as the events' layout; artists' ethnicity "NA" (57 of
+            # 58 rows Non-White) read the unknown gender of Non-White artists as routing (AH-66 review 1). Paralympics'
+            # individual events, 60% men's rows, still gate grp_id; so do the climbers who did not die, 90% men as all are
+            if gate and _nested(g, gate[3], gate[1]):
+                gate = None
             if gate and gate[0] != col:  # an earlier answer skipped it: compared among the rows it was asked of
                 ok &= gate[1]
             table = _table(gcodes, gnames, ok.to_numpy(bool), hit)
