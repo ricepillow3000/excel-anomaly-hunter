@@ -145,6 +145,10 @@ const HINTS = [
   [/ is above 100% - /, "it may be a whole percent typed where a fraction belongs (85 for 0.85)"],
   [/ looks like an? .+ value$/, "it may have been typed into the wrong column"],
   [/ is not a whole number - /, "check the decimal point"],
+  // AH-55: a Birth month of 13 and a share of 200 got "the values are just unusual together", the cross-column check's words
+  [/ is outside what .+ can be \(-?[\d.]+ to -?[\d.]+\)$/, "its column's name allows no such value, so a typing slip is the usual cause"],
+  [/ is over 100, and every other .+ is a share between 0 and 100$/, "a share of a whole over 100 is usually a slip (an extra digit, " +
+    "a doubled value); if it is a real figure over 100, leave it"],
   // AH-29: a top value far above the rest got "the values are just unusual together", the cross-column check's words
   [/ stands alone above the rest of the column, whose next highest is /, "an extra zero or a slipped decimal point is the usual " +
     "cause, but one real record above all the others looks the same"],
@@ -157,6 +161,13 @@ const HINTS = [
   // AH-48: many identical rows through a sheet with no ID, one note for them all
   [/ rows repeat an earlier row exactly, all through the sheet - /, "this many, spread out, are usually separate real records " +
     "that happen to match (nothing like an ID tells them apart); if every row must be unique, check them, then use Data > Remove Duplicates"],
+  // AH-56: an unfinished record, a survey's skipped question, and many blanks where a layout would fill the column
+  [/ usually filled cells in this row are blank: an unfinished record/, "the rest of this record was never entered; fill it in " +
+    "from the source, or delete the row if it is not a real record"],
+  [/ is unanswered in \d+ of \d+ rows: a survey question a respondent may skip$/, "a blank answer is usually a question the " +
+    "respondent chose to skip, not a slip; leave it blank unless the answer is known"],
+  [/ is blank in \d+ of \d+ rows where .+ would fill it, spread through the sheet$/, "blanks this many and this spread out are " +
+    "usually values the source does not have, not slips; if the column must always be filled there, filter it for blanks and fill them in"],
   // AH-46: a sort puts blank cells last - the block at the end is where the sort put them, not where they went missing
   [/ is blank in \d+ of \d+ rows, all at the end of the table, which is sorted by /, "sorting puts blank cells last, so these rows " +
     "simply have no value here; if the column must always be filled, fill them in from the source"],
