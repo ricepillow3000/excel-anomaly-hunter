@@ -410,6 +410,21 @@ def _subheader(df, types):
     return mask
 
 
+TOTALS = re.compile(r"(?i)total|all|overall|both sexes|all (?:races|persons|people|groups)|total population")
+
+
+def _personal(col):
+    """A column of a person's own answer or life: a question or statement put to them, a birth or a death, a demographic."""
+    return _asked(col) or bool(set(_words(col)) & (AGED | DEMOGRAPHIC | {"death", "died", "deceased", "born"}))
+
+
+def _hosted(df, occasion, place):
+    """The place is the occasion's: each occasion (3+ of them) has one place, and there are 2+ places."""
+    d = pd.DataFrame({"o": df[occasion].astype(str).str.strip(), "p": df[place].astype(str).str.strip()})[~(_missing(df[occasion]) | _missing(df[place]))]
+    per = d.groupby("o")["p"].nunique()
+    return len(per) >= 3 and d["p"].nunique() >= 2 and (per == 1).mean() >= 0.98
+
+
 def _people(df, types):
     """protected() for the fairness report: the columns that are about people, read from their names, their labels and
     the rest of the sheet. A sheet is about people only with a column that can only be a person's (sex, race, marital
@@ -462,6 +477,15 @@ def _people(df, types):
     # ...and the sheet is about people: a person-only column (not an age, not a place), or rows named as people. A column
     # kept only to be named as left out never makes it so: a ship registry's 60 flag Nationalities made its ports gap
     # tests (AH-63 review 1)
+    # ...never a table of counts by group: a people column with a total among its labels ("TOTAL", "All") makes each row a
+    # figure for a group ("race_gender Asian: 0.0% missing employ_n vs 9.5% - a real gap" on employed persons by
+    # industry, AH-68)
+    if any(why == "demographic" and types.get(c) == "text" and df[c].astype(str).str.strip().str.fullmatch(TOTALS).any() for c, why in out.items()):
+        return {}
+    # ...and a place that is the same for every row of an occasion is the occasion's (a contest's host city), never a
+    # group of the rows' people: "host_city Dublin: 0.0% qualified TRUE vs 19%" was the years before semi-finals (AH-68)
+    occasions = [c for c in cols if types.get(c) == "text" and set(_words(c)) & OCCASIONS]
+    out = {c: why for c, why in out.items() if not (why == PROXY and any(_hosted(df, o, c) for o in occasions if o != c))}
     strong = any(why == "demographic" and not set(_words(c)) & AGED and c not in wide for c, why in out.items())
     if not strong and not any(_names_rows(c) for c in cols):
         return {}
@@ -505,6 +529,7 @@ def _named(groups, maybe=None):
 ALL_THAT_APPLY = re.compile(r"(?i)\b(?:select|check|tick|mark|choose)\s+all\s+that\s+apply\b")
 
 
+LOOKUPS = {"branch", "store", "office", "site", "outlet", "depot", "warehouse", "plant", "station", "terminal"}
 OCCASIONS = {"event", "events", "competition", "contest", "tournament", "match", "game", "games", "round", "stage", "heat",
              "edition", "season", "episode", "meet", "championship", "championships"}
 ASKERS = 150  # the first 150 in sheet order: nonvoters' party (Q30) is its 110th column (AH-65); a crafted wide sheet stays fast
@@ -527,6 +552,8 @@ def _askers(df, types, blank_of):
     out, n = [], len(df)
     for q, t in types.items():
         if q not in df.columns:
+            continue
+        if set(_words(q)) & (LOCATION | PLACES | LOOKUPS):  # a branch or a place is a lookup, never an earlier answer (AH-68)
             continue
         lab = _labels(df[q], 20) if t == "text" else _codes(df[q], blank_of[q]) if t == "number" else None
         least = (5, 1)  # rows an answer needs to be read as routed past, and as asked
@@ -615,14 +642,19 @@ def _table(codes, names, ok, hit):
     return pd.DataFrame(c[keep][:, [int(k) for k in cols]], index=pd.Index(np.asarray(names, dtype=object)[keep]), columns=cols)
 
 
-def _coverage(blank, table, unrecorded):
+def _coverage(blank, table, unrecorded, personal=False):
     """Blanks by place that say where the source kept the column, not what happened to people: endorsements filled in
     only for the states a group tracked ("State NV: 64% missing Trump Endorsed? vs 95%", 32 such in round 38), a state
     whose general election had not been held ("OK: 83% missing General Status vs 0.5%"), and a few candidates with no
     profile at all ("TN: 18% missing LGBTQ?", the same 4 rows blank in 5 columns). A column blank for half the rows, a
-    place blank for 80%+ of its own, or blanks that are mostly whole rows left unrecorded (AH-63)."""
+    place blank for 80%+ of its own, or blanks that are mostly whole rows left unrecorded (AH-63). Or a column the places
+    leave blank as a matter of course, the middle place 10%+ blank: films' box office unknown for 46% of US and UK films
+    ("country US: 48% missing box_office vs 32%"), members' middle names 0-38% blank by state; one place singled out
+    against places that keep the column (Phoenix's incomes, 69% blank against 0%) stays a gap (AH-68). Not for a person's
+    own answer or life: a survey's question skipped more in one region, a laureate's death date (personal)."""
     rates = table[True] / table.sum(axis=1)
-    return bool(blank.mean() >= 0.5 or (rates >= 0.8).any() or (blank.sum() and unrecorded.sum() >= 0.8 * blank.sum()))
+    return bool(blank.mean() >= 0.5 or (rates >= 0.8).any() or (blank.sum() and unrecorded.sum() >= 0.8 * blank.sum())
+                or (not personal and rates.median() >= 0.1))
 
 
 def report(df, types, rows):
@@ -706,7 +738,11 @@ def report(df, types, rows):
             if gate and gate[0] != col:
                 said = ", ".join(gate[2][:3]) + (f" and {len(gate[2]) - 3} more" if len(gate[2]) > 3 else "")
                 base["routed"] = f"; counted where it was asked ({gate[0]}: {said})"
-            if kinds[name] == "missing" and why == PROXY and len(table) >= 2 and table.shape[1] == 2 and _coverage(hit, table, unrecorded[subject]):
+            if kinds[name] == "missing" and why == PROXY and len(table) >= 2 and table.shape[1] == 2 and _coverage(hit, table, unrecorded[subject], _personal(subject)):
+                continue
+            # a column blank for 95%+ of every group: its blank is the default and its rare entries a category, never a
+            # skip ("SEX Male Characters: 100% missing GSM vs 99% - a real gap", AH-68)
+            if kinds[name] == "missing" and len(table) >= 2 and table.shape[1] == 2 and (table[True] >= 0.95 * table.sum(axis=1)).all():
                 continue
             # a question one group never answers, every one of its rows blank, is the survey's routing (atheists are
             # not asked about services): never "a real gap, check why". Said plainly, and the asked groups compared
