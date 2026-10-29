@@ -166,6 +166,9 @@ const HINTS = [
     "from the source, or delete the row if it is not a real record"],
   [/ is unanswered in \d+ of \d+ rows: a survey question a respondent may skip$/, "a blank answer is usually a question the " +
     "respondent chose to skip, not a slip; leave it blank unless the answer is known"],
+  // AH-62: a negative code the column writes for "no value" (a survey's -1, a turbine table's -9999), one note for them all
+  [/ (-\d+) is written \d+ times: the column's code for no value$/, (m) => `${m[1]} is how this sheet writes "no value" in this ` +
+    `column, not a slip: these cells mean the value is not known; leave them, or turn them into blanks if your tool needs that`],
   [/ is blank in \d+ of \d+ rows where .+ would fill it, spread through the sheet$/, "blanks this many and this spread out are " +
     "usually values the source does not have, not slips; if the column must always be filled there, filter it for blanks and fill them in"],
   // AH-46: a sort puts blank cells last - the block at the end is where the sort put them, not where they went missing
