@@ -413,6 +413,9 @@ def _subheader(df, types):
 TOTALS = re.compile(r"(?i)total|all|overall|both sexes|all (?:races|persons|people|groups)|total population")
 
 
+RESPONDENTS = {"respondent", "respondents", "participant", "participants", "interviewee", "responder"}
+
+
 def _personal(col):
     """A column of a person's own answer or life: a question or statement put to them, a birth or a death, a demographic."""
     return _asked(col) or bool(set(_words(col)) & (AGED | DEMOGRAPHIC | {"death", "died", "deceased", "born"}))
@@ -480,7 +483,14 @@ def _people(df, types):
     # ...never a table of counts by group: a people column with a total among its labels ("TOTAL", "All") makes each row a
     # figure for a group ("race_gender Asian: 0.0% missing employ_n vs 9.5% - a real gap" on employed persons by
     # industry, AH-68)
-    if any(why == "demographic" and types.get(c) == "text" and df[c].astype(str).str.strip().str.fullmatch(TOTALS).any() for c, why in out.items()):
+    # Its summary rows are never that ("Race: Total" under a roster, AH-68 review 1): a total or average row that leaves
+    # cells empty, as the pipeline reads one, is left out, and the total must be a real share of the rows (tt_employed's
+    # TOTAL rows are full rows, 17% of them)
+    filled = (~df[cols].apply(_missing)).sum(axis=1)
+    summary = (df.index.isin(df.attrs.get("total_rows", ())) | df.index.isin(df.attrs.get("stat_rows", ()))) & (filled < filled.median()).to_numpy()
+    rest = df[~summary]
+    if any(why == "demographic" and types.get(c) == "text" and (n := int(rest[c].astype(str).str.strip().str.fullmatch(TOTALS).sum())) >= 2
+           and n > 0.01 * len(rest) for c, why in out.items()):
         return {}
     # ...and a place that is the same for every row of an occasion is the occasion's (a contest's host city), never a
     # group of the rows' people: "host_city Dublin: 0.0% qualified TRUE vs 19%" was the years before semi-finals (AH-68)
@@ -651,7 +661,9 @@ def _coverage(blank, table, unrecorded, personal=False):
     leave blank as a matter of course, the middle place 10%+ blank: films' box office unknown for 46% of US and UK films
     ("country US: 48% missing box_office vs 32%"), members' middle names 0-38% blank by state; one place singled out
     against places that keep the column (Phoenix's incomes, 69% blank against 0%) stays a gap (AH-68). Not for a person's
-    own answer or life: a survey's question skipped more in one region, a laureate's death date (personal)."""
+    own answer or life (personal): a survey's question skipped more in one region, a laureate's death date, any blank on a
+    survey's sheet, its rows its respondents (AH-68 review 1). Not by an answer's shape alone: a customer table's
+    Approved (Yes/No) is a record, and its one state 62% blank is where the source kept it."""
     rates = table[True] / table.sum(axis=1)
     return bool(blank.mean() >= 0.5 or (rates >= 0.8).any() or (blank.sum() and unrecorded.sum() >= 0.8 * blank.sum())
                 or (not personal and rates.median() >= 0.1))
@@ -702,6 +714,10 @@ def report(df, types, rows):
     gone = sum((blank_of[c].astype(int) for c in full), pd.Series(0, index=df.index))
     unrecorded = {c: b & (gone - (b.astype(int) if c in full else 0) >= 3) for c, b in missing.items() if f"missing {c}" in blanks}
     gates = _gates(_askers(df, types, blank_of), blanks)
+    # a survey's blanks are its respondents' skips, never the source's coverage (AH-68 review 1: "East South Central: 60%
+    # missing Household Income vs 15%" went under a plain header)
+    from anomaly_hunter.engine.pipeline import _survey  # here: pipeline imports this module
+    answers = _survey(list(types)) or any(set(_words(c)) & RESPONDENTS for c in types)
     tests, left, out_of_reach = [], MAX_TESTS, []
     for col, why in prot.items():
         g = _groups(df, col, types, place=why == PROXY)
@@ -738,7 +754,7 @@ def report(df, types, rows):
             if gate and gate[0] != col:
                 said = ", ".join(gate[2][:3]) + (f" and {len(gate[2]) - 3} more" if len(gate[2]) > 3 else "")
                 base["routed"] = f"; counted where it was asked ({gate[0]}: {said})"
-            if kinds[name] == "missing" and why == PROXY and len(table) >= 2 and table.shape[1] == 2 and _coverage(hit, table, unrecorded[subject], _personal(subject)):
+            if kinds[name] == "missing" and why == PROXY and len(table) >= 2 and table.shape[1] == 2 and _coverage(hit, table, unrecorded[subject], answers or _personal(subject)):
                 continue
             # a column blank for 95%+ of every group: its blank is the default and its rare entries a category, never a
             # skip ("SEX Male Characters: 100% missing GSM vs 99% - a real gap", AH-68)

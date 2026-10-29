@@ -139,3 +139,40 @@ def test_a_question_skipped_more_in_one_region_stays_a_gap_where_the_source_keep
     f = fair(["RespondentID", "Location (Census Region)", "Gender", "Please rate how much you like the traditional cuisine of Vietnam."], rows)
     t = next(t for t in f["tests"] if t["column"] == "Location (Census Region)" and t["measure"] == "missing")
     assert t["verdict"] == "gap" and t["text"].startswith("Location (Census Region) Region 0:"), t["text"]
+
+
+def roster(last=None, seed=48):
+    # an HR roster with a real promotion gap, ending in one summary row
+    rng = np.random.default_rng(seed)
+    rows = []
+    for i in range(500):
+        g = ["Male", "Female"][i % 2]
+        rows.append([f"E{i}", ["Sales", "Ops", "IT"][i % 3], g, ["White", "Black", "Asian", "Hispanic"][int(rng.integers(0, 4))],
+                     int(rng.normal(70000 if g == "Male" else 56000, 9000)), "Yes" if rng.random() < (0.3 if g == "Male" else 0.12) else "No"])
+    if last:
+        rows.append(last)
+    return ["Employee ID", "Department", "Gender", "Race", "Salary", "Promoted"], rows
+
+
+def test_one_summary_row_never_turns_a_sheet_of_people_into_a_table_of_counts():
+    # AH-68 review 1 (Council B): a last row with Race "Total" erased the whole report and its real gap
+    for word in ("Total", "All"):
+        f = fair(*roster(["", "", "", word, 31500000, ""]))
+        assert any(t["verdict"] == "gap" and t["text"].startswith("Gender Male:") and "Promoted" in t["text"] for t in f["tests"]), f
+
+
+def test_a_survey_answer_skipped_more_in_one_region_stays_a_gap_whatever_its_header():
+    # AH-68 review 1: respondents skip their household income 15% in seven regions and 55% in one; under the plain header
+    # "Household Income" the middle-place rule read the respondents' skip as the source's coverage
+    regs = ["Pacific", "Mountain", "West North Central", "East North Central", "South Atlantic", "Middle Atlantic", "New England", "East South Central"]
+    for inc in ("Household Income", "What is your household income?"):
+        rng = np.random.default_rng(49)
+        rows = []
+        for i in range(1600):
+            reg = regs[i % 8]
+            skip = rng.random() < (0.55 if reg == "East South Central" else 0.15)
+            rows.append([f"R{i}", ["Male", "Female"][int(rng.integers(0, 2))], "" if skip else ["$0 - $24,999", "$25,000 - $49,999", "$50,000 - $99,999", "$100,000+"][int(rng.integers(0, 4))],
+                         reg, ["Yes", "No"][int(rng.random() < 0.5)]])
+        f = fair(["RespondentID", "Gender", inc, "Location (Census Region)", "Do you like steak?"], rows)
+        t = next((t for t in f["tests"] if t["column"] == "Location (Census Region)" and t["test"] == f"missing {inc}"), None)
+        assert t and t["verdict"] == "gap" and t["text"].startswith("Location (Census Region) East South Central:"), (inc, t)
