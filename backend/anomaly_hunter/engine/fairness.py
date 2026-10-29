@@ -64,8 +64,11 @@ def _groups(df, col, types, place=False):
 
 
 def _many(df, col, types):
-    """A text column of too many labels to compare as groups (a nationality of 89): -> how many, else 0."""
-    if types.get(col) != "text":
+    """A text column of too many labels to compare as groups (a nationality of 89): -> how many, else 0. Never an age or
+    a birth date ("birthday: 3064 different values" on congress terms, AH-63 review 2): it is an age, not labels; a place
+    of birth is still a place."""
+    w = set(_words(col))
+    if types.get(col) != "text" or w & AGED and not w & (LOCATION | PLACES) or _aged(col):
         return 0
     k = df[col].astype(str).str.strip().where(~_missing(df[col])).dropna().str.split().str.join(" ").str.casefold().nunique()
     return k if k > 50 else 0
@@ -244,6 +247,10 @@ NOT_PEOPLE = {"race": {"time", "times", "pace", "distance", "lap", "laps", "spli
                        "results", "entry", "course", "track", "number", "no", "id", "date", "day", "name", "type", "series", "event"},
               "state": {"order", "ticket", "account", "task", "job", "payment", "shipment", "delivery", "approval", "workflow",
                         "process", "machine", "item", "invoice", "case", "request", "subscription", "build", "run"}}
+# ...and "black" or "white" that names a chess side, a piece or a player's attribute: tt_chess's black_id (9,311 usernames)
+# was read as a race and listed as left out (AH-63 review 2)
+SIDE = {"id", "rating", "elo", "player", "name", "username", "moves", "move", "pieces", "piece", "rank", "score", "time"}
+NOT_PEOPLE |= {"black": SIDE, "white": SIDE}
 # ...and an unnamed "State" whose labels are all steps of a process (Pending, Shipped) is a status too
 STATUS = {"pending", "open", "closed", "shipped", "delivered", "returned", "cancelled", "canceled", "active", "inactive", "done",
           "new", "in progress", "approved", "rejected", "paid", "unpaid", "draft", "complete", "completed", "failed", "processing",
@@ -441,6 +448,10 @@ def _people(df, types):
     # tests (AH-63 review 1)
     strong = any(why == "demographic" and not set(_words(c)) & AGED and c not in wide for c, why in out.items())
     if not strong and not any(_names_rows(c) for c in cols):
+        return {}
+    # ...nor what makes a report appear: a "winner" sheet whose only column kept is a 60-label nationality had none on
+    # main, and its left-out line would be all it said (AH-63 review 2)
+    if not set(out) - wide:
         return {}
     return out
 

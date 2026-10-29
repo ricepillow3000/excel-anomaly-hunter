@@ -166,3 +166,61 @@ def test_a_left_out_column_is_written_in_the_downloaded_report_as_left_out_never
     left = [r for r in lines if r[1] == "Nationality: groups"]
     assert left and left[0][0] == "Left out - too many groups", left
     assert not any(r[0] == "Even" and r[2] and "left out" in str(r[2]) for r in lines), lines
+
+
+def games(seed=7):
+    # online chess games: each side's player by username and rating, who won, the moves; a sheet about games, no person
+    rng = np.random.default_rng(seed)
+    cols = ["white_id", "black_id", "white_rating", "black_rating", "winner", "moves"]
+    rows = [[f"user{2 * i}", f"user{2 * i + 1}", int(rng.integers(900, 2400)), int(rng.integers(900, 2400)),
+             str(rng.choice(["white", "black", "draw"])), " ".join(rng.choice(["e4", "e5", "Nf3", "Nc6", "d4", "Bb5"], 8))]
+            for i in range(300)]
+    return cols, rows
+
+
+def test_a_chess_sides_player_ids_and_ratings_are_no_race_and_the_games_sheet_has_no_report():
+    # AH-63 review 2 (Council B): "black_id: 9311 different values ... - left out" on a chess sheet that had no report
+    assert fair(*games()) == {"protected": {}, "tests": []}
+
+
+@pytest.mark.parametrize("header", ["white_id", "black_id", "white_rating", "black_player", "white_elo", "white_name",
+                                    "black_moves", "white_pieces"])
+def test_a_colour_word_that_names_a_side_a_piece_or_a_players_attribute_is_no_race(header):
+    from anomaly_hunter.engine.fairness import _people
+    from anomaly_hunter.engine.load import load_from_records
+    rng = np.random.default_rng(3)
+    df, types = load_from_records(["Player", header, "sex"], [[f"P{i}", str(rng.choice(["a", "b"])), str(rng.choice(["F", "M"]))]
+                                                             for i in range(200)])[:2]
+    assert header not in _people(df, types)
+
+
+def test_a_race_column_of_black_and_white_and_a_white_flag_are_still_compared():
+    rng = np.random.default_rng(11)
+    cols = ["Applicant", "race", "white", "Approved"]
+    rows = []
+    for i in range(1200):
+        race = str(rng.choice(["Black", "White"]))
+        rows.append([f"A{i}", race, int(race == "White"), "Yes" if rng.random() < (0.3 if race == "Black" else 0.6) else "No"])
+    f = fair(cols, rows)
+    assert {"race", "white"} <= set(f["protected"]), f["protected"]
+    race = [t for t in f["tests"] if t["column"] == "race" and t["test"].startswith("Approved")]
+    assert race and race[0]["verdict"] == "gap" and {"Black", "White"} <= set(race[0]["groups"]), race
+
+
+def test_a_birth_date_is_an_age_never_a_group_left_out():
+    # AH-63 review 2: "birthday: 3064 different values, too many to compare as groups - left out" (congress terms)
+    rng = np.random.default_rng(13)
+    cols = ["Member", "sex", "birthday", "party", "state"]
+    rows = [[f"M{i}", str(rng.choice(["F", "M"])), f"{1800 + i % 300}-0{1 + i % 9}-1{i % 10}", str(rng.choice(["D", "R"])),
+             str(rng.choice(["CA", "TX", "NY", "OH"]))] for i in range(600)]
+    f = fair(cols, rows)
+    assert "sex" in f["protected"], f["protected"]
+    assert not [t["text"] for t in f["tests"] if t["verdict"] == "left out"], f["tests"]
+
+
+def test_a_column_too_wide_to_compare_never_makes_a_report_appear_on_a_sheet_that_had_none():
+    # AH-63 review 2: a "winner" header names the rows as people, but with only a 60-label nationality kept main had
+    # no report; listing the nationality as left out would be the only thing on it
+    cols = ["winner", "nationality", "Prize money"]
+    rows = [[f"Winner {i}", f"Country {i % 60}", 1000.0 + i] for i in range(600)]
+    assert fair(cols, rows) == {"protected": {}, "tests": []}
