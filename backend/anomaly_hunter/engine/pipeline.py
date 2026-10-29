@@ -255,7 +255,13 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
         starts = np.flatnonzero(np.r_[True, np.diff(code[order]) != 0])
         size = np.diff(np.r_[starts, len(order)])
         groups[g] = (code, size, np.add.reduceat(blank[order].astype(np.int32), starts, axis=0))
+    def _stopped(slip):  # -> (the rows with a slip in most of the usually filled columns: unfinished records, those columns)
+        full = np.flatnonzero(1 - blank.sum(axis=0) / n >= threshold)
+        gone = slip[:, full].sum(axis=1)
+        return (gone >= 3) & (gone >= 0.5 * len(full)) & (len(full) >= 4), full
+
     survey, pend = _survey(cols), []  # pend: (column, its blanks each a slip, the sentence for one) - said after the loop
+    events = []  # in column order: ("note", row, why), ("pend", column, rows, sentence), ("part", column, rows, said so, word)
     for j, col in enumerate(cols):
         b = blank[:, j].copy()
         if b.any() and 1 - b.sum() / n >= threshold:
@@ -276,16 +282,10 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
             coded = df.index.isin(list(said))
             end = _sorted_end(df[col], b & ~coded, skip)
             if len(end):
-                notes[df.index[end[0]]].append(Why(f"{col} is blank in {len(end)} of {n} rows, all at the end of the table, which is sorted by {col}", col))
+                events.append(("note", df.index[end[0]], Why(f"{col} is blank in {len(end)} of {n} rows, all at the end of the table, which is sorted by {col}", col)))
                 b[end] = False
             for said_so in (True, False):
-                part = b & (coded if said_so else ~coded)
-                pos = np.flatnonzero(part)
-                if len(pos) >= 5 if said_so else len(pos) >= max(MANY, SHARE * len(b)) and len(set(pos * 5 // len(b))) == 5:
-                    notes[df.index[pos[0]]].append(Why(f'{col} is "{word}" (no value) in {len(pos)} of {n} rows' if said_so
-                                                       else f"{col} is blank in {len(pos)} of {n} rows, spread through the sheet", col))
-                    continue
-                pend.append((j, pos, lambda i, col=col: f"Blank cell in column {col}, which is otherwise filled"))
+                events.append(("part", j, np.flatnonzero(b & (coded if said_so else ~coded)), said_so, word))
         elif b.any():
             # a long-format sheet fills Value for some indicators and Pct for others, so Value is 2/3 filled, under the bar,
             # and a blank in a GDP row went unseen (AH-17 stress hunt, 9 of 9 missed). A group that fills the column
@@ -305,10 +305,36 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
                 if len(full) and empty.any() and per[empty, j].sum() >= 0.8 * b.sum():
                     pos = np.flatnonzero(b & np.isin(code, full))
                     if len(pos) >= max(MANY, SHARE * len(b)) and len(set(pos * 5 // len(b))) == 5:  # many and spread: the data
-                        notes[df.index[pos[0]]].append(Why(f"{col} is blank in {len(pos)} of {n} rows where {g} would fill it, spread through the sheet", col))
+                        events.append(("note", df.index[pos[0]], Why(f"{col} is blank in {len(pos)} of {n} rows where {g} would fill it, spread through the sheet", col)))
                     else:
-                        pend.append((j, pos, lambda i, col=col, g=g: f"Blank cell in column {col}, which is otherwise filled for {g} {_short(labels[g][i])}"))
+                        events.append(("pend", j, pos, lambda i, col=col, g=g: f"Blank cell in column {col}, which is otherwise filled for {g} {_short(labels[g][i])}"))
                     break
+    # In a survey, the respondents who stopped are taken out before a column's blanks are read as spread through the
+    # sheet: 60 dropouts passed the bar in each question they left, so every such column was one note, and the one
+    # respondent who skipped a question had no row or cell of their own (round 38, AH-64). Who stopped is judged as if
+    # every blank were each a slip; on a data table nothing is taken out (20 deleted values stay each a slip, AH-28)
+    drop = np.zeros(len(df), dtype=bool)
+    if survey:
+        slip = np.zeros_like(blank)
+        for e in events:
+            if e[0] == "pend" or e[0] == "part" and not (e[3] and len(e[2]) >= 5):
+                slip[e[2], e[1]] = True
+        drop = _stopped(slip)[0]
+    for e in events:
+        if e[0] == "note":
+            notes[e[1]].append(e[2])
+            continue
+        if e[0] == "pend":
+            pend.append(e[1:])
+            continue
+        _, j, pos, said_so, word = e
+        col, live = cols[j], pos if said_so else pos[~drop[pos]]
+        if len(pos) >= 5 if said_so else len(live) >= max(MANY, SHARE * len(blank)) and len(set(live * 5 // len(blank))) == 5:
+            notes[df.index[live[0]]].append(Why(f'{col} is "{word}" (no value) in {len(pos)} of {n} rows' if said_so
+                                                else f"{col} is blank in {len(live)} of {n} rows, spread through the sheet", col))
+            pos = pos[drop[pos]]  # ...and those who stopped still count toward their unfinished record, below
+        if len(pos):
+            pend.append((j, pos, lambda i, col=col: f"Blank cell in column {col}, which is otherwise filled"))
     # A row with a blank in most of the columns that are otherwise filled, each a blank no layout, sort or export explains,
     # is one unfinished record (a respondent who stopped the survey): one note, not a Medium a column. Round 37: 25 of
     # sleeping alone's 27 flagged rows were 80-100% blank, the earthquake survey's 12 were 50-80% blank; round 36's
@@ -316,9 +342,7 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
     slip = np.zeros_like(blank)
     for j, pos, _ in pend:
         slip[pos, j] = True
-    full = np.flatnonzero(1 - blank.sum(axis=0) / n >= threshold)
-    gone = slip[:, full].sum(axis=1)
-    quit = (gone >= 3) & (gone >= 0.5 * len(full)) & (len(full) >= 4)
+    quit, full = _stopped(slip)
     for i in np.flatnonzero(quit):
         miss = [cols[k] for k in full if slip[i, k]]
         notes[df.index[i]].append(Why(f"{len(miss)} of the {len(full)} usually filled cells in this row are blank: an unfinished "
@@ -398,7 +422,9 @@ SCALE = re.compile(r"\(\s*(\d+)\s*(?:-|–|to)\s*(\d+)\s*\)|\bout of (\d+)\b", r
 def _bounds(col):
     """What a column's name says its numbers can be: the header IS the name ("date of month" and "count per hour" are
     not), or it writes its own scale ("Rating (1-5)", "out of 10"). Long headers are questions or notes, not names."""
-    h = " ".join(re.sub(r"[_.]+", " ", str(col)).split()).lower()
+    # camelCase is words too: a birthMonth 13 among 1-12 went unseen (round 38, AH-64); "monthsActive" stays a count.
+    # One lookbehind and one lookahead a position: linear on a 100,000-character header
+    h = " ".join(re.sub(r"[_.]+", " ", re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", str(col))).split()).lower()
     if len(h) > 200:
         return None
     if m := SCALE.search(h):
@@ -520,6 +546,8 @@ def _totals(df, cols, skip, out):
     heads = [c for c in cols if len(h := " ".join(re.sub(r"[_.]+", " ", str(c)).split()).lower()) <= 200 and TOTAL_HEAD.search(h)]
     rows = df.index[~skip]
     a = df.loc[rows, cols].to_numpy(dtype=float) if heads else None
+    halves = {}  # as pairs: a column of whole numbers is exact, one written to d decimals off by up to half its last digit
+    half = lambda c: halves.setdefault(c, 0.0 if (d := _decimals(a[:, nums[c]])) == 0 else 0.5 * 10.0 ** -d)
     for col in heads[:20]:
         y, at, tries = a[:, nums[col]], order.index(col), [[c for c in cols if c != col]]
         for step in (-1, 1):  # the number columns right beside it, nearest first, up to the first other column
@@ -528,42 +556,50 @@ def _totals(df, cols, skip, out):
                 run.append(order[j])
                 j += step
             tries += [run[:k] for k in range(3, len(run) + 1)]
-        best = None
-        for parts in tries:  # one column more each try: a sum of a few thousand rows, not a copy of the sheet
-            judged = None
-            for _ in range(2):  # a second pass judges the candidate again without the parts the first showed are none
-                if len(parts) < 3:
-                    break
-                p = a[:, [nums[c] for c in parts]]
-                ok = ~np.isnan(y) & ~np.isnan(p).any(axis=1)
-                if not (p[ok] != 0).any(axis=0).all():  # every part counts somewhere
-                    break
-                got = p[ok].sum(axis=1)
-                bad = np.abs(y[ok] - got) > np.maximum(0.011, 1e-6 * np.abs(y[ok]))  # 1 cent + float slack, as sums
-                # a part that is 0 in most rows shows it belongs only on the rows where it is not. One that adds up on
-                # none of them is no part: an "Adjustment" beside the total, 0 in 96% of rows, "held" on the rest and
-                # flagged its 16 other rows (AH-55 review); left in, it was named in the sentence, "Food + Drinks + Merch
-                # + Adjustment" (AH-55 review 3), so the candidate is judged again without it. One that adds up on most
-                # of them (all but 20%, or under 5 rows all but a minority) is a part, every row judged: Refunds on 9-14
-                # of a stand's 90 days, a slip on one found. Between (1 of 2 days adds up) nothing shows which: those
-                # rows are left unjudged, never called wrong
-                none, judged = [], np.ones(len(bad), dtype=bool)
-                for k in np.flatnonzero((p[ok] != 0).mean(axis=0) < 0.2):
-                    on = p[ok][:, k] != 0
-                    if not (~bad[on]).any():
-                        none.append(parts[k])
-                    elif bad[on].sum() > (0.2 * on.sum() if on.sum() >= 5 else (on.sum() - 1) // 2):
-                        judged &= ~on
-                if not none:
-                    break
-                parts, judged = [c for c in parts if c not in none], None
-            if judged is None:
-                continue
-            live, bad = (p[ok] != 0).any(axis=1) & judged, bad & judged
-            share = bad[judged].mean() if judged.any() else 1.0
-            if (~bad[live]).sum() < 10 or share > 0.05 or (best and share >= best[0]):
-                continue
-            best = (share, sorted(parts, key=order.index), rows[ok][bad], y[ok][bad], got[bad])
+        best, own = None, 0.5 * 10.0 ** -_decimals(y)
+        # the exact cent first; then, where it fails, what the rounding of the parts and the total explains, never looser:
+        # ten parts written to 1 decimal and a total rounded from the unrounded ones miss by up to 0.55 (round 38, AH-64)
+        for loose in (False, True):
+            for parts in tries:  # one column more each try: a sum of a few thousand rows, not a copy of the sheet
+                judged = None
+                for _ in range(2):  # a second pass judges the candidate again without the parts the first showed are none
+                    if len(parts) < 3:
+                        break
+                    p = a[:, [nums[c] for c in parts]]
+                    ok = ~np.isnan(y) & ~np.isnan(p).any(axis=1)
+                    if not (p[ok] != 0).any(axis=0).all():  # every part counts somewhere
+                        break
+                    got = p[ok].sum(axis=1)
+                    tol = np.maximum(0.011, 1e-6 * np.abs(y[ok]))  # 1 cent + float slack, as sums
+                    if loose:  # half of each part's last written digit (none for whole numbers), and the total's own half
+                        tol = np.maximum(tol, sum(half(c) for c in parts) + own + 1e-9 * np.abs(y[ok]))
+                    bad = np.abs(y[ok] - got) > tol
+                    # a part that is 0 in most rows shows it belongs only on the rows where it is not. One that adds up on
+                    # none of them is no part: an "Adjustment" beside the total, 0 in 96% of rows, "held" on the rest and
+                    # flagged its 16 other rows (AH-55 review); left in, it was named in the sentence, "Food + Drinks + Merch
+                    # + Adjustment" (AH-55 review 3), so the candidate is judged again without it. One that adds up on most
+                    # of them (all but 20%, or under 5 rows all but a minority) is a part, every row judged: Refunds on 9-14
+                    # of a stand's 90 days, a slip on one found. Between (1 of 2 days adds up) nothing shows which: those
+                    # rows are left unjudged, never called wrong
+                    none, judged = [], np.ones(len(bad), dtype=bool)
+                    for k in np.flatnonzero((p[ok] != 0).mean(axis=0) < 0.2):
+                        on = p[ok][:, k] != 0
+                        if not (~bad[on]).any():
+                            none.append(parts[k])
+                        elif bad[on].sum() > (0.2 * on.sum() if on.sum() >= 5 else (on.sum() - 1) // 2):
+                            judged &= ~on
+                    if not none:
+                        break
+                    parts, judged = [c for c in parts if c not in none], None
+                if judged is None:
+                    continue
+                live, bad = (p[ok] != 0).any(axis=1) & judged, bad & judged
+                share = bad[judged].mean() if judged.any() else 1.0
+                if (~bad[live]).sum() < 10 or share > 0.05 or (best and share >= best[0]):
+                    continue
+                best = (share, sorted(parts, key=order.index), rows[ok][bad], y[ok][bad], got[bad])
+            if best:
+                break
         if best:
             done.add(col)
             for i, v, g in zip(*best[2:]):
@@ -808,7 +844,8 @@ def spellings(df, column_types, skip):
     """Same category typed differently ("Sales" / "sales " / "SALES") - breaks SUMIFS and pivots silently.
     Only case/space differences, only in category-like columns (<= 50 distinct). Every spelling but the right one is
     flagged, however common ("employed" 77 times next to "Employed" 82): the right one is written like the column's other
-    labels (capitalised or not), then the most common. Plus possible misspellings: a rare word (1-2 times) one slip from
+    labels (capitalised or not), then the most common. A common second spelling in the column's own style is one note
+    for the column (AH-64). Plus possible misspellings: a rare word (1-2 times) one slip from
     a usual one (5+ times and 5x as common): one letter wrong, two swapped, one typed twice or one dropped inside a word,
     both 5+ letters; at 4 letters only a swap or a dropped vowel (_misspelt) - no digits ("A101"/"A102" are codes), no
     short names (Mark/Mary). -> (reasons, {col: usual spelling}, misspelling reasons (worth a check, not "wrong"),
@@ -838,6 +875,14 @@ def spellings(df, column_types, skip):
             right = rights[key] = max(counts, key=lambda v: (capital(v) == caps and v == " ".join(v.split()), counts[v]))
             for raw, c in counts.items():
                 if raw == right or many:
+                    continue
+                # a second spelling the source writes many times, itself in the column's style (capitalised like it, clean
+                # spaces), is its way of writing: "Collins glass" 150 times beside "Collins Glass" 200 was 150 Medium
+                # rows (round 38, AH-64). One note for the column, both spellings and their counts; a rare one, or one
+                # off the column's style ("employed" 77 times beside "Employed" 82), is still each a slip
+                if c >= max(5, 0.01 * len(s)) and 3 * c >= counts[right] and capital(raw) == caps and raw == " ".join(raw.split()):
+                    missed[s.index[s == raw][0]].append(Why(f'{col} is written "{_short(raw)}" {c} times and "{_short(right)}" '
+                                                            f'{counts[right]} times (same word, different capitals/spaces)', col))
                     continue
                 for i in s.index[s == raw]:
                     out[i].append(Why(f'{col} "{_short(raw)}" looks like "{_short(right)}" (same word, different capitals/spaces)', col))

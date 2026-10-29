@@ -384,9 +384,28 @@ def sequence_detector(df, column_types, order_by=None, k=K):
         v = s.dropna()
         if len(v) and (v >= 0).mean() >= 0.95 and (v == 0).mean() >= 0.05:  # weekend / closed-day zeros are not spikes
             s = s.where(s != 0)
-        trend = s.to_numpy() - _centred_median(s.to_numpy())
+        # A daily or weekly cycle is no jump: hourly counts climb to the afternoon and fall at night every day, and each
+        # day's steep hours were read as jumps against the local median (round 38, AH-64). A period P (7, 12, 24, 52 rows,
+        # tried in that order, no other: the same sheet costs the same) is the series' when what is left after a
+        # P-row moving average correlates 0.8+ with itself P rows on. Each value then loses its position's part of the
+        # cycle (the median over every period of what the moving average leaves there: a trend cancels, one slip cannot
+        # move it), so a value is judged against the same hour or month of the other periods. The usual
+        # one-row step stays the series' own, cycle and all: read off what is left, a CO2 trend steepening to its last
+        # months made its noise 4 "usual steps" from the line
         step = np.abs(s.diff().to_numpy())
         usual = np.nanmedian(step) if (~np.isnan(step)).any() else 0.0
+        for per in (7, 12, 24, 52):
+            if s.notna().sum() < 4 * per:
+                break
+            rest = s - s.rolling(per, center=True, min_periods=per).mean()
+            with np.errstate(divide="ignore", invalid="ignore"):  # a flat series has no correlation: nan, no cycle
+                cycle = rest.autocorr(per) >= 0.8
+            if cycle:
+                phase = np.arange(len(s)) % per
+                s = s - rest.groupby(phase).median().to_numpy()[phase]
+                break
+        trend = s.to_numpy() - _centred_median(s.to_numpy())
+        step = np.abs(s.diff().to_numpy())
         votes, mag = robust_vote(trend, k)
         for p in np.where(votes)[0]:
             if abs(trend[p]) > STEP * usual and not _beat(trend, p):
