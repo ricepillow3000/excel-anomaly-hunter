@@ -523,6 +523,13 @@ def sums(df, column_types, skip):
             continue
         got = rest @ ones
         bad = np.abs(y - got) > np.maximum(_cent(y), 1e-6 * np.abs(y))  # 1 cent (or the column's own last digit) + float slack
+        # ...or within what rounding explains where 3+ rows miss so, as _totals: half of each part's last written digit
+        # (none for whole numbers) and the total's own half. Coffee's ten scores to the hundredth summed to 86.85 for a
+        # total_cup_points of 86.83: 47 rows called wrong (round 38, AH-64 try 1 review); one or two such misses are slips
+        slack = sum(0.5 * 10.0 ** -d for d in (_decimals(rest[:, j]) for j in np.flatnonzero(ones)) if d)
+        near = bad & (np.abs(y - got) <= slack + 0.5 * 10.0 ** -_decimals(y) + 1e-9 * np.abs(y))
+        if near.sum() >= 3:
+            bad &= ~near
         if bad.mean() > 0.05:
             continue
         part = [c for c, o in zip(np.delete(np.array(cols, dtype=object), t), ones) if o]
@@ -597,7 +604,12 @@ def _totals(df, cols, skip, out):
                 share = bad[judged].mean() if judged.any() else 1.0
                 if (~bad[live]).sum() < 10 or share > 0.05 or (best and share >= best[0]):
                     continue
-                best = (share, sorted(parts, key=order.index), rows[ok][bad], y[ok][bad], got[bad])
+                # ...and once a rule holds, a miss within that rounding is rounding where 3+ rows miss so: coffee's ten
+                # scores to the hundredth summed to 86.85 for a total of 86.83 on 47 rows (round 38, AH-64 try 1 review);
+                # one or two such misses are still each a slip
+                near = bad & (np.abs(y[ok] - got) <= sum(half(c) for c in parts) + own + 1e-9 * np.abs(y[ok]))
+                slip = bad & ~near if near.sum() >= 3 else bad
+                best = (share, sorted(parts, key=order.index), rows[ok][slip], y[ok][slip], got[slip])
             if best:
                 break
         if best:

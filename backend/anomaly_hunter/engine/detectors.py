@@ -322,6 +322,15 @@ def _beat(x, p):
 # real CO2 and jobs-report months unusual at level 5, each 17-30x past its line (AH-31 review). A spike or a level
 # shift still moves further in one row than the series usually does: 1-20% planted jumps are found as before.
 STEP = 2
+# ...and 3 where the cycle is taken out: what is left carries the error of the cycle's own median and its year-to-year
+# shape, so at 2 steps the real CO2 series (vega) got 17 new Low months at level 5; at 3, none, and Council B's planted
+# in-range jumps are all found that main finds, at every level (AH-64 try 1 review)
+CYCLE_STEP = 3
+# A cycle is a period whose cycle (what a moving average of that length leaves) correlates this well with itself one
+# period on: Seattle's hourly bike counts, small and noisy, reach 0.63 by the day and 0.65 by the week (0.8 found none,
+# and 233 Medium+ hours stayed); noise or a trend is near 0
+CYCLE_FIT = 0.6
+CYCLES = (7, 12, 24, 52, 168)  # days of a week, months, hours of a day, weeks of a year, hours of a week: no other
 
 
 def _centred_median(a, half=3):
@@ -379,42 +388,24 @@ def sequence_detector(df, column_types, order_by=None, k=K):
         if (why := f"{col} {what} near {order.iloc[i]}") not in r["reasons"][i]:
             r["reasons"][i].append(Why(why, col))
 
-    for col in numbers(column_types):
-        s = pd.Series(df[col].to_numpy(dtype=float)[idx])
-        v = s.dropna()
-        if len(v) and (v >= 0).mean() >= 0.95 and (v == 0).mean() >= 0.05:  # weekend / closed-day zeros are not spikes
-            s = s.where(s != 0)
-        # A daily or weekly cycle is no jump: hourly counts climb to the afternoon and fall at night every day, and each
-        # day's steep hours were read as jumps against the local median (round 38, AH-64). A period P (7, 12, 24, 52 rows,
-        # tried in that order, no other: the same sheet costs the same) is the series' when what is left after a
-        # P-row moving average correlates 0.8+ with itself P rows on. Each value then loses its position's part of the
-        # cycle (the median over every period of what the moving average leaves there: a trend cancels, one slip cannot
-        # move it), so a value is judged against the same hour or month of the other periods. The usual
-        # one-row step stays the series' own, cycle and all: read off what is left, a CO2 trend steepening to its last
-        # months made its noise 4 "usual steps" from the line
-        step = np.abs(s.diff().to_numpy())
-        usual = np.nanmedian(step) if (~np.isnan(step)).any() else 0.0
-        for per in (7, 12, 24, 52):
-            if s.notna().sum() < 4 * per:
-                break
-            rest = s - s.rolling(per, center=True, min_periods=per).mean()
-            with np.errstate(divide="ignore", invalid="ignore"):  # a flat series has no correlation: nan, no cycle
-                cycle = rest.autocorr(per) >= 0.8
-            if cycle:
-                phase = np.arange(len(s)) % per
-                s = s - rest.groupby(phase).median().to_numpy()[phase]
-                break
+    dated_at = np.flatnonzero(order.loc[idx].notna().to_numpy())
+    when = order.loc[idx]
+    when = ((when - when.min()).dt.total_seconds() if when.dtype.kind == "M" else when.astype(float)).to_numpy()
+
+    def judge(col, s, keep, ends, bar=STEP):
+        """main's checks on the series s, hitting only the rows keep allows; ends: also the first and last values."""
         trend = s.to_numpy() - _centred_median(s.to_numpy())
         step = np.abs(s.diff().to_numpy())
+        usual = np.nanmedian(step) if (~np.isnan(step)).any() else 0.0
         votes, mag = robust_vote(trend, k)
-        for p in np.where(votes)[0]:
-            if abs(trend[p]) > STEP * usual and not _beat(trend, p):
+        for p in np.where(votes & keep)[0]:
+            if abs(trend[p]) > bar * usual and not _beat(trend, p):
                 hit(p, mag[p], col, "is unusual relative to its local trend")
         # the very first and last dated values: against the next 3 on their one side, past 4 usual steps (a straight
         # line puts the end 2 steps from that median, a bend a little more; a slip in row 1 of a series went unseen, AH-31
         # try 2 review). Rows with no date are no end of the series
         vals, dated = s.to_numpy(), np.flatnonzero(order.loc[idx].notna().to_numpy() & ~np.isnan(s.to_numpy()))
-        if len(dated) >= 8 and usual > 0:
+        if ends and len(dated) >= 8 and usual > 0:
             line = k * np.nanmedian(np.abs(trend - np.nanmedian(trend))) * 1.4826
             for p, side in ((dated[0], dated[1:4]), (dated[-1], dated[-4:-1])):
                 off = vals[p] - np.median(vals[side])
@@ -425,12 +416,70 @@ def sequence_detector(df, column_types, order_by=None, k=K):
             d = d.diff()
             votes, mag = robust_vote(d.to_numpy(), k)
             for p in np.where(votes)[0]:
-                if _beat(d.to_numpy(), p) or not np.nanmax(step[max(1, p - 2):p + 1], initial=0) > STEP * usual:
+                if _beat(d.to_numpy(), p) or not np.nanmax(step[max(1, p - 2):p + 1], initial=0) > bar * usual:
                     continue  # the cycle's own reset, or a bend in a smooth line: no one-row move past its usual steps
                 # blame biggest trend gap in last 4 rows, not the diff's own row
                 w = trend[max(0, p - 3):p + 1]
                 b = p if np.isnan(w).all() else max(0, p - 3) + int(np.nanargmax(np.abs(w)))
-                hit(b, mag[p], col, "jumped sharply")  # 1st/2nd/3rd differences see the same jump: one reason
+                if keep[b]:
+                    hit(b, mag[p], col, "jumped sharply")  # 1st/2nd/3rd differences see the same jump: one reason
+
+    for col in numbers(column_types):
+        s = pd.Series(df[col].to_numpy(dtype=float)[idx])
+        whole = s  # zeros and all: night hours' zeros are the daily cycle's own (Seattle's bikes, round 38)
+        v = s.dropna()
+        if len(v) and (v >= 0).mean() >= 0.95 and (v == 0).mean() >= 0.05:  # weekend / closed-day zeros are not spikes
+            s = s.where(s != 0)
+        # A daily or weekly cycle is no jump: hourly counts climb to the afternoon and fall at night every day, and each
+        # day's steep hours were read as jumps against the local median (round 38, AH-64). A period P (CYCLES, no other:
+        # the same sheet costs the same) is the series' when what is left after a P-row moving average correlates
+        # CYCLE_FIT+ with itself P rows on: the first that does, read on every value, zeros too (Seattle's night hours
+        # are the cycle's, masked they hid it), or a multiple of it that fits 0.01 better (a plain cycle's multiples fit
+        # 0.003 better at most on Council B's probe; Seattle's week 0.023). A row with 3 full periods on each side is then
+        # judged without its part of the cycle: the median of what the moving average leaves at the same position in
+        # those 7 periods (a trend cancels, a growing swing is followed, one slip cannot move it), with the checks' own
+        # one-row step and centred median on what is left. Other rows, and every series without a cycle, are judged
+        # exactly as before: a step read off the raw series let a 35 jump on a swing of 60 pass (Council B, AH-64 try 1)
+        inside, fits = np.zeros(len(s), dtype=bool), {}
+        for per in CYCLES:
+            if whole.notna().sum() < 8 * per or len(dated_at) < 8 * per:
+                break
+            rest = (whole - whole.rolling(per, center=True, min_periods=per).mean()).to_numpy()
+            x, y = rest[:-per], rest[per:]
+            ok = ~np.isnan(x) & ~np.isnan(y)
+            if ok.sum() >= 3 * per and np.std(x[ok]) > 0 and np.std(y[ok]) > 0:  # a flat series has no cycle
+                fits[per] = (np.corrcoef(x[ok], y[ok])[0, 1], rest)
+        per = next((p for p in fits if fits[p][0] >= CYCLE_FIT), None)
+        if per:  # a cycle inside a longer one: Seattle's weekday and weekend hours repeat by the week
+            per = max((p for p in fits if p == per or p % per == 0 and fits[p][0] >= fits[per][0] + 0.01), key=lambda p: fits[p][0])
+        if per:
+            # ...and only with 3 whole periods on each side, each the same time away: Mauna Loa's missing months of
+            # 1958-1964 put March 12 rows after a May, and 21 honest early months were called jumps (AH-64 try 1 review)
+            # (a month's usual gap is its mean, 30.4 days, over the even steps: their median, 31, put 3 years 20 days off)
+            rest, at, usual_gap = fits[per][1], np.arange(len(s)), gap[abs(gap - gap.median()) <= 0.1 * gap.median()].mean()
+            inside = np.ones(len(s), dtype=bool)
+            shifted = []
+            for j in range(-3, 4):
+                there = np.clip(at + j * per, 0, len(s) - 1)
+                inside &= (at + j * per >= 0) & (at + j * per < len(s))
+                inside &= np.abs(when[there] - when - j * per * usual_gap) <= 0.5 * usual_gap
+                shifted.append(rest[there])
+            shifted = np.stack(shifted)
+            inside &= (~np.isnan(shifted)).sum(axis=0) >= 5  # a moving average has no value half a period from either end
+            cycle = np.full(len(s), np.nan)
+            cycle[inside] = np.nanmedian(shifted[:, inside], axis=0)
+            # ...and a row is a jump only where it stands further from its position's median than the 7 at that
+            # position usually stand from theirs (the median over every period of the same month, or hour of the week):
+            # Mauna Loa's Septembers vary by 0.4 ppm year to year, and a 2002 one 0.4 off was a "sharp jump" on the
+            # one-row step alone; Seattle's 5 pm counts vary far more than its 3 am ones (AH-64 try 1 review)
+            mad = np.full(len(s), np.nan)
+            mad[inside] = np.nanmedian(np.abs(shifted[:, inside] - cycle[inside]), axis=0)
+            phase = np.round(when / usual_gap) % per
+            spread_at = pd.Series(mad).groupby(phase).transform("median").to_numpy()
+            far = inside & (np.abs(rest - cycle) > CYCLE_STEP * 1.4826 * spread_at)
+        judge(col, s, ~inside, True)
+        if inside.any():
+            judge(col, pd.Series(np.where(inside, whole.to_numpy() - cycle, np.nan)), inside & far, False, CYCLE_STEP)
     return r
 
 
