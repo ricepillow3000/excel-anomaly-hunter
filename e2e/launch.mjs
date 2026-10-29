@@ -20,6 +20,13 @@ for (const width of [320, 360, 500]) { // Office's task pane: 320 px at its narr
   // a console error names the file that failed: "Failed to load resource: net::ERR_TOO_MANY_RETRIES" came 4 times on
   // 23 Oct with no name, under other test runs' load, and never on a quiet rerun (AH-43)
   page.on("console", (m) => m.type() === "error" && errors.push(m.location().url ? `${m.text()} (${m.location().url})` : m.text()));
+  // every unhandled promise rejection and uncaught error, heard by the page itself before any of the pane's scripts run,
+  // as in run.mjs (AH-58)
+  await page.exposeFunction("__unhandled", (kind, what) => errors.push(`${kind}: ${what}`));
+  await page.addInitScript(() => {
+    addEventListener("unhandledrejection", (e) => __unhandled("unhandledrejection", String(e.reason?.stack || e.reason)));
+    addEventListener("error", (e) => __unhandled("error", String(e.error?.stack || e.message)));
+  });
   await page.route("https://appsforoffice.microsoft.com/**", (r) => r.fulfill({ contentType: "text/javascript", body: fs.readFileSync(DIR + "fake-office.js", "utf8") }));
   const t0 = Date.now();
   await page.goto("https://127.0.0.1:5055/taskpane.html");
@@ -44,7 +51,7 @@ for (const width of [320, 360, 500]) { // Office's task pane: 320 px at its narr
   ok(m.scanBottom <= m.fold, `${width}px: "Find problems" button above the fold (bottom ${Math.round(m.scanBottom)} of ${m.fold} px)`);
   ok(m.noAlt === 0, `${width}px: every image has alt text (${m.noAlt} without)`);
   ok(m.unnamed.length === 0, `${width}px: every visible control has a name - ${m.unnamed}`);
-  ok(errors.length === 0, `${width}px: no page errors ${errors}`);
+  ok(errors.length === 0, `${width}px: no page errors, unhandled rejections or uncaught errors ${errors}`);
   await page.close();
 }
 await browser.close();

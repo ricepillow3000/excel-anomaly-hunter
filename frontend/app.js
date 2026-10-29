@@ -64,7 +64,7 @@ if (typeof Office !== "undefined") {
       const sheet = ctx.workbook.worksheets.getActiveWorksheet().load("name");
       await ctx.sync();
       $("sheet-name").textContent = sheet.name;
-    });
+    }).catch(() => {}); // Excel refuses while the user is typing in a cell: the name stays blank until the first scan (AH-58)
     only("empty-state");
     checkHealth();
   });
