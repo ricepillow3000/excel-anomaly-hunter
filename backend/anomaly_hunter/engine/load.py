@@ -134,6 +134,30 @@ def _kind(s):
     return "text"
 
 
+# a negative code for "no value": the export writes it in place of an answer or a reading (AH-62)
+CODES = (-1, -9, -99, -999, -9999, -99999)
+
+
+def _code(num):
+    """A negative code the column writes 5+ times: its "no value", never a slip (AH-62). Round 38: a survey's -1 (skipped,
+    5 to 5,529 times in 110 columns) made 972 Medium rows and 267 "likely 1" cards, and a turbine table's -9999 (1,375
+    times) 1,368 Medium rows and limits of -5,200 to 5,400 that hid a hub height of 800 among 60-115. A small code (-1, -9)
+    is the column's only negative, on an answer scale (20 whole values or fewer) and beside more than a sign (-1/0/1 and
+    -1/1 are scales): a -1 among sales of ~500 is still a slip to catch (test_engine's sentinels). A large one sits far
+    below the rest (-999 beside real depths to -500 is no code). -> (code, its cells) or None."""
+    x = num.dropna()
+    for code in CODES:
+        hit = x == code
+        rest = x[~hit]
+        if hit.sum() < 5 or len(rest) < 5:
+            continue
+        small = code > -99 and (rest.min() < 0 or set(rest.unique()) <= {0, 1} or rest.nunique() > 20 or (rest != rest.round()).any())
+        if small or code <= -99 and rest.min() <= code / 2:
+            continue
+        return code, hit.index[hit]
+    return None
+
+
 class _Shared(dict):
     """Set once, never changed: pandas deep-copies a frame's attrs on every operation, and copying 638 row numbers per
     column each time made a 20,000-row R export scan 2x slower (6 s -> 15 s, AH-27 build). Copies share this one."""
@@ -156,6 +180,7 @@ def _coerce(df, cols):
             df[c] = df[c].mask(said, "")
     df.attrs["no_value"] = _Shared(no_value)
     typed = {}  # column -> {row: the cell as typed}, for a percent typed as text: "+22%" is held as 0.22 (AH-56)
+    codes = {}  # column -> (rows, the code): a negative code the column writes for "no value", held as a blank (AH-62)
     for c, t in types.items():
         if t in ("number", "id"):
             pct = df[c].astype(str).str.contains("%", regex=False)
@@ -166,6 +191,9 @@ def _coerce(df, cols):
             bad = num.isna() & ~_blank(df[c])
             if t == "number":  # text in a measurement is an error...
                 errors += [(i, c, df.at[i, c]) for i in df.index[bad]]
+                if found := _code(num):
+                    codes[c] = (frozenset(found[1]), found[0])
+                    num = num.mask(num.index.isin(found[1]))
                 df[c] = num
             else:  # ...but an ID like "A-17" among numbers is fine: keep it as it is
                 df[c] = num.astype(object).where(~bad, df[c]) if bad.any() else num
@@ -176,6 +204,7 @@ def _coerce(df, cols):
             errors += [(i, c, df.at[i, c]) for i in df.index[d.isna() & ~_blank(df[c])]]
             df[c] = d
     df.attrs["typed"] = _Shared(typed)
+    df.attrs["codes"] = _Shared(codes)
     return types, errors
 
 

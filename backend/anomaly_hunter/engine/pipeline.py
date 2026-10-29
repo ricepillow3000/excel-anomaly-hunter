@@ -234,7 +234,14 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
     cols = list(column_types)
     if not cols:
         return out, notes
-    blank = np.column_stack([(_blank(df[c]) & ~skip & ~df.index.isin(wrong.get(c, []))).to_numpy(bool) for c in cols])
+    # a negative code the column writes for "no value" (-1, -9999) is held as a blank: one note for the column, never a
+    # blank cell to fill (AH-62)
+    codes = df.attrs.get("codes", {})
+    for c, (rows, code) in codes.items():
+        first = min(rows)
+        notes[first].append(Why(f"{c} {say(code)} is written {len(rows)} times: the column's code for no value", c))
+    blank = np.column_stack([(_blank(df[c]) & ~skip & ~df.index.isin(wrong.get(c, [])) & ~df.index.isin(list(codes.get(c, ((),))[0])))
+                             .to_numpy(bool) for c in cols])
     n = max(1, (~skip).sum())
     # blanks per label per column, counted for every column at once: grouping each label column against each column
     # took 168 s on a crafted 64 x 1,500-column sheet (AH-16 build, 2026-10-22)
