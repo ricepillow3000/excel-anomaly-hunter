@@ -570,10 +570,28 @@ def _gate(per, col, j, total, index):
             continue
         why = int(round(counts[routed, j].sum()))
         if why >= 0.6 * total and (best is None or why > best[0]):
-            best = (why, q, codes, [names[k] for k in np.flatnonzero(asked)], np.flatnonzero(asked))
+            best = (why, q, codes, [names[k] for k in np.flatnonzero(asked)], np.flatnonzero(asked), np.flatnonzero(routed))
     if best is None:
         return None
-    return best[1], pd.Series(np.isin(best[2], best[4]), index=index), best[3]
+    # -> (gate, rows asked, answers asked, rows routed past)
+    return best[1], pd.Series(np.isin(best[2], best[4]), index=index), best[3], pd.Series(np.isin(best[2], best[5]), index=index)
+
+
+def _coarser(g, s, blank):
+    """The groups are cut from the column measured: each of its labels, and its blank, falls in one group, and it has
+    more labels than there are groups (artist_race_nwi from artist_race, an unknown race counted Non-White)."""
+    d = pd.DataFrame({"g": g, "s": s.astype(str).str.strip().where(~blank, "")}).dropna()
+    return bool(len(d)) and d["s"].nunique() > d["g"].nunique() and d.groupby("s")["g"].nunique().max() == 1
+
+
+def _nested(g, routed, asked):
+    """The rows a gate routed past are one group's: 90%+ of them share a value of the group column that holds at most
+    half of the rows it asked. A group most of the sheet is (Himalaya's men, 90% of the climbers) stays gated."""
+    r, a = g[routed.to_numpy(bool)].dropna(), g[asked.to_numpy(bool)].dropna()
+    if not len(r):
+        return False
+    share = r.value_counts(normalize=True)
+    return share.iloc[0] >= 0.9 and (a == share.index[0]).mean() <= 0.5
 
 
 def _table(codes, names, ok, hit):
@@ -621,7 +639,10 @@ def report(df, types, rows):
         if flagged.iat[i] and cells and all(c in blank_at and blank_at[c][i] for c in cells):
             flagged.iat[i] = False
     counted = "rows flagged" if flagged.sum() == sum(r["severity"] in ("High", "Medium", "Low") for r in rows) else "rows flagged for a value"
-    missing = {c: b for c, b in blank_of.items() if c not in prot}
+    # ...and a column about people has its blanks measured too, by the other groups: artists' gender, nationality and
+    # race left "N/A" for 25% of Non-White artists and 0.03% of White ones was "Non-White: 27% rows flagged vs 0.1% - a
+    # real gap", and with blank-only rows out of the flag rate it was said nowhere (AH-66 review 1)
+    missing = dict(blank_of)
     # ...never an option of a "select all that apply" question, whose blank is an answer (not chosen): "Male: 58% missing
     # Will you watch ... Macy's Parade vs 45% - a real gap" said who watches as if it were who skipped (AH-63)
     blanks = {f"missing {c}": (b, f"missing {c}", c, "missing") for c, b in missing.items() if b.sum() >= 5 and not ALL_THAT_APPLY.search(str(c))}
@@ -646,8 +667,16 @@ def report(df, types, rows):
         gcodes, gnames = pd.factorize(g, sort=True)
         for name, (hit, what, subject, label) in list(measures.items())[:left]:
             left -= 1
+            if kinds[name] == "missing" and subject in prot and _coarser(g, df[subject], hit):
+                continue  # "Non-White: 16% missing artist_race vs 0.0% for White" is how the source coded an unknown race
             ok = g.notna() & hit.notna()
             gate = gates.get(name) if kinds[name] == "missing" else None
+            # ...but never for a group whose own rows are 90%+ of those it routes past: 2 of every 5 women's events never
+            # had their times kept, and "event" read that real gap as the events' layout; artists' ethnicity "NA" (57 of
+            # 58 rows Non-White) read the unknown gender of Non-White artists as routing (AH-66 review 1). Paralympics'
+            # individual events, 60% men's rows, still gate grp_id; so do the climbers who did not die, 90% men as all are
+            if gate and _nested(g, gate[3], gate[1]):
+                gate = None
             if gate and gate[0] != col:  # an earlier answer skipped it: compared among the rows it was asked of
                 ok &= gate[1]
             table = _table(gcodes, gnames, ok.to_numpy(bool), hit)

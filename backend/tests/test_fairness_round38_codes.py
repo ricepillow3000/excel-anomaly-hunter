@@ -132,3 +132,57 @@ def test_a_persons_own_id_never_explains_their_blanks():
         rows += [[f"P{p:03d}", sex, v, "" if none else round(float(rng.normal(50000, 9000)), 0)] for v in range(1, 7)]
     t = next((t for t in fair(cols, rows)["tests"] if t["column"] == "Sex" and t["test"] == "missing Income"), None)
     assert t and t["verdict"] == "gap" and t["text"].startswith("Sex F:") and "counted where" not in t["text"], t
+
+
+def athletes(head="event", seed=1):
+    # Council B's probe (AH-66 review 1): gendered events of 4-8 athletes; 2 of every 5 women's events never had their
+    # times recorded, men's times 5% blank at random. The events left blank are all women's: the group's own gap, never
+    # the event's layout
+    rng = np.random.default_rng(seed)
+    rows = []
+    for e in range(60):
+        sex = "Women" if e % 2 else "Men"
+        lost = sex == "Women" and e % 5 in (1, 3)
+        for k in range(int(rng.integers(4, 9))):
+            t = "" if lost or (sex == "Men" and rng.random() < 0.05) else round(float(rng.uniform(10, 60)), 2)
+            rows.append([f"A{len(rows)}", sex, f"{sex}'s event {e}", t, int(rng.integers(18, 40))])
+    return ["Athlete", "gender", head, "Time", "Age"], rows
+
+
+def test_events_that_one_group_alone_left_blank_are_that_groups_gap_never_the_events_layout():
+    for head in ("event", "Event name"):
+        f = fair(*athletes(head))
+        t = next(t for t in f["tests"] if t["column"] == "gender" and t["test"] == "missing Time")
+        assert t["verdict"] == "gap" and t["text"].startswith("gender Women: 39% missing Time vs 5.4% for Men"), t["text"]
+
+
+def artists(seed=35):
+    # an anthology's artists: a person's gender and nationality left "N/A" far more often for non-white artists (an
+    # unknown race is counted Non-White, as the source does). The scan flags those placeholders; leaving those rows out
+    # of the flag rate must not lose the gap: it is the blanks of a column about people, by race
+    rng = np.random.default_rng(seed)
+    cols, rows = ["artist_name", "edition", "artist_nationality", "artist_gender", "artist_race", "artist_race_nwi", "space_ratio"], []
+    for i in range(1500):
+        race = str(rng.choice(["White", "Black or African American", "Asian", "N/A"], p=[0.88, 0.05, 0.05, 0.02]))
+        nwi = "White" if race == "White" else "Non-White"
+        unknown = rng.random() < (0.25 if nwi == "Non-White" else 0.002)
+        rows.append([f"Artist {i}", int(rng.integers(1, 17)), "N/A" if unknown and rng.random() < 0.4 else str(rng.choice(["American", "French", "British"])),
+                     "N/A" if unknown else str(rng.choice(["Male", "Female"], p=[0.85, 0.15])), race, nwi, round(float(rng.uniform(0.1, 3)), 3)])
+    return cols, rows
+
+
+def test_a_peoples_identity_left_unknown_far_more_often_for_one_race_is_a_gap_in_that_columns_blanks():
+    f = fair(*artists())
+    said = [t["text"] for t in f["tests"] if t["column"] == "artist_race_nwi" and t["verdict"] == "gap"]
+    assert any(s.startswith("artist_race_nwi Non-White:") and "missing artist_gender" in s and "for White" in s for s in said), said
+
+
+def test_an_unknown_label_that_marks_the_same_unknown_people_is_never_their_routing():
+    # artists' ethnicity "NA" sits on the same rows as their gender "N/A" (57 of 58 Non-White): read as an answer that
+    # routed the gender question past them, it hid "Non-White: 25% missing artist_gender vs 0.0% for White"
+    cols, rows = artists()
+    cols = cols + ["artist_ethnicity"]
+    rows = [r + ["NA" if r[3] == "N/A" else ("Hispanic or Latino origin" if i % 20 == 0 else "Not Hispanic or Latino origin")]
+            for i, r in enumerate(rows)]
+    said = [t["text"] for t in fair(cols, rows)["tests"] if t["column"] == "artist_race_nwi" and t["verdict"] == "gap"]
+    assert any(s.startswith("artist_race_nwi Non-White:") and "missing artist_gender" in s for s in said), said
