@@ -888,11 +888,14 @@ def spellings(df, column_types, skip):
             for raw, c in counts.items():
                 if raw == right or many:
                     continue
-                # a second spelling the source writes many times, itself in the column's style (capitalised like it, clean
+                # a second spelling the source writes 5+ times, itself in the column's style (capitalised like it, clean
                 # spaces), is its way of writing: "Collins glass" 150 times beside "Collins Glass" 200 was 150 Medium
                 # rows (round 38, AH-64). One note for the column, both spellings and their counts; a rare one, or one
-                # off the column's style ("employed" 77 times beside "Employed" 82), is still each a slip
-                if c >= max(5, 0.01 * len(s)) and 3 * c >= counts[right] and capital(raw) == caps and raw == " ".join(raw.split()):
+                # off the column's style ("employed" 77 times beside "Employed" 82), is still each a slip. A count, not
+                # a share: on the round 22-38 sheets every such variant written 4+ times was the source's own, however
+                # rare beside the usual one (wildlife strikes' ARRIVAL 7 of 20,000, cocktails' Highball Glass 75 beside
+                # 302, under AH-64's third), and one written 2-4 times stays a slip to check (AH-67)
+                if c >= 5 and capital(raw) == caps and raw == " ".join(raw.split()):
                     missed[s.index[s == raw][0]].append(Why(f'{col} is written "{_short(raw)}" {c} times and "{_short(right)}" '
                                                             f'{counts[right]} times (same word, different capitals/spaces)', col))
                     continue
