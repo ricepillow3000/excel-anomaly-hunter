@@ -407,12 +407,21 @@ if (mode === "flow") {
   await page.click("#scan"); await idle();
   ok((await text("#notice")).startsWith("Not enough data here."), "empty sheet explained");
 
-  // 9) the engine down when the pane opens: the pane says so, and Try again brings it back once it answers
+  // 9) the engine down when the pane opens: the pane says so, and Try again brings it back once it answers.
+  // Every /health is refused until the pane has said so, not only the first: with { times: 1 } any other request for
+  // /health that reached the route before the pane's own (CI's Edge, PR #72) took the one refusal, the pane's call got
+  // the real engine and opened as usual, and the wait for #server-down ran out at 30 s (AH-69). Then the route goes, and
+  // Try again meets the engine
+  let refused = 0;
+  const down = (r) => (refused++, r.abort("connectionrefused"));
   await failing(DROPPED, async () => {
-    await page.route("**/health", (r) => r.abort("connectionrefused"), { times: 1 });
-    await page.reload(); await page.waitForSelector("#server-down", { state: "visible" });
+    await page.route("**/health", down);
+    await page.reload(); await page.waitForSelector("#server-down", { state: "visible" }).catch(() => {});
   });
-  ok((await text("#server-down")).includes("The checker isn't running.") && !(await page.isVisible("#main-ui")), "the engine down at start: said in plain words");
+  const opened = await page.evaluate(() => ["app-body", "main-ui", "server-down"].map((id) => `${id} ${document.getElementById(id).hidden ? "hidden" : "shown"}`).join(", "));
+  await page.unroute("**/health", down);
+  ok(refused >= 1 && (await page.isVisible("#server-down")) && (await text("#server-down")).includes("The checker isn't running.") && !(await page.isVisible("#main-ui")),
+    `the engine down at start: said in plain words - ${refused} /health refused; ${opened}`);
   await page.click("#retry-health"); await page.waitForSelector("#main-ui", { state: "visible", timeout: 10000 }).catch(() => {});
   ok(await page.isVisible("#main-ui"), "Try again opens the pane once the engine answers");
 }
