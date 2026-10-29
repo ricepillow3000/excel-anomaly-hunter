@@ -63,6 +63,17 @@ def _groups(df, col, types, place=False):
     return None
 
 
+def _many(df, col, types):
+    """A text column of too many labels to compare as groups (a nationality of 89): -> how many, else 0. Never an age or
+    a birth date ("birthday: 3064 different values" on congress terms, AH-63 review 2): it is an age, not labels; a place
+    of birth is still a place."""
+    w = set(_words(col))
+    if types.get(col) != "text" or w & AGED and not w & (LOCATION | PLACES) or _aged(col):
+        return 0
+    k = df[col].astype(str).str.strip().where(~_missing(df[col])).dropna().str.split().str.join(" ").str.casefold().nunique()
+    return k if k > 50 else 0
+
+
 def _labels(s, most):
     """Text cells as their labels, or None past `most` labels. "no " and "NO" are the label "No", written the way the
     column writes it most: one stray "no " among 480 Yes/No made the outcome three labels, and every outcome test
@@ -236,6 +247,10 @@ NOT_PEOPLE = {"race": {"time", "times", "pace", "distance", "lap", "laps", "spli
                        "results", "entry", "course", "track", "number", "no", "id", "date", "day", "name", "type", "series", "event"},
               "state": {"order", "ticket", "account", "task", "job", "payment", "shipment", "delivery", "approval", "workflow",
                         "process", "machine", "item", "invoice", "case", "request", "subscription", "build", "run"}}
+# ...and "black" or "white" that names a chess side, a piece or a player's attribute: tt_chess's black_id (9,311 usernames)
+# was read as a race and listed as left out (AH-63 review 2)
+SIDE = {"id", "rating", "elo", "player", "name", "username", "moves", "move", "pieces", "piece", "rank", "score", "time"}
+NOT_PEOPLE |= {"black": SIDE, "white": SIDE}
 # ...and an unnamed "State" whose labels are all steps of a process (Pending, Shipped) is a status too
 STATUS = {"pending", "open", "closed", "shipped", "delivered", "returned", "cancelled", "canceled", "active", "inactive", "done",
           "new", "in progress", "approved", "rejected", "paid", "unpaid", "draft", "complete", "completed", "failed", "processing",
@@ -246,7 +261,8 @@ STATUS = {"pending", "open", "closed", "shipped", "delivered", "returned", "canc
 # gap" about Texas cities' missing house sales, reading a town's share of old houses as people's ages and a cat's sex
 # as a person's, and missing people columns named female, nonwhite, colour, maritl or nativeBorn.
 OTHER_NAMES = {"female", "females", "male", "males", "nonwhite", "nwhite", "white", "black", "hispanic", "latino", "latina", "afam",
-               "minority", "maritl", "married", "citizen", "immigrant", "foreign", "native"}
+               "minority", "maritl", "married", "citizen", "immigrant", "foreign", "native",
+               "lgbt", "lgbtq", "lgbtqi", "lgbtqia"}  # "LGBTQ?" on a sheet of candidates (blind round 38, AH-63)
 RACE_LABELS = {"white", "black", "asian", "hispanic", "latino", "latina", "other", "mixed", "native", "indian", "pacific islander",
                "native american", "american indian", "african american", "caucasian", "multiracial", "non-white", "nonwhite"}
 COLOUR = {"colour", "color"}  # a race only when its labels are races: a car's Red / Silver is not
@@ -277,6 +293,9 @@ def _aged(col):
     """A person's age or birth date by its header: plain ("Age", "age_years", "Date of birth") or a person's ("Patient
     age"), never a thing's ("HouseAge", "Account age")."""
     w = set(_words(col))
+    # ...never a day or a month of one alone: Lahman's birthDay (1-31) was read as a person's age, 12 tests (round 38, AH-63)
+    if w & {"day", "month"} and not w & {"date", "year", "dob", "birthdate", "age"}:
+        return False
     return bool(w & AGED) and (w - AGE_WORDS <= PERSON or _identity(col))  # "What is your age?" (AH-53)
 
 
@@ -293,7 +312,7 @@ OPINION = {"agree", "disagree", "comfortable", "comfortably", "feel", "feeling",
 # ...a self-identification question names who someone is in any shape: "Do you have a disability?", "Are you a veteran?",
 # "Religion: which one?", "Are you Hispanic or Latino?" (Council A's AH-53 review: all four were silenced)
 IDENTITY = DEMOGRAPHIC | {"denomination", "ethnic", "hispanic", "latino", "latina", "orientation", "transgender", "citizen",
-                          "citizens"}  # "Are you a U.S. citizen?" (AH-53 review 2)
+                          "citizens", "lgbt", "lgbtq", "lgbtqi", "lgbtqia"}  # "Are you a U.S. citizen?" (AH-53 review 2)
 # a sexual orientation by its labels: a page's or a photo's orientation (Portrait, Landscape) is no person's, and a road
 # segment's Straight / Other is no one's (AH-53 review 2): at least one label must name an orientation and nothing else
 ADDRESSED = {"you", "your", "yours", "yourself"}  # a question put to the person the row is about
@@ -401,10 +420,14 @@ def _people(df, types):
         if c not in named and not _asked(c) and (w & OTHER_NAMES and len(_words(c)) <= 3 or w & COLOUR and _labels(df[c], 20) is not None
                                and set(_labels(df[c], 20).dropna().str.casefold()) <= RACE_LABELS):
             named[c] = "demographic"
-    out = {}
+    out, wide = {}, set()
     for c, why in named.items():
         w = _words(c)
         if any(k in w and set(w) & NOT_PEOPLE[k] for k in NOT_PEOPLE):
+            continue
+        # where someone died or is buried is no group they belong to: "deathCountry Cuba: 7.4% missing deathDay - a real
+        # gap" (round 38, AH-63)
+        if set(w) & {"death", "died", "deceased", "burial", "buried"}:
             continue
         if "state" in w and types.get(c) == "text":
             labels = set(df[c].astype(str).str.strip().str.casefold()[~_missing(df[c])])
@@ -416,11 +439,19 @@ def _people(df, types):
             if not _aged(c):
                 continue
         elif _groups(df, c, types) is None:
-            continue  # a measurement named like a group (Boston's "black", a town's share): not a person's category
+            if not _many(df, c, types):
+                continue  # a measurement named like a group (Boston's "black", a town's share): not a person's category
+            wide.add(c)
         out[c] = why
-    # ...and the sheet is about people: a person-only column (not an age, not a place), or rows named as people
-    strong = any(why == "demographic" and not set(_words(c)) & AGED for c, why in out.items())
+    # ...and the sheet is about people: a person-only column (not an age, not a place), or rows named as people. A column
+    # kept only to be named as left out never makes it so: a ship registry's 60 flag Nationalities made its ports gap
+    # tests (AH-63 review 1)
+    strong = any(why == "demographic" and not set(_words(c)) & AGED and c not in wide for c, why in out.items())
     if not strong and not any(_names_rows(c) for c in cols):
+        return {}
+    # ...nor what makes a report appear: a "winner" sheet whose only column kept is a 60-label nationality had none on
+    # main, and its left-out line would be all it said (AH-63 review 2)
+    if not set(out) - wide:
         return {}
     return out
 
@@ -455,6 +486,55 @@ def _named(groups, maybe=None):
     return ", ".join(f"{k} ({n} row{'' if n == 1 else 's'}{f', maybe {maybe[k]}' if k in (maybe or {}) else ''})" for k, n in groups.items())
 
 
+ALL_THAT_APPLY = re.compile(r"(?i)\b(?:select|check|tick|mark|choose)\s+all\s+that\s+apply\b")
+
+
+def _askers(df, types):
+    """The text columns of 20 labels or fewer a later question can hang on, the first 40 in sheet order (a wide sheet
+    stays fast): [(column, label codes, labels, rows per label)]."""
+    out = []
+    for q, t in types.items():
+        lab = _labels(df[q], 20) if t == "text" and q in df.columns else None
+        if lab is None or not lab.notna().any():
+            continue
+        codes, names = pd.factorize(lab)
+        out.append((q, codes, list(names), np.bincount(codes[codes >= 0], minlength=len(names))))
+        if len(out) == 40:
+            break
+    return out
+
+
+def _gate(askers, col, blank):
+    """The earlier question a later one hangs on: Star Wars' "Which character shot first?" is blank for everyone who had
+    seen none of the films, so women, who more often had not, were "28% missing vs 15% - a real gap" (round 38, AH-63).
+    One whose answers (5+ rows each) either leave this column blank (95%+) or fill it (80%+), those answers 90% of its
+    answered rows, and the blank ones 60% of this column's blanks (Thanksgiving's 78 who do not celebrate are 73% of
+    "How far will you travel?"'s blanks, the rest respondents who stopped) -> (gate, the rows asked, the answers asked)."""
+    b, best = blank.to_numpy(bool), None
+    for q, codes, names, size in askers:
+        if q == col:
+            continue
+        on = codes >= 0
+        share = np.bincount(codes[on], weights=b[on], minlength=len(names)) / np.maximum(size, 1)
+        routed, asked = (size >= 5) & (share >= 0.95), share <= 0.2
+        if not routed.any() or not asked.any() or size[routed | asked].sum() < 0.9 * size.sum():
+            continue
+        why = int(b[on & np.isin(codes, np.flatnonzero(routed))].sum())
+        if why >= 0.6 * b.sum() and (best is None or why > best[0]):
+            best = (why, q, pd.Series(np.isin(codes, np.flatnonzero(asked)), index=blank.index), [names[k] for k in np.flatnonzero(asked)])
+    return best[1:] if best else None
+
+
+def _coverage(blank, table, unrecorded):
+    """Blanks by place that say where the source kept the column, not what happened to people: endorsements filled in
+    only for the states a group tracked ("State NV: 64% missing Trump Endorsed? vs 95%", 32 such in round 38), a state
+    whose general election had not been held ("OK: 83% missing General Status vs 0.5%"), and a few candidates with no
+    profile at all ("TN: 18% missing LGBTQ?", the same 4 rows blank in 5 columns). A column blank for half the rows, a
+    place blank for 80%+ of its own, or blanks that are mostly whole rows left unrecorded (AH-63)."""
+    rates = table[True] / table.sum(axis=1)
+    return bool(blank.mean() >= 0.5 or (rates >= 0.8).any() or (blank.sum() and unrecorded.sum() >= 0.8 * blank.sum()))
+
+
 def report(df, types, rows):
     """{protected: {col: why}, tests: [{column, test, measure, groups: {label: [rows, rate]}, p, verdict, text, context?}]}.
     verdict "gap" = the group that stands out differs from the rest by _big AND significantly (Bonferroni over every test
@@ -472,24 +552,43 @@ def report(df, types, rows):
     prot = _people(df, types)
     flagged = pd.Series([r["severity"] in ("High", "Medium", "Low") for r in rows], index=df.index)
     missing = {c: _missing(df[c]) for c in types if c in df.columns and c not in prot}
-    blanks = {f"missing {c}": (b, f"missing {c}", c, "missing") for c, b in missing.items() if b.sum() >= 5}
+    # ...never an option of a "select all that apply" question, whose blank is an answer (not chosen): "Male: 58% missing
+    # Will you watch ... Macy's Parade vs 45% - a real gap" said who watches as if it were who skipped (AH-63)
+    blanks = {f"missing {c}": (b, f"missing {c}", c, "missing") for c, b in missing.items() if b.sum() >= 5 and not ALL_THAT_APPLY.search(str(c))}
     outcomes = _outcomes(df, types, prot)
     amounts = _amounts(df, types, prot)
     measures = {"flag rate": (flagged, "rows flagged", None, None), **blanks, **outcomes}
     kinds = {name: "outcome" if name in outcomes else "missing" if name in blanks else "flag" for name in measures}
-    tests, left = [], MAX_TESTS
+    # a row left unrecorded: blank in 3+ of the columns that are 90% filled (a candidate with no profile, AH-63)
+    full = [c for c in types if c in df.columns and _missing(df[c]).mean() <= 0.1]
+    gone = sum((_missing(df[c]).astype(int) for c in full), pd.Series(0, index=df.index))
+    unrecorded = {c: b & (gone - (b.astype(int) if c in full else 0) >= 3) for c, b in missing.items() if f"missing {c}" in blanks}
+    askers = _askers(df, types)
+    gates = {name: _gate(askers, c, b) for name, (b, _, c, _) in blanks.items()}
+    tests, left, out_of_reach = [], MAX_TESTS, []
     for col, why in prot.items():
         g = _groups(df, col, types, place=why == PROXY)
         if g is None:
+            if k := _many(df, col, types):  # never dropped silently: a nationality of 89 labels (round 38, AH-63)
+                out_of_reach.append({"column": col, "kind": why, "test": "groups", "measure": "groups", "p": None, "groups": {},
+                                     "verdict": "left out", "text": f"{col}: {k} different values, too many to compare as groups (50 at most) - left out"})
             continue
         maybe = _maybe(g.dropna()) if types.get(col) == "text" else {}
         for name, (hit, what, subject, label) in list(measures.items())[:left]:
             left -= 1
             ok = g.notna() & hit.notna()
+            gate = gates.get(name) if kinds[name] == "missing" else None
+            if gate and gate[0] != col:  # an earlier answer skipped it: compared among the rows it was asked of
+                ok &= gate[1]
             table = pd.crosstab(g[ok], hit[ok].astype(bool))
             small = {str(k): int(n) for k, n in table.sum(axis=1).items() if n < MIN_GROUP}
             table = table[table.sum(axis=1) >= MIN_GROUP]
             base = {"column": col, "kind": why, "test": name, "measure": kinds[name], "subject": subject, "label": label, "maybe": maybe}
+            if gate and gate[0] != col:
+                said = ", ".join(gate[2][:3]) + (f" and {len(gate[2]) - 3} more" if len(gate[2]) > 3 else "")
+                base["routed"] = f"; counted where it was asked ({gate[0]}: {said})"
+            if kinds[name] == "missing" and why == PROXY and len(table) >= 2 and table.shape[1] == 2 and _coverage(hit, table, unrecorded[subject]):
+                continue
             # a question one group never answers, every one of its rows blank, is the survey's routing (atheists are
             # not asked about services): never "a real gap, check why". Said plainly, and the asked groups compared
             if kinds[name] == "missing" and table.shape[1] == 2 and len(table) > 2:
@@ -575,7 +674,7 @@ def report(df, types, rows):
                                   t["groups"]) if t["verdict"] == "gap" else None
         if note:
             t["context"] = note
-    return {"protected": prot, "tests": tests}
+    return {"protected": prot, "tests": tests + out_of_reach}
 
 
 def _amount_words(t, n):
