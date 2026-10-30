@@ -58,7 +58,8 @@ def sheet(kind, seed, n=240):
     i = picks[1]; rows[i][label] = None; plants[i] = "blank in a filled column"
     i = picks[2]; rows[i][sumc] = "#REF!"; plants[i] = "Excel error"
     i = picks[3]; rows[i][sumc] = round(rows[i][sumc] + 900.0, 2); plants[i] = "total that does not add up"
-    i = picks[4]; rows[i][code] = rows[i][code].lstrip("0") or "0"; plants[i] = "code that lost its leading zeros"
+    # a zero-led code ("004213") typed without its zeros: most random codes have none to lose, so start from one that does
+    i = picks[4]; rows[i][code] = ("00" + rows[i][code][2:]).lstrip("0") or "0"; plants[i] = "code that lost its leading zeros"
     i = picks[5]; y, m, d = rows[i][date].split("-"); rows[i][date] = f"{int(d):02d}/{int(m):02d}/{y}"
     plants[i] = "date in another form"
     i = picks[6]; rows[i][label] = rows[i][label].lower(); plants[i] = "label typed in other capitals"
