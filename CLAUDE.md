@@ -74,7 +74,10 @@ Adding or removing a check: update this table in the same commit.
   change that moves either one is explained in the commit message with the numbers. For a big change, also run a
   blind real-sheet test: one agent fetches random public tables and plants mistakes with a secret key, another runs
   the pane and engine without it (`docs/SYSTEMS-MAP.md`). Use a fresh set each time: a set you fixed against is no
-  longer held out.
+  longer held out. Two scores never move backwards: the Chaos Dataset's harm-weighted F2 (`test_chaos_dataset.py`:
+  5 TP / (5 TP + 4 FN + FP + 10 (harmful fixes + silent changes)), any harmful fix or silent change fails alone) and
+  the any-schema proof (`test_schema_agnostic.py`: generated 8- and 40-column sheets with meaningless headers, same
+  flags under other headers, a column's limits scale with it). A check that reads a header word says so in the map.
 - **An AI prompt, its context or the model** changes only with `backend/bench/ai_eval.py` numbers (your own key,
   never the relay; paired wins vs losses on dev and held-out) in the commit message. No eval run, no change. Ask AI's
   real-world notes (`ai/bias_context.py`) are built but off: arm `bias_context`; `on=True` in `client.py` once it wins.
@@ -214,3 +217,8 @@ Adding or removing a check: update this table in the same commit.
   (2026-10-20). Each decision is kept in the workbook's settings under a code of the row's values plus its copy number
   (`features/decisions.js`; a sort keeps it, an edit makes a new row), sent with `/scan` for Power BI's Status. The
   e2e fake workbook keeps its sheets and saved settings across a page reload, so "reload the pane" is testable.
+- A sheet is damaged before any check runs: opening a CSV makes "02134" the number 2134 and reads "03/04/2024" in the
+  PC's order, and the loader did the same (`pd.to_numeric`, one day-first switch per column). A check can only see a
+  cell as typed: `docs/airlock/` imports a file as raw text in Power Query and writes an Audit column (never over the
+  source), and an Excel formula that tests a date never uses `--text` or DATEVALUE, which make the very guess it is
+  checking (chaos audit, 2026-10-30, `test_chaos_dataset.py`).

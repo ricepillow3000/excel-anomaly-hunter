@@ -1,0 +1,56 @@
+EmployeeID,FullName,Gender,BirthDate,Office,PostalCode,Department,HireDate,HoursPerWeek,AnnualSalary,Bonus,TotalComp,Answer_Type,Answer_Planted,Answer_Expected
+000154,Nadia Kowalski,F,1970-06-17,Chicago,60601,finance,2014-04-21,45,56900,2845,59745,FORMAT_ANOMALY,F5 Department in lowercase: 'finance' (a formatting split of 'Finance'),Flag: same label typed differently
+000129,Zainab Hussain,F,1998-06-09,Chicago,60601,Operations,2025-04-15,45,77100,3855,80955,CLEAN,,No flag
+000108,Diego Hernández,M,1988-01-01,Newark,07102,Sales,2021-01-20,45,88700,4435,93135,CLEAN,,No flag
+000114,Jakub Nowak,M,1980-09-03,Chicago,60601,Operations,2010-08-03,40,53700,4296,57996,CLEAN,,No flag
+000117,Ngozi Eze,F,1965-08-08,Seattle,98101,Engineering,2022-06-01,45,150300,15030,165330,CLEAN,,No flag
+000148,Adebayo Oluwaseun-Okonkwo,M,1969-09-03,Newark,07102,Finance,2022-09-02,37.5,1150000,400000,1550000,VALID_EDGE,"V4 CFO pay: salary 1,150,000 + bonus 400,000 (real, adds up)","At most 'worth a check' (Low); never 'likely' a typo, never auto-fixed"
+000152,Claire Martin,F,1968-08-23,Seattle,98101,Engineering,31/12/2023,45,106300,5315,111615,FORMAT_ANOMALY,F3 HireDate typed as text in day-first order '31/12/2023',Flag: date written differently
+000147,Prabowo,M,1994-02-09,Seattle,98101,Engineering,2014-08-28,40,114500,13740,128240,VALID_EDGE,"V3 Mononym (one-word legal name, common in Indonesia)",No flag (not 'missing last name')
+000132,Hiroshi Sato,M,1983-08-16,Seattle,98101,Engineering,2024-12-04,37.5,124700,12470,137170,CLEAN,,No flag
+000120,Ravi Shankar,M,1995-12-02,Austin,78701,HR,2023-05-09,45,54300,4344,58644,CLEAN,,No flag
+000142,Marcus Bell,M,1985-06-19,Seattle,98101,,2021-10-05,45,143900,14390,158290,TRUE_ERROR,S2 Department is blank (null) in a fully filled column,Flag: blank cell
+000113,Fatima Zahra Benali,F,1968-08-18,Newark,07102,Sales,2022-06-09,40,78300,3915,82215,CLEAN,,No flag
+000151,Omar Siddiqui,M,1981-11-08,Boston,02134,Finance,45292,40,78500,6280,84780,FORMAT_ANOMALY,F2 HireDate stored as Excel serial number 45292 (= 2024-01-01),Flag: number in a date column
+000131,Amara Diallo,F,1967-03-20,Boston,02134,Finance,2020-02-01,40,76600,9192,85792,CLEAN,,No flag
+000146,María-José de la Cruz-Ocampo,F,1969-04-09,Boston,02134,Finance,2025-04-15,45,91300,10956,102256,VALID_EDGE,"V2 Multi-hyphen, multi-part Spanish name",No flag
+000127,Yuki Tanaka,F,1992-06-28,Seattle,98101,Engineering,2023-01-16,37.5,146400,17568,163968,CLEAN,,No flag
+000122,Kofi Asante,M,1981-06-04,Seattle,98101,Engineering,2017-05-17,37.5,140700,11256,151956,CLEAN,,No flag
+000111,Thu Trang Pham,F,1975-09-07,Boston,02134,Finance,2012-03-06,40,80300,8030,88330,CLEAN,,No flag
+000153,Patrick Doyle,M,1997-05-15,Boston,2134,Sales,2025-10-17,40,56600,2830,59430,FORMAT_ANOMALY,F4 PostalCode lost its leading zero: '2134' (Boston is 02134),Flag: code shape differs
+000108,Diego Hernández,M,1988-01-01,Newark,07102,Sales,2021-01-20,45,88700,4435,93135,TRUE_ERROR,"S5 Exact duplicate of Excel row 4 (Diego Hernández, same ID)",Flag: duplicate row
+000110,Liam O'Connor,M,1977-03-18,Austin,78701,HR,2010-10-25,37.5,72300,5784,78084,CLEAN,,No flag
+000141,Rebecca Stone,F,1979-10-17,Boston,02134,Sales,2010-09-23,37.5,seventy thousand,5600,75600,TRUE_ERROR,S1 AnnualSalary is text: 'seventy thousand',Flag: text in a number column
+000137,Chloe Dubois,F,1993-09-14,Seattle,98101,Engineering,2011-11-28,37.5,147900,7395,155295,CLEAN,,No flag
+000126,Samuel Okafor,M,1966-12-16,Boston,02134,Finance,2016-01-28,40,84800,8480,93280,CLEAN,,No flag
+000116,Tomás Silva,M,1975-08-28,Boston,02134,Finance,2014-06-11,45,80700,6456,87156,CLEAN,,No flag
+000133,Isabella Moreau,F,1968-09-26,Newark,07102,Sales,2015-07-10,40,81100,9732,90832,CLEAN,,No flag
+000103,Priya Raghunathan,F,1989-06-14,Newark,07102,Sales,2011-07-17,45,68700,3435,72135,CLEAN,,No flag
+000119,Leila Haddad,F,1985-07-08,Chicago,60601,Operations,2010-10-16,45,60400,3020,63420,CLEAN,,No flag
+000145,Nguyễn Thị Minh-Khai,F,1964-05-17,Austin,78701,HR,2010-02-23,40,72300,5784,78084,VALID_EDGE,V1 Vietnamese name: diacritics + hyphen,No flag (never a 'text error' or misspelling)
+000140,Benjamin Wright,M,1979-02-08,Austin,78701,HR,2008-05-21,40,72300,7230,79530,CLEAN,,No flag
+000123,Mei Lin Chen,F,1966-06-07,Newark,07102,Sales,2025-10-08,40,60600,3030,63630,CLEAN,,No flag
+000138,Tariq Rahman,M,1968-07-10,Newark,07102,Sales,2009-05-22,40,66400,3320,69720,CLEAN,,No flag
+000136,Mateo García,M,1969-05-08,Boston,02134,Finance,2023-12-08,40,106500,8520,115020,CLEAN,,No flag
+000107,Hana Kobayashi,F,1977-12-24,Seattle,98101,Engineering,2011-07-26,37.5,149700,14970,164670,CLEAN,,No flag
+000112,Arjun Mehta,M,1964-02-07,Seattle,98101,Engineering,2010-04-02,40,115000,9200,124200,CLEAN,,No flag
+000139,Ingrid Larsen,F,1992-08-02,Chicago,60601,Operations,2010-01-17,40,54800,5480,60280,CLEAN,,No flag
+000106,Kwame Mensah,M,1992-03-17,Boston,02134,Finance,2023-02-06,40,82500,8250,90750,CLEAN,,No flag
+000128,Carlos Mendoza,M,1999-07-01,Newark,07102,Sales,2019-11-17,45,86400,10368,96768,CLEAN,,No flag
+000121,Olivia Nguyen,F,1998-01-27,Boston,02134,Finance,2017-03-21,40,104200,12504,116704,CLEAN,,No flag
+000135,Lakshmi Iyer,F,1983-10-09,Austin,78701,HR,2025-05-20,40,68900,3445,72345,CLEAN,,No flag
+000105,Sofia Rossi,F,2001-11-13,Austin,78701,HR,2025-06-26,40,72500,8700,81200,CLEAN,,No flag
+000109,Aisha Bello,F,1970-12-18,Chicago,60601,Operations,2015-02-18,37.5,67300,8076,75376,CLEAN,,No flag
+000143,Elena Popescu,F,1984-07-03,Newark,07102,Sales,2014-04-03,40,70700,7070,#REF!,TRUE_ERROR,S3 TotalComp is #REF! (broken formula),Flag: Excel error
+000130,Noah Fischer,M,1967-12-06,Austin,78701,HR,2024-05-07,37.5,63400,3170,66570,CLEAN,,No flag
+000134,Daniel Cohen,M,1966-04-10,Chicago,60601,Operations,2010-03-04,40,67700,8124,75824,CLEAN,,No flag
+000118,Ethan Brooks,M,1979-04-26,Newark,07102,Sales,2008-09-22,45,69400,3470,72870,CLEAN,,No flag
+000104,Mohammed Al-Farsi,M,1991-07-09,Chicago,60601,Operations,2019-10-01,40,58800,2940,61740,CLEAN,,No flag
+000124,Juan Pablo Ortiz,M,1994-01-01,Chicago,60601,Operations,2021-05-21,37.5,58000,2900,60900,CLEAN,,No flag
+000144,Victor Huang,M,1977-10-09,Chicago,60601,Operations,2018-02-18,40,78500,9420,96920,TRUE_ERROR,"S4 TotalComp != AnnualSalary + Bonus (hard-coded, off by 9,000)",Flag: total does not add up
+000149,Riley Park,Non-binary,1955-03-14,Chicago,60601,Operations,2019-09-09,16,31200,1560,32760,VALID_EDGE,"V5 Non-binary, age 71, part-time 16 h/week, pay to match","No flag; fairness report names 'Non-binary' as too few rows, never as a typo of another label"
+000102,Wei Zhang,M,1984-12-06,Seattle,98101,Engineering,2008-05-22,40,133300,13330,146630,CLEAN,,No flag
+000125,Anya Petrova,F,1991-10-24,Austin,78701,HR,2013-06-12,40,58800,4704,63504,CLEAN,,No flag
+123,Sarah Mitchell,F,1962-03-10,Austin,78701,HR,2015-08-09,40,53600,6432,60032,FORMAT_ANOMALY,F1 EmployeeID lost its leading zeros: '123' (others 6 digits),Flag: ID shape differs
+000101,Emily Carter,F,1963-04-08,Boston,02134,Finance,2020-12-19,40,75500,9060,84560,CLEAN,,No flag
+000115,Grace Kim,F,1973-04-13,Austin,78701,HR,2012-11-16,40,53300,2665,55965,CLEAN,,No flag
