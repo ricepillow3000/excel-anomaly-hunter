@@ -5,32 +5,32 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Anomaly Hunter Privacy</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src https://api.github.com; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.github.com; base-uri 'none'; form-action 'none'">
+<meta name="description" content="What Anomaly Hunter keeps on your PC, what its optional AI help sends and to whom, and what this website asks of GitHub.">
 <link rel="icon" href="assets/mark-32.png" sizes="32x32">
+<link rel="icon" href="assets/mark-64.png" sizes="64x64">
 <link rel="preload" href="assets/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="styles.css">
+<script src="boot.js"></script>
 </head>
-<body>
+<body id="privacy">
 <!-- the sections below are the pane's own Privacy page (frontend/privacy.html), word for word, plus "This website";
      a change there is a change here (test_both_privacy_pages_name_every_place_data_goes_and_every_file_the_app_keeps) -->
 <aside class="notice-bar" aria-label="Announcement"><p>Free for Windows · a scan never leaves your PC · <a href="index.html#download">Download</a></p></aside>
 <header class="bar">
-  <div class="wrap">
-    <nav class="links" aria-label="Main">
-      <div class="l"><a href="index.html">Product</a><a href="index.html#checks">Checks</a></div>
-      <a class="brand" href="index.html" aria-label="Anomaly Hunter home"><img src="assets/mark-32.png" srcset="assets/mark-64.png 2x" width="32" height="32" alt=""><span>Anomaly Hunter</span></a>
-      <div class="r"><a href="privacy.html" aria-current="page">Privacy &amp; security</a><a href="support.html">Support</a><a class="btn-trim" href="index.html#download">Download</a></div>
-    </nav>
+  <div class="wrap cols">
+    <a class="brand" href="index.html" aria-label="Anomaly Hunter home"><svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><g data-part="spear"><path d="M16 2 L17.2 8.2 L16 10 Z" fill="#9C7A35"/><path d="M16 2 L14.8 8.2 L16 10 Z" fill="#B8954A"/><rect x="15" y="9" width="1" height="8" fill="#B8954A"/><rect x="16" y="9" width="1" height="8" fill="#9C7A35"/><path d="M11.6 13.8 C11.6 11.2 14 10.4 16 11.6 C18 10.4 20.4 11.2 20.4 13.8" fill="none" stroke="#9C7A35" stroke-width="1.4" stroke-linecap="round"/></g><g shape-rendering="crispEdges"><g data-part="banner"><rect x="7" y="18" width="18" height="12" fill="#9C7A35"/><rect x="8" y="18" width="16" height="11" fill="#0C1938"/></g><g data-part="bar"><rect x="5" y="16" width="22" height="2" fill="#9C7A35"/><rect x="3" y="15" width="3" height="4" fill="#9C7A35"/><rect x="26" y="15" width="3" height="4" fill="#9C7A35"/></g><g data-part="emblem" fill="#F4F1EA"><rect x="14" y="20" width="4" height="1"/><rect x="14" y="25" width="4" height="1"/><rect x="13" y="21" width="1" height="4"/><rect x="18" y="21" width="1" height="4"/><rect x="19" y="19" width="1" height="1"/><rect x="18" y="20" width="1" height="1"/><rect x="17" y="21" width="1" height="1"/><rect x="16" y="22" width="1" height="1"/><rect x="15" y="23" width="1" height="1"/><rect x="14" y="24" width="1" height="1"/><rect x="13" y="25" width="1" height="1"/><rect x="12" y="26" width="1" height="1"/></g></g></svg><span>Anomaly Hunter</span></a>
+    <nav class="links" aria-label="Main"><a href="index.html">Product</a><a href="index.html#checks">Checks</a><a href="privacy.html" aria-current="page">Privacy &amp; security</a><a href="support.html">Support</a><a class="btn-trim" href="index.html#download">Download</a></nav>
   </div>
 </header>
 
-<main>
+<main id="page" data-page="privacy">
   <section class="page-head">
-    <div class="wrap">
-      <span class="label">Privacy &amp; security</span>
-      <h1>What stays on your PC, and what <em>leaves</em> it.</h1>
-      <p>Every sentence here describes what the code does, and the code is public. Last updated 20 October 2026.</p>
-      <table class="card" aria-label="Where each part runs">
+    <div class="wrap cols">
+      <span class="label" data-enter="left">Privacy &amp; security</span>
+      <h1 data-enter="left">What stays on your PC, and what <em>leaves</em> it.</h1>
+      <p data-enter="left">Every sentence here describes what the code does, and the code is public. Last updated 20 October 2026.</p>
+      <table class="card" data-enter="bottom" aria-label="Where each part runs">
         <thead><tr><th scope="col">Part</th><th scope="col">Where it runs</th><th scope="col">What leaves your PC</th></tr></thead>
         <tbody>
           <tr><th scope="row">The scan</th><td>On your PC, in memory</td><td class="eg">Nothing</td></tr>
@@ -43,7 +43,7 @@
   </section>
 
   <section class="doc">
-    <div class="wrap">
+    <div class="wrap cols">
     <nav class="toc" aria-label="On this page">
       <b>Contents</b>
       <a href="#intro">Who makes it</a>
@@ -57,16 +57,16 @@
     </nav>
     <article class="prose">
 
-      <div class="short"><strong>The short version.</strong> A scan runs on your PC and sends nothing to the internet. Your sheet's data leaves your PC only when you click <strong>Ask AI</strong> or <strong>Check words with AI</strong>, and then only the part described below. There are no accounts, no analytics and no tracking, and the add-in sets no cookies.</div>
+      <div class="short" data-scrub="rise"><strong>The short version.</strong> A scan runs on your PC and sends nothing to the internet. Your sheet's data leaves your PC only when you click <strong>Ask AI</strong> or <strong>Check words with AI</strong>, and then only the part described below. There are no accounts, no analytics and no tracking, and the add-in sets no cookies.</div>
 
-      <section id="intro">
+      <section data-scrub="rise" id="intro">
         <h2>Who makes it</h2>
         <p>Anomaly Hunter is a free Excel add-in made by one person, John, in his spare time. It is not a company. On this page, "we" means John.</p>
         <p>It is not affiliated with Microsoft, Google, Cloudflare, Anthropic or GitHub.</p>
         <p>The code is public, so you can check every sentence on this page: <a href="https://github.com/ricepillow3000/excel-anomaly-hunter" target="_blank" rel="noopener">github.com/ricepillow3000/excel-anomaly-hunter</a>.</p>
       </section>
 
-      <section id="collect">
+      <section data-scrub="rise" id="collect">
         <h2>What stays on your PC</h2>
         <h3>The scan</h3>
         <p>Excel hands your sheet to a small engine on your own PC, at <code>https://127.0.0.1:5055</code>. It checks the sheet in memory and answers the pane. A scan never sends anything to the internet.</p>
@@ -93,7 +93,7 @@
         <p>The auto-fix switch and the Power BI switch are saved in Excel's storage for the pane, on this PC.</p>
       </section>
 
-      <section id="use">
+      <section data-scrub="rise" id="use">
         <h2>What AI help sends</h2>
         <p>AI help works only after you paste a Google AI key or an invite code, or install an invite kit from John (or a developer sets <code>GEMINI_API_KEY</code> or <code>ANTHROPIC_API_KEY</code> on the PC). Even then, nothing from your sheet is sent until you click <strong>Ask AI</strong> or <strong>Check words with AI</strong>.</p>
         <p>When you save a Google key, the engine asks Google once whether the key works. That call carries the key and no sheet data.</p>
@@ -110,7 +110,7 @@
         <p><strong>Google's free tier may use what you send to improve its products.</strong> Invite codes always use John's free key. With your own key, it depends on your Google plan. Don't ask AI about private or personal data.</p>
       </section>
 
-      <section id="share">
+      <section data-scrub="rise" id="share">
         <h2>Who else sees something</h2>
         <ul>
           <li><strong>Google</strong> receives what AI help sends, under Google's own terms.</li>
@@ -123,7 +123,7 @@
         <p>Nothing is sold, and nothing is used for ads or tracking.</p>
       </section>
 
-      <section id="rights">
+      <section data-scrub="rise" id="rights">
         <h2>Your control</h2>
         <ul>
           <li><strong>Turn off AI help</strong>: click <strong>Remove key</strong> in the pane. It deletes the key and invite code saved in <code>%LOCALAPPDATA%\AnomalyHunter</code>. Scans and fixes keep working. An invite kit keeps its own copy, and running its install.bat again turns AI help back on, so also delete <code>invite-code.txt</code> from the kit folder. A <code>GEMINI_API_KEY</code> or <code>ANTHROPIC_API_KEY</code> setting on the PC keeps AI help on.</li>
@@ -135,7 +135,7 @@
         <p>John holds no other data about you.</p>
       </section>
 
-      <section id="security">
+      <section data-scrub="rise" id="security">
         <h2>Security</h2>
         <ul>
           <li>The engine answers only on <code>127.0.0.1</code>, over HTTPS. Install adds a certificate to your Windows account that works only for <code>localhost</code> and <code>127.0.0.1</code>. The key that made it is never saved, so it can't sign anything else.</li>
@@ -145,13 +145,13 @@
         </ul>
       </section>
 
-      <section id="changes">
+      <section data-scrub="rise" id="changes">
         <h2>No warranty, changes, contact</h2>
         <div class="note"><strong>No warranty.</strong> Anomaly Hunter is free and comes with no warranty. It can miss mistakes and flag correct values. Check important data yourself before you rely on it. Its code is open source under the <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>.</div>
         <p>When this page changes, the date at the top changes. Every earlier version is in the project's history on GitHub.</p>
         <p><strong>Contact.</strong> Use the <a href="support.html">support page</a>. GitHub issues are public and need a free GitHub account. Never post your AI key, your invite code or real data.</p>
       </section>
-      <section id="site">
+      <section data-scrub="rise" id="site">
         <h2>This website</h2>
         <p>This website sets no cookies, runs no analytics and loads no outside fonts or scripts. It is hosted on GitHub Pages, so GitHub sees your IP address when you open it. The home page also asks GitHub's public API for the latest release's SHA-256, and the download button takes the file from GitHub.</p>
       </section>
@@ -162,7 +162,7 @@
 </main>
 
 <footer class="foot">
-  <div class="wrap">
+  <div class="wrap cols">
     <span>Anomaly Hunter · made by one person · free, with no warranty</span>
     <nav aria-label="Footer">
       <a href="index.html#download">Download</a>
@@ -172,5 +172,10 @@
     </nav>
   </div>
 </footer>
+<script src="motion.js" defer></script>
+<script src="field.js" defer></script>
+<script src="home.js" defer></script>
+<script src="support.js" defer></script>
+<script src="transition.js" defer></script>
 </body>
 </html>

@@ -5,35 +5,35 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Anomaly Hunter Support</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src https://api.github.com; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.github.com; base-uri 'none'; form-action 'none'">
+<meta name="description" content="Answers to common Anomaly Hunter questions, and a form that prepares a public question on GitHub for you.">
 <link rel="icon" href="assets/mark-32.png" sizes="32x32">
+<link rel="icon" href="assets/mark-64.png" sizes="64x64">
 <link rel="preload" href="assets/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="styles.css">
+<script src="boot.js"></script>
 </head>
-<body>
+<body id="support">
 <aside class="notice-bar" aria-label="Announcement"><p>Free for Windows · a scan never leaves your PC · <a href="index.html#download">Download</a></p></aside>
 <header class="bar">
-  <div class="wrap">
-    <nav class="links" aria-label="Main">
-      <div class="l"><a href="index.html">Product</a><a href="index.html#checks">Checks</a></div>
-      <a class="brand" href="index.html" aria-label="Anomaly Hunter home"><img src="assets/mark-32.png" srcset="assets/mark-64.png 2x" width="32" height="32" alt=""><span>Anomaly Hunter</span></a>
-      <div class="r"><a href="privacy.html">Privacy &amp; security</a><a href="support.html" aria-current="page">Support</a><a class="btn-trim" href="index.html#download">Download</a></div>
-    </nav>
+  <div class="wrap cols">
+    <a class="brand" href="index.html" aria-label="Anomaly Hunter home"><svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><g data-part="spear"><path d="M16 2 L17.2 8.2 L16 10 Z" fill="#9C7A35"/><path d="M16 2 L14.8 8.2 L16 10 Z" fill="#B8954A"/><rect x="15" y="9" width="1" height="8" fill="#B8954A"/><rect x="16" y="9" width="1" height="8" fill="#9C7A35"/><path d="M11.6 13.8 C11.6 11.2 14 10.4 16 11.6 C18 10.4 20.4 11.2 20.4 13.8" fill="none" stroke="#9C7A35" stroke-width="1.4" stroke-linecap="round"/></g><g shape-rendering="crispEdges"><g data-part="banner"><rect x="7" y="18" width="18" height="12" fill="#9C7A35"/><rect x="8" y="18" width="16" height="11" fill="#0C1938"/></g><g data-part="bar"><rect x="5" y="16" width="22" height="2" fill="#9C7A35"/><rect x="3" y="15" width="3" height="4" fill="#9C7A35"/><rect x="26" y="15" width="3" height="4" fill="#9C7A35"/></g><g data-part="emblem" fill="#F4F1EA"><rect x="14" y="20" width="4" height="1"/><rect x="14" y="25" width="4" height="1"/><rect x="13" y="21" width="1" height="4"/><rect x="18" y="21" width="1" height="4"/><rect x="19" y="19" width="1" height="1"/><rect x="18" y="20" width="1" height="1"/><rect x="17" y="21" width="1" height="1"/><rect x="16" y="22" width="1" height="1"/><rect x="15" y="23" width="1" height="1"/><rect x="14" y="24" width="1" height="1"/><rect x="13" y="25" width="1" height="1"/><rect x="12" y="26" width="1" height="1"/></g></g></svg><span>Anomaly Hunter</span></a>
+    <nav class="links" aria-label="Main"><a href="index.html">Product</a><a href="index.html#checks">Checks</a><a href="privacy.html">Privacy &amp; security</a><a href="support.html" aria-current="page">Support</a><a class="btn-trim" href="index.html#download">Download</a></nav>
   </div>
 </header>
 
-<main>
+<main id="page" data-page="support">
   <section class="page-head">
-    <div class="wrap">
-      <span class="label">Support</span>
-      <h1>Answers first, then a <em>direct</em> line.</h1>
-      <p>Most questions are answered below. Anomaly Hunter is a free project run by one person, so there is no reply-time promise.</p>
+    <div class="wrap cols">
+      <span class="label" data-enter="left">Support</span>
+      <h1 data-enter="left">Answers first, then a <em>direct</em> line.</h1>
+      <p data-enter="left">Most questions are answered below. Anomaly Hunter is a free project run by one person, so there is no reply-time promise.</p>
     </div>
   </section>
 
   <section class="support" aria-label="Answers and contact">
-    <div class="wrap">
-      <div class="faq">
+    <div class="wrap cols">
+      <div class="faq" data-enter="bottom">
         <div class="faq-head"><span>Question</span><span>Answer</span></div>
         <details open>
           <summary>The pane says "The checker isn't running"</summary>
@@ -45,7 +45,7 @@
         </details>
         <details>
           <summary>How do I add it to Excel?</summary>
-          <div class="a"><p>After the install, Excel opens a "Start here" workbook with the steps: <b>Home › Add-ins › More Add-ins › SHARED FOLDER › Anomaly Hunter › Add</b>. You do this once.</p></div>
+          <div class="a"><p>After the install, Excel opens a "Start here" workbook with the steps: <b>Home &gt; Add-ins &gt; More Add-ins &gt; SHARED FOLDER &gt; Anomaly Hunter &gt; Add</b>. You do this once.</p></div>
         </details>
         <details>
           <summary>How do I update?</summary>
@@ -69,7 +69,7 @@
         </details>
       </div>
 
-      <section class="form-card" aria-labelledby="contact-title">
+      <section class="form-card" data-enter="bottom" aria-labelledby="contact-title">
         <h2 id="contact-title">Ask a question</h2>
         <form id="ticket" novalidate>
           <p class="notice"><b>Public.</b> This fills in a question on GitHub for you; nothing is sent until you press Submit there. You need a free GitHub account. Never paste client data, account numbers, your AI key or your invite code. John will never ask for them.</p>
@@ -97,7 +97,7 @@
             <span class="hint">Made-up values only.</span>
           </div>
           <label class="confirm"><input id="clean" type="checkbox" required><span>This contains no AI key, no invite code and no real or private data.</span></label>
-          <button class="btn btn-navy" type="submit">Prepare my question</button>
+          <button class="btn btn-primary" type="submit">Prepare my question</button>
           <div class="result" id="result" hidden>
             <span>Ready. Open it on GitHub, check it, and press Submit there.</span>
             <span id="cut" hidden>What happened is too long for one link, so the link holds only its start. Copy the rest from the box above and paste it on GitHub.</span>
@@ -112,7 +112,7 @@
 </main>
 
 <footer class="foot">
-  <div class="wrap">
+  <div class="wrap cols">
     <span>Anomaly Hunter · made by one person · free, with no warranty</span>
     <nav aria-label="Footer">
       <a href="index.html#download">Download</a>
@@ -122,6 +122,10 @@
     </nav>
   </div>
 </footer>
+<script src="motion.js" defer></script>
+<script src="field.js" defer></script>
+<script src="home.js" defer></script>
 <script src="support.js" defer></script>
+<script src="transition.js" defer></script>
 </body>
 </html>
