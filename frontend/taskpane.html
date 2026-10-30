@@ -17,8 +17,8 @@
 
   <main id="app-body" hidden>
     <header>
-      <div class="brand"><span class="mark"><img src="assets/mark-32.png" srcset="assets/mark-64.png 2x" width="32" height="32" alt=""></span><h1>Anomaly Hunter</h1></div>
-      <p class="sheet-name" id="sheet-name"></p>
+      <div class="brand" data-enter="left"><span class="mark"><img src="assets/mark-32.png" srcset="assets/mark-64.png 2x" width="32" height="32" alt=""></span><h1>Anomaly Hunter</h1></div>
+      <p class="sheet-name" id="sheet-name" data-enter="left"></p>
     </header>
 
     <div id="skeleton" aria-hidden="true">
@@ -39,10 +39,10 @@
 
     <section id="main-ui" hidden>
       <div class="pane-hero">
-      <p class="eyebrow">Excel add-in · checks run on this PC</p>
-      <button id="scan" class="primary">Find problems in this sheet</button>
-      <div class="strength">
-        <div class="strength-head"><span id="strength-label">How hard to look</span><b id="strength-val">5 of 10</b></div>
+      <p class="eyebrow" data-enter="left">Excel add-in · checks run on this PC</p>
+      <button id="scan" class="primary" data-enter="bottom">Find problems in this sheet</button>
+      <div class="strength" data-enter="bottom">
+        <div class="strength-head"><span id="strength-label" data-enter="left">How hard to look</span><b id="strength-val">5 of 10</b></div>
         <div id="strength" class="slider" role="slider" tabindex="0" aria-labelledby="strength-label"
              aria-valuemin="0" aria-valuemax="10" aria-valuenow="5">
           <div class="slider-track"><div class="slider-fill"></div></div>
@@ -60,7 +60,7 @@
       </div>
       <p id="notice" role="status" aria-live="polite"></p>
 
-      <section id="empty-state">
+      <section id="empty-state" data-enter="left">
         <p>Click <b>Find problems</b> to check the sheet that is open.</p>
         <p class="hint">Your data needs a top row of column names (like Date, Amount), with one record per row below it.</p>
       </section>
