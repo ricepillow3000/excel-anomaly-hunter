@@ -55,18 +55,18 @@
       <a href="#changes">No warranty, changes, contact</a>
       <a href="#site">This website</a>
     </nav>
-    <article class="prose">
+    <article class="prose" data-reveal-group>
 
-      <div class="short" data-scrub="rise"><strong>The short version.</strong> A scan runs on your PC and sends nothing to the internet. Your sheet's data leaves your PC only when you click <strong>Ask AI</strong> or <strong>Check words with AI</strong>, and then only the part described below. There are no accounts, no analytics and no tracking, and the add-in sets no cookies.</div>
+      <div class="short reveal-item"><strong>The short version.</strong> A scan runs on your PC and sends nothing to the internet. Your sheet's data leaves your PC only when you click <strong>Ask AI</strong> or <strong>Check words with AI</strong>, and then only the part described below. There are no accounts, no analytics and no tracking, and the add-in sets no cookies.</div>
 
-      <section data-scrub="rise" id="intro">
+      <section class="reveal-item" id="intro">
         <h2>Who makes it</h2>
         <p>Anomaly Hunter is a free Excel add-in made by one person, John, in his spare time. It is not a company. On this page, "we" means John.</p>
         <p>It is not affiliated with Microsoft, Google, Cloudflare, Anthropic or GitHub.</p>
         <p>The code is public, so you can check every sentence on this page: <a href="https://github.com/ricepillow3000/excel-anomaly-hunter" target="_blank" rel="noopener">github.com/ricepillow3000/excel-anomaly-hunter</a>.</p>
       </section>
 
-      <section data-scrub="rise" id="collect">
+      <section class="reveal-item" id="collect">
         <h2>What stays on your PC</h2>
         <h3>The scan</h3>
         <p>Excel hands your sheet to a small engine on your own PC, at <code>https://127.0.0.1:5055</code>. It checks the sheet in memory and answers the pane. A scan never sends anything to the internet.</p>
@@ -93,7 +93,7 @@
         <p>The auto-fix switch and the Power BI switch are saved in Excel's storage for the pane, on this PC.</p>
       </section>
 
-      <section data-scrub="rise" id="use">
+      <section class="reveal-item" id="use">
         <h2>What AI help sends</h2>
         <p>AI help works only after you paste a Google AI key or an invite code, or install an invite kit from John (or a developer sets <code>GEMINI_API_KEY</code> or <code>ANTHROPIC_API_KEY</code> on the PC). Even then, nothing from your sheet is sent until you click <strong>Ask AI</strong> or <strong>Check words with AI</strong>.</p>
         <p>When you save a Google key, the engine asks Google once whether the key works. That call carries the key and no sheet data.</p>
@@ -110,7 +110,7 @@
         <p><strong>Google's free tier may use what you send to improve its products.</strong> Invite codes always use John's free key. With your own key, it depends on your Google plan. Don't ask AI about private or personal data.</p>
       </section>
 
-      <section data-scrub="rise" id="share">
+      <section class="reveal-item" id="share">
         <h2>Who else sees something</h2>
         <ul>
           <li><strong>Google</strong> receives what AI help sends, under Google's own terms.</li>
@@ -123,7 +123,7 @@
         <p>Nothing is sold, and nothing is used for ads or tracking.</p>
       </section>
 
-      <section data-scrub="rise" id="rights">
+      <section class="reveal-item" id="rights">
         <h2>Your control</h2>
         <ul>
           <li><strong>Turn off AI help</strong>: click <strong>Remove key</strong> in the pane. It deletes the key and invite code saved in <code>%LOCALAPPDATA%\AnomalyHunter</code>. Scans and fixes keep working. An invite kit keeps its own copy, and running its install.bat again turns AI help back on, so also delete <code>invite-code.txt</code> from the kit folder. A <code>GEMINI_API_KEY</code> or <code>ANTHROPIC_API_KEY</code> setting on the PC keeps AI help on.</li>
@@ -135,7 +135,7 @@
         <p>John holds no other data about you.</p>
       </section>
 
-      <section data-scrub="rise" id="security">
+      <section class="reveal-item" id="security">
         <h2>Security</h2>
         <ul>
           <li>The engine answers only on <code>127.0.0.1</code>, over HTTPS. Install adds a certificate to your Windows account that works only for <code>localhost</code> and <code>127.0.0.1</code>. The key that made it is never saved, so it can't sign anything else.</li>
@@ -145,13 +145,13 @@
         </ul>
       </section>
 
-      <section data-scrub="rise" id="changes">
+      <section class="reveal-item" id="changes">
         <h2>No warranty, changes, contact</h2>
         <div class="note"><strong>No warranty.</strong> Anomaly Hunter is free and comes with no warranty. It can miss mistakes and flag correct values. Check important data yourself before you rely on it. Its code is open source under the <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>.</div>
         <p>When this page changes, the date at the top changes. Every earlier version is in the project's history on GitHub.</p>
         <p><strong>Contact.</strong> Use the <a href="support.html">support page</a>. GitHub issues are public and need a free GitHub account. Never post your AI key, your invite code or real data.</p>
       </section>
-      <section data-scrub="rise" id="site">
+      <section class="reveal-item" id="site">
         <h2>This website</h2>
         <p>This website sets no cookies, runs no analytics and loads no outside fonts or scripts. It is hosted on GitHub Pages, so GitHub sees your IP address when you open it. The home page also asks GitHub's public API for the latest release's SHA-256, and the download button takes the file from GitHub.</p>
       </section>

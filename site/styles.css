@@ -3,7 +3,8 @@
    button); dark gold for rules and strokes (AH-79: "keep our color scheme: navy blue, dark gold and wine red").
    A navy band gives the checks their own rhythm. The paper carries a faint grain, a faint blotch and a fine grid,
    drawn by the data-URI SVGs below: the "lore" John asked for, a sense of age without clutter (grain at 6-7%).
-   Layout is block by block (label, headline, panel, text) so each block moves in on its own (AH-72, motion.js).
+   Layout is block by block (label, headline, panel, text) so each block moves in on its own (AH-72, motion.js), and
+   only transform and opacity ever move (AH-85, docs/design/motion.md).
    Weight: one font file, a tiny blocking script and a few deferred ones, no images but the favicon. */
 @font-face { font-family: "Plus Jakarta Sans"; src: url("assets/plus-jakarta-sans.woff2") format("woff2"); font-weight: 200 800; font-display: swap; }
 :root {
@@ -32,7 +33,13 @@
   --s1: 8px; --s2: 16px; --s3: 24px; --s4: 32px; --s5: 48px; --s6: 64px; --s7: 96px; --s8: 128px;
   /* the grid: 12 columns, fixed gutters, a fixed margin; 4 columns on a phone */
   --cols: 12; --gutter: 24px; --margin: 32px; --wrap: 1280px;
-  --ease: cubic-bezier(.16, 1, .3, 1);
+  /* motion (AH-83): the one source of every timing; motion.js and transition.js read these with getComputedStyle.
+     --ease-out starts fast and lands slowly. --stagger is the gap between items of a group that rise together (raise it
+     for a slower cascade); --stagger-cap the step after which later items start together; --reveal-rise how far an item
+     slides up into place */
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  --enter-dur: 900ms; --enter-step: 90ms; --enter-shift: 120px; /* the hero's entrance */
+  --reveal-dur: 700ms; --reveal-rise: 24px; --stagger: 50ms; --stagger-cap: 6;
 
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='m' filterUnits='userSpaceOnUse' x='0' y='0' width='320' height='320'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.011' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .05 0 0 0 0 .1 0 0 0 0 .22 0 0 0 -2.6 1.45'/%3E%3C/filter%3E%3Cfilter id='g' filterUnits='userSpaceOnUse' x='0' y='0' width='320' height='320'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' seed='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .05 0 0 0 0 .1 0 0 0 0 .22 0 0 0 -2 1.25'/%3E%3C/filter%3E%3Crect width='320' height='320' filter='url%28%23m%29' opacity='.045'/%3E%3Crect width='320' height='320' filter='url%28%23g%29' opacity='.07'/%3E%3C/svg%3E");
   --grain-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='m' filterUnits='userSpaceOnUse' x='0' y='0' width='320' height='320'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.011' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .94 0 0 0 0 .9 0 0 0 0 .82 0 0 0 -2.6 1.45'/%3E%3C/filter%3E%3Cfilter id='g' filterUnits='userSpaceOnUse' x='0' y='0' width='320' height='320'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' seed='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .94 0 0 0 0 .9 0 0 0 0 .82 0 0 0 -2 1.25'/%3E%3C/filter%3E%3Crect width='320' height='320' filter='url%28%23m%29' opacity='.04'/%3E%3Crect width='320' height='320' filter='url%28%23g%29' opacity='.06'/%3E%3C/svg%3E");
@@ -78,7 +85,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 
 /* buttons: rectangles */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 48px; padding: 0 var(--s3); border: 2px solid transparent; border-radius: 0;
-  font: 700 var(--fs--1)/1 var(--sans); letter-spacing: .04em; text-decoration: none; cursor: pointer; transition: background-color .3s var(--ease), color .3s var(--ease), border-color .3s var(--ease); }
+  font: 700 var(--fs--1)/1 var(--sans); letter-spacing: .04em; text-decoration: none; cursor: pointer; } /* hover swaps colours at once: no colour is animated */
 .btn svg { width: 18px; height: 18px; flex: none; }
 .btn-primary { background: var(--wine); color: var(--on-wine); }
 .btn-primary:hover { background: var(--ink); color: var(--paper); }
@@ -170,9 +177,10 @@ table.grid { width: 100%; border-collapse: collapse; font: 500 var(--fs--1)/1.3 
 /* scanning and clean states */
 .busy, .clean { min-height: 440px; display: grid; align-content: center; justify-items: start; gap: var(--s2); padding: var(--s5); }
 .meter { width: min(360px, 100%); height: 12px; border: 1px solid var(--ink); }
-.meter span { display: block; height: 100%; width: 60%; background: var(--ink); }
-@media (prefers-reduced-motion: no-preference) { .meter span { animation: fill 2.4s linear infinite; } }
-@keyframes fill { from { width: 0; } to { width: 100%; } }
+/* the bar fills by scaleX from its left edge, not by width: a width is laid out again every frame */
+.meter span { display: block; height: 100%; background: var(--ink); transform: scaleX(.6); transform-origin: 0 50%; }
+@media (prefers-reduced-motion: no-preference) { .meter span { animation: fill 2.4s var(--ease-out) infinite; } }
+@keyframes fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 .ticker { font: 700 var(--fs--2)/1.4 var(--sans); letter-spacing: .12em; color: var(--ink); }
 .stages { margin: 0; padding: 0; list-style: none; display: grid; width: min(360px, 100%); border-top: 1px solid var(--ink); font-size: var(--fs--1); }
 .stages li { padding: 8px 0; border-bottom: 1px solid var(--rule); }
@@ -289,12 +297,49 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
 .foot nav { grid-column: 7 / -1; display: flex; justify-content: flex-end; gap: var(--s3); flex-wrap: wrap; }
 .foot a { color: var(--on-dark); text-decoration-color: var(--gold-hi); }
 
-/* motion (AH-72). boot.js marks the page before it paints, so the blocks that fly in wait hidden for motion.js, which
-   lifts the mark at once (boot.js itself after 1.4 s if motion.js never runs). Without JS nothing is hidden. */
-@media (prefers-reduced-motion: no-preference) { html[data-ah="enter"] [data-enter] { opacity: 0; } }
-/* a hairline item rule, drawn across by the scroll (data-scrub="rule"); without JS it is simply the item's top rule */
+/* motion (AH-72, AH-83, AH-84; docs/design/motion.md). boot.js marks the page before it paints: data-ah holds the
+   hero's blocks for their entrance (motion.js lifts it at once, boot.js itself after 1.4 s), and data-js, kept for the
+   whole visit, lets content wait hidden until it scrolls into view. Without JS, or with reduced motion, nothing is
+   hidden and nothing moves. Only transform, translate and opacity are animated, so the GPU composites every frame. */
+@media (prefers-reduced-motion: no-preference) {
+  html[data-ah="enter"] [data-enter] { opacity: 0; }
+  /* a reveal item waits --reveal-rise below its place, see-through, already on its own layer */
+  html[data-js] .reveal-item:not([data-revealed]) { opacity: 0; transform: translate3d(0, var(--reveal-rise), 0); will-change: transform, opacity; }
+  /* seen (motion.js): it rises into place after its group delay --d; settled, its layer is let go */
+  html[data-js] .reveal-item[data-revealed] { transition: opacity var(--reveal-dur) var(--ease-out) var(--d, 0ms), transform var(--reveal-dur) var(--ease-out) var(--d, 0ms); }
+  html[data-js] .reveal-item[data-revealed]:not([data-settled]) { will-change: transform, opacity; }
+}
+@media print { .reveal-item, [data-enter] { opacity: 1 !important; transform: none !important; } }
+/* a hairline item rule, drawn across by the scroll; without JS it is simply the item's top rule. --col staggers a row's
+   hairlines left to right, like a sentence */
 .rule { position: absolute; top: 0; left: 0; right: 0; height: 1px; background: var(--ink); transform-origin: 0 50%; }
 .num-grid .rule { background: var(--gold-hi); }
+.num-grid li:nth-child(4n + 2) .rule, .steps li:nth-child(2) .rule { --col: 1; }
+.num-grid li:nth-child(4n + 3) .rule, .steps li:nth-child(3) .rule { --col: 2; }
+.num-grid li:nth-child(4n + 4) .rule { --col: 3; }
+/* labels and headlines drift at their own rate (data-depth) for layered depth: zero where they sit mid-screen */
+[data-depth] { --depth: .05; }
+[data-depth="0.1"] { --depth: .1; }
+/* a hairline draws from 10% to 50% of the way through the screen (4% later a column), so it is drawn while the item it
+   tops is rising into view, not before. Both are a pure function of the scroll position: a scroll timeline where the
+   browser has one, else motion.js writes the same poses through --p and --drift (data-scroll="js"). The depth is
+   linear in the scroll, as a parallax must be */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    html[data-js]:not([data-scroll="js"]) .rule { animation-name: draw; animation-fill-mode: both; animation-timing-function: var(--ease-out);
+      animation-timeline: view(); animation-range: cover calc(10% + var(--col, 0) * 4%) cover calc(50% + var(--col, 0) * 4%); }
+  }
+  html[data-scroll="js"] .rule { transform: scaleX(var(--p, 1)); }
+}
+@media (prefers-reduced-motion: no-preference) and (min-width: 761px) {
+  @supports (animation-timeline: view()) {
+    html[data-js]:not([data-scroll="js"]) [data-depth] { animation-name: drift; animation-fill-mode: both; animation-timing-function: linear;
+      animation-timeline: view(); animation-range: cover 0% cover 100%; }
+  }
+  html[data-scroll="js"] [data-depth] { translate: 0 var(--drift, 0px); }
+}
+@keyframes draw { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes drift { from { translate: 0 calc(var(--depth) * (-50vh - 50%)); } to { translate: 0 calc(var(--depth) * (50vh + 50%)); } }
 /* the field (field.js): a fixed canvas painted after the sections' backgrounds (they are not positioned) and before
    their text, which sits on positioned wraps. The bars and the footer are positioned too, so no line crosses them */
 #field { position: fixed; inset: 0; z-index: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -309,7 +354,10 @@ html[data-moving] { overflow-anchor: none; }
 html[data-moving] #field { z-index: 2; }
 #seam { position: fixed; top: 0; bottom: 0; left: 0; z-index: 2; width: 2px; background: var(--gold); pointer-events: none; will-change: transform; }
 /* a full navigation (no JS, or a page that failed to fetch) crossfades where the browser can */
-@media (prefers-reduced-motion: no-preference) { @view-transition { navigation: auto; } }
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+  ::view-transition-old(root), ::view-transition-new(root) { animation-timing-function: var(--ease-out); }
+}
 
 @media (max-width: 1100px) {
   .num-grid, .it-ledger { grid-template-columns: repeat(2, minmax(0, 1fr)); }
