@@ -1,6 +1,7 @@
 """Score a loaded DataFrame: 3 detector votes + hygiene facts -> severity, bucket, reason per row.
 Shared by CLI and server."""
 import collections
+import datetime
 import itertools
 import re
 
@@ -9,7 +10,7 @@ import pandas as pd
 
 from anomaly_hunter.engine import fairness
 from anomaly_hunter.engine.detectors import Why, _result, far_off, isolation_detector, limits_detector, say, sequence_detector
-from anomaly_hunter.engine.load import EXCEL_ERROR, NO_VALUE_WORD, PLACEHOLDER, _blank, _dates, numbers
+from anomaly_hunter.engine.load import EXCEL_ERROR, NO_VALUE_WORD, PLACEHOLDER, _blank, _dates, _orders, numbers
 
 def summary_rows(df):
     """Rows that summarise the data instead of being data -> bool array: fully blank rows, rows labelled
@@ -109,6 +110,22 @@ def _shape(raw):
     return re.sub(r"[^\W\d_]+", "a", re.sub(r"\d+", "9", str(raw).strip()))
 
 
+def _serial(text):
+    """A whole number Excel could hold as a date -> that date as Excel's 1900 date system reads it, else None. Serial 1 is
+    1900-01-01, and Excel counts a 1900-02-29 that never was (Lotus 1-2-3's leap-year bug), so from 61 on a serial is
+    a day past 1899-12-30; 2958465 is 9999-12-31, its last."""
+    try:
+        n = float(text) if len(text) <= 20 else 0.0  # never a long digit run through float()
+    except ValueError:
+        return None
+    if not (n.is_integer() and 1 <= n <= 2958465):
+        return None
+    if n == 60:
+        return "1900-02-29"
+    # (datetime, not pandas: a pandas timestamp ends in 2262)
+    return (datetime.date(1899, 12, 30 if n > 60 else 31) + datetime.timedelta(days=int(n))).isoformat()
+
+
 def type_errors(n, errors_log, column_types):
     """Text in a number or date column. A text shape the column repeats 5+ times is its own code system (partisan lean
     "R+51.5", district "16A": 8,000 false rows on one real sheet, 2026-10-16), not a slip; placeholders and missing-value
@@ -134,6 +151,11 @@ def type_errors(n, errors_log, column_types):
         if code(raw) and shapes[col, _shape(raw)] >= 5 or (i, col) in coded:
             continue
         raw = _short(raw)
+        # a number in a column of dates is usually a date cell Excel shows as its serial (a column whose first row is text
+        # reaches the pane as numbers): say which day it would be, a hint to check, never a fix (AH-76)
+        if kind == "date" and (day := _serial(text)):
+            out[i].append(Why(f"{col} {say(float(text))} is a number in a column of dates (an Excel date serial for {day}?)", col))
+            continue
         out[i].append(Why(f"Excel error {raw} in {col}" if EXCEL_ERROR.match(text) else f'Placeholder "{raw}" in column {col}'
                           if PLACEHOLDER.fullmatch(text) else f'Text "{raw}" in {kind} column {col}', col))
     return out, notes
@@ -490,6 +512,75 @@ def named_bounds(df, column_types, skip):
                 rest = "every other" if len(x[x > 100]) == 1 else "every other but one"
                 out[i].append(Why(f"{col} {say(x[i])} is over 100, and {rest} {col} is a share between 0 and 100", col))
     return out
+
+
+YEAR_FIRST = r"^(\d{4})([-/.])\d{1,2}\2\d{1,2}(?:$|[T ])"  # 2024-01-05, 2024/1/5, "2024-01-05 08:30:00"
+SPLIT_YEAR_LAST = r"^(\d{1,2})([-/.])(\d{1,2})\2(\d{4}|\d{2})(?:$|[T ])"  # 05/01/2024, 5.1.24
+SHARE_OF_FORM = 0.8  # a form this much of a column writes is the column's own; under it, the column has none
+
+
+def date_forms(df, column_types, skip):
+    """A date typed in another form than its column's (31/12/2023 among YYYY-MM-DD): it was read by guessing its order,
+    and an export or a paste is the usual cause. Read as 2023-12-31 without a word in the chaos audit (AH-76), and
+    03/04/2024 is April 3rd in London and March 4th in New York. -> (reasons, notes): a date in another form than the one
+    80%+ of the column writes is flagged with how it was read, or both readings when its day and month could swap; a
+    column with no such form gets one note naming its forms. Among dates written with the year last, one that can only
+    be read in the order fewer of them show (12/25 where 25/12 is the rule) is flagged too: the column mixes two orders."""
+    n = len(df)
+    out, notes = [[] for _ in range(n)], [[] for _ in range(n)]
+    for col, text in df.attrs.get("written", {}).items():
+        if column_types.get(col) != "date":
+            continue
+        d = df[col][~skip].dropna()
+        if len(d) < 5:
+            continue
+        t = text[d.index]
+        told = _orders(text.where(text.str.len() <= 64, ""))
+        dayfirst = told[0] > told[1]  # as load read the column (a cell a date fits in, load._dates)
+        yf, yl = t.str.extract(YEAR_FIRST), t.str.extract(SPLIT_YEAR_LAST)
+        first, second = yl[0].astype(float), yl[2].astype(float)
+        key = pd.Series("other", index=t.index)
+        key[t.str.contains(r"[A-Za-z]{3}")] = "name"
+        key[yl[0].notna()] = "?" + yl[1] + "?" + yl[1] + yl[3].str.len().map({2: "YY", 4: "YYYY"})
+        key[yf[0].notna()] = "YYYY" + yf[1] + "MM" + yf[1] + "DD"
+        other = key == "other"  # a form of its own: its shape, "20240105" -> 99999999
+        key[other] = "shape:" + t[other].str.split(r"[T ]", n=1).str[0].str.replace(r"\d", "9", regex=True)
+
+        def label(k, t=t, key=key, dayfirst=dayfirst):
+            if k.startswith("?"):
+                a, b = ("DD", "MM") if dayfirst else ("MM", "DD")
+                return f"{a}{k[1]}{b}{k[1]}{k[4:]}"
+            return "the month's name" if k == "name" else f'like "{_short(t[key == k].iloc[0])}"' if k.startswith("shape:") else k
+
+        count = key.value_counts()
+        main = count.index[0]
+        on = lambda i, d=d: f"{d[i]:%Y-%m-%d}"
+        odd = key != main
+        if count.iloc[0] >= SHARE_OF_FORM * len(key):
+            for i in key.index[odd]:
+                raw, k = _short(t[i]), key[i]
+                if k.startswith("?") and first[i] <= 12 and second[i] <= 12 and first[i] != second[i]:
+                    y = d[i].year
+                    out[i].append(Why(f'{col} "{raw}" is written with the year last where the column writes {label(main)}: it '
+                                      f'could be {y}-{int(second[i]):02d}-{int(first[i]):02d} or {y}-{int(first[i]):02d}-'
+                                      f'{int(second[i]):02d}', col))
+                    continue
+                how = ("day-first" if first[i] > 12 else "month-first" if second[i] > 12 else "with the year last") \
+                    if k.startswith("?") else "with the month's name" if k == "name" else "in another form" \
+                    if k.startswith("shape:") else f"as {k}"
+                out[i].append(Why(f'{col} "{raw}" is written {how} where the column writes {label(main)} (read as {on(i)})', col))
+        elif len(count) > 1:
+            forms = ", ".join(f"{label(k)} ({c})" for k, c in count.items())
+            notes[key.index[odd][0]].append(Why(f"{col} writes its dates in {len(count)} forms: {forms}", col))
+        # two regional orders in one column: each date only the rarer order can read is flagged, not read silently
+        days, months = int((first > 12).sum()), int((second > 12).sum())
+        if days and months:
+            mine, theirs, many = ("month", "day", days) if dayfirst else ("day", "month", months)
+            for i in key.index[(second > 12) if dayfirst else (first > 12)]:
+                if not out[i]:
+                    out[i].append(Why(f'{col} "{_short(t[i])}" is written {mine}-first where {many} of the column\'s dates can '
+                                      f'only be {theirs}-first (read as {on(i)})', col))
+    return out, notes
 
 
 def far_dates(df, column_types, skip):
@@ -1088,12 +1179,14 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
     (dup, repeats), (typ, typ_coded), (blank, spread) = duplicates(df, errors_log, column_types), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
     (hole, coded), far = placeholders(df, column_types, skip), far_dates(df, column_types, skip)
     zeros = lost_zeros(df, column_types, skip)
+    forms, many_forms = date_forms(df, column_types, skip)
     code = codes(df, column_types, skip)
     spell, spell_fix, missed, spell_maybe, spell_exact = spellings(df, column_types, skip)
     missed = [m + s + f + w + b + g for m, s, f, w, b, g in zip(missed, shifted(df, column_types, skip), fractions(df, column_types, skip),
                                                                  whole_numbers(df, column_types, skip), named_bounds(df, column_types, skip),
                                                                  spread, strict=True)]  # all "worth a check" (Low)
-    missed = [m + t + h + c + d + r for m, t, h, c, d, r in zip(missed, lim["top_reasons"], lim["held_reasons"], coded, typ_coded, repeats, strict=True)]  # a lone top value (AH-29), one its row's arithmetic confirms (AH-74), a placeholder code (AH-45), many repeats (AH-48)
+    missed = [m + t + h + c + d + r + f for m, t, h, c, d, r, f in zip(missed, lim["top_reasons"], lim["held_reasons"], coded,
+                                                                       typ_coded, repeats, many_forms, strict=True)]  # a lone top value (AH-29), one its row's arithmetic confirms (AH-74), a placeholder code (AH-45), many repeats (AH-48), a date column of many forms (AH-76)
     if s >= ALONE:
         missed = [m + a for m, a in zip(missed, lim["alone_reasons"], strict=True)]
     rows = []
@@ -1125,7 +1218,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
                          "magnitude": 0.0})
             continue
         voted = [d for d in ran if d["votes"][i]]
-        hygiene = dup[i] + typ[i] + blank[i] + hole[i] + code[i] + far[i] + add[i] + spell[i] + zeros[i]
+        hygiene = dup[i] + typ[i] + blank[i] + hole[i] + code[i] + far[i] + add[i] + spell[i] + zeros[i] + forms[i]
         if not voted and not hygiene and not missed[i]:
             noted = as_typed(lim["noted_reasons"][i], i)
             rows.append({"severity": "Noted" if noted else None, "bucket": None,
