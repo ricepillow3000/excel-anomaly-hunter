@@ -171,6 +171,9 @@ const HINTS = [
     `column, not a slip: these cells mean the value is not known; leave them, or turn them into blanks if your tool needs that`],
   [/ is blank in \d+ of \d+ rows where .+ would fill it, spread through the sheet$/, "blanks this many and this spread out are " +
     "usually values the source does not have, not slips; if the column must always be filled there, filter it for blanks and fill them in"],
+  // AH-74: a value past its limit in a row whose own arithmetic holds - no single slip leaves a sum or a product right
+  [/, but the row adds up \(.+\): worth a check$/, "the row's own numbers agree with this value, so a typing slip is " +
+    "unlikely (one slip changes one cell and breaks the sum); it may be a real record or another unit: if it is right, leave it"],
   // AH-46: a sort puts blank cells last - the block at the end is where the sort put them, not where they went missing
   [/ is blank in \d+ of \d+ rows, all at the end of the table, which is sorted by /, "sorting puts blank cells last, so these rows " +
     "simply have no value here; if the column must always be filled, fill them in from the source"],

@@ -319,6 +319,10 @@ assert.ok(rec.explanation.includes('-9999 is how this sheet writes "no value"') 
 // a lone top value (AH-29) is told what it is, never "just unusual together", and nothing is written
 rec = recommendFix(["Id", "Fee"], [["a", 106500]], 0, { Fee: [5, 500000, 5, 22970000] }, "Fee 106500 stands alone above the rest of the column, whose next highest is 59985", 0, 0);
 assert.ok(rec.explanation.includes("an extra zero or a slipped decimal point") && !rec.explanation.includes("unusual together") && !rec.changes.length, rec.explanation);
+// a value its row's own arithmetic confirms (AH-74): said why it is probably real, nothing written over it
+rec = recommendFix(["Id", "AnnualSalary", "Bonus", "TotalComp"], [["a", 1150000, 400000, 1550000]], 0,
+  { Bonus: [1500, 9000, 1500, 22000] }, "Bonus 400000 is above its usual limit of 22000, but the row adds up (TotalComp = AnnualSalary + Bonus): worth a check", 0, 0, {}, null, {});
+assert.ok(rec.explanation.includes("the row's own numbers agree") && !rec.explanation.includes("Nothing here") && !rec.changes.length, rec.explanation);
 // many blanks spread through a column are one note (AH-28): what they usually are, never a value written in
 rec = recommendFix(["Id", "Age"], [["a", ""]], 0, {}, "Age is blank in 178 of 891 rows, spread through the sheet", 0, 0);
 assert.ok(rec.explanation.includes("not known") && !rec.explanation.includes("Nothing here") && !rec.changes.length, rec.explanation);

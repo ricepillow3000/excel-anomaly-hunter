@@ -197,15 +197,17 @@ FEW = (2, 0.0025)  # the level-7+ list: a value past its usual limit that at mos
 # and at most 2 others reach
 
 
-def limits_detector(df, column_types, limits, typos_only=False, listing=False, quiet=()):
+def limits_detector(df, column_types, limits, typos_only=False, listing=False, quiet=(), held=None):
     """Weird-limit breach = vote. Baseline-only breach = noted, no vote. likely[i] = {col: probable typo fix}.
     typos_only (strength 0): only breaches with an obvious typo behind them, or negatives in a column that never goes
     below 0, vote. listing (strength 7+): alone_reasons[i] = breaches only noted that few other values share (FEW), said
-    with their count; never for a `quiet` column (protected ones, and ones whose limits the user saved)."""
+    with their count; never for a `quiet` column (protected ones, and ones whose limits the user saved).
+    held = {col: [(rows, rule)]}, pipeline.confirm: where a rule of the row's own arithmetic holds and pins the cell,
+    a breach is confirmed by the row, held_reasons[i] (worth a check), never a vote or a fix."""
     n = len(df)
     r = {**_result(n), "noted": np.zeros(n, bool), "noted_reasons": [[] for _ in range(n)], "likely": [{} for _ in range(n)],
          "maybe": [{} for _ in range(n)],
-         "alone_reasons": [[] for _ in range(n)], "top_reasons": [[] for _ in range(n)]}
+         "alone_reasons": [[] for _ in range(n)], "top_reasons": [[] for _ in range(n)], "held_reasons": [[] for _ in range(n)]}
     for col in numbers(column_types):
         if not limits.get(col):
             continue
@@ -220,6 +222,8 @@ def limits_detector(df, column_types, limits, typos_only=False, listing=False, q
         crowd = max(5, 0.0005 * len(sv))
         rare_minus = (sv >= 0).sum() >= 0.99 * (len(sv) - 1)  # likely_value's own test for a minus-sign slip
         top = None if typos_only else _alone_top(sv)
+        rules = (held or {}).get(col, ())
+        ruled = lambda i: next((t for m, t in rules if m[i]), None)  # the rule this row's arithmetic holds to
 
         def in_tail(v):
             """Other values crowd the way back to the median (hours 1-99 around a usual 40, survey weights up to 8x
@@ -235,13 +239,24 @@ def limits_detector(df, column_types, limits, typos_only=False, listing=False, q
         for i, v in enumerate(x):
             if np.isnan(v):
                 continue
-            weird, fix, said_before = _crossed(v, w_lo, w_hi), None, len(r["reasons"][i]) + len(r["alone_reasons"][i])
+            weird, fix = _crossed(v, w_lo, w_hi), None
+            said_before = len(r["reasons"][i]) + len(r["alone_reasons"][i]) + len(r["held_reasons"][i])
             # past the usual limit, alone, with an exact x10/x100 behind it: a typo, even under a skewed column's wide
             # weird limit (First Response 430 hrs for 4.3 by a median 4.9 - blind bench, 3 of 3 seeds only noted)
             if weird is None and v not in common and _crossed(v, b_lo, b_hi) is not None and not in_tail(v):
                 if (fix := likely_value(v, st := st or column_stats(x), b_lo, b_hi)) is not None:
                     weird = _crossed(v, b_lo, b_hi)
-            if v not in common and (lim := weird) is not None and not in_tail(v):
+            # the row adds up with this value in it (TotalComp = AnnualSalary + Bonus, Line Total = Qty x Unit Price): any
+            # change to this one cell would break the row's own rule, so it is no slip to vote on and no typo to offer. The
+            # chaos audit's real top earner (2026-10-30, AH-74) was Medium with "Bonus 400000 (likely 4000)", a card that
+            # would have broken its sum; California's three fruit columns, real and adding up, were "likely /1000" (AH-21).
+            # Worth a check, as a real record past a hard top is (AH-29), said with the limit it crossed (the usual one, where
+            # only an x10 behind it made it count). Strength 0 shows only typos, and this is none
+            if v not in common and weird is not None and not in_tail(v) and (rule := ruled(i)) is not None:
+                if not typos_only:
+                    r["held_reasons"][i].append(Why(f"{col} {say(v)} is {'above' if v > weird else 'below'} its usual limit of {weird:g}, "
+                                                    f"but the row adds up ({rule}): worth a check", col))
+            elif v not in common and (lim := weird) is not None and not in_tail(v):
                 fix = fix if fix is not None else likely_value(v, st := st or column_stats(x), b_lo, b_hi)
                 negative = v < 0 and st["nonneg"] >= 0.95 * (st["n"] - 1)  # a minus sign in a column that has none
                 if typos_only and fix is None and not negative:  # basics: an obvious typo or a stray minus sign

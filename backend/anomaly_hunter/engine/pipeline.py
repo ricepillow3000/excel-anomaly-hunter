@@ -499,13 +499,13 @@ def far_dates(df, column_types, skip):
     return out
 
 
-def sums(df, column_types, skip):
+def sums(df, column_types, skip, held=None):
     """A column that is the sum of others in >= 95% of rows (Total = Fare + Tip + Tax): the other rows don't add up.
     Least squares finds the parts; kept only when every weight is 0 or 1 (a plain sum, found once, from the total's
     side). ponytail: plain sums only - a weighted rule (tax 8.25%) or a difference written as a sum of +1s only."""
     out = [[] for _ in range(len(df))]
     cols = numbers(column_types)
-    done = _totals(df, cols, skip, out)
+    done = _totals(df, cols, skip, out, held)
     x = df[cols][~skip].dropna()
     if len(cols) < 3 or len(x) < 20 * len(cols):  # few rows: least squares "fits" anything
         return out
@@ -542,13 +542,14 @@ def sums(df, column_types, skip):
 TOTAL_HEAD = re.compile(r"\b(?:totals?|sum|all)\b")
 
 
-def _totals(df, cols, skip, out):
+def _totals(df, cols, skip, out, held=None):
     """A column headed Total, Sum or All that is, to the cent, the other number columns added up, or the 3+ number
     columns beside it, on 95% of rows: the other rows don't add up. Round 37 missed Male + Female + Intersex = Total on 48
     rows and 8 age groups = Total on 200: least squares needs 20 rows a column, and an extra Year or Area column bends
     it. An exact sum cannot hold by chance on 10 rows with something to add, so no such minimum; two parts are pairs'.
     Capped in sheet order (20 totals, 40 columns a side), never by a clock: the same sheet gives the same answer.
-    Adds its reasons to out; -> the totals it explained, so least squares does not judge them again (AH-55)."""
+    Adds its reasons to out, and the rows each held on to held (see confirm); -> the totals it explained, so least squares
+    does not judge them again (AH-55)."""
     done, order, nums = set(), list(df.columns), {c: k for k, c in enumerate(cols)}
     heads = [c for c in cols if len(h := " ".join(re.sub(r"[_.]+", " ", str(c)).split()).lower()) <= 200 and TOTAL_HEAD.search(h)]
     rows = df.index[~skip]
@@ -609,14 +610,27 @@ def _totals(df, cols, skip, out):
                 # one or two such misses are still each a slip
                 near = bad & (np.abs(y[ok] - got) <= sum(half(c) for c in parts) + own + 1e-9 * np.abs(y[ok]))
                 slip = bad & ~near if near.sum() >= 3 else bad
-                best = (share, sorted(parts, key=order.index), rows[ok][slip], y[ok][slip], got[slip])
+                best = (share, sorted(parts, key=order.index), rows[ok][judged & ~slip], rows[ok][slip], y[ok][slip], got[slip])
             if best:
                 break
         if best:
             done.add(col)
-            for i, v, g in zip(*best[2:]):
+            for i, v, g in zip(*best[3:]):
                 out[i].append(Why(f"{col} {say(v)} does not add up: {' + '.join(best[1])} = {g:.10g}", col, *best[1]))
+            if held is not None:  # a sum: changing any one of its cells breaks it
+                confirm(held, len(df), best[2], f"{col} = {' + '.join(best[1])}", [col, *best[1]])
     return done
+
+
+def confirm(held, n, at, rule, pinned):
+    """held[col] += (rows, rule): the rows where a rule of the row's own arithmetic holds, and the cells it pins, the
+    ones no single change could leave the rule holding on. The chaos audit (2026-10-30, AH-74): an HR sheet's real top
+    earner, AnnualSalary 1150000 + Bonus 400000 = TotalComp 1550000, was Medium with "Bonus ... (likely 4000)", a card
+    that would break the row's own sum. limits_detector reads this: such a value is confirmed, never a vote or a fix."""
+    m = np.zeros(n, dtype=bool)
+    m[np.asarray(at, dtype=int)] = True
+    for c in pinned:
+        held.setdefault(c, []).append((m, rule))
 
 
 def _cent(x):
@@ -632,7 +646,7 @@ def _decimals(x):
     return next((d for d in range(7) if (np.abs(x - np.round(x, d)) < 1e-9).mean() >= 0.95), 6)
 
 
-def pairs(df, column_types, skip, limits=None):
+def pairs(df, column_types, skip, limits=None, held=None):
     """A column that is two others multiplied or added in >= 95% of rows (Line Total = Qty x Unit Price, Net New =
     New + Churned), or two multiplied after a 0-1 discount (Units x Unit Price x (1 - Discount)): the other rows don't
     add up. Tried pair by pair, so a x10 typo elsewhere can't bend it the way it
@@ -640,7 +654,8 @@ def pairs(df, column_types, skip, limits=None):
     vary (x 1, or x a 0/1 flag, is no rule). Pairs are tried on a 64-row sample first, so a 50-column sheet stays fast.
     -> (reasons, fixes). A broken row with exactly ONE cell outside its usual range gets that cell solved from the
     other two (Units -5 with Total 170.43 = Units x 2.99 -> 57) when the answer is a usual value written like its
-    column: exact, where the pane would otherwise offer the median. Two odd cells: the arithmetic can't say which."""
+    column: exact, where the pane would otherwise offer the median. Two odd cells: the arithmetic can't say which.
+    held: filled with the rows each rule holds on (see confirm)."""
     out, fix = [[] for _ in range(len(df))], [{} for _ in range(len(df))]
     cols = numbers(column_types)
     a = df[cols][~skip].to_numpy(dtype=float)
@@ -704,6 +719,16 @@ def pairs(df, column_types, skip, limits=None):
                 good = ok & (np.abs(y - got) <= r[0] + own[t] + r[1]) if r is not None else good
                 if not holds(good):
                     continue
+            if held is not None:
+                # a cell is pinned where no change to it alone keeps the rule: every cell of a sum; the total of a product,
+                # and a factor only where the other factors are not 0 (0 x anything is 0: Qty 0 says nothing of the price)
+                rule, named = f"{cols[t]} = {said}", [cols[t], *(cols[c] for c in cs)]
+                confirm(held, len(df), index[np.flatnonzero(good & live)], rule, named if op is np.add else named[:1])
+                if op is not np.add:  # the factors of Units x Price x (1 - Discount): Units, Price, 1 - Discount
+                    f = [a[:, c] if k < 2 else 1 - a[:, c] for k, c in enumerate(cs)]
+                    for k, c in enumerate(cs):
+                        others = np.all([g != 0 for m, g in enumerate(f) if m != k], axis=0)
+                        confirm(held, len(df), index[np.flatnonzero(good & live & others)], rule, [cols[c]])
             for i in np.flatnonzero(ok & ~good):
                 out[index[i]].append(Why(f"{cols[t]} {say(y[i])} does not add up: {said} = {got[i]:.10g}", cols[t], *(cols[c] for c in cs)))
                 odd = [j for j in (t, *cs) if not usual(j, a[i, j])]
@@ -1030,9 +1055,14 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
         df.loc[skip, nums] = np.nan
     errors_log = [e for e in errors_log if not skip[e[0]]]
     s, k = knobs(strength)
+    # the row's own arithmetic first: a value in a cell of a rule that holds on its row is confirmed by it, never a slip
+    # the limits vote on or offer a typo for (AH-74, see confirm)
+    held = {}
+    paired, solved = pairs(df, column_types, skip, limits, held)
+    add = [list(dict.fromkeys(s + m)) for s, m in zip(sums(df, column_types, skip, held), paired, strict=True)]
     # saved: the columns whose limits the user set - their limits win, so nothing is listed past the data's own band
     lim = limits_detector(df, column_types, limits, typos_only=s < 1, listing=s >= ALONE,
-                          quiet=set(fairness.protected(column_types)) | set(saved))
+                          quiet=set(fairness.protected(column_types)) | set(saved), held=held)
     # protected columns (Age, Gender, Location...) are checked for slips like any column (limits, blanks, spellings), but
     # never used to judge whether a person is unusual: a 74-year-old is not an anomaly for being 74 (fairness blueprint)
     judged = {c: t for c, t in column_types.items() if c not in fairness.protected(column_types)}
@@ -1043,14 +1073,12 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
     ran = [d for d in dets.values() if d["ran"]]
     (dup, repeats), (typ, typ_coded), (blank, spread) = duplicates(df, errors_log, column_types), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
     (hole, coded), far = placeholders(df, column_types, skip), far_dates(df, column_types, skip)
-    paired, solved = pairs(df, column_types, skip, limits)
-    add = [list(dict.fromkeys(s + m)) for s, m in zip(sums(df, column_types, skip), paired, strict=True)]
     code = codes(df, column_types, skip)
     spell, spell_fix, missed, spell_maybe, spell_exact = spellings(df, column_types, skip)
     missed = [m + s + f + w + b + g for m, s, f, w, b, g in zip(missed, shifted(df, column_types, skip), fractions(df, column_types, skip),
                                                                  whole_numbers(df, column_types, skip), named_bounds(df, column_types, skip),
                                                                  spread, strict=True)]  # all "worth a check" (Low)
-    missed = [m + t + c + d + r for m, t, c, d, r in zip(missed, lim["top_reasons"], coded, typ_coded, repeats, strict=True)]  # a lone top value (AH-29), a placeholder code (AH-45), many repeats (AH-48)
+    missed = [m + t + h + c + d + r for m, t, h, c, d, r in zip(missed, lim["top_reasons"], lim["held_reasons"], coded, typ_coded, repeats, strict=True)]  # a lone top value (AH-29), one its row's arithmetic confirms (AH-74), a placeholder code (AH-45), many repeats (AH-48)
     if s >= ALONE:
         missed = [m + a for m, a in zip(missed, lim["alone_reasons"], strict=True)]
     rows = []
