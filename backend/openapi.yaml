@@ -43,7 +43,7 @@ paths:
                     start_row: {type: integer, minimum: 0}
                     start_col: {type: integer, minimum: 0}
                     intent: {type: string, maxLength: 2000}
-                    formulas: {type: array}
+                    formulas: {type: array, nullable: true}
       responses:
         "200": {$ref: "#/components/responses/Json"}
         "400": {$ref: "#/components/responses/Error"}
