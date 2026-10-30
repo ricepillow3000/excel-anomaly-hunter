@@ -34,6 +34,15 @@ def _is_id(name, num):
     return len(num) >= 20 and len(u) >= 0.95 * len(num) and u.diff().median() <= 2
 
 
+YEAR_LAST = r"^\s*(\d{1,2})[/.-](\d{1,2})[/.-]\d{2,4}"  # 05/01/2024, 5.1.24: day and month first, in either order
+
+
+def _orders(text):
+    """-> (day, month): how many cells can only be day-first (a first part over 12) and how many only month-first."""
+    parts = text.str.extract(YEAR_LAST).astype(float)
+    return int((parts[0] > 12).sum()), int((parts[1] > 12).sum())
+
+
 TZ = re.compile(r"(\d:\d\d(?::\d\d(?:\.\d+)?)?)\s*(?:Z|[+-]\d\d:?\d\d)$")  # a time, then its zone: "08:30:00+02:00"
 
 
@@ -59,8 +68,10 @@ def _dates(s, wide=False):
         s = s.copy()
         s[timed] = text[timed].str.replace(TZ, r"\1", regex=True)
     when = lambda x, **kw: pd.to_datetime(x, errors="coerce", format="mixed", utc=True, **kw).dt.tz_localize(None)
-    parts = text.str.extract(r"^\s*(\d{1,2})[/.-](\d{1,2})[/.-]\d{2,4}").astype(float)
-    dayfirst = bool((parts[0] > 12).any() and not (parts[1] > 12).any())
+    # ...the order most of the telling dates show: one 12/25 pasted among forty 25/12 read every 05/03 of the column as
+    # May 3rd (chaos audit, AH-76). The odd ones out are flagged (pipeline.date_forms); a tie reads month-first, as before
+    parts = text.str.extract(YEAR_LAST).astype(float)
+    dayfirst = bool((parts[0] > 12).sum() > (parts[1] > 12).sum())
     dmy = parts[0].notna()  # only those cells: dayfirst would also flip ISO dates (2024-01-05 -> May 1)
     d = when(s.where(~dmy)).fillna(when(s.where(dmy), dayfirst=dayfirst))
     if not wide:
@@ -77,6 +88,24 @@ def _dates(s, wide=False):
         r"\b\d{1,2}(?:st|nd|rd|th)?,? +[a-z]{3,9}\b|\b[a-z]{3,9}\.? +\d{1,2}(?:st|nd|rd|th)?\b", case=False)
     full = short & t.str.contains(r"(?<!\d)[12]\d{3}(?!\d)") & day
     return d.where(d.dt.year.between(1900, 2200) | (full & d.dt.year.between(1000, 2999)))
+
+
+def _padded(s):
+    """A column of digit codes written to a fixed width with their leading zeros (ZIP "02134", an EmployeeID "000101")
+    -> that width, else 0. The pane sends a Text-formatted cell as its string, and read as a number "02134" became 2134:
+    a code that lost its zeros ("2134") went unseen and the fairness report named groups "2134" and "7102", values no
+    cell holds (chaos audit, AH-75). 90% of the cells digits, 90% of those one width of 3+, 2+ of them led by a 0: a
+    quantity is no fixed width (one "007" among counts stays a number), and a Month or Hour typed "01"-"12" (width 2)
+    keeps the bounds its name sets."""
+    v = s[~_blank(s)].astype(str).str.strip()
+    v = v[~v.str.fullmatch(NO_VALUE)]
+    digits = v[v.str.fullmatch(r"\d+")]
+    if not len(v) or len(digits) < 0.9 * len(v):
+        return 0
+    w = digits.str.len()
+    width = int(w.mode().iloc[0])
+    led = (w == width) & digits.str.startswith("0")
+    return width if width >= 3 and (w == width).mean() >= 0.9 and led.sum() >= 2 else 0
 
 
 # stand-ins for a missing value. Not "NA" (a ticker, a country) or "None" (a real category)
@@ -125,6 +154,9 @@ def _kind(s):
     s = s[~s.astype(str).str.fullmatch(NO_VALUE)]  # nor does a missing value
     if not len(s):
         return "text"
+    if _padded(s):  # a code, never a quantity: an ID when it labels rows, else a label (a ZIP, a branch) to group by
+        num = pd.to_numeric(s, errors="coerce").dropna()
+        return "id" if _is_id(s.name, num) or (len(s) >= 20 and s.nunique() >= 0.95 * len(s)) else "text"
     num, err = _num(s), s.astype(str).str.strip().str.match(EXCEL_ERROR)
     # Excel errors (#DIV/0!) are broken numbers, not a sign the column is text - as long as most cells are numbers
     if num.notna().mean() >= 0.5 and num[~err].notna().mean() >= 0.9:
@@ -181,7 +213,12 @@ def _coerce(df, cols):
     df.attrs["no_value"] = _Shared(no_value)
     typed = {}  # column -> {row: the cell as typed}, for a percent typed as text: "+22%" is held as 0.22 (AH-56)
     codes = {}  # column -> (rows, the code): a negative code the column writes for "no value", held as a blank (AH-62)
+    # column -> its width: digit codes kept as typed, "02134" never 2134 (AH-75)
+    padded = {c: w for c, t in types.items() if t in ("id", "text") and (w := _padded(df[c]))}
+    written = {}  # column -> each date as typed: the form it was written in is lost once read (AH-76)
     for c, t in types.items():
+        if c in padded:
+            continue
         if t in ("number", "id"):
             pct = df[c].astype(str).str.contains("%", regex=False)
             if t == "number" and pct.any():
@@ -201,10 +238,13 @@ def _coerce(df, cols):
             # ...but a date written in full from 1000 to 2999 is a date: deaths since 1791 among a column of 1900s dates
             # were 176 "text" cells, whose shape excused a year 2955 typo as the column's own code (round 37, AH-55)
             d = _dates(df[c], wide=True)
+            written[c] = df[c].astype(str).str.strip()
             errors += [(i, c, df.at[i, c]) for i in df.index[d.isna() & ~_blank(df[c])]]
             df[c] = d
     df.attrs["typed"] = _Shared(typed)
     df.attrs["codes"] = _Shared(codes)
+    df.attrs["padded"] = _Shared(padded)
+    df.attrs["written"] = _Shared(written)
     return types, errors
 
 

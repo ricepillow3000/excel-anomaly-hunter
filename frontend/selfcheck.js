@@ -390,6 +390,14 @@ const ph = recommendFix(["Pay", "Amt"], [["ERROR", 5], ["Card", 6]], 0, {}, 'Pla
 assert.ok(ph.explanation.includes('Pay says "ERROR" - a value of the column\'s own (a status, a log level) or a stand-in for a missing one') && !ph.changes.length);
 const tx = recommendFix(["When"], [["UNKNOWN"]], 0, {}, 'Text "UNKNOWN" in date column When', 0, 0, null, null);
 assert.ok(tx.explanation.includes("where a date belongs - retype it as a date"));
+// AH-75: a code that lost its leading zeros is explained, never padded (a card never writes into an ID column)
+const lz = recommendFix(["PostalCode"], [["2134"], ["02134"]], 0, {}, 'PostalCode "2134" is 4 digits where the column writes 5: did it lose its leading zero?', 0, 0, null, null);
+assert.ok(!lz.changes.length && lz.explanation.includes("format the column as Text and retype the code"), lz.explanation);
+// AH-76: a date in another form, and a serial in a date column, are explained, never retyped for the user
+const df = recommendFix(["HireDate"], [["31/12/2023"]], 0, {}, 'HireDate "31/12/2023" is written day-first where the column writes YYYY-MM-DD (read as 2023-12-31)', 0, 0, null, null);
+assert.ok(!df.changes.length && df.explanation.includes("check which day it is against the source"), df.explanation);
+const sr = recommendFix(["HireDate"], [[45292]], 0, {}, "HireDate 45292 is a number in a column of dates (an Excel date serial for 2024-01-01?)", 0, 0, null, null);
+assert.ok(!sr.changes.length && sr.explanation.includes("if 2024-01-01 is the right day, format the cell as a date"), sr.explanation);
 const money = recommendFix(["Price"], [["$1,000,000.00"], ["$1,200.00"]], 0, { Price: [900, 1500, 500, 2000] },
   "Flagged by 1 of 3: Price weird limit is 2000; this is 1000000", 0, 0, null, null);
 assert.ok(!money.changes.length && money.explanation.startsWith("Price is 1000000, past its limit of 2000."), money.explanation);

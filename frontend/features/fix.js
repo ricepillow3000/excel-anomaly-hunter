@@ -175,6 +175,17 @@ const HINTS = [
   [/, but the row adds up \(.+\): worth a check$/, "the row's own numbers agree with this value, so a typing slip is " +
     "unlikely (one slip changes one cell and breaks the sum); it may be a real record or another unit. If the total is a formula of " +
     "these cells it follows any slip and proves nothing, so check this value at its source; if it is right, leave it"],
+  // AH-76: a date typed in another form, a column of many forms, a number in a column of dates
+  [/ is written .+ where .+ \(read as \d{4}-\d\d-\d\d\)$|: it could be \d{4}-\d\d-\d\d or \d{4}-\d\d-\d\d$/, "a date typed in " +
+    "another form is read by guessing its day and month, and sorts and filters apart from the column's real dates; check " +
+    "which day it is against the source, then type it as a real date"],
+  [/ writes its dates in \d+ forms: /, "dates written several ways are read by guessing each one's day and month; check the " +
+    "ones whose day and month could swap (03/04) against the source, then type them all as real dates"],
+  [/ is a number in a column of dates \(an Excel date serial for (\d{4}-\d\d-\d\d)\?\)$/, (m) => `a date cell formatted as a ` +
+    `number shows its serial; if ${m[1]} is the right day, format the cell as a date (Home > Number Format > Short Date)`],
+  // AH-75: a digit code shorter than its column's width ("2134" among ZIPs "02134"): flagged, never padded for the user
+  [/ is \d+ digits? where the column writes \d+: did it lose its leading zeros?\?$/, "a cell formatted as a number drops a " +
+    "code's leading zeros; format the column as Text and retype the code as the source writes it"],
   // AH-46: a sort puts blank cells last - the block at the end is where the sort put them, not where they went missing
   [/ is blank in \d+ of \d+ rows, all at the end of the table, which is sorted by /, "sorting puts blank cells last, so these rows " +
     "simply have no value here; if the column must always be filled, fill them in from the source"],
