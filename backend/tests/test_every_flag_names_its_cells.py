@@ -46,6 +46,8 @@ def same(quoted, cell):
     if isinstance(cell, (int, float)) and not isinstance(cell, bool):
         return float(quoted) == float(f"{cell:.15g}")  # Excel holds 15 significant digits
     t = str(cell).strip()
+    if re.fullmatch(r"0\d+", quoted) or re.fullmatch(r"0\d+", t):  # a code's leading zeros are part of it: "02134" is no 2134 (AH-75)
+        return quoted == t
     if re.fullmatch(r"\d{4}-\d\d-\d\d", quoted):
         return pd.Timestamp(t).strftime("%Y-%m-%d") == quoted
     try:

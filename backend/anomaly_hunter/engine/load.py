@@ -79,6 +79,24 @@ def _dates(s, wide=False):
     return d.where(d.dt.year.between(1900, 2200) | (full & d.dt.year.between(1000, 2999)))
 
 
+def _padded(s):
+    """A column of digit codes written to a fixed width with their leading zeros (ZIP "02134", an EmployeeID "000101")
+    -> that width, else 0. The pane sends a Text-formatted cell as its string, and read as a number "02134" became 2134:
+    a code that lost its zeros ("2134") went unseen and the fairness report named groups "2134" and "7102", values no
+    cell holds (chaos audit, AH-75). 90% of the cells digits, 90% of those one width of 3+, 2+ of them led by a 0: a
+    quantity is no fixed width (one "007" among counts stays a number), and a Month or Hour typed "01"-"12" (width 2)
+    keeps the bounds its name sets."""
+    v = s[~_blank(s)].astype(str).str.strip()
+    v = v[~v.str.fullmatch(NO_VALUE)]
+    digits = v[v.str.fullmatch(r"\d+")]
+    if not len(v) or len(digits) < 0.9 * len(v):
+        return 0
+    w = digits.str.len()
+    width = int(w.mode().iloc[0])
+    led = (w == width) & digits.str.startswith("0")
+    return width if width >= 3 and (w == width).mean() >= 0.9 and led.sum() >= 2 else 0
+
+
 # stand-ins for a missing value. Not "NA" (a ticker, a country) or "None" (a real category)
 # ...except in a number or date column, where NA, NaN, null and None are what a program writes for "no value" (R, pandas,
 # JSON): a missing cell, like a blank. Read as text, R's NA made ~3,960 false Medium rows in blind round 23 (AH-27)
@@ -125,6 +143,9 @@ def _kind(s):
     s = s[~s.astype(str).str.fullmatch(NO_VALUE)]  # nor does a missing value
     if not len(s):
         return "text"
+    if _padded(s):  # a code, never a quantity: an ID when it labels rows, else a label (a ZIP, a branch) to group by
+        num = pd.to_numeric(s, errors="coerce").dropna()
+        return "id" if _is_id(s.name, num) or (len(s) >= 20 and s.nunique() >= 0.95 * len(s)) else "text"
     num, err = _num(s), s.astype(str).str.strip().str.match(EXCEL_ERROR)
     # Excel errors (#DIV/0!) are broken numbers, not a sign the column is text - as long as most cells are numbers
     if num.notna().mean() >= 0.5 and num[~err].notna().mean() >= 0.9:
@@ -181,7 +202,11 @@ def _coerce(df, cols):
     df.attrs["no_value"] = _Shared(no_value)
     typed = {}  # column -> {row: the cell as typed}, for a percent typed as text: "+22%" is held as 0.22 (AH-56)
     codes = {}  # column -> (rows, the code): a negative code the column writes for "no value", held as a blank (AH-62)
+    # column -> its width: digit codes kept as typed, "02134" never 2134 (AH-75)
+    padded = {c: w for c, t in types.items() if t in ("id", "text") and (w := _padded(df[c]))}
     for c, t in types.items():
+        if c in padded:
+            continue
         if t in ("number", "id"):
             pct = df[c].astype(str).str.contains("%", regex=False)
             if t == "number" and pct.any():
@@ -205,6 +230,7 @@ def _coerce(df, cols):
             df[c] = d
     df.attrs["typed"] = _Shared(typed)
     df.attrs["codes"] = _Shared(codes)
+    df.attrs["padded"] = _Shared(padded)
     return types, errors
 
 

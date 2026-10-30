@@ -139,6 +139,20 @@ def type_errors(n, errors_log, column_types):
     return out, notes
 
 
+def lost_zeros(df, column_types, skip):
+    """A digit code shorter than the width its column writes ("2134" among ZIPs "02134", EmployeeID "123" among "000101"):
+    its leading zeros were lost, usually by a cell formatted as a number (AH-75). Flag only, never a fix: padding is a
+    guess about the source, and a card never writes into an ID column."""
+    out = [[] for _ in range(len(df))]
+    for col, width in df.attrs.get("padded", {}).items():
+        v = df[col][~skip].astype(str).str.strip()
+        for i in v.index[v.str.fullmatch(r"\d+") & (v.str.len() < width)]:
+            k = len(v[i])
+            out[i].append(Why(f'{col} "{v[i]}" is {k} digit{"s" if k > 1 else ""} where the column writes {width}: '
+                              f'did it lose its leading zero{"s" if width - k > 1 else ""}?', col))
+    return out
+
+
 def placeholders(df, column_types, skip):
     """ERROR / UNKNOWN / N/A / NULL / ? / - left in a text column, when that word is rare (< 8% of the column: more often
     it's a real category, like Status "Error"). Excel errors (#N/A) always: they are a broken formula, never a category.
@@ -1073,6 +1087,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
     ran = [d for d in dets.values() if d["ran"]]
     (dup, repeats), (typ, typ_coded), (blank, spread) = duplicates(df, errors_log, column_types), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
     (hole, coded), far = placeholders(df, column_types, skip), far_dates(df, column_types, skip)
+    zeros = lost_zeros(df, column_types, skip)
     code = codes(df, column_types, skip)
     spell, spell_fix, missed, spell_maybe, spell_exact = spellings(df, column_types, skip)
     missed = [m + s + f + w + b + g for m, s, f, w, b, g in zip(missed, shifted(df, column_types, skip), fractions(df, column_types, skip),
@@ -1110,7 +1125,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
                          "magnitude": 0.0})
             continue
         voted = [d for d in ran if d["votes"][i]]
-        hygiene = dup[i] + typ[i] + blank[i] + hole[i] + code[i] + far[i] + add[i] + spell[i]
+        hygiene = dup[i] + typ[i] + blank[i] + hole[i] + code[i] + far[i] + add[i] + spell[i] + zeros[i]
         if not voted and not hygiene and not missed[i]:
             noted = as_typed(lim["noted_reasons"][i], i)
             rows.append({"severity": "Noted" if noted else None, "bucket": None,
@@ -1120,7 +1135,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
         said = as_typed(list(dict.fromkeys(hygiene + missed[i] + [r for d in voted for r in d["reasons"][i]])), i)  # dedupe, keep order
         rows.append({  # a possible misspelling alone is "worth a check" (Low): it may be a real name
             "severity": "High" if v >= 3 else "Medium" if v == 2 or weird or hygiene else "Low",
-            "bucket": "Duplicates" if dup[i] else "Irregularities" if weird or typ[i] or blank[i] or hole[i] or code[i] or far[i] or add[i] or spell[i] or missed[i] else "Behavioral",
+            "bucket": "Duplicates" if dup[i] else "Irregularities" if weird or hygiene or missed[i] else "Behavioral",
             "reason": (f"Flagged by {v} of {len(ran)}: " if v else "") + "; ".join(said),
             "cells": cells(said),
             "magnitude": float(max((d["magnitude"][i] for d in voted), default=0.0)),

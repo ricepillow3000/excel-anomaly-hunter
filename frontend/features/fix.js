@@ -176,6 +176,9 @@ const HINTS = [
     "unlikely (one slip changes one cell and breaks the sum); it may be a real record or another unit. If the total is a formula of " +
     "these cells it follows any slip and proves nothing, so check this value at its source; if it is right, leave it"],
   // AH-46: a sort puts blank cells last - the block at the end is where the sort put them, not where they went missing
+  // AH-75: a digit code shorter than its column's width ("2134" among ZIPs "02134"): flagged, never padded for the user
+  [/ is \d+ digits? where the column writes \d+: did it lose its leading zeros?\?$/, "a cell formatted as a number drops a " +
+    "code's leading zeros; format the column as Text and retype the code as the source writes it"],
   [/ is blank in \d+ of \d+ rows, all at the end of the table, which is sorted by /, "sorting puts blank cells last, so these rows " +
     "simply have no value here; if the column must always be filled, fill them in from the source"],
 ];

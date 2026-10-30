@@ -390,6 +390,9 @@ const ph = recommendFix(["Pay", "Amt"], [["ERROR", 5], ["Card", 6]], 0, {}, 'Pla
 assert.ok(ph.explanation.includes('Pay says "ERROR" - a value of the column\'s own (a status, a log level) or a stand-in for a missing one') && !ph.changes.length);
 const tx = recommendFix(["When"], [["UNKNOWN"]], 0, {}, 'Text "UNKNOWN" in date column When', 0, 0, null, null);
 assert.ok(tx.explanation.includes("where a date belongs - retype it as a date"));
+// AH-75: a code that lost its leading zeros is explained, never padded (a card never writes into an ID column)
+const lz = recommendFix(["PostalCode"], [["2134"], ["02134"]], 0, {}, 'PostalCode "2134" is 4 digits where the column writes 5: did it lose its leading zero?', 0, 0, null, null);
+assert.ok(!lz.changes.length && lz.explanation.includes("format the column as Text and retype the code"), lz.explanation);
 const money = recommendFix(["Price"], [["$1,000,000.00"], ["$1,200.00"]], 0, { Price: [900, 1500, 500, 2000] },
   "Flagged by 1 of 3: Price weird limit is 2000; this is 1000000", 0, 0, null, null);
 assert.ok(!money.changes.length && money.explanation.startsWith("Price is 1000000, past its limit of 2000."), money.explanation);
