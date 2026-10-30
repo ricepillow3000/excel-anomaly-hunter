@@ -48,7 +48,7 @@ def close(a, b):
 # Every Medium+ false alarm the default seeds already raise, by sheet and grid row. The gate was "<= 1% of clean
 # rows": 26 new Medium alarms (an autoencoder, 2026-10-15) still passed. Now any alarm not listed here fails;
 # one that is gone is reported so it can be removed. Other --seeds have no list: every alarm there is new.
-KNOWN_FA = {"ad_campaigns_s23:7"} if BLIND else set()  # blind: Impressions 936,763 past a weird limit of 630,000
+KNOWN_FA = set()  # blind ad_campaigns_s23:7 (Impressions 936,763, Clicks = Impressions x CTR holding) is Low since AH-74
 fa_seen = set()
 tot = {"harm": 0, "planted": 0, "caught": 0, "restored": 0, "fa_med": 0, "fa_low": 0, "clean": 0, "totals_flagged": 0, "totals": 0,
        "hdr_ok": 0, "sheets": 0, "crash": 0, "id_flags": 0}

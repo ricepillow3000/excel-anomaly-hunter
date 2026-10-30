@@ -47,8 +47,10 @@ def test_cells_off_by_the_same_step_in_one_row_get_no_likely_guess():
         rows.append([f"S{i:02d}", fresh, proc, round(fresh + proc, 2)])
     rows[4][1:] = [2791.8, 5944.6, 8736.4]
     out = scan(["state", "fruits fresh", "fruits proc", "total fruits"], rows, fair=False)[1]
-    assert out[4]["severity"] in ("Medium", "High"), "still flagged: it is far past the column"
-    assert not out[4].get("likely") and "(likely" not in out[4]["reason"], out[4]
+    # ...and the row adds up (fruits fresh + fruits proc = total fruits): its own arithmetic confirms the values, so they
+    # are listed as worth a check (Low), no longer voted Medium as slips (AH-74)
+    assert out[4]["severity"] == "Low" and "but the row adds up" in out[4]["reason"], out[4]
+    assert not out[4].get("likely") and not out[4].get("maybe") and "(likely" not in out[4]["reason"], out[4]
 
 
 def test_a_value_too_small_is_offered_as_a_guess_never_as_likely():
