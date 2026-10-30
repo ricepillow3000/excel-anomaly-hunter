@@ -56,7 +56,19 @@ for (const p of PAGES) {
 // a box that scrolls sideways must take keyboard focus, or a keyboard user can't read its end
 assert.ok(/<code class="line" tabindex="0">/.test(html["index.html"]), "the PowerShell line scrolls but can't be focused");
 
+// motion (AH-83): content rises in as a .reveal-item, never scrubbed by the scroll (the old data-scrub hooks are gone), and
+// every group of them that cascades is marked data-reveal-group
+for (const p of PAGES) assert.ok(!/data-scrub/.test(html[p]), `${p}: a data-scrub hook is left`);
+for (const p of ["index.html", "privacy.html"]) assert.ok(/class="[^"]*\breveal-item\b/.test(html[p]) && /\sdata-reveal-group[\s>]/.test(html[p]), `${p}: no reveal items in a group`);
 const css = read("styles.css").replace(/\/\*[\s\S]*?\*\//g, "");
+// only transform, translate and opacity are ever animated: the GPU composites them without a layout or a paint (AH-85)
+{
+  const flat = (v) => { let x = v; while (/\([^()]*\)/.test(x)) x = x.replace(/\([^()]*\)/g, ""); return x; };
+  const moved = [...css.matchAll(/(?:^|[;{\s])transition(?:-property)?\s*:\s*([^;}]+)/g)].flatMap((m) => flat(m[1]).split(",").map((t) => t.trim().split(/\s+/)[0]));
+  for (const m of css.matchAll(/@keyframes\s+[\w-]+\s*\{((?:[^{}]*\{[^{}]*\})*)\s*\}/g)) moved.push(...[...m[1].matchAll(/\{([^{}]*)\}/g)].flatMap((b) => [...b[1].matchAll(/([a-z-]+)\s*:/g)].map((d) => d[1])));
+  assert.ok(moved.length >= 6, `styles.css: the animated properties were not found (${moved})`);
+  for (const prop of moved) assert.ok(["transform", "translate", "opacity"].includes(prop), `styles.css animates ${prop}, which the GPU cannot composite alone`);
+}
 for (const url of css.match(/url\([^)]*\)/g)) assert.ok(/^url\("(data:|assets\/)/.test(url), `styles.css loads ${url}`);
 const used = PAGES.map((p) => html[p]).join("") + SCRIPTS.map(read).join("");
 const classes = new Set(used.match(/class="[^"]*"/g).flatMap((c) => c.slice(7, -1).split(/\s+/)));
@@ -102,9 +114,14 @@ const browser = await chromium.launch();
 const release = { tag_name: "v0.1.102", published_at: "2026-10-20T05:15:43Z", assets: [{ name: "AnomalyHunter.exe", size: 81256476, digest: "sha256:" + "ab".repeat(32) }] };
 const json = (body, status = 200) => (r) => r.fulfill({ status, contentType: "application/json", body: typeof body === "string" ? body : JSON.stringify(body) });
 
-async function open(file, { width = 1280, api = json(release), motion = "no-preference", until = "networkidle", init = null } = {}) {
-  const ctx = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: motion });
+// Headless Chromium draws WebGL with SwiftShader, so field.js shows its one still picture there (AH-85). The checks of the
+// field's own motion (its pointer bend, its scroll-linked shape, its inversion on the band) name a GPU instead
+const GPU = () => { const get = WebGL2RenderingContext.prototype.getParameter;
+  WebGL2RenderingContext.prototype.getParameter = function (k) { return k === 0x1F01 || k === 0x9246 ? "ANGLE (a test GPU)" : get.call(this, k); }; };
+async function open(file, { width = 1280, height = 900, api = json(release), motion = "no-preference", until = "networkidle", init = null, gpu = false, js = true, setup = null } = {}) {
+  const ctx = await browser.newContext({ viewport: { width, height }, reducedMotion: motion, javaScriptEnabled: js });
   const page = await ctx.newPage();
+  if (gpu) await page.addInitScript(GPU);
   if (init) await page.addInitScript(init);
   const problems = [], outside = [];
   page.on("console", (m) => { if (["error", "warning"].includes(m.type()) && !/^Failed to load resource/.test(m.text())) problems.push(m.text()); });
@@ -113,6 +130,7 @@ async function open(file, { width = 1280, api = json(release), motion = "no-pref
   page.on("request", (r) => { if (!r.url().startsWith(BASE) && !r.url().startsWith("data:")) outside.push(r.url()); });
   await page.route("https://api.github.com/**", api);
   await page.route(/^https:\/\/(?!api\.github\.com)/, (r) => r.abort()); // a page must never reach anywhere else
+  if (setup) await setup(page);
   await page.goto(BASE + file, { waitUntil: until });
   return { ctx, page, problems, outside };
 }
@@ -154,8 +172,10 @@ async function fieldShot(p, bg = "#fff") {
   return shot;
 }
 // every hooked element's computed pose, and whether it is at rest
-const poses = (p, sel) => p.$$eval(sel, (es) => es.map((e) => { const c = getComputedStyle(e); return { tf: c.transform, op: c.opacity }; }));
-const atRest = (ps) => ps.every((x) => x.tf === "none" && x.op === "1");
+const poses = (p, sel) => p.$$eval(sel, (es) => es.map((e) => { const c = getComputedStyle(e); return { tf: c.transform, tr: c.translate, op: c.opacity }; }));
+const atRest = (ps) => ps.every((x) => x.tf === "none" && x.tr === "none" && x.op === "1");
+// every motion hook: the entrance, the reveal, the scroll-linked decoration
+const HOOKED = "[data-enter], .reveal-item, .rule, [data-depth]";
 
 for (const width of [1280, 390]) {
   for (const file of PAGES) {
@@ -212,7 +232,7 @@ const onTop = (page) => page.evaluate(async () => {
 
 // the sample workspace: tabs, arrow keys, filters, and a detail box per flagged row
 {
-  const t = await open("index.html");
+  const t = await open("index.html", { gpu: true });
   const p = t.page;
   const state = () => p.evaluate(() => ({ state: document.getElementById("preview").dataset.state, counts: [...document.querySelectorAll(".typology .n")].map((n) => n.textContent).join(" "),
     open: [...document.querySelectorAll(".matrix")].filter((m) => !m.hidden).map((m) => m.id).join(), focus: document.activeElement.id || document.activeElement.className }));
@@ -263,7 +283,9 @@ const onTop = (page) => page.evaluate(async () => {
   assert.equal(await behind(), "rgb(12, 25, 56)");
   await p.evaluate(() => scrollTo(0, document.body.scrollHeight)); await p.waitForTimeout(100);
   assert.equal(await behind(), "rgb(239, 236, 228)");
-  // ... and the logo above the Download button is whole by then: five parts drawn, in their colors, opaque and in place
+  // ... and the logo above the Download button is whole once its stage has risen into place: five parts drawn, in their
+  // colors, opaque and in place
+  await p.waitForSelector("#download .stage[data-settled]", { state: "attached", timeout: 3000 });
   const whole = await logo(p); delete whole.animated;
   assert.deepEqual(whole, WHOLE);
   assert.equal(await onTop(p), "banner,spear");
@@ -275,7 +297,7 @@ const onTop = (page) => page.evaluate(async () => {
 }
 { // with reduced motion: no cursor light, no entrance, no scroll motion, one still frame of the field; the logo sits finished
   const t = await open("index.html", { motion: "reduce" });
-  const hooked = "[data-enter], [data-scrub]";
+  const hooked = HOOKED;
   assert.ok(atRest(await poses(t.page, hooked)), "an element moves on load under reduced motion");
   assert.equal(await t.page.evaluate(() => document.documentElement.dataset.gl), "on");
   const still = await fieldShot(t.page);
@@ -309,50 +331,236 @@ for (const slow of [false, true]) {
   await done(t, label, [API]);
 }
 
-// the scroll motion is the scroll position's alone: at a spot where things are partly in, it holds exactly still when
-// the scrolling stops, and comes back exactly the same after a trip to the bottom and back. The field behind is a
-// function of the scroll too, so its pixels must hold and return the same way
+// the scroll-linked decoration (AH-84) is the scroll position's alone: the hairlines drawn across (scaleX) and the labels'
+// and headlines' drift (translate). At a spot where a row of hairlines is partly drawn it holds exactly still when the
+// scrolling stops, and comes back exactly the same after a trip to the bottom and back; a little further down it is
+// further along, step by step. Content is no longer scrubbed: it rises in once (the reveal, below). The field behind is
+// a function of the scroll too (with a GPU), so its pixels must hold and return the same way
+const decoration = (p) => p.$$eval(".rule, [data-depth]", (es) => es.map((e) => {
+  const c = getComputedStyle(e);
+  // the drift as px: Chromium gives a translate as calc(a% + b px), a% of the element's own height
+  const terms = c.translate === "none" ? [] : c.translate.replace(/calc\(|\)/g, "").replace(/ - /g, " -").replace(/ \+ /g, " ").trim().split(/\s+/).slice(1);
+  const y = terms.reduce((s, v) => s + (v.endsWith("%") ? (parseFloat(v) / 100) * e.offsetHeight : parseFloat(v) || 0), 0);
+  // a headline's own transform is its reveal's, not the decoration's
+  const rule = e.classList.contains("rule");
+  return { rule, sx: rule && c.transform !== "none" ? new DOMMatrix(c.transform).a : 1, y: Math.round(y * 1000) / 1000, tf: rule ? c.transform : null, tr: c.translate };
+}));
+const layoutTop = (p, sel) => p.evaluate((sel) => { let t = 0; for (let e = document.querySelector(sel); e; e = e.offsetParent) t += e.offsetTop; return t; }, sel);
+async function scrollLinked(p, label, field) {
+  const snap = async () => ({ deco: JSON.stringify(await decoration(p)), field: field ? (await fieldShot(p)).toString("base64") : "" });
+  const go = async (y) => { await p.evaluate((y) => scrollTo(0, y), y); await p.waitForTimeout(400); };
+  const vh = await p.evaluate(() => innerHeight);
+  // a quarter of the way through the screen: the checks' first row of hairlines, their second row, the three steps
+  const spots = [];
+  for (const sel of [".num-grid li:nth-child(1) .rule", ".num-grid li:nth-child(5) .rule", ".steps li:nth-child(1) .rule"]) spots.push(Math.round((await layoutTop(p, sel)) - vh * 0.75));
+  for (const y of spots) {
+    await go(0); await go(y);
+    const a = await snap();
+    assert.ok(JSON.parse(a.deco).some((x) => x.rule && x.sx > 0 && x.sx < 1), `${label}, scroll ${y}: no hairline is partly drawn`);
+    await p.waitForTimeout(700);
+    assert.deepEqual(await snap(), a, `${label}, scroll ${y}: still moving 700 ms after the scrolling stopped`);
+    await go(await p.evaluate(() => document.documentElement.scrollHeight)); await go(y);
+    assert.deepEqual(await snap(), a, `${label}, scroll ${y}: not the same after a trip to the bottom and back`);
+  }
+  // step by step: the second hairline of the first row draws further, and the IT headline drifts further, at each of
+  // three nearby positions
+  const sxs = [], ys = [];
+  for (const y of [spots[0] - 20, spots[0], spots[0] + 20]) { await go(y); sxs.push((await decoration(p)).filter((x) => x.rule)[1].sx); }
+  const it = await p.evaluate(() => Math.round(document.getElementById("it").offsetTop - innerHeight * 0.6));
+  const at = await p.evaluate(() => [...document.querySelectorAll(".rule, [data-depth]")].indexOf(document.querySelector("#it .sec-title")));
+  for (const y of [it - 20, it, it + 20]) { await go(y); ys.push((await decoration(p))[at].y); }
+  assert.ok(sxs.every((x) => x > 0 && x < 1) && sxs[0] < sxs[1] && sxs[1] < sxs[2], `${label}: the hairline does not follow the scroll: ${sxs}`);
+  assert.ok(ys[0] < ys[1] && ys[1] < ys[2] && Math.abs(ys[1]) < 40, `${label}: the headline's drift does not follow the scroll: ${ys}`);
+  return { spots, sxs, ys };
+}
+let decoCss = null;
 {
   // no visitor's pointer here: Playwright's mouse rests at 0,0 and Chromium sends a mousemove there after load, which
   // reached field.js in some runs and bent the corner (5752 inked pixels against 5812). The pointer is tested above
-  const t = await open("index.html", { init: () => addEventListener("pointermove", (e) => e.stopImmediatePropagation(), true) });
+  const t = await open("index.html", { gpu: true, init: () => addEventListener("pointermove", (e) => e.stopImmediatePropagation(), true) });
   const p = t.page;
   await p.waitForTimeout(1600); // the entrance is over
-  assert.equal(await p.evaluate(() => document.documentElement.dataset.gl), "on", "the field has no WebGL context");
+  assert.deepEqual(await p.evaluate(() => [document.documentElement.dataset.gl, document.documentElement.dataset.scroll]), ["on", "css"], "the field has no WebGL context, or the decoration no scroll timeline");
   await p.waitForSelector('#field[data-state="settled"]', { state: "attached", timeout: 5000 }); // faded in, nothing easing
   const top = png(await fieldShot(p));
   const ink = top.px.filter((v, i) => i % 4 === 0 && v < 235).length;
   assert.ok(ink > 0.005 * top.w * top.h && ink < 0.25 * top.w * top.h, `the field is not a fine drawing (${ink} of ${top.w * top.h} pixels inked)`);
-  const snap = async () => ({ poses: JSON.stringify(await poses(p, "[data-scrub]")), field: (await fieldShot(p)).toString("base64") });
-  const go = async (y) => { await p.evaluate((y) => scrollTo(0, y), y); await p.waitForTimeout(400); };
-  const spots = await p.evaluate(() => { const at = (id) => document.getElementById(id).offsetTop; return [at("checks") - innerHeight * 0.8, at("it") - innerHeight * 0.85, at("download") - innerHeight * 0.8].map(Math.round); });
-  for (const y of spots) {
-    await go(0); await go(y);
-    const a = await snap();
-    assert.ok(JSON.parse(a.poses).some((x) => +x.op > 0 && +x.op < 1), `scroll ${y}: nothing is partly in`);
-    await p.waitForTimeout(700);
-    assert.deepEqual(await snap(), a, `scroll ${y}: still moving 700 ms after the scrolling stopped`);
-    await go(await p.evaluate(() => document.documentElement.scrollHeight)); await go(y);
-    assert.deepEqual(await snap(), a, `scroll ${y}: not the same after a trip to the bottom and back`);
-  }
-  // halfway in, a headline's slide follows the scroll bar step by step
-  const it = await p.evaluate(() => Math.round(document.getElementById("it").offsetTop - innerHeight * 0.6));
-  const xs = [];
-  for (const y of [it - 20, it, it + 20]) { await go(y); xs.push(await p.evaluate(() => new DOMMatrix(getComputedStyle(document.querySelector("#it .sec-title")).transform).e)); }
-  assert.ok(xs.every((x) => x > -64 && x < 0) && xs[0] < xs[1] && xs[1] < xs[2], `the headline's slide does not follow the scroll: ${xs}`);
+  decoCss = await scrollLinked(p, "scroll timeline", true);
+  await p.evaluate((y) => scrollTo(0, y), decoCss.spots[0]); await p.waitForTimeout(400);
+  decoCss.poses = await decoration(p);
   // the field inverts on the dark band: over black, its paper lines show inside the band's rows and nowhere else
-  await go(await p.evaluate(() => document.getElementById("checks").offsetTop - innerHeight / 2));
+  await p.evaluate(() => scrollTo(0, document.getElementById("checks").offsetTop - innerHeight / 2)); await p.waitForTimeout(400);
   const band = png(await fieldShot(p, "#000"));
   const lit = (y0, y1) => { let n = 0; for (let y = y0; y < y1; y++) for (let x = 0; x < band.w; x++) { const i = (y * band.w + x) * 4; n += band.px[i + 1] > 12 && band.px[i + 1] - band.px[i + 2] < 20; } return n; }; // cream, not the gold level (its blue is far under its green)
   const half = Math.round(band.h / 2);
   assert.ok(lit(half + 4, band.h) > 0.005 * band.w * (band.h - half) && lit(0, half - 4) < 0.001 * band.w * half, "the field does not invert on the dark band");
   await done(t, "scroll motion", [API]);
 }
+{ // a browser with no scroll timeline: motion.js plays the same decoration from its one scroll reader, the same poses as
+  // the CSS timeline's, and asks for no frame once the scrolling stops
+  const t = await open("index.html", { init: () => { const has = CSS.supports.bind(CSS); CSS.supports = (...a) => (/animation-timeline/.test(a.join(" ")) ? false : has(...a)); } });
+  const p = t.page;
+  await p.waitForTimeout(1600);
+  assert.equal(await p.evaluate(() => document.documentElement.dataset.scroll), "js");
+  const js = await scrollLinked(p, "scroll reader", false);
+  await p.evaluate((y) => scrollTo(0, y), decoCss.spots[0]); await p.waitForTimeout(400);
+  const same = (await decoration(p)).map((x, i) => [Math.abs(x.sx - decoCss.poses[i].sx), Math.abs(x.y - decoCss.poses[i].y)]);
+  assert.ok(same.every(([a, b]) => a < 0.01 && b < 1), `the scroll reader's poses differ from the scroll timeline's: ${JSON.stringify(same)}`);
+  await p.evaluate(() => { window.frames_ = 0; const raf = window.requestAnimationFrame.bind(window); window.requestAnimationFrame = (f) => (window.frames_++, raf(f)); });
+  await p.waitForTimeout(1000);
+  assert.equal(await p.evaluate(() => window.frames_), 0, "the scroll reader asks for frames while nothing moves");
+  console.log(`scroll-linked decoration: hairline scaleX ${decoCss.sxs.map((x) => x.toFixed(4)).join(" < ")} and drift ${decoCss.ys.map((x) => x.toFixed(2)).join(" < ")} px at three nearby positions (timeline); scroll reader ${js.sxs.map((x) => x.toFixed(4)).join(" < ")}, worst difference from the timeline ${Math.max(...same.map((x) => x[0])).toFixed(4)} scaleX, ${Math.max(...same.map((x) => x[1])).toFixed(3)} px`);
+  await done(t, "scroll reader", [API]);
+}
 { // no WebGL: no canvas, the paper's CSS texture is the background, and the console stays clean
   const t = await open("index.html", { init: () => { const get = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (k, o) { return /webgl/.test(k) ? null : get.call(this, k, o); }; } });
   assert.deepEqual(await t.page.evaluate(() => [document.documentElement.dataset.gl, !!document.getElementById("field")]), ["off", false]);
   await done(t, "no WebGL", [API]);
 }
+
+// ---- the reveal (AH-83): content waits below its place, see-through, and rises into place once, the first time it
+// scrolls into view; a group's items start --stagger (50 ms) apart, up to --stagger-cap steps; only opacity and transform
+// move, so the reveal runs with no layout at all ----
+const tokens = (p) => p.evaluate(() => { const c = getComputedStyle(document.documentElement), g = (n) => c.getPropertyValue(n).trim();
+  return { ease: g("--ease-out"), rise: parseFloat(g("--reveal-rise")), dur: parseFloat(g("--reveal-dur")), stagger: parseFloat(g("--stagger")), cap: parseFloat(g("--stagger-cap")) }; });
+const revealed = (p, sel) => p.$$eval(sel, (es) => es.map((e) => { const c = getComputedStyle(e), m = new DOMMatrix(c.transform);
+  return { op: c.opacity, tf: c.transform, x: m.e, y: m.f, will: c.willChange, delay: Math.round(parseFloat(c.transitionDelay) * 1000), ease: c.transitionTimingFunction,
+    dur: Math.round(parseFloat(c.transitionDuration) * 1000), revealed: e.hasAttribute("data-revealed"), settled: e.hasAttribute("data-settled") }; }));
+let reveal = null;
+{
+  const t = await open("index.html", { width: 1440, init: () => { window.__unobserved = []; const un = IntersectionObserver.prototype.unobserve;
+    IntersectionObserver.prototype.unobserve = function (el) { window.__unobserved.push(el); return un.call(this, el); }; } });
+  const p = t.page, GRID = ".num-grid > .reveal-item";
+  const tok = await tokens(p);
+  assert.ok(tok.ease === "cubic-bezier(.16, 1, .3, 1)" && tok.stagger === 50 && tok.rise >= 20 && tok.rise <= 30 && tok.cap >= 1, `the motion tokens: ${JSON.stringify(tok)}`);
+  // (a) before any scrolling: the checks below the fold wait one --reveal-rise down, see-through, on their own layer
+  const before = await revealed(p, GRID);
+  assert.equal(await p.evaluate(() => document.documentElement.hasAttribute("data-js")), true, "boot.js did not mark the page");
+  assert.ok(before.length === 8 && before.every((x) => x.op === "0" && x.x === 0 && x.y === tok.rise && /transform/.test(x.will) && /opacity/.test(x.will) && !x.revealed),
+    `the checks before they are seen: ${JSON.stringify(before[0])}`);
+  // scrolled into view in one step once the hero's entrance is over, traced: the window runs from the scroll to the last
+  // item's transitionend
+  await p.waitForFunction(() => document.getAnimations().every((a) => a.timeline !== document.timeline), null, { timeout: 3000 });
+  await p.evaluate(() => { let n = 0; addEventListener("transitionend", (e) => { if (e.propertyName === "opacity" && e.target.matches(".num-grid > .reveal-item") && ++n === 8) console.timeStamp("reveal-end"); }, true); });
+  await browser.startTracing(p, { categories: ["devtools.timeline"] });
+  await p.evaluate(() => { const g = document.querySelector(".num-grid"); let top = 0; for (let e = g; e; e = e.offsetParent) top += e.offsetTop;
+    console.timeStamp("reveal-start"); scrollTo(0, top - 120); });
+  await p.waitForTimeout(100);
+  const rising = await revealed(p, GRID);
+  await p.waitForFunction(() => document.querySelectorAll(".num-grid > [data-settled]").length === 8, null, { timeout: 4000 });
+  await p.waitForTimeout(300);
+  const events = JSON.parse((await browser.stopTracing()).toString()).traceEvents;
+  const mark = (m) => events.find((e) => e.name === "TimeStamp" && e.args && e.args.data && e.args.data.message === m);
+  const s0 = mark("reveal-start"), s1 = mark("reveal-end"), last = Math.max(...events.map((e) => e.ts || 0));
+  assert.ok(s0 && s1, "the trace has no reveal window");
+  const count = (name, to) => events.filter((e) => e.name === name && e.pid === s0.pid && e.tid === s0.tid && e.ts >= s0.ts && e.ts <= to).length;
+  // (b) at rest, in place, with transition delays 0, 50, 100 ms ... in page order, held at the cap after it
+  const after = await revealed(p, GRID);
+  const want = after.map((x, i) => Math.min(i, tok.cap) * tok.stagger);
+  assert.ok(rising.every((x) => x.revealed) && rising.some((x) => +x.op < 1 || x.y > 0), `the checks did not rise in: ${JSON.stringify(rising[7])}`);
+  assert.ok(after.every((x) => x.op === "1" && x.tf === "none"), `the checks are not at rest: ${JSON.stringify(after)}`);
+  assert.deepEqual(after.map((x) => x.delay), want, "the checks' transition delays");
+  assert.ok(want.length > tok.cap, "the checks never reach the stagger's cap");
+  assert.ok(after.every((x) => x.ease === "cubic-bezier(0.16, 1, 0.3, 1), cubic-bezier(0.16, 1, 0.3, 1)" && x.dur === tok.dur), `the reveal's curve or length: ${after[0].ease} ${after[0].dur}`);
+  // (c) settled: the layer is let go
+  assert.ok(after.every((x) => x.settled && x.will === "auto"), `will-change after the reveal: ${after.map((x) => x.will)}`);
+  // (d) revealed once: unobserved, and a trip away and back does not hide it again
+  assert.equal(await p.evaluate(() => [...document.querySelectorAll(".num-grid > .reveal-item")].filter((e) => window.__unobserved.includes(e)).length), 8, "the observer still watches a revealed check");
+  await p.evaluate(() => scrollTo(0, 0)); await p.waitForTimeout(300);
+  await p.evaluate(() => scrollTo(0, document.getElementById("checks").offsetTop)); await p.waitForTimeout(50);
+  assert.ok((await revealed(p, GRID)).every((x) => x.op === "1" && x.tf === "none"), "a check hid again after a trip away and back");
+  reveal = { delays: after.map((x) => x.delay), layout: count("Layout", s1.ts), paint: count("Paint", s1.ts), layoutAll: count("Layout", last), paintAll: count("Paint", last), ms: Math.round((s1.ts - s0.ts) / 1000) };
+  // composite only: no layout from the scroll to the last transitionend; letting go of will-change afterwards lays the
+  // page out once a batch (two here: the checks' headline and lede above the grid are one look, the grid another at most)
+  assert.equal(reveal.layout, 0, `the reveal laid the page out ${reveal.layout} times`);
+  assert.ok(reveal.layoutAll <= 2, `settling the reveal laid the page out ${reveal.layoutAll} times`);
+  await done(t, "reveal", [API]);
+}
+{ // an #anchor lands on something visible: the target's items are revealed at once, and those above it are already there
+  const t = await open("index.html#download", { width: 1440, until: "load" });
+  const p = t.page;
+  await p.waitForTimeout(150);
+  const r = await p.evaluate(() => ({ stage: document.querySelector("#download .stage").hasAttribute("data-revealed"), above: document.querySelector("#it .sec-title").hasAttribute("data-revealed"),
+    below: document.querySelector(".steps .aside").hasAttribute("data-revealed") }));
+  assert.ok(r.stage && r.above, `index.html#download: ${JSON.stringify(r)}`);
+  await p.evaluate(() => { location.hash = "#checks"; }); await p.waitForTimeout(50);
+  assert.ok(await p.evaluate(() => [...document.querySelectorAll("#checks .reveal-item")].every((e) => e.hasAttribute("data-revealed"))), "a jump to #checks left its items hidden");
+  await done(t, "reveal at an anchor", [API]);
+}
+// no JavaScript at all, or motion.js failing to arrive: every block is shown, in place, and all the text can be read
+const readable = (p) => p.evaluate(() => {
+  const hooked = [...document.querySelectorAll(".reveal-item, [data-enter]")].map((e) => getComputedStyle(e)).filter((c) => c.opacity !== "1" || c.transform !== "none").length;
+  let hidden = 0, texts = 0;
+  for (const e of document.body.querySelectorAll("*")) {
+    if (![...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()) || !e.getClientRects().length) continue;
+    texts++;
+    let o = 1; for (let a = e; a && a !== document.documentElement; a = a.parentElement) o *= +getComputedStyle(a).opacity;
+    if (o < 1 || getComputedStyle(e).visibility !== "visible") hidden++;
+  }
+  return { hooked, hidden, texts, js: document.documentElement.hasAttribute("data-js") };
+});
+for (const file of ["index.html", "privacy.html"]) {
+  const t = await open(file, { width: 1440, js: false, until: "load" });
+  const r = await readable(t.page);
+  assert.ok(r.hooked === 0 && r.hidden === 0 && r.texts > 50 && !r.js, `${file} with JavaScript off: ${JSON.stringify(r)}`);
+  await done(t, `${file} with JavaScript off`);
+}
+{
+  const t = await open("index.html", { width: 1440, until: "load", setup: (page) => page.route(/\/motion\.js$/, (r) => r.abort()) });
+  await t.page.waitForTimeout(1500); // boot.js's own timer has lifted the entrance's mark
+  const r = await readable(t.page);
+  assert.ok(r.hooked === 0 && r.hidden === 0 && !r.js, `index.html without motion.js: ${JSON.stringify(r)}`);
+  await done(t, "index.html without motion.js", [API]);
+}
+// no flash: with every deferred script 1.6 s late (after boot.js's 1.4 s timer), a block never shows and then hides
+// again. The hero is held for its entrance, then shown by boot.js's timer, and stays (the late entrance is skipped);
+// content below the fold waits hidden from the first paint, never visible first
+{
+  const t = await open("index.html", { width: 1440, until: "load",
+    setup: (page) => page.route(/\/(motion|field|home|support|transition)\.js$/, async (r) => { await new Promise((ok) => setTimeout(ok, 1600)); await r.continue(); }),
+    init: () => {
+      const log = window.__flash = { hero: [], item: [], at: {} };
+      const look = () => {
+        for (const [k, sel] of [["hero", ".hero-head"], ["item", "#it .sec-title"]]) { const e = document.querySelector(sel); if (e) { const o = getComputedStyle(e).opacity; if (log[k][log[k].length - 1] !== o) log[k].push(o); } }
+      };
+      const loop = () => { look(); if (!log.stop) requestAnimationFrame(loop); };
+      requestAnimationFrame(loop);
+      for (const ev of ["DOMContentLoaded", "load"]) addEventListener(ev, () => { look(); log.at[ev] = getComputedStyle(document.querySelector("#it .sec-title")).opacity; if (ev === "load") setTimeout(() => { log.stop = true; }, 600); });
+    } });
+  await t.page.waitForTimeout(800);
+  const f = await t.page.evaluate(() => window.__flash);
+  const rises = (xs) => xs.every((v, i) => i === 0 || +v >= +xs[i - 1]);
+  assert.ok(rises(f.hero) && rises(f.item) && f.item.every((v) => v === "0") && f.at.DOMContentLoaded === "0" && f.at.load === "0", `a flash with late scripts: ${JSON.stringify(f)}`);
+  await done(t, "late scripts", [API]);
+}
+// the page as a visitor gets it at 1440 x 900, with the field as a software renderer draws it (one still picture): its
+// first paints, no layout shift over a full scroll, and no long task in 3 s of wheel scrolling
+let perf = null;
+{
+  const t = await open("index.html", { width: 1440, init: () => {
+    const m = window.__perf = { cls: 0, shifts: 0, long: [], lcp: 0, lcpOf: "" };
+    new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) { m.cls += e.value; m.shifts++; } }).observe({ type: "layout-shift", buffered: true });
+    new PerformanceObserver((l) => { for (const e of l.getEntries()) m.long.push([Math.round(e.startTime), Math.round(e.duration)]); }).observe({ type: "longtask", buffered: true });
+    new PerformanceObserver((l) => { for (const e of l.getEntries()) { m.lcp = e.startTime; m.lcpOf = e.element ? e.element.tagName.toLowerCase() + "." + e.element.className : ""; } }).observe({ type: "largest-contentful-paint", buffered: true });
+  } });
+  const p = t.page;
+  await p.waitForSelector('#field[data-state="settled"]', { state: "attached", timeout: 5000 });
+  await p.waitForTimeout(1600);
+  const t0 = await p.evaluate(() => performance.now());
+  await p.mouse.move(720, 450);
+  for (let i = 0; i < 60; i++) { await p.mouse.wheel(0, i < 30 ? 160 : -160); await p.waitForTimeout(50); }
+  const t1 = await p.evaluate(() => performance.now());
+  await p.evaluate(() => scrollTo(0, document.documentElement.scrollHeight)); await p.waitForTimeout(1200);
+  await p.evaluate(() => scrollTo(0, 0)); await p.waitForTimeout(300);
+  const m = await p.evaluate(() => ({ ...window.__perf, fcp: (performance.getEntriesByName("first-contentful-paint")[0] || {}).startTime, soft: !!document.getElementById("field") }));
+  perf = { ...m, scroll: Math.round(t1 - t0), during: m.long.filter(([s]) => s >= t0 && s <= t1) };
+  assert.ok(m.soft, "no field on the software renderer");
+  assert.equal(perf.cls, 0, `layout shift over a full scroll: ${perf.cls} in ${perf.shifts} shifts`);
+  assert.deepEqual(perf.during, [], `long tasks in ${perf.scroll} ms of wheel scrolling`);
+  await done(t, "performance", [API]);
+}
+console.log(`reveal: transition delays ${reveal.delays.join(", ")} ms; from the scroll to the last transitionend (${reveal.ms} ms) ${reveal.layout} Layout and ${reveal.paint} Paint events (to the trace's end, settle included: ${reveal.layoutAll} Layout, ${reveal.paintAll} Paint)`);
+console.log(`performance at 1440 x 900: FCP ${Math.round(perf.fcp)} ms, LCP ${Math.round(perf.lcp)} ms (${perf.lcpOf}), CLS ${perf.cls.toFixed(3)} over a full scroll, ${perf.during.length} long tasks in ${perf.scroll} ms of wheel scrolling (${perf.long.length} in the whole visit${perf.long.length ? ": " + JSON.stringify(perf.long) : ""})`);
 
 // GitHub's API down, rate-limited or answering junk: the release-page link stays, and nothing odd is shown
 const fallback = `<a href="${REPO}/releases/latest">shown on the release page</a>`;
@@ -528,7 +736,8 @@ const press = async (p, sel) => { const b = await p.locator(sel).boundingBox(); 
   measured = { white: Math.max(...whites), frames: cast.frames.length, both: w.both, ofFrames: w.frames, duration: Math.round(w.removed - w.click), swap: Math.round(w.removed - w.added), moving: Math.round(w.removed - w.moving), overlap: w.overlap, mid: w.mid };
   curtain(w, "page transitions");
   console.log(`page transitions: seeked to its middle (${w.mid.t} ms, the seek took ${w.mid.spent} ms) the curtain holds: ${JSON.stringify(w.mid)}, worst frame overlap ${w.overlap.toFixed(1)} px`);
-  // 800 ms of motion; the old page is let go at the latest by its 1160 ms safety timer, even when frames stall
+  // 800 ms of motion; the old page leaves when the curtain has finished, at the latest by its 1100 ms safety timer even
+  // when frames stall (1160 ms allowed)
   assert.ok(measured.moving >= 600 && measured.swap <= 1160, `the transition took ${measured.moving} ms on screen, ${measured.swap} ms in the page`);
 
   // Back: the same document, the home page where it was left, and its workspace alive again
@@ -596,7 +805,7 @@ const press = async (p, sel) => { const b = await p.locator(sel).boundingBox(); 
   await cast.stop();
   const w = await stopWatch(p);
   assert.deepEqual([w.both, w.anims, await p.evaluate(() => [window.__marker, document.title, document.getAnimations().length])], [0, 0, [1, "Anomaly Hunter Privacy", 0]], "reduced motion: a slide");
-  assert.ok(atRest(await poses(p, "[data-enter], [data-scrub], main")), "reduced motion: something moved");
+  assert.ok(atRest(await poses(p, `${HOOKED}, main`)), "reduced motion: something moved");
   assert.ok(Math.max(...cast.frames.map(whiteShare)) <= 0.02, "reduced motion: a white frame");
   await done(t, "page transitions with reduced motion", [API]);
 }

@@ -4,22 +4,25 @@
 // state. The two pages share the screen side by side, split by one moving vertical edge drawn as a 2px gold line: the
 // new page is uncovered from the right as the old one is covered from the left, each clipped to its side of the edge,
 // so text is never drawn over text. The old page drifts left and dims a little, the new one settles from the right, all
-// by the clock (WAAPI, 800 ms); the new page's own entrance starts as the edge passes halfway, through motion.js
-// ("ah:page"). The document never unloads, so there is no white frame between pages. Back and Forward run the same
-// transition the other way and return to the scroll position kept in history.state. Anything that is not a plain
-// click on one of the three pages (a modifier key, a new tab, a download, another site, a #hash on this page) is left
-// to the browser; a page that does not come back whole is opened the ordinary way. With reduced motion the page is
-// swapped in one step. Page scripts set themselves up on "ah:page" and let go on "ah:leave" (home.js, support.js).
+// by the clock (WAAPI, 800 ms, on the site's --ease-out); the new page's own entrance starts as the edge passes halfway,
+// through motion.js ("ah:page"). The clip-path that keeps the two pages apart is the one property here that is not a
+// transform or an opacity: no other can split the screen along a moving edge (docs/design/motion.md). The document
+// never unloads, so there is no white frame between pages. Back and Forward run the same transition the other way and
+// return to the scroll position kept in history.state. Anything that is not a plain click on one of the three pages (a
+// modifier key, a new tab, a download, another site, a #hash on this page) is left to the browser; a page that does
+// not come back whole is opened the ordinary way. With reduced motion the page is swapped in one step. Page scripts
+// set themselves up on "ah:page" and let go on "ah:leave" (home.js, support.js).
 (() => {
   const html = document.documentElement;
   const PAGES = ["index.html", "privacy.html", "support.html"];
   // A crossfade drew both headlines half-opaque in one place at 300 ms, a smudge that read as a glitch (AH-73 review,
   // 1440 x 900 screenshots, 2026-10-30). A curtain keeps both pages moving at once with never a pixel of one over the
-  // other: one ease-in-out edge, and the drift and dim on the same curve so the clips stay true to the edge in every frame
-  // The edge is halfway across at 385 ms on this curve; the entrance starts at 300 so its label is in by then and its
-  // headline (one 90 ms step later) leaves as the edge passes the middle. Started at 400, the right of the screen showed
-  // an empty page at 450 ms
-  const DUR = 800, EASE = "cubic-bezier(.77, 0, .18, 1)", DRIFT = 0.06, DIM = 0.6, HALF = 300;
+  // other: one edge, and the drift and dim on the same curve so the clips stay true to the edge in every frame. The
+  // curve is the site's own --ease-out (AH-83): a fast start and a long landing, like every other motion here. The new
+  // page's entrance starts when the edge is halfway across (81 ms on that curve), read from the curve itself: started
+  // later than the edge, the right of the screen showed an empty page (AH-73, 450 ms)
+  const EASE = getComputedStyle(html).getPropertyValue("--ease-out").trim() || "cubic-bezier(.16, 1, .3, 1)";
+  const DUR = 800, DRIFT = 0.06, DIM = 0.6, HALF = window.AH && window.AH.ease ? Math.round(DUR * window.AH.ease.when(0.5)) : 80;
   const dir = location.pathname.slice(0, location.pathname.lastIndexOf("/") + 1);
   const pageOf = (u) => {
     if (u.origin !== location.origin) return null;
@@ -123,6 +126,11 @@
   function swap(doc, src, u, y, back) {
     if (run) run.end();
     const old = document.getElementById("page"), next = document.importNode(src, true);
+    // the old page's moving parts keep the pose they have now while it leaves: an entrance (WAAPI, which motion.js
+    // cancels below), a reveal mid-rise (a CSS transition) and the scroll-linked decoration (a scroll timeline would
+    // replay on a pinned page). Read before anything moves, written inline over all three
+    const frozen = [...old.querySelectorAll("[data-enter], .reveal-item, .rule, [data-depth]")].map((el) => { const c = getComputedStyle(el); return [el, c.transform, c.translate, c.opacity]; });
+    for (const [el, tf, tr, op] of frozen) { const s = el.style; s.transition = s.animation = "none"; s.transform = tf; s.translate = tr; s.opacity = op; }
     const r = old.getBoundingClientRect(), notice = document.querySelector(".notice-bar");
     // while the pages trade places the browser must not "anchor" the scroll to a node of the leaving page (it moved
     // the new page to 738 px instead of its top); also lifts the field over the moving pages (styles.css)
@@ -158,11 +166,9 @@
     history.replaceState({ ah: 1, i: index, y: Math.round(scrollY) }, "");
 
     const still = window.AH ? window.AH.still : matchMedia("(prefers-reduced-motion: reduce)").matches;
-    // motion.js starts on the new page and puts the old page's moving parts at rest: keep them where they were. The new
-    // page's entrance waits, hidden, until the edge is halfway across
-    const frozen = [...old.querySelectorAll("[data-enter], [data-scrub]")].map((el) => [el, el.style.transform, el.style.opacity]);
+    // motion.js starts on the new page (the old one keeps the poses frozen above); its entrance and reveals wait,
+    // hidden, until the edge is halfway across
     document.dispatchEvent(new CustomEvent("ah:page", { detail: { root: next, wait: still ? 0 : HALF } }));
-    for (const [el, tf, op] of frozen) { el.style.transform = tf; el.style.opacity = op; }
 
     const h = next.querySelector("h1");
     if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); }
@@ -196,7 +202,11 @@
       },
     };
     run = me;
-    me.timer = setTimeout(me.end, DUR + 360);
-    anims[1].finished.then(me.end, () => {});
+    // the old page leaves when all three animations have finished; the timer only if they never do (frames stalled, a
+    // background tab). 300 ms past the end: a loaded box started the motion 170 ms late and drew a frame every 80 ms,
+    // so the animations finished at 1050 to 1150 ms, against tools/test_site.mjs's 1160 ms, and a timer at that very
+    // mark lost to its own jitter. By then --ease-out has moved the edge more than 99.5% of the way
+    me.timer = setTimeout(me.end, DUR + 300);
+    Promise.all(anims.map((a) => a.finished)).then(me.end, () => {});
   }
 })();
