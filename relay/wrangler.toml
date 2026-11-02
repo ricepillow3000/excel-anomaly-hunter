@@ -1,5 +1,7 @@
-# Cloudflare Worker config for the AI relay. Deploy from this folder: npx wrangler deploy
-# Secrets (never in this file or the repo): npx wrangler secret put GEMINI_KEY   and   npx wrangler secret put TOKENS
+# Cloudflare Worker config for the AI relay. Deploy from this folder: npx wrangler@4.151.1 deploy
+# Secrets (never in this file or the repo): npx wrangler@4.151.1 secret put GEMINI_KEY   and   npx wrangler@4.151.1 secret put TOKENS
+# wrangler is pinned to a release two weeks old or more: a bare `npx wrangler` runs whatever was published last, while it
+# holds the Gemini key and the invite list (AH-87). To move it, change every `wrangler@` here and in new-invite.mjs
 name = "anomaly-hunter-relay"
 main = "worker.js"
 compatibility_date = "2026-10-01"
@@ -19,10 +21,10 @@ new_sqlite_classes = ["Counter"] # the free plan's Durable Objects are SQLite-ba
 # Google's own limit is the real backstop: past it, users see "used up for today" / "busy, try in a minute".
 # Relay project rules: NO billing account linked (so a leaked key can never cost money); GEMINI_KEY restricted
 # to the Generative Language API. Rotate a leaked key: Cloud Console > Credentials > new key, same restriction;
-# npx wrangler secret put GEMINI_KEY (deploys at once); THEN delete the old key (re-uploading alone leaves it working).
+# npx wrangler@4.151.1 secret put GEMINI_KEY (deploys at once); THEN delete the old key (re-uploading alone leaves it working).
 
 # Keep the promise in worker.js: no request or answer is stored (saved Workers logs are on by default). Live
-# debugging still works with: npx wrangler tail
+# debugging still works with: npx wrangler@4.151.1 tail
 [observability]
 enabled = false
 
