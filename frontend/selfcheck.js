@@ -477,4 +477,25 @@ assert.match(recommendFix(["Id", "Stage"], [["x", "TBD"]], 0, {}, 'Placeholder "
 // AH-46: the note for a sorted table's blank tail gets its own advice, never "the values are just unusual together"
 assert.match(recommendFix(["Name", "APPEARANCES"], [["Hulk", ""]], 0, {}, "APPEARANCES is blank in 130 of 2000 rows, all at the end of the table, which is sorted by APPEARANCES", 0, 0).explanation,
   /^APPEARANCES is blank in 130 of 2000 rows, all at the end of the table, which is sorted by APPEARANCES - sorting puts blank cells last/);
+// AH-94: the scan skeleton is one still block in the page, never built per scan (e2e counts nodes over 30 scans), and
+// its rows are made of the very classes a list row is (components/row-item.js), so each bar sits where text lands
+const html = readFileSync(new URL("taskpane.html", import.meta.url), "utf8");
+const skel = /<section id="scan-skeleton" aria-hidden="true">([\s\S]*?)<\/section>/.exec(html)?.[1] || "";
+const skRows = skel.split('<div class="row-box">').slice(1);
+assert.equal(skRows.length, 5, "the scan skeleton has 5 list rows");
+const rowClasses = [...readFileSync(new URL("components/row-item.js", import.meta.url), "utf8").matchAll(/class="([a-z-]+)"/g)].map((m) => m[1]);
+assert.deepEqual([...new Set(rowClasses)].sort(), ["row-head", "row-why", "sev", "swatch"]);
+for (const r of skRows) for (const c of rowClasses) assert.ok(r.includes(`class="${c}"`), `a skeleton row lacks .${c}`);
+assert.ok(/class="summary"/.test(skel) && /class="legend"/.test(skel) && /class="flagged-list"/.test(skel) && !/\bid=/.test(skel), "the skeleton: summary, legend, list, and no id a test or script could mistake for the real one");
+assert.ok(!/\bstyle=|<style/.test(html), "the pane CSP refuses inline styles");
+// the entrance is unhurried (John: "it seems like I'm rushing the user") and still at rest well inside launch's 2 s
+const motion = readFileSync(new URL("components/motion.js", import.meta.url), "utf8");
+const [, DUR, STEP, MAX_DELAY] = /const DUR = (\d+), STEP = (\d+), MAX_DELAY = (\d+);/.exec(motion).map(Number);
+assert.ok(DUR >= 900 && STEP >= 100 && MAX_DELAY + DUR <= 1600, `entrance ${DUR}/${STEP}/${MAX_DELAY} ms`);
+// every new movement has its reduced-motion twin
+const css = readFileSync(new URL("styles/components.css", import.meta.url), "utf8");
+const calmCss = css.slice(css.lastIndexOf("@media (prefers-reduced-motion: reduce)"));
+for (const sel of [".flagged-list button::before", ".flagged-list button:is(:hover, :focus-visible):not(:disabled)", "#fix-changes li:hover", "#scan-skeleton::after"])
+  assert.ok(calmCss.includes(sel), `no reduced-motion rule for ${sel}`);
+assert.ok(/turnIn\(el\) \{\s*if \(!el \|\| still\(\)/.test(motion) && /fadeIn\(el\) \{\s*if \(!el \|\| still\(\)/.test(motion), "the page turn and the fade skip reduced motion");
 console.log("panel self-check passed");

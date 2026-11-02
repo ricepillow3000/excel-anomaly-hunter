@@ -10,6 +10,7 @@ import { recommendFix, suggestTypo } from "../features/fix.js";
 import { fillRow } from "../features/highlight.js";
 import { listRows } from "./results.js";
 import { saveDecisions } from "../features/decisions.js";
+import { turnIn } from "../components/motion.js";
 
 // One row's card: what's wrong, the suggested fix (Accept / Dismiss, then Undo / Next row), and Ask AI.
 export function onSelect(e) {
@@ -35,6 +36,7 @@ export async function openFix(i, selectInSheet) {
   $("fix-changes").innerHTML = "";
   $("fix-explanation").textContent = "";
   only("fix-view");
+  turnIn($("fix-view")); // the card turns in like a page, here and on Next row
   await Excel.run(async (ctx) => {
     const ws = ctx.workbook.worksheets.getItem(sheet);
     const range = ws.getRangeByIndexes(startRow + 1 + i, startCol, 1, columns.length).load("formulas");

@@ -65,6 +65,22 @@
         <p class="hint">Your data needs a top row of column names (like Date, Amount), with one record per row below it.</p>
       </section>
 
+      <!-- the results' shape during a scan (AH-94): the same classes as #results and a #flagged-list row
+           (components/row-item.js), so each bar lines up with the text that replaces it; shown by #main-ui[data-scanning] -->
+      <section id="scan-skeleton" aria-hidden="true">
+        <p class="summary"><span class="sk-bar sk-long">&nbsp;</span><span class="sk-bar sk-mid">&nbsp;</span></p>
+        <ul class="legend"><li><span class="swatch"></span><span class="sk-bar sk-chip">&nbsp;</span></li><li><span class="swatch"></span><span class="sk-bar sk-chip">&nbsp;</span></li></ul>
+        <h2><span class="sk-bar sk-title">&nbsp;</span></h2>
+        <p class="hint"><span class="sk-bar sk-long">&nbsp;</span><span class="sk-bar sk-short">&nbsp;</span></p>
+        <ul class="flagged-list">
+          <li><div class="row-box"><span class="row-head"><span class="swatch"></span><span class="sk-bar sk-label">&nbsp;</span><span class="sev"><span class="sk-bar sk-tag">&nbsp;</span></span></span><span class="row-why"><span class="sk-bar sk-long">&nbsp;</span><span class="sk-bar sk-mid">&nbsp;</span></span></div></li>
+          <li><div class="row-box"><span class="row-head"><span class="swatch"></span><span class="sk-bar sk-label">&nbsp;</span><span class="sev"><span class="sk-bar sk-tag">&nbsp;</span></span></span><span class="row-why"><span class="sk-bar sk-long">&nbsp;</span><span class="sk-bar sk-mid">&nbsp;</span></span></div></li>
+          <li><div class="row-box"><span class="row-head"><span class="swatch"></span><span class="sk-bar sk-label">&nbsp;</span><span class="sev"><span class="sk-bar sk-tag">&nbsp;</span></span></span><span class="row-why"><span class="sk-bar sk-long">&nbsp;</span><span class="sk-bar sk-mid">&nbsp;</span></span></div></li>
+          <li><div class="row-box"><span class="row-head"><span class="swatch"></span><span class="sk-bar sk-label">&nbsp;</span><span class="sev"><span class="sk-bar sk-tag">&nbsp;</span></span></span><span class="row-why"><span class="sk-bar sk-long">&nbsp;</span><span class="sk-bar sk-mid">&nbsp;</span></span></div></li>
+          <li><div class="row-box"><span class="row-head"><span class="swatch"></span><span class="sk-bar sk-label">&nbsp;</span><span class="sev"><span class="sk-bar sk-tag">&nbsp;</span></span></span><span class="row-why"><span class="sk-bar sk-long">&nbsp;</span><span class="sk-bar sk-mid">&nbsp;</span></span></div></li>
+        </ul>
+      </section>
+
       <section id="results" hidden>
         <p id="summary" class="summary"></p>
         <p id="level-change" class="hint" role="status" hidden></p>

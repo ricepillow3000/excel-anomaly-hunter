@@ -112,12 +112,14 @@
   }
 
   // The header, notice bar and footer stay the same elements: only what differs (a link's target, aria-current, a
-  // footer link's words) is changed in place, so nothing in them moves or flickers.
+  // footer link's words) is changed in place, so nothing in them moves or flickers. What motion.js wrote on them (the
+  // footer's reveal, AH-93) is kept: dropped, the footer went see-through on every page change
+  const KEEP = new Set(["data-revealed", "data-settled", "style"]);
   function morph(a, b) {
     if (a.isEqualNode(b)) return;
     if (a.nodeType !== b.nodeType || a.nodeName !== b.nodeName || a.childNodes.length !== b.childNodes.length) { a.replaceWith(document.importNode(b, true)); return; }
     if (a.nodeType !== 1) { a.nodeValue = b.nodeValue; return; }
-    for (const { name } of [...a.attributes]) if (!b.hasAttribute(name)) a.removeAttribute(name);
+    for (const { name } of [...a.attributes]) if (!b.hasAttribute(name) && !KEEP.has(name)) a.removeAttribute(name);
     for (const { name, value } of [...b.attributes]) if (a.getAttribute(name) !== value) a.setAttribute(name, value);
     const ak = [...a.childNodes], bk = [...b.childNodes];
     ak.forEach((k, i) => morph(k, bk[i]));

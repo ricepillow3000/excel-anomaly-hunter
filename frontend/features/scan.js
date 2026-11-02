@@ -18,10 +18,26 @@ export const setPowerBi = (on) => { try { localStorage.setItem(POWER_BI_KEY, on 
 
 // Agent 2 in the workflow: read the sheet, have the engine check it, deliver the results to the pane.
 // ---- Find problems: read, check, list, highlight ----
-export async function runScan(auto) { // auto === false: the re-check right after auto-fix (never auto-fixes twice)
+// The scan skeleton (AH-94): a still copy of the results' shape in taskpane.html (#scan-skeleton) stands where they will
+// land from the click until they render, shown by one attribute: no node is made per scan. A scan the Find problems
+// button started keeps it at least HOLD ms, so a fast scan still reads as "checked" instead of a flicker; a slider
+// re-check or the re-check after auto-fix never waits for it. An error, an empty sheet or the engine gone hide it.
+const HOLD = 450;
+const scanning = (on) => $("main-ui").toggleAttribute("data-scanning", on);
+
+export async function runScan(auto, held = false) { // auto === false: the re-check right after auto-fix (never auto-fixes twice)
   const t0 = Date.now();
   state.fix = null;
   if (state.view !== "results") only(state.lastScan ? "results" : "empty-state"); // no fix view left without its row
+  scanning(true);
+  try {
+    await scan(auto, held, t0);
+  } finally {
+    scanning(false);
+  }
+}
+
+async function scan(auto, held, t0) {
   busy("Step 1 of 3: reading your sheet…", 0);
   const s = await readSheet((p) => busy(`Step 1 of 3: reading your sheet… ${Math.round(p * 100)}%`, p));
   if (!s) {
@@ -40,6 +56,8 @@ export async function runScan(auto) { // auto === false: the re-check right afte
   const body = await post("/scan", { columns: s.columns, rows: s.rows, limits, order_by: null, strength: level,
     power_bi: powerBiOn(), start_row: s.startRow, sheet: String(s.sheet).slice(0, 31),
     decisions: Object.keys(decided).length ? s.rows.map((_, i) => decided[i] || null) : null }, 300);
+  if (held) await new Promise((go) => setTimeout(go, Math.max(0, HOLD - (Date.now() - t0))));
+  scanning(false); // the results take the skeleton's place
   state.lastStrength = level; // Agent 3 judges fixes at the level this scan used
   state.lastScan = s;
   state.lastRows = body.rows;

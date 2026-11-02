@@ -34,37 +34,37 @@
 
   <section class="support" aria-label="Answers and contact">
     <div class="wrap cols">
-      <div class="faq" data-enter="bottom">
-        <div class="faq-head"><span>Question</span><span>Answer</span></div>
-        <details open>
+      <div class="faq" data-enter="bottom" data-reveal-group>
+        <div class="faq-head reveal-item"><span>Question</span><span>Answer</span></div>
+        <details class="reveal-item" open>
           <summary>The pane says "The checker isn't running"</summary>
           <div class="a"><p>Wait 30 seconds, then press <b>Try again</b>. Still stuck? Double-click <code>AnomalyHunter.exe</code> again. It asks you to close Excel, repairs the install, starts the checker and opens Excel again.</p></div>
         </details>
-        <details>
+        <details class="reveal-item">
           <summary>Windows says "Windows protected your PC"</summary>
           <div class="a"><p>The app is not code-signed yet, so Windows warns about it. Click <b>More info</b>, then <b>Run anyway</b>. To check the file first, compare its SHA-256 with the one on the <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest">release page</a>.</p></div>
         </details>
-        <details>
+        <details class="reveal-item">
           <summary>How do I add it to Excel?</summary>
           <div class="a"><p>After the install, Excel opens a "Start here" workbook with the steps: <b>Home &gt; Add-ins &gt; More Add-ins &gt; SHARED FOLDER &gt; Anomaly Hunter &gt; Add</b>. You do this once.</p></div>
         </details>
-        <details>
+        <details class="reveal-item">
           <summary>How do I update?</summary>
           <div class="a"><p>Download the latest <a href="index.html#download">AnomalyHunter.exe</a> and double-click it. If Excel is open, it asks you to close it first. Your AI key stays. The version you have is the <b>Engine</b> line at the bottom of the pane.</p></div>
         </details>
-        <details id="uninstall">
+        <details class="reveal-item" id="uninstall">
           <summary>How do I uninstall?</summary>
           <div class="a"><p>Press Windows+R, paste <code>"%LOCALAPPDATA%\AnomalyHunter\AnomalyHunter.exe" uninstall</code> and press Enter. It removes the add-in, the checker, its certificate and its files, except the app file itself, which you can then delete. It is not listed in Windows "Installed apps". The <a href="privacy.html#rights">privacy page</a> lists exactly what it removes.</p></div>
         </details>
-        <details>
+        <details class="reveal-item">
           <summary>Where is AI help, and what does Remove key do?</summary>
           <div class="a"><p>Open <b>AI help (optional, free)</b> at the bottom of the pane. Paste a free Google AI key from <a href="https://aistudio.google.com/apikey">aistudio.google.com/apikey</a>, or an invite code (it starts with <code>inv_</code>), and click <b>Save key</b>. Then use <b>Ask AI</b> on a flagged row.</p><p><b>Remove key</b> deletes the key and invite code saved in your AnomalyHunter folder; scans and fixes keep working. With an invite kit, also delete <code>invite-code.txt</code> from the kit folder, or installing again turns AI help back on.</p></div>
         </details>
-        <details>
+        <details class="reveal-item">
           <summary>It flagged a correct value, or missed one</summary>
           <div class="a"><p>It is a helper, not a guarantee, so some false alarms and misses happen. Move the <b>How hard to look</b> slider: lower for fewer, surer flags; higher to look harder. A suggestion changes nothing until you click <b>Accept</b>; <b>Dismiss</b> skips it.</p></div>
         </details>
-        <details>
+        <details class="reveal-item">
           <summary>Is my data private?</summary>
           <div class="a"><p>A scan runs on your PC and sends nothing. Only <b>Ask AI</b> and <b>Check words with AI</b> send part of your sheet: to Google, or through John's relay to Google if you use an invite code. The <a href="privacy.html">privacy page</a> says exactly what.</p></div>
         </details>
@@ -72,9 +72,9 @@
 
       <section class="form-card" data-enter="bottom" aria-labelledby="contact-title">
         <h2 id="contact-title">Ask a question</h2>
-        <form id="ticket" novalidate>
-          <p class="notice"><b>Public.</b> This fills in a question on GitHub for you; nothing is sent until you press Submit there. You need a free GitHub account. Never paste client data, account numbers, your AI key or your invite code. John will never ask for them.</p>
-          <div class="field">
+        <form id="ticket" data-reveal-group novalidate>
+          <p class="notice reveal-item"><b>Public.</b> This fills in a question on GitHub for you; nothing is sent until you press Submit there. You need a free GitHub account. Never paste client data, account numbers, your AI key or your invite code. John will never ask for them.</p>
+          <div class="field reveal-item">
             <label for="topic">What is this about?</label>
             <select id="topic" name="topic">
               <option>Something isn't working</option>
@@ -83,22 +83,22 @@
               <option>Something else</option>
             </select>
           </div>
-          <div class="field">
+          <div class="field reveal-item">
             <label for="summary">Short summary</label>
             <input id="summary" name="summary" type="text" maxlength="120" required placeholder="Scan stops at row 3000">
           </div>
-          <div class="field">
+          <div class="field reveal-item">
             <label for="version">Engine version</label>
             <input id="version" name="version" type="text" maxlength="60" placeholder="v0.1.79 (2026-10-20)">
             <span class="hint">The Engine line at the bottom of the pane.</span>
           </div>
-          <div class="field">
+          <div class="field reveal-item">
             <label for="details">What happened, and what did you expect?</label>
             <textarea id="details" name="details" maxlength="4000" required placeholder="When I clicked Find problems in this sheet, ..."></textarea>
             <span class="hint">Made-up values only.</span>
           </div>
-          <label class="confirm"><input id="clean" type="checkbox" required><span>This contains no AI key, no invite code and no real or private data.</span></label>
-          <button class="btn btn-primary" type="submit">Prepare my question</button>
+          <label class="confirm reveal-item"><input id="clean" type="checkbox" required><span>This contains no AI key, no invite code and no real or private data.</span></label>
+          <button class="btn btn-primary reveal-item" type="submit">Prepare my question</button>
           <div class="result" id="result" hidden>
             <span>Ready. Open it on GitHub, check it, and press Submit there.</span>
             <span id="cut" hidden>What happened is too long for one link, so the link holds only its start. Copy the rest from the box above and paste it on GitHub.</span>
@@ -113,9 +113,9 @@
 </main>
 
 <footer class="foot">
-  <div class="wrap cols">
-    <span>Anomaly Hunter · made by one person · free, with no warranty</span>
-    <nav aria-label="Footer">
+  <div class="wrap cols" data-reveal-group>
+    <span class="reveal-item">Anomaly Hunter · made by one person · free, with no warranty</span>
+    <nav class="reveal-item" aria-label="Footer">
       <a href="index.html#download">Download</a>
       <a href="privacy.html">Privacy &amp; security</a>
       <a href="support.html">Support</a>
