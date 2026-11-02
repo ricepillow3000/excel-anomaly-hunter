@@ -42,7 +42,8 @@
   --ease-out: cubic-bezier(.16, 1, .3, 1);
   --ease-in-out: cubic-bezier(.65, 0, .35, 1); /* a glide and a page turn: soft at both ends, since they start from rest */
   --enter-dur: 1400ms; --enter-step: 160ms; --enter-shift: 120px; /* the hero's entrance */
-  --enter-bar-step: 75ms; --enter-lead: 350ms; /* the bar's blocks start this far apart, the hero this long after them */
+  --enter-bar-step: 75ms; --enter-lead: 120ms; /* the bar's blocks start this far apart, the hero this long after them:
+     350 ms put a slow phone's headline (4x CPU, slow 4G) past AH-87's 2.5 s budget; 120 ms keeps the bar first */
   --reveal-dur: 1100ms; --reveal-rise: 24px; --stagger: 90ms; --stagger-cap: 6;
   --lift-dur: 1200ms; --ease-lift: cubic-bezier(.33, 1, .68, 1); /* the checks' heading turned face up (AH-91) */
   --skeleton-dur: 1300ms; --land-step: 32ms; --land-fade: 280ms; /* the sample sheet loading (AH-89) */

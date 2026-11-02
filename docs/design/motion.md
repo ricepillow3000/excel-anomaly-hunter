@@ -28,7 +28,8 @@ changes). `tools/test_site.mjs --browser` checks every promise below.
   --ease-out: cubic-bezier(.16, 1, .3, 1);
   --ease-in-out: cubic-bezier(.65, 0, .35, 1); /* the glide, the page turn, the skeleton's light */
   --enter-dur: 1400ms; --enter-step: 160ms; --enter-shift: 120px; /* the hero's entrance */
-  --enter-bar-step: 75ms; --enter-lead: 350ms; /* the bar's blocks start 75 ms apart, the hero 350 ms after them */
+  --enter-bar-step: 75ms; --enter-lead: 120ms; /* the bar's blocks start 75 ms apart, the hero 120 ms after them (350 ms
+     put a slow phone's headline past its 2.5 s budget) */
   --reveal-dur: 1100ms; /* how long an item takes to rise into place */
   --reveal-rise: 24px;  /* the slide distance: how far below its place an item waits (20 to 30 px reads best) */
   --stagger: 90ms;      /* the stagger speed: the gap between items of one group that rise together */
