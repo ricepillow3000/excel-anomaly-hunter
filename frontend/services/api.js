@@ -1,8 +1,10 @@
 import { SERVER } from "../constants/index.js";
 
 // Talking to the local back end (engine + AI client).
-export async function getHealth() {
-  const r = await fetch(`${SERVER}/health`);
+// An engine that takes the call and never answers (hung, or another program on the port) left the start-up check
+// waiting for good, on the skeleton (AH-87): after 10 s it is "the checker isn't running", with Try again
+export async function getHealth(seconds = 10) {
+  const r = await fetch(`${SERVER}/health`, { signal: AbortSignal.timeout(seconds * 1000) });
   if (!r.ok) throw new Error("engine not answering");
   return r.json();
 }

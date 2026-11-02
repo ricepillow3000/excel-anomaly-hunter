@@ -75,7 +75,9 @@ input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var
 .sev-High .row-head .sev { color: var(--wine); transition: color .3s var(--ease); }
 .sev-High button:is(:hover, :focus-visible):not(:disabled) .row-head .sev { color: #2A3D68; } /* under the fill: gold, where wine would turn mint */
 .row-why { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 2px 0 0 20px; font-size: var(--fs--1); color: var(--muted); word-break: break-word; } /* full reason in the fix view */
-.flagged-list li.done { opacity: 0.6; } /* fixed or dismissed: still listed, so Undo is one click away */
+/* fixed or dismissed: still listed, so Undo is one click away, in the small print's grey with its "Fixed" / "Dismissed"
+   word. It was faded to 0.6, which took the grey to 2.7:1 and a High's wine to 3.7:1 (AH-87) */
+.flagged-list li.done .row-head, .flagged-list li.done .row-head .sev { color: var(--muted); }
 .flagged-list .more-rows { padding: var(--s2) var(--s3); font-size: var(--fs--1); color: var(--muted); }
 
 /* collapsible sections: a small-capitals summary under a hairline, a square plus that loses its upright when open */
@@ -91,8 +93,10 @@ details.more[open] summary { margin-bottom: var(--s3); }
 .steps { margin: 0 0 var(--s3); padding-left: 18px; font-size: var(--fs--1); }
 .steps li { margin-bottom: var(--s1); }
 .steps li::marker { font-weight: 800; color: var(--wine); }
+/* a box you type in is framed in the small print's grey (6.5:1 on field, 5.6:1 on the options' paper-2): the hairline
+   grey was 1.7:1, under the 3:1 a field's edge needs to be seen (WCAG 1.4.11, AH-87) */
 #ai-key, .limits-row input, #fix-intent { width: 100%; font: inherit; color: var(--ink); background: var(--field);
-  border: 1px solid var(--rule); border-radius: 0; transition: border-color .3s var(--ease); }
+  border: 1px solid var(--muted); border-radius: 0; transition: border-color .3s var(--ease); }
 #ai-key { padding: 10px; font-size: 13px; }
 #ai-key:hover, .limits-row input:hover, #fix-intent:hover { border-color: var(--navy); }
 #ai-key:focus, .limits-row input:focus, #fix-intent:focus { outline: 2px solid var(--navy); outline-offset: -1px; border-color: var(--navy); }

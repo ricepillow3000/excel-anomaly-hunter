@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import fs from "node:fs";
 import { trustArgs } from "./trust.mjs";
+import { contrastProblems } from "./contrast.mjs";
 import path from "node:path";
 const pw = await import(process.env.PLAYWRIGHT || "playwright") // local install, else the global one
   .catch(() => import(pathToFileURL(createRequire(import.meta.url).resolve("playwright", { paths: [process.env.NODE_PATH || ""] })).href));
@@ -112,6 +113,18 @@ const midShot = async (name, at, sel) => { if (!process.env.SHOTS) return;
 const cell = (a) => page.evaluate((a) => __cell("Sales", a), a);
 const idle = () => page.waitForFunction(() => !document.getElementById("scan").disabled);
 const find = async () => { await page.click("#scan"); await idle(); await page.waitForSelector("#results", { state: "visible" }); };
+// WCAG AA as the pane really draws it (AH-87): every text over 4.5:1 (3:1 large) against what lies under it, faded by
+// every opacity above it, every text box's edge and placeholder too. Fixed rows were faded to 0.6 (their grey 2.7:1) and
+// the boxes framed in a 1.7:1 hairline. The options' sections are opened for the look and closed again as they were
+const contrast = async (where) => {
+  // the page at rest, as a person reads it: right after a reload the entrance (components/motion.js) still holds the
+  // slider at part opacity for up to 1.2 s, and the gate once measured "How hard to look" mid-fade at 3.8:1
+  await page.waitForFunction(() => [...document.querySelectorAll("[data-enter]")].every((e) => !e.style.opacity && !e.style.transform), null, { timeout: 5000 });
+  const was = await page.$$eval("#main-ui details", (ds) => ds.map((d) => { const o = d.open; d.open = true; return o; }));
+  const bad = await page.evaluate(contrastProblems);
+  await page.$$eval("#main-ui details", (ds, was) => ds.forEach((d, k) => (d.open = was[k])), was);
+  ok(bad.length === 0, `${where}: every text, box edge and placeholder clears WCAG AA - ` + JSON.stringify(bad));
+};
 const openRow = async (r) => { await page.click(`#flagged-list button:has-text("Row ${r} ")`); await idle(); await page.waitForFunction(() => document.getElementById("fix-changes").children.length || document.getElementById("fix-explanation").textContent); };
 
 if (mode === "flow") {
@@ -193,6 +206,7 @@ if (mode === "flow") {
     ok(scaleOf(step) >= 1.03, "a proposed change steps up on hover - " + step);
     await page.mouse.move(1, 1); }
   ok((await text("#fix-title")) === "Row 11: probably wrong", "fix view titled in words");
+  await contrast("a row's card, Ask AI's box shown");
   ok((await text("#fix-reason")) === "Total 170.43 does not add up: Units × UnitCost = -14.95 · Units is -5, below its usual limit of 0",
     "reason in plain words - " + (await text("#fix-reason")));
   ok((await text("#fix-changes")).startsWith("C11: -5 → "), "preview old -> new");
@@ -266,6 +280,7 @@ if (mode === "flow") {
   await openStrict();
   await page.click("#edit-limits");
   const units = page.locator('#limits-rows .limits-row[data-column="Units"] input');
+  await contrast("the limits editor");
   await units.nth(0).fill("200"); await units.nth(1).fill("100"); await page.click("#save-limits");
   ok((await text("#limits-error")).includes('"Flag below" is bigger than "Flag above"') && (await page.isVisible("#limits-editor")), "low above high is refused");
   await units.nth(0).fill("-10"); await units.nth(1).fill("10000"); await page.click("#save-limits"); await idle();
@@ -390,6 +405,7 @@ if (mode === "flow") {
   ok((await cell("C22")).fill === null && (await cell("C11")).fill === null && (await cell("A51")).fill === "#FFEB9D",
     "a decided row is not highlighted again; the others are - " + JSON.stringify([await cell("C22"), await cell("C11"), await cell("A51")]));
   ok(/2 of \d+ done/.test(await text("#list-title")), "and counted done - " + (await text("#list-title")));
+  await contrast("the list with a Fixed and a Dismissed row");
   await page.click('#flagged-list button:has-text("Row 11 ")'); await idle();
   ok(await page.isVisible("#results") && (await text("#notice")).includes("Undo is only offered right after a fix"), "a row fixed before only selects its row, and says why there's no Undo - " + (await text("#notice")));
   await openRow(22);
@@ -416,6 +432,31 @@ if (mode === "flow") {
     ok(status === 200 && (await pop.title()) === `Anomaly Hunter, ${link}`, `${link} link opens its page (HTTP ${status})`);
     await pop.close();
   }
+
+  // 6g) "Forget what this workbook saved": every key the pane keeps in the workbook goes, and no cell changes. They stayed
+  // in the file after an uninstall, and nothing in the pane could clear them (AH-87). A limit and the decisions of 6e
+  // (row 22 dismissed, row 11 fixed) are there first
+  await openStrict(); await page.click("#edit-limits");
+  await page.locator('#limits-rows .limits-row[data-column="Units"] input').nth(1).fill("10000"); await page.click("#save-limits"); await idle();
+  const BOOK = ["anomalyHunterLimits", "anomalyHunterStrength", "anomalyHunterAutoUndo", "anomalyHunterDecisions", "Office.AutoShowTaskpaneWithDocument"];
+  const held = () => page.evaluate((ks) => ks.filter((k) => __settings[k] !== undefined && __settings[k] !== null), BOOK);
+  const sheetNow = () => page.evaluate(() => { const out = []; for (let r = 1; r <= 301; r++) for (const c of "ABCDE") out.push(__cell("Sales", c + r)); return JSON.stringify(out); });
+  const heldBefore = await held(), cellsBefore = await sheetNow(), wrote0 = await page.evaluate(() => __log.length);
+  ok(heldBefore.includes("anomalyHunterLimits") && heldBefore.includes("anomalyHunterDecisions"), "a limit and decisions are in the workbook first - " + heldBefore);
+  await page.locator("details.more:has(#forget-book)").evaluate((d) => (d.open = true));
+  await page.click("#forget-book"); await idle();
+  const forgot = await text("#forget-state");
+  ok((await held()).length === 0 && forgot.startsWith("Removed from this workbook: the limits you changed;") && forgot.includes("the codes of the rows you fixed or dismissed")
+    && (await page.evaluate((n) => __log.length === n, wrote0)), "Forget removes every key the pane saved, says which, and writes no cell - " + forgot);
+  await page.reload(); await page.waitForSelector("#main-ui", { state: "visible" });
+  ok((await held()).length === 0 && (await sheetNow()) === cellsBefore, "after a reload the workbook holds none of them, and every cell is as it was");
+  await find();
+  ok((await tag(22)) === "Probably wrong" && (await text("#strength-val")) === "5 of 10" && (await text("#flagged-list")).includes("Units is 7777"),
+    `the next scan: row 22 is no longer Dismissed, the slider is back at 5, the automatic limits are used - ${await tag(22)}`);
+  await page.locator("details.more:has(#forget-book)").evaluate((d) => (d.open = true));
+  await page.click("#forget-book"); await idle(); // the scan saved the pane's opening setting again: only that goes now
+  ok((await text("#forget-state")) === "Removed from this workbook: the setting that opens this pane with the file. Your cells are as they were. Save the workbook to keep the change in the file; the next scan saves the setting that opens this pane again.",
+    "a second Forget names only what was there - " + (await text("#forget-state")));
 
   // 7a) 30 scans and re-checks: what the pane keeps (listeners, page nodes) stays what is on screen (AH-13). Counted by
   // Chromium itself after a forced garbage collection, so a leaked list or a listener added per scan shows up
@@ -492,6 +533,20 @@ if (mode === "flow") {
     `the engine down at start: said in plain words - ${refused} /health refused; ${opened}`);
   await page.click("#retry-health"); await page.waitForSelector("#main-ui", { state: "visible", timeout: 10000 }).catch(() => {});
   ok(await page.isVisible("#main-ui"), "Try again opens the pane once the engine answers");
+  // 9b) an engine that takes the call and never answers (hung, or another program on port 5055): the start-up check gave
+  // up never, and the pane stayed on its skeleton for good (AH-87). It gives up after 10 s and says the checker isn't running
+  let hung = 0;
+  const hang = () => { hung++; }; // never fulfilled, never aborted
+  await page.route("**/health", hang);
+  const t9 = Date.now();
+  await page.reload();
+  const said = await page.waitForSelector("#server-down", { state: "visible", timeout: 20000 }).then(() => true, () => false);
+  const waited = Date.now() - t9;
+  await page.unroute("**/health", hang);
+  ok(hung >= 1 && said && waited >= 9000 && waited < 20000 && !(await page.isVisible("#main-ui")),
+    `an engine that never answers /health: after ${waited} ms the pane says the checker isn't running (${hung} /health held)`);
+  await page.click("#retry-health"); await page.waitForSelector("#main-ui", { state: "visible", timeout: 10000 }).catch(() => {});
+  ok(await page.isVisible("#main-ui"), "and Try again opens the pane once the engine answers");
 }
 
 if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.py
@@ -608,17 +663,22 @@ if (mode === "nokey") {
   // an invite code turns AI help on (nothing is sent anywhere: the relay checks it at the first Ask AI), never stays on
   // screen or comes back from the engine; Remove key turns it off and deletes it from this PC
   const code = "inv_e2eNotARealInviteCode123";
-  await page.fill("#ai-key", code); await page.click("#save-key");
+  // a double click saves once: each Save sent its own /key, and a Google key is tried with Google for up to 15 s each (AH-87)
+  const k0 = keyCalls.length;
+  await page.fill("#ai-key", code); await page.dblclick("#save-key");
   await page.waitForFunction(() => document.getElementById("ai-state").textContent.startsWith("Invite code saved"));
+  await page.waitForTimeout(500); // room for a second /key to show up
+  ok(keyCalls.length - k0 === 1, `a double click on Save key sends one /key - ${keyCalls.length - k0}`);
   const health = await page.evaluate(() => fetch("/health").then((r) => r.text()));
   ok((await page.isVisible("#ai-box")) && !(await page.isVisible("#ai-off")) && JSON.parse(health).ai_provider === "relay",
     "invite code saved: AI help is on, through the relay - " + (await text("#ai-state")));
   ok((await page.inputValue("#ai-key")) === "" && !(await page.content()).includes(code) && !health.includes(code)
     && fs.readFileSync(DIR + "cert/invite-code.txt", "utf8") === code, "the code is kept on this PC only: never on screen, never in an answer");
   const c5 = calls.length;
-  await page.click("#remove-key");
+  await page.dblclick("#remove-key");
   await page.waitForFunction(() => document.getElementById("ai-state").textContent === "Key removed. AI help is off.");
-  ok(since(c5) === "/key" && calls[c5][1].key === "", "Remove key sends exactly one /key, with an empty key - " + since(c5));
+  await page.waitForTimeout(500);
+  ok(since(c5) === "/key" && calls[c5][1].key === "", "Remove key, double-clicked, sends exactly one /key, with an empty key - " + since(c5));
   ok(!(await page.isVisible("#ai-box")) && (await page.isVisible("#ai-off")) && !fs.existsSync(DIR + "cert/invite-code.txt"),
     "Remove key: AI help off, the code deleted from this PC");
   // saving fails: the PC can't keep the file (the engine's 503, AH-13), or the engine is gone. Said where the key goes,

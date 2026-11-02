@@ -107,6 +107,9 @@ def create_app(scan_csv=None):
     scan writes both only when the pane says power_bi (off unless the user turns it on) and removes them otherwise.
     None = no file at all (tests)."""
     app = Flask(__name__, static_folder=str(PANEL), static_url_path="")
+    # Flask takes DEBUG from FLASK_DEBUG when it builds the app: one variable on the user's PC put Werkzeug's debugger
+    # and HTML tracebacks in place of our JSON errors (AH-87 audit). No debug switch, the environment's included (G1)
+    app.debug = False
     app.json = _JSON(app)
     # Werkzeug reads a body into memory only safely with a cap; 256 MB is far above a 2M-cell sheet (~20 MB measured)
     app.config["MAX_CONTENT_LENGTH"] = 256 * 1024 * 1024
@@ -125,6 +128,8 @@ def create_app(scan_csv=None):
         resp.headers["Cache-Control"] = "public, max-age=86400" if cacheable else "no-store"
         resp.headers["X-Content-Type-Options"] = "nosniff"  # a file is only ever run as the type we say it is
         resp.headers["Content-Security-Policy"] = CSP
+        # a link out of the pane (Google's key page, the website) never carries the engine's address or path (AH-87)
+        resp.headers["Referrer-Policy"] = "no-referrer"
         return resp
 
     @app.errorhandler(HTTPException)
@@ -223,14 +228,14 @@ def create_app(scan_csv=None):
         if key.startswith("inv_"):  # an invite code to John's relay: kept here, checked by the relay on use
             if not re.fullmatch(r"inv_[A-Za-z0-9_\-]{20,64}", key):
                 return {"error": "That doesn't look like a whole invite code - copy it again."}, 400
-            client.INVITE_FILE.write_text(key, encoding="utf-8")
+            _write_private(client.INVITE_FILE, key)
             on = client.provider() == "relay"
             return {"ai_available": client.api_key_configured(), "ai_provider": client.provider(),
                     "message": "Invite code saved. AI help is on." if on else "Invite code saved - the shared AI isn't switched on yet."}
         ok, words = client.check_key(key)  # tested now, not at the first Ask AI
         if ok is False:
             return {"error": words}, 400  # a rejected key is not kept
-        client.KEY_FILE.write_text(key, encoding="utf-8")
+        _write_private(client.KEY_FILE, key)
         return {"ai_available": client.api_key_configured(), "ai_provider": client.provider(), "message": words}
 
     @app.post("/fix")
@@ -307,6 +312,17 @@ def create_app(scan_csv=None):
     return app
 
 
+def _write_private(path, data):
+    """A secret file only its owner can read. On Linux and a Mac (`serve`) the key, the invite code and key.pem were
+    written 0644 by the default umask: any account on the machine could read them (AH-87 audit). Windows has no such
+    bits: the file sits in %LOCALAPPDATA%, whose ACL already gives it to this user (and SYSTEM, admins) alone."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0), 0o600)  # 0600 from birth
+    with os.fdopen(fd, "wb") as f:
+        if os.name != "nt":
+            os.fchmod(fd, 0o600)  # a file an older version wrote 0644 is tightened too
+        f.write(data.encode("utf-8") if isinstance(data, str) else data)
+
+
 def _ku(**on):
     names = ("digital_signature", "content_commitment", "key_encipherment", "data_encipherment",
              "key_agreement", "key_cert_sign", "crl_sign", "encipher_only", "decipher_only")
@@ -366,8 +382,7 @@ def make_cert(folder=HOME, days=5 * 365):
     folder.mkdir(parents=True, exist_ok=True)
     pem = serialization.Encoding.PEM
     (folder / "cert.pem").unlink(missing_ok=True)  # cert.pem = "done" marker: crash mid-write -> regenerated next run
-    (folder / "key.pem").write_bytes(key.private_bytes(pem, serialization.PrivateFormat.PKCS8,
-                                                       serialization.NoEncryption()))
+    _write_private(folder / "key.pem", key.private_bytes(pem, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
     (folder / "ca.pem").write_bytes(ca.public_bytes(pem))
     (folder / "cert.pem").write_bytes(leaf.public_bytes(pem))
     return True
@@ -411,7 +426,10 @@ def main():
     crt, key = HOME / "cert.pem", HOME / "key.pem"
     if not (crt.exists() and key.exists()):
         sys.exit(f"No HTTPS cert in {HOME}. Run install.bat.")
-    create_app(HOME / "latest-scan.csv").run(host="127.0.0.1", port=PORT, ssl_context=tls_context(crt, key))
+    # every switch Flask would read from the environment or a .env is set here: FLASK_DEBUG=1 on the user's PC turned
+    # on the debugger and reloader (AH-87 audit); the engine has no debug mode at all (G1)
+    create_app(HOME / "latest-scan.csv").run(host="127.0.0.1", port=PORT, ssl_context=tls_context(crt, key), debug=False,
+                                            use_debugger=False, use_reloader=False, load_dotenv=False, threaded=True)
 
 
 if __name__ == "__main__":

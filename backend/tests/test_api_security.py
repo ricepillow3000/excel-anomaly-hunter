@@ -98,8 +98,11 @@ def test_a_scan_never_sends_anything_to_google_even_with_a_key_saved(monkeypatch
 
 def test_safe_headers_on_every_answer():
     c = APP.test_client()
-    for r in (c.get("/health"), c.get("/taskpane.html"), c.get("/assets/mark-16.png"), c.post("/scan", data="x"), c.get("/nope")):
+    for r in (c.get("/health"), c.get("/taskpane.html"), c.get("/assets/mark-16.png"), c.post("/scan", data="x"), c.get("/nope"),
+              c.options("/scan", headers={"Origin": "https://evil.example"})):
         assert r.headers["X-Content-Type-Options"] == "nosniff"
+        # AH-87 audit: a link out of the pane (Google's key page, the website) never carries the engine's address or path
+        assert r.headers["Referrer-Policy"] == "no-referrer"
         # exact string: loosening it (say 'unsafe-inline' or a new host) must be a deliberate, re-tested change
         assert r.headers["Content-Security-Policy"] == (
             "default-src 'self'; script-src 'self' https://appsforoffice.microsoft.com; object-src 'none'; "
@@ -276,3 +279,130 @@ def test_the_workbook_repointer_never_writes_over_its_source_through_a_hard_link
     copy = tmp_path / "Copy.xlsx"  # a real copy (a new file) still works
     r = subprocess.run([sys.executable, "-O", str(tool), str(book), str(copy)], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0 and b"excel-anomaly-hunter\\frontend" in zipfile.ZipFile(copy).read("xl/webextensions/webextension1.xml")
+
+
+def test_an_environment_variable_can_never_turn_on_the_debugger(monkeypatch, tmp_path):
+    # AH-87 audit: Flask reads FLASK_DEBUG when it builds the app and again in app.run(), and a .env beside the engine
+    # too, so one variable on the user's PC turned on Werkzeug's debugger and reloader: a debug switch (G1), and HTML
+    # tracebacks in place of our JSON
+    import werkzeug.serving
+    monkeypatch.setenv("FLASK_DEBUG", "1")
+    monkeypatch.setenv("FLASK_ENV", "development")
+    monkeypatch.setenv("FLASK_SKIP_DOTENV", "0")
+    app = create_app()
+    assert app.debug is False
+    monkeypatch.setattr(client, "provider", lambda: 1 / 0)  # a bug: our JSON words, never the debugger's page
+    r = app.test_client().get("/health")
+    assert r.status_code == 500 and r.get_json() == {"error": "Engine error - details in server.log"}
+    server.make_cert(tmp_path)
+    monkeypatch.setattr(server, "HOME", tmp_path)
+    monkeypatch.setattr(server, "_already_running", lambda: False)
+    monkeypatch.setattr(server.sys, "argv", ["serve"])
+    started = []
+    monkeypatch.setattr(werkzeug.serving, "run_simple", lambda host, port, wsgi, **kw: started.append((host, port, wsgi, kw)))
+    server.main()
+    [(host, port, wsgi, kw)] = started  # nothing listens: the stub is the server
+    assert port == server.PORT
+    assert host == "127.0.0.1" and wsgi.debug is False
+    assert kw["use_debugger"] is False and kw["use_reloader"] is False and kw["threaded"] is True
+
+
+def test_a_cross_site_preflight_is_refused_on_every_route():
+    # AH-87 audit: OPTIONS was left out of ROUTES, so nothing proved a browser's CORS preflight from another website
+    # is turned away: a 403 with no Access-Control-Allow-Origin, so the browser never sends the real request
+    c = APP.test_client()
+    paths = sorted({p for p, _ in ROUTES})
+    assert "/scan" in paths
+    for path in paths:
+        for origin in ("https://evil.example", "null"):
+            r = c.options(path, headers={"Origin": origin, "Access-Control-Request-Method": "POST",
+                                         "Access-Control-Request-Headers": "content-type"})
+            assert r.status_code == 403, (path, origin, r.status_code)
+            assert not any(h.lower().startswith("access-control-allow") for h, _ in r.headers), (path, r.headers)
+
+
+def _planted_sheet(n=200):
+    rows = [[f"Pen {k % 7}", ["East", "West", "North"][k % 3], 10 + k % 5, round(2.5 + (k % 4) * 0.25, 2), "F" if k % 2 else "M"]
+            for k in range(n)]
+    rows[40][2] = 1000        # a x100 slip
+    rows[90][1] = "Wset"      # a misspelling
+    rows[120][2] = "12O"      # text in a number column
+    rows[150] = list(rows[149])  # a duplicate row
+    return {"columns": ["Item", "Region", "Units", "Price", "Sex"], "rows": rows}
+
+
+def test_a_scan_never_opens_a_connection_off_this_pc(monkeypatch):
+    # the website, README and pane say a scan never leaves your PC: until AH-87 only Google's client was stubbed
+    # (test above), so a new library reaching the internet (a telemetry ping, a model download) would pass unseen.
+    # Every way out of the process - a socket's connect, a ready-made connection, urllib - fails the scan here
+    import socket
+    import urllib.request
+    tried = []
+
+    def refuse(*a, **k):
+        tried.append(a[1:2] or a[:1])
+        raise OSError("a scan tried to open a connection")
+    monkeypatch.setattr(socket.socket, "connect", refuse)
+    monkeypatch.setattr(socket.socket, "connect_ex", refuse)
+    monkeypatch.setattr(socket, "create_connection", refuse)
+    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    c = APP.test_client()
+    assert c.get("/health").status_code == 200
+    for strength in (5, 10):
+        r = c.post("/scan", json={**_planted_sheet(), "strength": strength, "limits": {}})
+        assert r.status_code == 200, r.get_json()
+        flagged = {i for i, row in enumerate(r.get_json()["rows"]) if row["severity"]}
+        assert {40, 90, 120} <= flagged, (strength, sorted(flagged))
+        assert r.get_json()["fairness"], strength  # the people sheet's report ran too, offline
+    assert tried == []
+
+
+@pytest.mark.skipif(__import__("os").name == "nt", reason="Windows: %LOCALAPPDATA%'s own ACL is the user's alone")
+def test_the_ai_key_the_invite_code_and_the_tls_key_are_readable_only_by_their_owner(monkeypatch, tmp_path):
+    # AH-87 audit: on Linux and a Mac (`serve`) they were written with the default umask, 0644: any other account on
+    # the machine could read the Google key, spend the invite's share, or pretend to be the engine
+    import os
+    old = os.umask(0o022)
+    try:
+        monkeypatch.setattr(client, "check_key", lambda k: (True, "Key works."))
+        c = create_app().test_client()
+        assert c.post("/key", json={"key": "AIzaMadeUpTestKey123"}).status_code == 200  # gitleaks:allow - made-up
+        assert c.post("/key", json={"key": "inv_" + "b" * 24}).status_code == 200
+        server.make_cert(tmp_path / "tls")
+        for f in (client.KEY_FILE, client.INVITE_FILE, tmp_path / "tls" / "key.pem"):
+            assert f.stat().st_mode & 0o077 == 0, (f.name, oct(f.stat().st_mode))
+        # rewriting a file that was already 0644 tightens it too (an install from before this fix)
+        client.KEY_FILE.chmod(0o644)
+        assert c.post("/key", json={"key": "AIzaMadeUpTestKey456"}).status_code == 200  # gitleaks:allow - made-up
+        assert client.KEY_FILE.stat().st_mode & 0o077 == 0
+    finally:
+        os.umask(old)
+
+
+def test_every_package_the_app_imports_is_declared_and_every_declared_one_is_used():
+    # AH-87 audit: ai/client.py imported pydantic, which only anthropic declared (an anthropic release that drops it
+    # breaks Ask AI with no pin of ours moving), and Pillow sat in the exe extra imported by nothing: one more download
+    # and one more package for pip-audit, bundled into the exe because openpyxl picks it up when it is there
+    import ast
+    import importlib.metadata as md
+    import pathlib
+    import re
+    import tomllib
+    root = pathlib.Path(__file__).resolve().parents[2]
+    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    name = lambda r: re.sub(r"[-_.]+", "-", re.match(r"[A-Za-z0-9_.-]+", r).group()).lower()
+    declared = {name(r) for r in project["dependencies"]}
+    tools = {"pyinstaller", "pyinstaller-hooks-contrib"}  # the exe extra builds the app: tools, never imported
+    imported = set()
+    for f in (root / "backend" / "anomaly_hunter").rglob("*.py"):
+        for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Import):
+                imported |= {a.name.split(".")[0] for a in node.names}
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                imported.add(node.module.split(".")[0])
+    dists = md.packages_distributions()
+    used = {name(d) for m in imported for d in dists.get(m, [])} - {"anomaly-hunter"}
+    assert used - declared == set(), "imported but not in pyproject.toml's dependencies"
+    assert declared - used == set(), "declared but imported nowhere"
+    exe = {name(r) for r in project["optional-dependencies"]["exe"]}
+    assert exe <= tools, exe - tools

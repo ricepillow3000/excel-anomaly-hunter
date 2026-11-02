@@ -48,6 +48,7 @@ for (const p of PAGES) {
   // axe 4.10, 2026-10-20: an empty header cell is read as nothing; the announcement line sat outside every landmark
   assert.ok(!/<th[^>]*><\/th>/.test(src), `${p}: an empty <th>`);
   assert.ok(/<aside class="notice-bar" aria-label="Announcement">/.test(src), `${p}: the announcement line is not a landmark`);
+  assert.ok(/<body[^>]*>\s*(?:<!--[\s\S]*?-->\s*)?<a class="skip-link" href="#page">Skip to content<\/a>/.test(src), `${p}: "Skip to content" is not the first thing in <body>`);
   // page transitions (AH-73): one swappable container a page, and every script on every page (the document never
   // reloads, so a page reached by a transition runs only what the first page loaded)
   assert.equal(src.match(/<main\b[^>]*>/g).join(), `<main id="page" data-page="${{ "index.html": "home", "privacy.html": "privacy", "support.html": "support" }[p]}">`, `${p}: not one <main id="page">`);
@@ -104,7 +105,11 @@ const server = http.createServer((q, s) => {
 });
 await new Promise((ok) => server.listen(0, "127.0.0.1", ok));
 const BASE = `http://127.0.0.1:${server.address().port}/`;
-const browser = await chromium.launch();
+// a box with no GPU (a cloud session, a CI runner): Chromium 141 (Playwright 1.56) falls back to software WebGL by itself
+// and warns about it on every page ("Automatic fallback to software WebGL has been deprecated"), which failed the console
+// check before any page was looked at (2026-11-02). This flag is that same fallback, asked for: no other renderer, no
+// slower compositing (unlike --use-angle=swiftshader above), and a no-op on a PC with a GPU
+const browser = await chromium.launch({ args: ["--enable-unsafe-swiftshader"] });
 // Headless Chromium composites in software, so it reads the first WebGL frame any page shows back from SwiftShader and
 // logs "GPU stall due to ReadPixels" four times, once per browser process, though the page never calls readPixels (the
 // static check above keeps it that way). A blank page shows one first, outside the console check. Measured 2026-10-30:
@@ -840,6 +845,116 @@ for (const width of [1280, 390]) {
   const t = await open("support.html", { width });
   await supportForm(t.page);
   await done(t, `support form at ${width}px`);
+}
+// ---- contrast (AH-87): every text the pages show, read in Chromium against what lies under it, clears WCAG AA (4.5:1,
+// 3:1 for large text), every text box's edge 3:1, every placeholder 4.5:1. The sample's filtered-out rows were faded
+// to .3 (1.8:1), and the browser's own placeholder grey was 4.2:1. At rest (reduced motion: a rising block is see-through
+// on purpose for 700 ms), on every page, each filter of the sample, and the support form with its messages shown ----
+{
+  const { contrastProblems } = await import(pathToFileURL(path.join(SITE, "..", "e2e", "contrast.mjs")).href);
+  let checked = 0;
+  for (const width of [1280, 390]) for (const file of PAGES) {
+    const t = await open(file, { width, motion: "reduce" });
+    const states = file === "index.html" ? ["all", "recon", "keying", "label", "time"] : file === "support.html" ? ["empty", "sent"] : ["page"];
+    for (const state of states) {
+      if (file === "index.html") await t.page.click(`.typology [data-kind="${state}"]`);
+      if (state === "sent") { await t.page.fill("#summary", "x"); await t.page.fill("#details", "y"); await t.page.check("#clean"); }
+      if (file === "support.html") await t.page.click('button[type="submit"]');
+      const bad = await t.page.evaluate(contrastProblems);
+      assert.deepEqual(bad, [], `${file} at ${width}px (${state}): text or edges under WCAG AA`);
+      checked++;
+    }
+    await done(t, `contrast of ${file} at ${width}px`, [API]);
+  }
+  console.log(`contrast: every text, text box edge and placeholder over WCAG AA in ${checked} page states`);
+}
+// ---- the sample's "⋯" rows stay rows (AH-87 fix round 1): the skip link's first class, .skip, was also the separator
+// rows' (tr.skip), so its position: absolute pulled all five out of the table into one box at the sample's top left,
+// and no check saw it. In every filter state, at both widths, each one spans the table body and sits between the rows
+// before and after it ----
+for (const width of [1280, 390]) {
+  const t = await open("index.html", { width, motion: "reduce" });
+  for (const kind of ["all", "recon", "keying", "label", "time"]) {
+    await t.page.click(`.typology [data-kind="${kind}"]`);
+    const bad = await t.page.$$eval(".grid tbody", ([body]) => {
+      const b = body.getBoundingClientRect(), rows = [...body.rows], out = [];
+      rows.forEach((tr, k) => {
+        if (!tr.classList.contains("skip")) return;
+        const r = tr.getBoundingClientRect(), before = rows[k - 1]?.getBoundingClientRect(), after = rows[k + 1]?.getBoundingClientRect();
+        if (getComputedStyle(tr).position !== "static" || Math.abs(r.width - b.width) > 1 || (before && r.top < before.bottom - 1) || (after && r.bottom > after.top + 1))
+          out.push({ row: k, top: Math.round(r.top), width: Math.round(r.width), body: Math.round(b.width), before: before && Math.round(before.bottom), after: after && Math.round(after.top) });
+      });
+      return out;
+    });
+    assert.deepEqual(bad, [], `index.html at ${width}px, filter ${kind}: a "⋯" row is out of its place in the table`);
+  }
+  await done(t, `the sample's separator rows at ${width}px`, [API]);
+}
+console.log('sample: every "⋯" row spans the table body between its neighbours, in all 5 filter states at both widths');
+// ---- the skip link (AH-87): the notice bar, the brand and five links came before the page's content on every page, for
+// every keyboard visit. The first Tab lands on "Skip to content", shown while it has focus; Enter puts focus on the
+// page's content. After a page transition #page is the new page's <main>, and the link still lands there ----
+{
+  const at = (p) => p.evaluate(() => { const a = document.activeElement, r = a.getBoundingClientRect();
+    return { el: a.className || a.id || a.tagName, text: a.textContent.trim(), page: a.id === "page" ? a.dataset.page : null, shown: r.top >= 0 && r.bottom <= innerHeight && r.width > 2 }; });
+  for (const [file, page] of [["index.html", "home"], ["privacy.html", "privacy"], ["support.html", "support"]]) for (const width of [1280, 390]) {
+    const t = await open(file, { width });
+    await t.page.keyboard.press("Tab");
+    const first = await at(t.page);
+    assert.deepEqual([first.el, first.text, first.shown], ["skip-link", "Skip to content", true], `${file} at ${width}px: the first Tab does not show the skip link (${JSON.stringify(first)})`);
+    await t.page.keyboard.press("Enter");
+    assert.equal((await at(t.page)).page, page, `${file} at ${width}px: Enter on the skip link does not put focus on the page's content`);
+    await done(t, `skip link on ${file} at ${width}px`, [API]);
+  }
+  const t = await open("index.html");
+  await t.page.click('header a[href="privacy.html"]');
+  await t.page.waitForURL((u) => u.pathname === "/privacy.html");
+  await t.page.waitForFunction(() => document.querySelectorAll("main").length === 1);
+  await t.page.focus(".skip-link"); await t.page.keyboard.press("Enter");
+  assert.equal((await at(t.page)).page, "privacy", "after a page transition the skip link does not land on the new page's content");
+  await done(t, "skip link after a page transition", [API]);
+  console.log("skip link: first on every page, at both widths, and after a page transition");
+}
+// ---- a slow phone (AH-87): every check above runs at full speed on a fast box; the "4 s with the CPU slowed 8x" of
+// AH-22 was one manual run. Here the home page opens on a 390 x 844 phone with the CPU slowed 4x and a slow 4G line
+// (150 ms latency, 1.6 Mbps down, 750 kbps up), is scrolled to its end a screen at a time, and must show its headline
+// quickly, bring every block into place, leave nothing hidden, and log no error. The budgets are twice the slowest of 5
+// runs measured on 2026-11-02 (headline first shown 1066-1205 ms, at rest 1968-2028 ms, every block in place 617-624 ms
+// after the last scroll), so a slower page fails and a busy box does not ----
+{
+  const BUDGET = { shown: 2500, rest: 4100, settled: 1300 };
+  let t0 = 0;
+  const t = await open("index.html", { width: 390, height: 844, until: "commit", setup: async (p) => {
+    const cdp = await p.context().newCDPSession(p);
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+    await cdp.send("Network.enable");
+    await cdp.send("Network.emulateNetworkConditions", { offline: false, latency: 150, downloadThroughput: 1.6e6 / 8, uploadThroughput: 750e3 / 8 });
+    t0 = Date.now();
+  } });
+  const p = t.page;
+  await p.waitForFunction(() => { const h = document.querySelector(".hero-head"); return !!h && +getComputedStyle(h).opacity > 0; }, null, { polling: "raf", timeout: 30000 });
+  const shown = Date.now() - t0;
+  await p.waitForFunction(() => { const c = getComputedStyle(document.querySelector(".hero-head")); return c.opacity === "1" && c.transform === "none"; }, null, { polling: "raf", timeout: 30000 });
+  const rest = Date.now() - t0;
+  await p.waitForLoadState("load");
+  // the network really is slow: the stylesheet alone, 150 ms away at 1.6 Mbps
+  const css = await p.evaluate(() => performance.getEntriesByName(new URL("styles.css", location.href).href)[0].duration);
+  assert.ok(css > 300, `the slow line is not slow: styles.css came in ${Math.round(css)} ms`);
+  for (let k = 0; k < 80; k++) { // a screen at a time, as a thumb scrolls
+    await p.mouse.move(195, 420); await p.mouse.wheel(0, 700); await p.waitForTimeout(150);
+    if (await p.evaluate(() => innerHeight + scrollY >= document.documentElement.scrollHeight - 2)) break;
+  }
+  assert.ok(await p.evaluate(() => innerHeight + scrollY >= document.documentElement.scrollHeight - 2), "the slow phone never reached the end of the page");
+  const s1 = Date.now();
+  await p.waitForFunction(() => [...document.querySelectorAll(".reveal-item, [data-enter]")].every((e) => { const c = getComputedStyle(e); return c.opacity === "1" && c.transform === "none"; }),
+    null, { polling: 50, timeout: 30000 }).catch(() => {});
+  const settled = Date.now() - s1, left = await readable(p);
+  console.log(`slow phone (4x CPU, slow 4G, 390 x 844): headline shown at ${shown} ms and at rest at ${rest} ms, every block in place ${settled} ms after the last scroll, styles.css took ${Math.round(css)} ms`);
+  assert.ok(shown <= BUDGET.shown, `slow phone: the headline first showed at ${shown} ms (budget ${BUDGET.shown})`);
+  assert.ok(rest <= BUDGET.rest, `slow phone: the headline came to rest at ${rest} ms (budget ${BUDGET.rest})`);
+  assert.ok(settled <= BUDGET.settled, `slow phone: the last block came into place ${settled} ms after the scroll (budget ${BUDGET.settled})`);
+  assert.deepEqual([left.hooked, left.hidden], [0, 0], `slow phone: after a full scroll ${left.hooked} blocks are not in place and ${left.hidden} of ${left.texts} texts are hidden`);
+  await done(t, "slow phone", [API]);
 }
 // ---- page transitions (AH-73): one document, the old and the new page moving at once, never a white frame ----
 // per frame: how many <main>s are in the page and how many of them animate; when the click came, when the new page

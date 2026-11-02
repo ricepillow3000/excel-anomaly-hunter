@@ -9,6 +9,8 @@ import { strengthHint, asStrength, levelAt } from "./pages/strength.js";
 import { exactFixes, safeUndo } from "./features/autofix.js";
 import { readdirSync, readFileSync } from "node:fs";
 import { hash, rowHash, codes, codeAt, asBook, decide, PER_SHEET, SHEETS } from "./features/decisions.js";
+import { WORKBOOK_KEYS } from "./features/forget.js";
+import * as K from "./constants/index.js";
 
 // Fixed / Dismissed are kept in the workbook under a code per row, so they outlive the pane (2026-10-20: a dismissed
 // row came back flagged after a reload, an accepted fix vanished). Same values = same code, on any PC, every time.
@@ -70,6 +72,46 @@ for (const f of panes) {
     do depth += { "(": 1, ")": -1 }[src[k]] || 0; while (depth && ++k < src.length);
     assert.match(src.slice(k + 1), /^\s*\.catch\(/, `${f}: an Excel.run that is not awaited, returned or caught (line ${src.slice(0, m.index).split("\n").length})`);
   }
+}
+
+// every value written into HTML goes through esc() (a number through asNumber()), not only the ones that look like they
+// come from the sheet: a row's "done" word and its severity were the last two left bare (AH-87 audit)
+for (const f of panes) {
+  const src = readFileSync(new URL(f, import.meta.url), "utf8");
+  if (!/\.innerHTML\s*=/.test(src)) continue;
+  for (const [tpl] of src.matchAll(/`[^`]*`/g)) {
+    if (!tpl.includes("<")) continue; // not markup
+    for (const [, v] of tpl.matchAll(/\$\{([^}]*)\}/g)) assert.match(v, /^\s*(?:esc|asNumber)\(/, `${f}: \${${v}} reaches innerHTML without esc()`);
+  }
+}
+
+// every inline <svg> is either a picture with a name (role="img" and a label) or hidden from screen readers
+// (aria-hidden="true", focusable="false" for old Edge): unnamed, a screen reader reads out "image" or its path data (AH-87)
+for (const dir of ["./", "../site/"]) {
+  for (const f of readdirSync(new URL(dir, import.meta.url)).filter((f) => f.endsWith(".html"))) {
+    const src = readFileSync(new URL(dir + f, import.meta.url), "utf8");
+    for (const [tag] of src.matchAll(/<svg\b[^>]*>/g)) {
+      const hidden = /\saria-hidden="true"/.test(tag), named = /\srole="img"/.test(tag) && /\saria-label(?:ledby)?="[^"]+"/.test(tag);
+      assert.ok(hidden || named, `${dir}${f}: ${tag.slice(0, 80)} is neither aria-hidden="true" nor role="img" with a label`);
+    }
+  }
+}
+
+// the font ships in the pane (and so in the exe, which bundles frontend/ whole): the SIL Open Font License asks that its
+// text go with it (AH-87: only the website's copy had it)
+for (const font of readdirSync(new URL("assets/", import.meta.url)).filter((f) => f.endsWith(".woff2")))
+  assert.ok(font === "plus-jakarta-sans.woff2" && readFileSync(new URL("assets/OFL-PlusJakartaSans.txt", import.meta.url), "utf8").includes("SIL Open Font License, Version 1.1"),
+    `assets/${font} ships without its licence text`);
+
+// "Forget what this workbook saved" forgets every key the pane saves in a workbook: a key added later and left off its
+// list would stay in people's files after they asked for it to go (AH-87)
+{
+  const saved = new Set();
+  for (const f of panes) {
+    const src = readFileSync(new URL(f, import.meta.url), "utf8");
+    for (const [, k] of src.matchAll(/settings(?:\(\))?\.set\(\s*([^,]+?)\s*,/g)) saved.add(/^["']/.test(k) ? k.slice(1, -1) : K[k]);
+  }
+  assert.deepEqual([...saved].sort(), WORKBOOK_KEYS.map(([k]) => k).sort(), "the keys the pane saves in a workbook and the ones Forget removes differ");
 }
 
 // fairness line: protected columns named; a real gap spelled out; nothing at all without a protected column

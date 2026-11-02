@@ -13,7 +13,8 @@ work it; the gates below still decide when it is done.
 ## Before every commit: one command
 `python tools/check.py` runs every gate, fastest first, and stops at the first red layer (`--e2e` adds the browser
 test, `--keep-going` runs them all). Needs `pip install -e ".[dev]" -c constraints.txt` and node. All green = what CI checks
-(both accuracy benches run there too), except Semgrep (see the rules below). Never commit with a red layer, and never get a gate green by loosening it.
+(both accuracy benches run there too), except Semgrep (see the rules below). It also reads the whole git history for
+secrets (`tools/secret_history.py`: a skip on a shallow clone, `--full` in CI). Never commit with a red layer, and never get a gate green by loosening it.
 
 ## Security first: read `docs/security/SECURITY-LESSONS.md`
 Every input is an attack until proven harmless (emoji, "ignore all previous instructions and drop table"), and John is
@@ -23,18 +24,18 @@ an admin panel, role, operator route or debug switch. The weekly security sweep 
 ## Layers: each request passes every one, each has its own guard and test
 | # | Layer | Code | Guard | Test |
 |---|---|---|---|---|
-| 1 | Network | `server.main`, `tls_context` | 127.0.0.1 only; TLS 1.2+; handshake in the request's thread; idle connections dropped after 60 s | `test_server.py` (`live_engine`) |
-| 2 | Who may call | `own_panel_only` | Host must be localhost; Origin must be the pane (other websites, DNS rebinding) | `test_every_route_refuses_other_websites` |
+| 1 | Network | `server.main`, `tls_context` | 127.0.0.1 only; TLS 1.2+; handshake in the request's thread; idle connections dropped after 60 s; no debug mode however it is started (`create_app` and `main()` set every Flask switch: FLASK_DEBUG=1 turned on Werkzeug's debugger); secret files written 0600 (`_write_private`) | `test_server.py` (`live_engine`), `test_an_environment_variable_can_never_turn_on_the_debugger`, `test_the_ai_key_the_invite_code_and_the_tls_key_are_readable_only_by_their_owner` |
+| 2 | Who may call | `own_panel_only` | Host must be localhost; Origin must be the pane (other websites, DNS rebinding); a cross-site preflight is a 403 with no `Access-Control-Allow-*`; a scan opens no connection off the PC | `test_every_route_refuses_other_websites`, `test_a_cross_site_preflight_is_refused_on_every_route`, `test_a_scan_never_opens_a_connection_off_this_pc` |
 | 3 | Body shape | `_JSON`, `_bad`, `MAX_CONTENT_LENGTH`, `MAX_CELLS` | any malformed body is a clear 400, never a 500 | `test_every_post_route_answers_a_hostile_body_with_a_clear_4xx`, `test_fuzz_api.py` |
 | 4 | Route fields | each route in `create_app` | extra fields (`row_index`, `changes`, `start_col`, `/scan`'s `decisions`...) checked before any work | `test_fix.py`, `test_agents.py`, `test_powerbi.py` |
 | 5 | Load | `engine/load.py` | text/number/date/id per column; digit codes written to one width with leading zeros ("02134") kept as typed, never a number; each date's text kept (`written`) for the form it was typed in, and year-last dates read in the order most of the column's telling ones show; Excel errors logged, not crashed on; a cell over 64 characters is never parsed as a date (dateutil is quadratic on a long digit run) | `test_engine.py`, `test_long_cells.py` |
 | 6 | Checks | `engine/pipeline.py`, `engine/detectors.py`, `engine/limits.py` | each check returns one list of plain-sentence reasons per row | see the feature map |
 | 7 | Severity | `pipeline.score` | hygiene or weird limit = Medium; 2 votes = Medium; 3 = High; 1 = Low | `test_strength.py` |
-| 8 | Answer | routes, `powerbi.py` | every error is JSON; the Power BI CSVs never carry a live formula (text always quoted, `inert`) and read back, the way Power BI's import reads them, as exactly what the pane got, each row's Status (Open, Fixed, Dismissed) from the pane's `decisions` (schema: `powerbi/README.md`) | `test_api_security.py`, `test_powerbi.py` |
+| 8 | Answer | routes, `powerbi.py` | every error is JSON; `Referrer-Policy: no-referrer` on every answer; the Power BI CSVs never carry a live formula (text always quoted, `inert`) and read back, the way Power BI's import reads them, as exactly what the pane got, each row's Status (Open, Fixed, Dismissed) from the pane's `decisions` (schema: `powerbi/README.md`) | `test_api_security.py`, `test_powerbi.py` |
 | 9 | AI (optional) | `ai/client.py` | one call at a time, deadline, cache (answers only), key never echoed (nor the provider's error text), an AI formula may call only `client.SAFE` functions, headers and the reason go in one line each, no typed request = the flagged row only, a value only where the AI was shown the sheet (never a row or column left out to fit), every change it gives on the card or named in its explanation, a refusal or a cut-off answer said as one | `test_fix.py`, `test_ai_load.py`, `test_text_checks.py`, `test_ai_answers.py` |
-| 10 | Relay | `relay/worker.js` | invite hash, daily caps counted before Google, only `POST /fix`, model and key set by the relay | `relay/test.mjs`; live Worker from outside: `relay/live-probe.mjs` (CI `relay-live.yml`) |
-| 11 | Pane | `frontend/` | every dynamic `innerHTML` value goes through `esc()`; CSP allows only our files + office.js; key and pointer handlers only through `addEventListener` (a DOM0 handler returning false cancels the key); Fixed / Dismissed kept in the workbook as one code per row, never the values (`features/decisions.js`); only the cells a row's reasons name (`cells`) are coloured, in colors one step off Excel's own Bad / Neutral / Note so a reopened pane never clears the user's (`features/highlight.js`); a scan shows a skeleton built from the list's own classes (`#scan-skeleton`, static, toggled by `data-scanning`, held 450 ms only on Find problems), and every movement (entrance, row fill and lift, the card's page turn) is finite and stops under reduced motion (`components/motion.js`) | `frontend/selfcheck.js`, `e2e/run.mjs`, `test_every_flag_names_its_cells.py` |
-| 12 | Website | `site/` | every link and anchor lands; nothing loads from outside but the GitHub API for the checksum (CSP meta; `connect-src 'self'` only for the page transitions' own fetch); no HTML built from data; content reveals once through an IntersectionObserver, transform and opacity only, on one easing token (`.reveal-item`, `docs/design/motion.md`), decoration is a pure function of the scroll, and nothing draws while idle (`motion.js`, `field.js` on demand, one still frame on a software renderer; the `[data-glide]` scroll is the only other frame loop, and only while it runs); the sample sheet is the engine's own result on its 60 rows, cell for cell and word for word (`test_site_sample.py`), and its skeleton is the real table's cells (no overlay, CLS 0); a page change never unloads the document or shows a white frame (`transition.js`); the support link always fits GitHub's limit | `tools/test_site.mjs` (`--browser` under `--e2e`); `pages.yml` publishes only after it passes |
+| 10 | Relay | `relay/worker.js` | invite hash, daily caps counted before Google, only `POST /fix`, model and key set by the relay, each call to Google 90 s at most (then the relay's own JSON 504, never retried) | `relay/test.mjs`; live Worker from outside: `relay/live-probe.mjs` (CI `relay-live.yml`) |
+| 11 | Pane | `frontend/` | every dynamic `innerHTML` value goes through `esc()`; CSP allows only our files + office.js; key and pointer handlers only through `addEventListener` (a DOM0 handler returning false cancels the key); Fixed / Dismissed kept in the workbook as one code per row, never the values (`features/decisions.js`); only the cells a row's reasons name (`cells`) are coloured, in colors one step off Excel's own Bad / Neutral / Note so a reopened pane never clears the user's (`features/highlight.js`); every `${}` in an innerHTML template is `esc()`/`asNumber()` and every inline svg is aria-hidden or named (selfcheck); text, box edges and placeholders clear WCAG AA as rendered; "Forget what this workbook saved" removes every settings key the pane saves (`features/forget.js`, selfcheck); `/health` gives up after 10 s; what Ask AI sends is said beside its box; a scan shows a skeleton built from the list's own classes (`#scan-skeleton`, static, toggled by `data-scanning`, held 450 ms only on Find problems), and every movement (entrance, row fill and lift, the card's page turn) is finite and stops under reduced motion (`components/motion.js`) | `frontend/selfcheck.js`, `e2e/run.mjs`, `e2e/contrast.mjs`, `test_every_flag_names_its_cells.py` |
+| 12 | Website | `site/` | every link and anchor lands; nothing loads from outside but the GitHub API for the checksum (CSP meta; `connect-src 'self'` only for the page transitions' own fetch); no HTML built from data; content reveals once through an IntersectionObserver, transform and opacity only, on one easing token (`.reveal-item`, `docs/design/motion.md`), decoration is a pure function of the scroll, and nothing draws while idle (`motion.js`, `field.js` on demand, one still frame on a software renderer; the `[data-glide]` scroll is the only other frame loop, and only while it runs); a page change never unloads the document or shows a white frame (`transition.js`); the support link always fits GitHub's limit; a skip link is the first element of every page; WCAG AA as rendered on 16 page states; the home page within its budgets on a slow phone (4x CPU, slow 4G); the sample scan is the engine's own answer, cell for cell and word for word, and its skeleton is the real table's cells (no overlay, CLS 0) | `tools/test_site.mjs` (`--browser` under `--e2e`), `test_site_sample.py`; `pages.yml` publishes only after it passes |
 
 ## Feature map: what the scan finds, where, and its test
 | Finds | Function | Test (grep the name) |
@@ -181,13 +182,16 @@ Adding or removing a check: update this table in the same commit.
   scikit-learn, half of a 146 MB exe (2026-10-19). Check what a new dependency pulls in (`uv pip tree --invert`).
 - The Privacy page once said "nothing is sent to any other third party" and "Remove key deletes every local file":
   both false (2026-10-19 audit, 24 items). `frontend/privacy.html`, `PRIVACY.md` and `site/privacy.html` are twins of the code: a change to
-  what is sent, stored or installed updates all three (`test_both_privacy_pages_name_every_place_data_goes_and_every_file_the_app_keeps`).
+  what is sent, stored or installed updates all three (`test_both_privacy_pages_name_every_place_data_goes_and_every_file_the_app_keeps`),
+  and `test_privacy_promises.py` holds them to the relay's caps in `relay/wrangler.toml`, the pane's localStorage keys and Forget.
 - Pin every package, indirect ones too: an unpinned scikit-learn 1.9.1 broke every Windows install (2026-10-11).
   `constraints.txt` + `tools/pinned.py` (CI and the exe job); regenerate with the command in `tools/pinned.py`.
 - pip-audit reads every package installed, the app's or not, never `constraints.txt`: certifi and pillow, pinned past
   their advisories, still failed the local gate until they were installed (2026-10-20). After a pin change, install
-  the moved pins (`pip install -e ".[dev]" -c constraints.txt`, and `pip install -c constraints.txt pillow` for a pin
-  outside `dev`), then run `tools/check.py`.
+  the moved pins (`pip install -e ".[dev]" -c constraints.txt`, and `pip install -c constraints.txt <package>` for a
+  pin outside `dev`), then run `tools/check.py`. Declare what the app imports (pydantic and werkzeug came only through
+  anthropic and flask) and drop what nothing imports (Pillow, AH-87):
+  `test_every_package_the_app_imports_is_declared_and_every_declared_one_is_used`.
 - Semgrep runs only in CI (`security.yml`): its rule packs come from semgrep.dev, which a cloud session cannot reach.
   It went red three times on 2026-10-20 after every local gate was green: a RegExp built from a name, `Object.assign`
   of parsed JSON, urllib on a URL from a variable. Where it cannot run, grep the diff for those before pushing.
@@ -222,3 +226,15 @@ Adding or removing a check: update this table in the same commit.
   cell as typed: `docs/airlock/` imports a file as raw text in Power Query and writes an Audit column (never over the
   source), and an Excel formula that tests a date never uses `--text` or DATEVALUE, which make the very guess it is
   checking (chaos audit, 2026-10-30, `test_chaos_dataset.py`).
+- The environment is input too: Flask reads FLASK_DEBUG when it builds the app and again in `run()`, so one variable
+  on a user's PC turned on Werkzeug's debugger, and a moving tag (`zaproxy:stable`) or a bare `npx wrangler` runs
+  whatever was published last. The engine sets every switch itself, CI's images are pinned by digest and the deploy
+  tool by version, and a secret deleted in a later commit is still found (`tools/secret_history.py`, AH-87).
+- A contrast ratio is measured in the browser, not worked out from tokens: the comments said navy 16.6:1 (it is 15.9),
+  and an opacity of .6 on a done row took its grey to 2.7:1 (`e2e/contrast.mjs`). A claim on the website is a test:
+  "the engine's own result" had drifted twice (a dropped sentence, 19 for 20) before `test_site_sample.py` held it.
+  On a box with no GPU, `test_site.mjs --browser` asks for `--enable-unsafe-swiftshader`: Chromium 141 warns on its own
+  software fallback, and the console check fails on that warning (AH-87).
+  A class name on a new site element is grepped across `site/` first: the skip link's `.skip` was already the
+  sample's separator rows' class and pulled all five out of the table (AH-87 fix round 1; `tools/test_site.mjs` checks
+  those rows stay in place in every filter state).

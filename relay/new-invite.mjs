@@ -43,7 +43,7 @@ writeFileSync(tokensFile, JSON.stringify(tokens)); // only once the kit exists: 
 
 console.log(`Kit for ${name}: ${zip}`);
 console.log("1. Upload the invite list (the whole list - it replaces the old one), from the relay folder:");
-console.log("     type tokens.json | npx wrangler secret put TOKENS");
+console.log("     type tokens.json | npx wrangler@4.151.1 secret put TOKENS");
 console.log("2. Share the zip by a Google Drive or OneDrive link (email blocks .bat files, even zipped).");
 console.log("   They unzip it, close Excel, double-click install.bat: AI help is on, nothing to paste.");
 console.log(`Switch ${name} off later: delete their entry from tokens.json, then step 1 again.`);

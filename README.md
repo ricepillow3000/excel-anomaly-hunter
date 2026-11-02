@@ -22,7 +22,7 @@ Build the file: `pip install -e ".[exe]" -c constraints.txt` then `python -m PyI
 on Windows -> `dist/AnomalyHunter.exe`.
 Windows-only per-user install (trusted shared-folder catalog), not a store add-in.
 
-**Works on any analyst's sheet** (finance, banking, quant, supply chain, healthcare, construction, HR, marketing, real
+**Built for analysts' sheets in many fields** (finance, banking, quant, supply chain, healthcare, construction, HR, marketing, real
 estate, insurance, manufacturing, education, energy, logistics...): it skips title rows, totals rows and ID columns
 (SKU, MRN, account no.), and names the mistakes every field makes - extra/missing zeros, % typed as 85 for 0.85, flipped
 signs, "Sales" vs "sales ", #N/A / #DIV/0! cells, blanks, duplicates - plus anything statistically out of line.
@@ -34,9 +34,11 @@ written several ways ("Employed" / "employed" / "EMP", "retired" among capitalis
 scan tests their groups for gaps in how often rows are flagged, in blanks, and in any yes/no outcome column (four-fifths
 rule + a significance test, so noise is not called bias). One line in the pane, a Fairness sheet in report.xlsx.
 Advisory only: it never changes a cell.
-Tested on 100k real NYC taxi trips (1.7M cells): 8 s per scan, under 1% false alarms on clean rows. And on the UCI Adult
-census (48,842 people): every '?' left for an unknown job, every 99999 code and every duplicate found (3,896 rows), no real
-person called wrong, in 9 s - and its well-known gaps (30% of men vs 11% of women earn over $50K) reported as gaps.
+One-off measurements, each on the engine of its day, with data that is not in this repo: on 2026-10-07, 100k real
+NYC 2018 taxi trips (1.7M cells) took 8 s a scan with 0.53% false alarms on clean rows; on 2026-10-14, the UCI Adult
+census (48,842 people) had every '?' left for an unknown job, every 99999 code and every duplicate found (3,896 rows),
+no real person called probably wrong (7 worth a check), and its well-known gaps (30% of men vs 11% of women earn over
+$50K) reported as gaps. They are not re-run; the benches in `backend/bench` are (`score.py`).
 
 **Power BI:** in the pane, turn on **Power BI (optional) > Save each scan for Power BI** (off by default), scan, then double-click `anomaly-hunter.pbids` (the whole sheet) or `anomaly-hunter-flags.pbids` (the flagged rows and the ones you fixed or dismissed; its columns never change); Refresh after each scan. Both sit in `%LOCALAPPDATA%\AnomalyHunter` (AnomalyHunter.exe) or `powerbi\` (`install.bat`). Schema and the steps to check it in Power BI Desktop: [`powerbi/README.md`](powerbi/README.md).
 
