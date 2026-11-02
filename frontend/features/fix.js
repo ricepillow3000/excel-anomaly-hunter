@@ -21,7 +21,7 @@ export function issuesOf(reason) {
 export function typoKind(v, fix) {
   if (v * fix < 0) return "sign flipped"; // the engine's fix is one slip: a sign or zeros, never both
   const k = Math.round(Math.log10(Math.abs(v / fix)));
-  return `${k > 0 ? "extra" : "missing"} zeros - ${k > 0 ? "x" : "÷"}${10 ** Math.abs(k)}`;
+  return `${k > 0 ? "extra" : "missing"} zeros, ${k > 0 ? "x" : "÷"}${10 ** Math.abs(k)}`;
 }
 
 // Pure: the reason's "Total 170.43 does not add up: Units × UnitCost = -14.95" parts -> [{text, total, rule, cols}]
@@ -62,7 +62,7 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
     if (calc && String(calc[j]).startsWith("=")) return void calcCells.push(cell); // never type over a formula
     if (variant) {
       changes.push({ cell, new: likely[c] });
-      return void typos.push(`${c} says "${v}" where the rest of the column says "${likely[c]}" - same word, different capitals/spaces`);
+      return void typos.push(`${c} says "${v}" where the rest of the column says "${likely[c]}": same word, different capitals/spaces`);
     }
     if (miss) {
       changes.push({ cell, new: maybe[c] });
@@ -70,22 +70,22 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
       const said = reason.includes(`"${v}" looks like a short form of`) ? `probably a short form of "${maybe[c]}"`
         : reason.includes(`"${v}" is lowercase where`) ? `lowercase where the column's other labels are capitalised ("${maybe[c]}")`
           : `probably a misspelling of "${maybe[c]}", one letter off`;
-      return void typos.push(`${c} says "${v}" - ${said}`);
+      return void typos.push(`${c} says "${v}", ${said}`);
     }
     if (weak) {
       changes.push({ cell, new: String(maybe[c]) });
       guessed = true;
-      return void typos.push(`${c} is ${v} - it may be a typo for ${maybe[c]} (${typoKind(v, maybe[c])}), but a real value can look the same`);
+      return void typos.push(`${c} is ${v}; it may be a typo for ${maybe[c]} (${typoKind(v, maybe[c])}), but a real value can look the same`);
     }
     const typo = likely && likely[c];
     if (sum) {
       changes.push({ cell, new: String(typo) });
       solved.add(c);
-      return void typos.push(`${c} is ${v} - the row's own numbers say ${typo} (${sum.total} = ${sum.rule})`);
+      return void typos.push(`${c} is ${v}, but the row's own numbers say ${typo} (${sum.total} = ${sum.rule})`);
     }
     if (typo != null && outside) { // engine spotted an obvious typo: extra/missing zeros or a flipped sign
       changes.push({ cell, new: String(typo) });
-      slips.push({ c, kind: typoKind(v, typo), change: changes[changes.length - 1], text: `${c} is ${v} - looks like a typo for ${typo} (${typoKind(v, typo)})` });
+      slips.push({ c, kind: typoKind(v, typo), change: changes[changes.length - 1], text: `${c} is ${v}, which looks like a typo for ${typo} (${typoKind(v, typo)})` });
       return void typos.push(slips[slips.length - 1].text);
     }
     seen.delete(c); // no value known (a blank, an extreme value): the advice below says what to check
@@ -96,45 +96,45 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
     const same = slips.filter((s) => s.kind === kind);
     if (same.length < 2) continue;
     same.forEach((s) => (changes.splice(changes.indexOf(s.change), 1), typos.splice(typos.indexOf(s.text), 1)));
-    typos.push(`${same.map((s) => s.c).join(", ")} are all off by the same step (${kind}) - one typing slip changes one cell, ` +
+    typos.push(`${same.map((s) => s.c).join(", ")} are all off by the same step (${kind}). One typing slip changes one cell, ` +
       "so this row is probably real or entered in other units");
   }
   const notes = [];
-  if (calcCells.length) notes.push(`${calcCells.join(", ")} ${calcCells.length > 1 ? "are" : "is"} calculated by a formula - ` +
-    "fix the cells it uses rather than typing over it.");
+  if (calcCells.length) notes.push(`${calcCells.join(", ")} ${calcCells.length > 1 ? "are" : "is"} calculated by a formula. ` +
+    "Fix the cells it uses rather than typing over it.");
   if (typos.length) notes.push(`${typos.join("; ")}. Check it against the source before applying.`);
   const dup = /Duplicate of row (\d+)/.exec(reason); // engine counts from a header in row 1
   // which copy is the stray one the sheet's order says, not the engine: 5 of 14 blind pairs had the copy first
   if (dup) notes.push(`This row repeats row ${+dup[1] + startRow} in every column. If one of them is a double entry, delete ` +
     "the one that's out of place in the sheet's order: right-click its row number > Delete.");
   for (const [, raw, kind, col] of reason.matchAll(/Text "([^"]*)" in (number|date) column ([^;]+)/g))
-    notes.push(`${col} holds the text "${raw}" where a ${kind} belongs - retype it as a ${kind}.`);
+    notes.push(`${col} holds the text "${raw}" where a ${kind} belongs. Retype it as a ${kind}.`);
   for (const [, raw, col] of reason.matchAll(/Placeholder "([^"]*)" in column ([^;]+)/g))
     // "ERROR" is a status or a log level as often as a stand-in (AH-45 review: a log's rare ERROR level was called "a
     // stand-in for a missing value"), so its card says both
-    notes.push(/^error$/i.test(raw.trim()) ? `${col} says "${raw}" - a value of the column's own (a status, a log level) or a stand-in ` +
+    notes.push(/^error$/i.test(raw.trim()) ? `${col} says "${raw}": a value of the column's own (a status, a log level) or a stand-in ` +
       "for a missing one. If it stands in, fill in the real value or leave the cell empty; if it is a real status, leave it."
-      : `${col} says "${raw}" - a stand-in for a missing value. Fill in the real value, or leave the cell empty.`);
+      : `${col} says "${raw}", a stand-in for a missing value. Fill in the real value, or leave the cell empty.`);
   // a limit crossed in a cell typed as text ("$1,000,000.00"): explained, never overwritten
   for (const { text } of issuesOf(reason)) { // anything the loop above didn't explain (text cells, no limits)
     const m = /^(.+?) weird limit is (\S+); this is (\S+)/.exec(text), b = /^Blank cell in column (.+?), which/.exec(text);
     if (m && !seen.has(m[1])) notes.push(`${m[1]} is ${m[3]}, past its limit of ${m[2]}. Check it against the source; if it's right, leave it.`);
     // a long-format sheet's blank is judged inside its group (AH-16): "the rest of the column" would be untrue there
     const g = / otherwise filled for (.+)$/.exec(text);
-    if (b && !seen.has(b[1])) notes.push(`${b[1]} is blank where the rest of ${g ? g[1] : "the column"} is filled - fill it in from the source.`);
+    if (b && !seen.has(b[1])) notes.push(`${b[1]} is blank where the rest of ${g ? g[1] : "the column"} is filled. Fill it in from the source.`);
   }
   for (const [, err, col] of reason.matchAll(/Excel error (#\S+) in ([^;]+)/g))
     notes.push(`${col} shows ${err}: ${EXCEL_ERRORS[err] || "its formula failed"}. Fix the formula or its inputs ` +
       `(or wrap it in IFERROR(...)) rather than typing a number over it.`);
   for (const s of sums.filter((s) => !s.cols.some((c) => solved.has(c))))
-    notes.push(`${s.text} - one of these numbers is wrong. Check them against the source.`);
+    notes.push(`${s.text}, so one of these numbers is wrong. Check them against the source.`);
   for (const { text } of issuesOf(reason)) // worth-a-check reasons with no value to write: say what to look for
     for (const [rx, hint] of HINTS) {
       const m = rx.exec(text); // a hint may quote what the reason names: the word to filter the column for (AH-45 review)
-      if (m) notes.push(`${text} - ${typeof hint === "function" ? hint(m) : hint}. Check it against the source.`);
+      if (m) notes.push(`${text}: ${typeof hint === "function" ? hint(m) : hint}. Check it against the source.`);
     }
   if (!notes.length)
-    notes.push("Nothing here is clearly broken - the values are just unusual together. Check them against the source; if they're right, leave them.");
+    notes.push("Nothing here is clearly broken, but the values are unusual together. Check them against the source; if they're right, leave them.");
   return { explanation: notes.join(" "), changes, guess: guessed }; // guess = a misspelling's fix, or a typo the numbers cannot prove
 }
 
@@ -188,7 +188,7 @@ const HINTS = [
     "code's leading zeros; format the column as Text and retype the code as the source writes it"],
   // AH-46: a sort puts blank cells last - the block at the end is where the sort put them, not where they went missing
   [/ is blank in \d+ of \d+ rows, all at the end of the table, which is sorted by /, "sorting puts blank cells last, so these rows " +
-    "simply have no value here; if the column must always be filled, fill them in from the source"],
+    "have no value here; if the column must always be filled, fill them in from the source"],
 ];
 
 // Pure: the column an "only unusual" reason points at (an odd mix across columns, or a break in a series), else null
@@ -211,7 +211,7 @@ export async function suggestTypo(f, r, rec) {
   if (s.value === undefined) return rec;
   const v = rows[f.i][j];
   return { typo: true, guess: true, changes: [{ cell: `${colLetter(startCol + j)}${startRow + 2 + f.i}`, new: String(s.value) }],
-    explanation: `Nothing here is clearly broken - the values are just unusual together. But ${col} ${v} could be a typo for ` +
+    explanation: `Nothing here is clearly broken, but the values are unusual together. ${col} ${v} could be a typo for ` +
       `${s.value} (${s.kind}): with ${s.value} the whole row looks normal again. If ${v} is right, click Dismiss.` };
 }
 
@@ -271,7 +271,7 @@ export async function applyFix(f, changes, sheet) { // the fix, its changes and 
   try {
     v = await checkFix(f, changes);
   } catch (e) {
-    return status(`Accepted. Couldn't check it again (${e.message}) - click Find problems to check the sheet.`);
+    return status(`Accepted. Couldn't check it again (${e.message}). Click Find problems to check the sheet.`);
   }
   if (!v) return status("Accepted. A formula is checked when you click Find problems again.");
   const { startRow, startCol } = state.lastScan, row = [...state.lastScan.rows[f.i]];
@@ -309,7 +309,7 @@ export async function undoFix(f) {
     await fillRow(f.i, !u.was); // flagged again - unless it had been dismissed, then it stays unhighlighted
     if (state.fix === f) {
       setApplied(false);
-      $("fix-status").textContent = "Undone - the cells are back to what they were.";
+      $("fix-status").textContent = "Undone. The cells are back to what they were.";
     }
   } catch (e) {
     if (state.fix === f) $("fix-status").textContent = "Undo failed: " + e.message;

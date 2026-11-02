@@ -19,6 +19,6 @@ export async function forgetWorkbook() {
   const gone = WORKBOOK_KEYS.filter(([k]) => s.get(k) !== null && s.get(k) !== undefined);
   for (const [k] of gone) s.remove(k);
   const saved = await new Promise((ok) => s.saveAsync((r) => ok(!r || r.status === "succeeded")));
-  if (!saved) throw new Error("Excel couldn't save the workbook's settings just now. Try again.");
+  if (!saved) throw new Error("Excel couldn't save the workbook's settings. Try again.");
   return gone.map(([, what]) => what);
 }

@@ -26,9 +26,8 @@
 <main id="page" data-page="support">
   <section class="page-head">
     <div class="wrap cols">
-      <span class="label" data-enter="left">Support</span>
-      <h1 data-enter="left">Answers first, then a <em>direct</em> line.</h1>
-      <p data-enter="left">Most questions are answered below. Anomaly Hunter is a free project run by one person, so there is no reply-time promise.</p>
+      <h1 data-enter="left">Answers first, then a way to ask.</h1>
+      <p class="calm" data-enter="left">Most questions are answered below. Anomaly Hunter is a free project run by one person, so there is no reply-time promise.</p>
     </div>
   </section>
 
@@ -38,7 +37,7 @@
         <div class="faq-head reveal-item"><span>Question</span><span>Answer</span></div>
         <details class="reveal-item" open>
           <summary>The pane says "The checker isn't running"</summary>
-          <div class="a"><p>Wait 30 seconds, then press <b>Try again</b>. Still stuck? Double-click <code>AnomalyHunter.exe</code> again. It asks you to close Excel, repairs the install, starts the checker and opens Excel again.</p></div>
+          <div class="a"><p>Wait 30 seconds, then press <b>Try again</b>. If that doesn't help, double-click <code>AnomalyHunter.exe</code> again. It asks you to close Excel, repairs the install, starts the checker and opens Excel again.</p></div>
         </details>
         <details class="reveal-item">
           <summary>Windows says "Windows protected your PC"</summary>
@@ -54,7 +53,7 @@
         </details>
         <details class="reveal-item" id="uninstall">
           <summary>How do I uninstall?</summary>
-          <div class="a"><p>Press Windows+R, paste <code>"%LOCALAPPDATA%\AnomalyHunter\AnomalyHunter.exe" uninstall</code> and press Enter. It removes the add-in, the checker, its certificate and its files, except the app file itself, which you can then delete. It is not listed in Windows "Installed apps". The <a href="privacy.html#rights">privacy page</a> lists exactly what it removes.</p></div>
+          <div class="a"><p>Press Windows+R, paste <code>"%LOCALAPPDATA%\AnomalyHunter\AnomalyHunter.exe" uninstall</code> and press Enter. It removes the add-in, the checker, its certificate and its files, except the app file itself, which you can then delete. It is not listed in Windows "Installed apps". The <a href="privacy.html#rights">privacy page</a> lists what it removes.</p></div>
         </details>
         <details class="reveal-item">
           <summary>Where is AI help, and what does Remove key do?</summary>
@@ -62,18 +61,18 @@
         </details>
         <details class="reveal-item">
           <summary>It flagged a correct value, or missed one</summary>
-          <div class="a"><p>It is a helper, not a guarantee, so some false alarms and misses happen. Move the <b>How hard to look</b> slider: lower for fewer, surer flags; higher to look harder. A suggestion changes nothing until you click <b>Accept</b>; <b>Dismiss</b> skips it.</p></div>
+          <div class="a"><p>It can flag correct values and miss mistakes. Move the <b>How hard to look</b> slider: lower for fewer, surer flags; higher to look harder. A suggestion changes nothing until you click <b>Accept</b>; <b>Dismiss</b> skips it.</p></div>
         </details>
         <details class="reveal-item">
           <summary>Is my data private?</summary>
-          <div class="a"><p>A scan runs on your PC and sends nothing. Only <b>Ask AI</b> and <b>Check words with AI</b> send part of your sheet: to Google, or through John's relay to Google if you use an invite code. The <a href="privacy.html">privacy page</a> says exactly what.</p></div>
+          <div class="a"><p>A scan runs on your PC and sends nothing. Only <b>Ask AI</b> and <b>Check words with AI</b> send part of your sheet: to Google, or through John's relay to Google if you use an invite code. The <a href="privacy.html">privacy page</a> says what is sent.</p></div>
         </details>
       </div>
 
       <section class="form-card" data-enter="bottom" aria-labelledby="contact-title">
         <h2 id="contact-title">Ask a question</h2>
         <form id="ticket" data-reveal-group novalidate>
-          <p class="notice reveal-item"><b>Public.</b> This fills in a question on GitHub for you; nothing is sent until you press Submit there. You need a free GitHub account. Never paste client data, account numbers, your AI key or your invite code. John will never ask for them.</p>
+          <p class="notice reveal-item">This is public: it fills in a question on GitHub for you; nothing is sent until you press Submit there. You need a free GitHub account. Never paste client data, account numbers, your AI key or your invite code. John will never ask for them.</p>
           <div class="field reveal-item">
             <label for="topic">What is this about?</label>
             <select id="topic" name="topic">

@@ -7,7 +7,8 @@
 // or a tab turns the old view away like a page, and the timings are the tokens in styles.css :root.
 (() => {
   const API = "https://api.github.com/repos/ricepillow3000/excel-anomaly-hunter/releases/latest";
-  const STAGES = ["READING SHEET DATA", "CHECKING TOTALS AND PRODUCTS", "COMPARING LABELS", "TESTING COLUMN LIMITS", "SCORING ROWS"];
+  // the pane's own progress line for this 60-row sheet (frontend/features/scan.js; test_site_sample.py holds them to it)
+  const STAGES = ["Step 1 of 3: reading your sheet… 0%", "Step 1 of 3: reading your sheet… 40%", "Step 1 of 3: reading your sheet… 100%", "Step 2 of 3: checking 60 rows…"];
   const html = document.documentElement;
   const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const tokens = getComputedStyle(html);
@@ -38,9 +39,11 @@
     }
   }
 
-  // The sheet loads as a skeleton of itself (AH-89). It waits, bars where the values will be, until the sheet is 30%
-  // on screen (and its entrance, if it is coming in, is a third of the way), then one band of light crosses it in
-  // --skeleton-dur and the rows land one by one, --land-step apart. Never over values someone may already have seen
+  // The sheet loads as a skeleton of itself (AH-89). It waits, bars where the values will be, until the sheet is 60%
+  // on screen, or covers 60% of a screen it is taller than (a phone), and its entrance, if it is coming in, is a third of
+  // the way; then one band of light crosses it in --skeleton-dur and the rows land one by one, --land-step apart. While
+  // a glide runs ("See a sample scan", motion.js) it waits for the glide to end: at 30% it played on the way down and
+  // had mostly finished by the time the visitor arrived (AH-99, John 2026-11-02). Never over values someone may already have seen
   // (scripts that came late, a visit back), never with reduced motion or without motion.js; a press anywhere on the
   // sheet ends it at once. Returns what lets it go.
   function skeleton(ws) {
@@ -48,14 +51,15 @@
     const entrance = ws.getAnimations().find((a) => a.playState === "running" || a.playState === "pending");
     const r = ws.getBoundingClientRect();
     if (!entrance && r.top < html.clientHeight && r.bottom > 0) return () => {};
-    const rows = [...ws.querySelectorAll(".grid tbody tr")], marks = [...ws.querySelectorAll(".typology .n, .key span")];
-    const cells = [...ws.querySelectorAll(".grid tbody tr > *"), ...marks];
-    let timers = [], io = null, done = false;
+    const rows = [...ws.querySelectorAll("#p-found .grid tbody tr")], marks = [...ws.querySelectorAll(".typology .n, .key span")];
+    const cells = [...ws.querySelectorAll("#p-found .grid tbody tr > *"), ...marks];
+    let timers = [], io = null, done = false, armed = false;
     const later = (f, t) => timers.push(setTimeout(f, t));
     const end = () => {
       if (done) return;
       done = landed = true;
       if (io) io.disconnect();
+      document.removeEventListener("ah:glide-end", check);
       timers.forEach(clearTimeout); timers = [];
       ws.removeAttribute("data-loading");
       for (const el of [...rows, ...marks]) el.removeAttribute("data-in");
@@ -68,13 +72,22 @@
       later(end, (Math.max(rows.length, marks.length) - 1) * STEP + Math.max(FADE, 360) + 40);
     };
     const play = () => { landed = true; measure(cells); ws.setAttribute("data-loading", "play"); later(land, SHIMMER); };
-    io = new IntersectionObserver((es) => {
-      const e = es[es.length - 1], root = e.rootBounds;
-      if (!e.isIntersecting || (e.intersectionRatio < 0.3 && (!root || e.intersectionRect.height < 0.3 * root.height))) return;
-      io.disconnect(); io = null;
+    // read from the layout, so a glide's end (which crosses no threshold) can ask too
+    const seen = () => {
+      const b = ws.getBoundingClientRect(), h = html.clientHeight, shown = Math.min(b.bottom, h) - Math.max(b.top, 0);
+      return shown > 0 && (shown >= 0.6 * b.height || shown >= 0.6 * h);
+    };
+    function check() {
+      if (done || armed || (window.AH.gliding && window.AH.gliding()) || !seen()) return;
+      armed = true;
+      if (io) io.disconnect();
+      io = null;
+      document.removeEventListener("ah:glide-end", check);
       const a = ws.getAnimations().find((x) => x.playState === "running" || x.playState === "pending"), t = a && a.effect.getComputedTiming();
       later(play, a ? Math.max(0, t.delay + t.duration / 3 - (a.currentTime || 0)) : 0);
-    }, { threshold: [0, 0.15, 0.3, 0.5] });
+    }
+    io = new IntersectionObserver(check, { threshold: Array.from({ length: 21 }, (_, i) => i / 20) });
+    document.addEventListener("ah:glide-end", check);
     measure(cells);
     ws.setAttribute("data-loading", "");
     io.observe(ws);
@@ -89,7 +102,7 @@
     const byId = (id) => root.querySelector("#" + CSS.escape(id));
     const bye = new AbortController(), on = { signal: bye.signal };
     const tabs = [...ws.querySelectorAll('[role="tab"]')];
-    const counts = [...ws.querySelectorAll(".typology .n")];
+    const counts = [...ws.querySelectorAll(".typology .n, .key .kcount")];
     ws.querySelector(".tabs").hidden = false;
     const unload = skeleton(ws);
 
@@ -135,7 +148,8 @@
       }
       const state = tab.id.slice(2);
       ws.dataset.state = state;
-      // "clean" is the sheet with the three suggested fixes in: four rows are still worth a check there (AH-88)
+      // "clean" is the sheet with the three suggested fixes in: four rows are still worth a check there (AH-88), and the
+      // key under the filters says so too (it read "Probably wrong: 3" over the corrected sheet, AH-98)
       for (const n of counts) n.textContent = state === "found" ? n.dataset.n : state === "clean" ? n.dataset.after : "·";
       closeMatrix();
       clearInterval(tick);

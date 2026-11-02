@@ -4,7 +4,7 @@ export const maxCells = () => globalThis.MAX_CELLS || 2e6;
 
 // Pure: the honest line for a sheet too big to read at once
 export const cutNote = ([last, total]) =>
-  `Too large to scan at once: checked down to row ${last.toLocaleString("en-US")} of ${total.toLocaleString("en-US")}. Rows below ${last.toLocaleString("en-US")} were NOT checked.`;
+  `Too large to scan at once: checked down to row ${last.toLocaleString("en-US")} of ${total.toLocaleString("en-US")}. Rows below ${last.toLocaleString("en-US")} were not checked.`;
 
 // Pure: used-range values -> {columns, rows, startRow, startCol}, or null if there's no header + data row.
 // Header = first row that is mostly filled, so title rows above it ("Cost Report - Period 9") are skipped.

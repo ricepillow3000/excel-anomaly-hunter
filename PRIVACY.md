@@ -8,9 +8,9 @@ A scan runs on your PC and sends nothing to the internet. Your sheet's data leav
 **Ask AI** or **Check words with AI**. There are no accounts, no analytics and no tracking, and the add-in sets no cookies.
 
 ## Always on this PC
-- **The scan.** Excel hands the sheet to the engine at `https://127.0.0.1:5055`. It answers only this PC. Websites
+- The scan runs in the engine at `https://127.0.0.1:5055`: Excel hands it the sheet, and it answers only this PC. Websites
   can't call it (it checks where each request comes from); other programs on this PC can, like any local service.
-- **Files** in `%LOCALAPPDATA%\AnomalyHunter`:
+- Files in `%LOCALAPPDATA%\AnomalyHunter`:
 
   | File | What it holds |
   |---|---|
@@ -24,22 +24,22 @@ A scan runs on your PC and sends nothing to the internet. Your sheet's data leav
   | `anomaly-hunter.pbids`, `anomaly-hunter-flags.pbids` | shortcuts that open latest-scan.csv and latest-flags.csv in Power BI; they hold only those files' paths |
   | `latest-scan.csv` | **only if you turn on "Save each scan for Power BI"** (off unless you turn it on): a plain-text copy of every cell of the last sheet you scanned, with each row's number, result and suggested fix. Each scan replaces it; after you turn the option off, the next scan deletes it |
   | `latest-flags.csv` | **only with the same option on**: the sheet's name, the time of the scan, and the number, result, suggested fix and status (Open, Fixed or Dismissed) of each flagged row and each row you fixed or dismissed (results and fixes can quote your cells). Kept and deleted together with latest-scan.csv |
-- **Elsewhere:** if you installed AnomalyHunter.exe, it unpacks itself into a temporary folder in `%TEMP%` each time it starts; if the engine is
+- If you installed AnomalyHunter.exe, it unpacks itself into a temporary folder in `%TEMP%` each time it starts; if the engine is
   stopped by force, that folder can be left behind. Install removes the "downloaded from the internet" mark from its
   own copy of the app, so Windows doesn't warn at every logon.
-- **An invite kit** (shared by John by a Google Drive or OneDrive link) runs from its own folder: `install.bat`
+- An invite kit (shared by John by a Google Drive or OneDrive link) runs from its own folder: `install.bat`
   downloads the Python packages it needs from PyPI, the Python package site (PyPI sees your IP address), and keeps
   them in a `.venv` folder there, with the Power BI shortcuts in its `powerbi` folder. It copies the kit's invite code
   into the folder above. A kit has no AnomalyHunter.exe, `addin\manifest.xml` or Start here.xlsx: Excel lists the
   add-in from the kit's `frontend` folder. Uninstall a kit with `install.bat /u`, then delete the kit folder.
-- **In your workbook:** the limits you changed, the strength slider, a list of the last auto-fixes with their old
+- Your workbook keeps the limits you changed, the strength slider, a list of the last auto-fixes with their old
   values and a copy of each fixed row (so Undo works), a short code for each row you fixed or dismissed (worked out
   from the row's values, never the values themselves, so the row is still Fixed or Dismissed when the pane opens
   again), and a setting that opens the pane with that file. Highlights are fill colours in your cells.
   A fix changes your cells only when you click **Accept**, or when auto-fix runs, if you turned it on.
-- **In the pane:** the auto-fix switch (`anomalyHunterAutoFix`) and the Power BI switch (`anomalyHunterPowerBi`), in
+- The pane saves the auto-fix switch (`anomalyHunterAutoFix`) and the Power BI switch (`anomalyHunterPowerBi`) in
   Excel's storage for the pane (its localStorage) on this PC.
-- **Install** also adds a startup entry, a trusted add-in folder for Excel, and a certificate in your Windows account
+- Install also adds a startup entry, a trusted add-in folder for Excel, and a certificate in your Windows account
   that works only for `localhost` and `127.0.0.1` (the key that made it is never saved).
 
 ## Only if you use AI help
@@ -48,12 +48,12 @@ developer sets `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` on the PC). Even then,
 nothing from your sheet is sent until you click a button. When you save a Google key, the engine asks Google once
 whether the key works; that call carries the key and no sheet data. A key from a Google project with billing turned on
 can be charged by Google for what AI help uses; without billing, the free tier costs nothing.
-- **Ask AI (fix a row):** sends the column names, the row you asked about, up to 5 rows above and 5 below it, the
+- **Ask AI** (fix a row) sends the column names, the row you asked about, up to 5 rows above and 5 below it, the
   formulas in that row, the cell addresses, the reason it was flagged, and anything you type in the request box. On a
   wide sheet only the columns nearest the flagged cell go. Long cells are cut to 200 characters, except the flagged cell.
-- **Check words with AI:** sends the names of your text columns that have 2 to 50 different values, and those values (up to
+- **Check words with AI** sends the names of your text columns that have 2 to 50 different values, and those values (up to
   60 characters each). It never sends whole rows or numbers. These values can include names of people or places.
-- **Where it goes:**
+- Where it goes:
   - With your own Google key: straight to Google's Gemini API.
   - With an invite code: to John's relay on Cloudflare, which passes it to Google with John's key.
     - The relay keeps one counter: for the last day anyone used it, how many AI calls each invite made, under the
@@ -66,12 +66,12 @@ can be charged by Google for what AI help uses; without billing, the free tier c
   your own key it depends on your Google plan. Don't ask AI about private or personal data.
 
 ## Who else sees something
-- **Google** receives what AI help sends, under Google's own terms.
-- **Cloudflare and John's relay**, only with an invite code (see above).
-- **Anthropic**, only in the developer case above.
-- **PyPI**, only for an invite kit: `install.bat` downloads Python packages from it, so it sees your IP address.
-- **GitHub** hosts the download, so it sees your IP address when you download. Anything you post in an issue is public.
-- **Microsoft:** Excel loads Microsoft's Office script for the pane, and Windows may check the downloaded file.
+- Google receives what AI help sends, under Google's own terms.
+- With an invite code, each AI request passes through John's relay on Cloudflare (see above).
+- Anthropic receives what AI help sends only in the developer case above.
+- PyPI sees your IP address only if you install an invite kit, when `install.bat` downloads Python packages from it.
+- GitHub hosts the download, so it sees your IP address when you download. Anything you post in an issue is public.
+- Microsoft: Excel loads Microsoft's Office script for the pane, and Windows may check the downloaded file.
   Microsoft's privacy terms apply.
 - The pane loads only its own files and Microsoft's Office script; its Content Security Policy blocks everything
   else. The fonts are on your PC.
@@ -81,18 +81,18 @@ can be charged by Google for what AI help uses; without billing, the free tier c
 - **Remove key** (in the pane) deletes the key and invite code saved in `%LOCALAPPDATA%\AnomalyHunter`. Scans and
   fixes keep working. An invite kit keeps its own copy, and running its install.bat again turns AI help back on, so
   also delete `invite-code.txt` from the kit folder. A `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` setting keeps AI help on.
-- **Delete** `ai-cache` or `server.log` in the folder above whenever you like.
+- You can delete `ai-cache` or `server.log` in the folder above whenever you like.
 - **Forget what this workbook saved** (in the pane, under Options > Saved in this workbook) removes everything the pane
   saved in the open workbook: the limits, the strength slider, the auto-fix list with its old values, the code of each
   row you fixed or dismissed, and the setting that opens the pane with the file. It changes no cell. Save the workbook
   afterwards to keep the change in the file.
-- **Uninstall:** `"%LOCALAPPDATA%\AnomalyHunter\AnomalyHunter.exe" uninstall`. It removes the startup entry, the
+- To uninstall, run `"%LOCALAPPDATA%\AnomalyHunter\AnomalyHunter.exe" uninstall`. It removes the startup entry, the
   add-in listing, the certificate and the files in that folder, except the app file itself (delete it afterwards). It
   also deletes Excel's add-in cache (the Wef folder), so other web add-ins may need to be added again and may forget
   their settings. It never touches your workbooks, so settings a scan saved inside a workbook stay there until you use
   Forget what this workbook saved in each one.
-- **Your invite:** ask John, the way you got it, to remove it.
-- **A GitHub issue:** you can edit or delete your own; John can delete it if you ask. Copies made while it was public
+- To remove your invite, ask John the way you got it.
+- You can edit or delete your own GitHub issue; John can delete it if you ask. Copies made while it was public
   may remain. John holds no other data about you.
 
 ## No warranty, changes, contact

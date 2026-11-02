@@ -187,7 +187,7 @@ def create_app(scan_csv=None):
     def ai(call):
         """Run a Claude call; map its failures to HTTP errors the panel shows as-is."""
         if not client.api_key_configured():
-            return {"error": "No AI key yet - paste a free Google AI key under Settings."}, 503
+            return {"error": "No AI key yet. Paste a free Google AI key under Options > AI help."}, 503
         try:
             return call()
         except anthropic.AuthenticationError:

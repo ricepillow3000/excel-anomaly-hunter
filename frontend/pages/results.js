@@ -39,7 +39,7 @@ export function listRows() {
     : decided[i] === "dismissed" ? "Dismissed" : null);
   const done = order.filter(status).length;
   show("list-title", order.length > 0);
-  $("list-title").textContent = done ? `Rows to check - ${n(done)} of ${n(order.length)} done` : "Rows to check";
+  $("list-title").textContent = done ? `Rows to check (${n(done)} of ${n(order.length)} done)` : "Rows to check";
   $("flagged-list").replaceChildren(...order.slice(0, CAP).map((i) => rowItem({ ...lastRows[i], i }, startRow, act(() => openFix(i, true)), status(i))));
   if (order.length > CAP) {
     const li = document.createElement("li");

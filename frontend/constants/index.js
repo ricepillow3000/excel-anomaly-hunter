@@ -24,10 +24,10 @@ export const STRENGTH = [
   [4, "A step up from 3: the same checks, a little tighter."],
   [5, "Recommended. Plus unusual mixes of values across columns."],
   [6, "A step past the recommended level: the same checks as 5, a little tighter."],
-  [7, "Stricter: the same mistakes as at 5, plus values just past their column's usual range to check."],
+  [7, "Stricter: the same mistakes as at 5, plus values a little past their column's usual range to check."],
   [8, "A step up from 7: the same mistakes as at 5, the same checks as 7, a little tighter."],
-  [9, "Very strict: the same mistakes as at 5, plus anything slightly unusual - many more rows to check, most of them fine."],
-  [10, "Strictest: the same mistakes as at 5, everything 9 checks at its tightest - the most rows to check, most of them fine."],
+  [9, "Very strict: the same mistakes as at 5, plus anything slightly unusual, so many more rows to check, most of them fine."],
+  [10, "Strictest: the same mistakes as at 5, everything 9 checks at its tightest: the most rows to check, most of them fine."],
 ];
 
 export const SEV = { High: "Very likely wrong", Medium: "Probably wrong", Low: "Worth a check" }; // Noted = fine, not shown
