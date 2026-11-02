@@ -37,7 +37,8 @@ A scan runs on your PC and sends nothing to the internet. Your sheet's data leav
   from the row's values, never the values themselves, so the row is still Fixed or Dismissed when the pane opens
   again), and a setting that opens the pane with that file. Highlights are fill colours in your cells.
   A fix changes your cells only when you click **Accept**, or when auto-fix runs, if you turned it on.
-- **In the pane:** the auto-fix and Power BI switches, in Excel's storage for the pane on this PC.
+- **In the pane:** the auto-fix switch (`anomalyHunterAutoFix`) and the Power BI switch (`anomalyHunterPowerBi`), in
+  Excel's storage for the pane (its localStorage) on this PC.
 - **Install** also adds a startup entry, a trusted add-in folder for Excel, and a certificate in your Windows account
   that works only for `localhost` and `127.0.0.1` (the key that made it is never saved).
 
@@ -45,7 +46,8 @@ A scan runs on your PC and sends nothing to the internet. Your sheet's data leav
 AI help works only after you paste a Google AI key or an invite code, or install an invite kit from John (or a
 developer sets `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` on the PC). Even then,
 nothing from your sheet is sent until you click a button. When you save a Google key, the engine asks Google once
-whether the key works; that call carries the key and no sheet data.
+whether the key works; that call carries the key and no sheet data. A key from a Google project with billing turned on
+can be charged by Google for what AI help uses; without billing, the free tier costs nothing.
 - **Ask AI (fix a row):** sends the column names, the row you asked about, up to 5 rows above and 5 below it, the
   formulas in that row, the cell addresses, the reason it was flagged, and anything you type in the request box. On a
   wide sheet only the columns nearest the flagged cell go. Long cells are cut to 200 characters, except the flagged cell.
@@ -54,8 +56,9 @@ whether the key works; that call carries the key and no sheet data.
 - **Where it goes:**
   - With your own Google key: straight to Google's Gemini API.
   - With an invite code: to John's relay on Cloudflare, which passes it to Google with John's key.
-    - The relay keeps one counter for today: how many AI calls each invite made, under the name John gave that
-      invite, plus the total. It saves no request and no answer; its saved logs are switched off.
+    - The relay keeps one counter: for the last day anyone used it, how many AI calls each invite made, under the
+      name John gave that invite, plus the total. The first call of a new day replaces it. It saves no request and no
+      answer; its saved logs are switched off.
     - The list of invites (a scrambled copy of each code and a name) stays until John removes it.
     - Cloudflare sees your IP address as the request passes. The relay's key never reaches your PC.
   - With neither, but with `ANTHROPIC_API_KEY` set on your PC (a developer setting): to Anthropic's Claude.
@@ -79,16 +82,24 @@ whether the key works; that call carries the key and no sheet data.
   fixes keep working. An invite kit keeps its own copy, and running its install.bat again turns AI help back on, so
   also delete `invite-code.txt` from the kit folder. A `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` setting keeps AI help on.
 - **Delete** `ai-cache` or `server.log` in the folder above whenever you like.
+- **Forget what this workbook saved** (in the pane, under Options > Saved in this workbook) removes everything the pane
+  saved in the open workbook: the limits, the strength slider, the auto-fix list with its old values, the code of each
+  row you fixed or dismissed, and the setting that opens the pane with the file. It changes no cell. Save the workbook
+  afterwards to keep the change in the file.
 - **Uninstall:** `"%LOCALAPPDATA%\AnomalyHunter\AnomalyHunter.exe" uninstall`. It removes the startup entry, the
   add-in listing, the certificate and the files in that folder, except the app file itself (delete it afterwards). It
   also deletes Excel's add-in cache (the Wef folder), so other web add-ins may need to be added again and may forget
-  their settings. It never touches your workbooks, so settings a scan saved inside a workbook stay there.
+  their settings. It never touches your workbooks, so settings a scan saved inside a workbook stay there until you use
+  Forget what this workbook saved in each one.
 - **Your invite:** ask John, the way you got it, to remove it.
 - **A GitHub issue:** you can edit or delete your own; John can delete it if you ask. Copies made while it was public
   may remain. John holds no other data about you.
 
 ## No warranty, changes, contact
 Anomaly Hunter is free and comes with no warranty. It can miss mistakes and flag correct values; check important data
-yourself. Its code is open source under the MIT License ([LICENSE](LICENSE)). When this file changes, its history is on GitHub. Questions or problems: the pane's Support page, or
+yourself. Its code is open source under the MIT License ([LICENSE](LICENSE)). When this file changes, its history is on GitHub.
+The invite relay is for help with Excel fixes only. John can turn off any invite at any time, each invite has a daily
+cap (as set today: 10 AI calls per invite and 20 for everyone together a day), and there is no promise it is up.
+Questions or problems: the pane's Support page, or
 https://github.com/ricepillow3000/excel-anomaly-hunter/issues (public, needs a free GitHub account; never post your AI
 key, your invite code or real data).
