@@ -21,6 +21,7 @@ Every build on `main` is installed and used on a fresh Windows PC with no Python
 Build the file: `pip install -e ".[exe]" -c constraints.txt` then `python -m PyInstaller packaging/AnomalyHunter.spec`
 on Windows -> `dist/AnomalyHunter.exe`.
 Windows-only per-user install (trusted shared-folder catalog), not a store add-in.
+Why one file and not Docker or Kubernetes, and the free ways to make sharing smoother: [docs/SHARING.md](docs/SHARING.md).
 
 **Built for analysts' sheets in many fields** (finance, banking, quant, supply chain, healthcare, construction, HR, marketing, real
 estate, insurance, manufacturing, education, energy, logistics...): it skips title rows, totals rows and ID columns

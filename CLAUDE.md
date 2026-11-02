@@ -189,7 +189,9 @@ Adding or removing a check: update this table in the same commit.
 - pip-audit reads every package installed, the app's or not, never `constraints.txt`: certifi and pillow, pinned past
   their advisories, still failed the local gate until they were installed (2026-10-20). After a pin change, install
   the moved pins (`pip install -e ".[dev]" -c constraints.txt`, and `pip install -c constraints.txt <package>` for a
-  pin outside `dev`), then run `tools/check.py`. Declare what the app imports (pydantic and werkzeug came only through
+  pin outside `dev`), then run `tools/check.py`. The gate also audits every pin in `constraints.txt` (`-r`): setuptools,
+  the build tool, is never installed for pip-audit to see, and 84.0.0 carried an advisory while the installed audit was
+  green (Dependabot found it, AH-96). Declare what the app imports (pydantic and werkzeug came only through
   anthropic and flask) and drop what nothing imports (Pillow, AH-87):
   `test_every_package_the_app_imports_is_declared_and_every_declared_one_is_used`.
 - Semgrep runs only in CI (`security.yml`): its rule packs come from semgrep.dev, which a cloud session cannot reach.
