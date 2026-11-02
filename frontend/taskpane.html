@@ -39,7 +39,6 @@
 
     <section id="main-ui" hidden>
       <div class="pane-hero">
-      <p class="eyebrow" data-enter="left">Excel add-in · checks run on this PC</p>
       <button id="scan" class="primary" data-enter="bottom">Find problems in this sheet</button>
       <div class="strength" data-enter="bottom">
         <div class="strength-head"><span id="strength-label" data-enter="left">How hard to look</span><b id="strength-val">5 of 10</b></div>
@@ -97,7 +96,7 @@
         <button id="clear-highlights" class="secondary">Remove highlights</button>
         <div id="odd-box" hidden>
           <button id="odd-check" class="secondary">Check words with AI</button>
-          <p class="hint">AI understands what words mean, so it can spot a value that doesn't belong, like a city in a product column. It sends only the different words in your text columns to Google (through John's relay if you use an invite code) - never your rows or numbers. Worth a look, not proof.</p>
+          <p class="hint">AI looks at what words mean, so it can spot a value that doesn't belong, like a city in a product column. It sends only the different words in your text columns to Google (through John's relay if you use an invite code), never your rows or numbers. Its answers are leads to check.</p>
           <ul id="odd-list" class="fix-changes"></ul>
         </div>
         <details class="more">
@@ -136,12 +135,12 @@
           <p id="fix-status" class="hint" role="status" aria-live="polite"></p>
         </div>
         <div id="ai-box">
-          <label for="fix-intent">Want a different fix? Describe it and AI writes it for you.</label>
+          <label for="fix-intent">For a different fix, describe it and AI will draft one.</label>
           <textarea id="fix-intent" rows="3" maxlength="2000" aria-describedby="fix-sends" placeholder="e.g. Use the average Units for the East region"></textarea>
           <button id="fix-ask" class="secondary">Ask AI</button>
           <p id="fix-sends" class="hint">Ask AI sends the column names, this row and up to 5 rows above and below it, the row's formulas, why it was flagged and what you type here, to Google (through John's relay if you use an invite code). Long cells are cut to 200 characters.</p>
         </div>
-        <p id="ai-off" class="hint">Want AI help with fixes? Turn it on for free under <b>AI help</b> at the bottom.</p>
+        <p id="ai-off" class="hint">AI help with fixes is off. Turn it on for free under <b>AI help</b> at the bottom.</p>
       </section>
 
       <div class="settings-band">
@@ -149,7 +148,7 @@
       <details class="more">
         <summary>Auto-fix (optional)</summary>
         <label class="check"><input type="checkbox" id="auto-fix" /> Fix exact mistakes by itself</label>
-        <p class="hint">Only capitals/spaces slips, like "east " where the column says "East" - and only when one spelling is clearly the usual one. Never numbers, never guesses. After it fixes something, "Undo auto-fixes" puts it back.</p>
+        <p class="hint">Only capitals/spaces slips, like "east " where the column says "East", and only when one spelling is clearly the usual one. It never changes numbers and never guesses. After it fixes something, "Undo auto-fixes" puts it back.</p>
       </details>
 
       <details class="more">
@@ -172,7 +171,7 @@
           <button id="save-key" class="secondary">Save key</button>
           <button id="remove-key" class="secondary">Remove key</button>
         </div>
-        <p class="hint">Got an invite code from John instead (starts with inv_)? Paste it in the same box - it uses his shared AI with a daily limit, and his key never reaches this PC.</p>
+        <p class="hint">If John gave you an invite code (it starts with inv_), paste it in the same box. It uses his shared AI with a daily limit, and his key never reaches this PC.</p>
         <p class="hint">Ask AI sends the column names, the row you ask about, up to 5 rows above and below it, its formulas and anything you type; Check words with AI sends your text columns' different values. Both go to Google (through John's relay if you use an invite code). Google's free tier may use them to improve its products, so don't ask AI about private data. The key is stored only on this computer.</p>
         <p class="hint"><a href="privacy.html" target="_blank" rel="noopener">What leaves your PC</a> · <a href="support.html" target="_blank" rel="noopener">Questions or problems</a></p>
       </details>

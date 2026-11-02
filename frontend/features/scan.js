@@ -75,7 +75,7 @@ async function scan(auto, held, t0) {
   await watchSelection(s.sheet, onSelect);
   const secs = Math.max(1, Math.round((Date.now() - t0) / 1000));
   notice(`Done in ${secs} second${secs === 1 ? "" : "s"}.` + (body.power_bi_saved === false
-    ? " The Power BI copy couldn't be saved (is latest-scan.csv open in another program?) - details in server.log." : ""));
+    ? " The Power BI copy couldn't be saved (is latest-scan.csv open in another program?). Details are in server.log." : ""));
   // a checked workbook reopens with this pane open (Office autoopen; manifest TaskpaneId)
   Office.context.document.settings.set("Office.AutoShowTaskpaneWithDocument", true);
   Office.context.document.settings.saveAsync();
@@ -116,7 +116,7 @@ export function levelChange(before, after) {
   const some = (k, word) => `${n(k)} ${word} row${k === 1 ? "" : "s"}`; // "3 more rows", "1 fewer row"
   const head = `Level ${after.level} (was ${before.level}):`;
   if (!gone(s0, s1) && !gone(s1, s0) && !gone(l0, l1) && !gone(l1, l0))
-    return `${head} the same rows as at ${before.level} - nothing on this sheet sits between the two levels.`;
+    return `${head} the same rows as at ${before.level}; nothing on this sheet sits between the two levels.`;
   const parts = [], d = l1.size - l0.size;
   if (d) parts.push(`${some(Math.abs(d), d > 0 ? "more" : "fewer")} worth a check${d > 0 && after.level > before.level ? " (borderline values)" : ""}`);
   else if (gone(l0, l1)) parts.push(`${some(gone(l0, l1), "other")} worth a check`);
@@ -147,7 +147,7 @@ export function fairnessNote(fair) {
   if (!cols.length) return "";
   const gaps = fairnessTests(fair).filter((t) => t.verdict === "gap");
   const kept = `Fairness: ${cols.join(", ")} ${cols.length === 1 ? "is" : "are"} never used to decide which rows are unusual.`;
-  const more = gaps.length > 3 ? ` - and ${gaps.length - 3} more under "All fairness checks"` : "";
+  const more = gaps.length > 3 ? `, and ${gaps.length - 3} more under "All fairness checks"` : "";
   const context = [...new Set(gaps.slice(0, 3).map((t) => t.context).filter((c) => typeof c === "string" && c))];
   if (gaps.length) return `${kept} Check these gaps between groups: ${gaps.slice(0, 3).map((t) => t.text).join("; ")}${more}.${context.map((c) => ` ${c}`).join("")}`;
   // no gap: name only the checks that ran ("Flags, blanks and outcomes are even" was said on a sheet that ran one

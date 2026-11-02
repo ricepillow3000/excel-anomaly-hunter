@@ -145,14 +145,14 @@ def recommend_fix(row, sheet_row, r):
         v, cell = row[j], f"{LETTERS[j]}{sheet_row}"
         if isinstance(likely.get(c), str) and isinstance(v, str):
             changes.append((cell, likely[c]))
-            typos.append(f'{c} says "{v}" where the rest of the column says "{likely[c]}" - same word, different capitals/spaces')
+            typos.append(f'{c} says "{v}" where the rest of the column says "{likely[c]}": same word, different capitals/spaces')
         elif isinstance(v, (int, float)) and likely.get(c) is not None and (s := next((s for s in sums if c in s["cols"]), None)):
             changes.append((cell, js(likely[c])))
             solved.add(c)
-            typos.append(f"{c} is {js(v)} - the row's own numbers say {js(likely[c])} ({s['total']} = {s['rule']})")
+            typos.append(f"{c} is {js(v)}, but the row's own numbers say {js(likely[c])} ({s['total']} = {s['rule']})")
     notes = [f"{'; '.join(typos)}. Check it against the source before applying."] if typos else []
-    notes += [f"{s['text']} - one of these numbers is wrong. Check them against the source." for s in sums if not set(s["cols"]) & solved]
-    notes = notes or ["Nothing here is clearly broken - the values are just unusual together. Check them against the source; if they're right, leave them."]
+    notes += [f"{s['text']}, so one of these numbers is wrong. Check them against the source." for s in sums if not set(s["cols"]) & solved]
+    notes = notes or ["Nothing here is clearly broken, but the values are unusual together. Check them against the source; if they're right, leave them."]
     return {"explanation": " ".join(notes), "changes": changes, "label": "Suggested fix" if changes else "What to check"}
 
 
@@ -187,7 +187,7 @@ def test_the_sample_sheet_on_the_website_is_the_engines_real_result_cell_by_cell
     rows, body = sample(), scan(sample())
     out = body["rows"]
     flagged = {i + 2: r for i, r in enumerate(out) if r["severity"]}
-    table = ws.one("table", cls="grid")
+    table = ws.one("div", id="p-found").one("table", cls="grid")
     head = [th.text() for th in table.one("thead").all("th")]
     assert head == ["Row", *COLUMNS, "Finding"]
     shown = {}
@@ -222,7 +222,36 @@ def test_the_sample_sheet_on_the_website_is_the_engines_real_result_cell_by_cell
     assert table.attrs["aria-label"] == f"Sample sales sheet with {['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'][len(flagged)]} flagged rows"
     top = ws.one("div", cls="ws-top").one("span").text()
     assert top == f"{len(rows)} rows · {len(COLUMNS)} columns"
-    assert ws.one("ol", cls="stages").all("li")[0].text() == f"Reading {len(rows)} rows and {len(COLUMNS)} columns"
+
+
+def pane_steps():
+    """The pane's progress line (frontend/features/scan.js scan()), read from the file: step 1 as it starts, step 1 with
+    its percent (a template), step 2 for a sheet of N rows (a template) and auto-fix's step."""
+    src = (ROOT / "frontend/features/scan.js").read_text(encoding="utf-8")
+    first = re.search(r'busy\("(Step 1 of 3: [^"]+)", 0\)', src)[1]
+    pct = re.search(r"busy\(`(Step 1 of 3: [^`]+?) \$\{Math\.round\(p \* 100\)\}%`, p\)", src)[1]
+    second = re.search(r"busy\(`(Step 2 of 3: [^`]*?)\$\{n\(s\.rows\.length\)\}([^`]*)`\)", src)
+    auto = re.search(r'busy\("(Fixing [^"]+)"\)', src)[1]
+    return first, pct, lambda rows: f"{second[1]}{rows}{second[2]}", auto
+
+
+def test_the_scanning_tab_shows_the_panes_own_progress_words_for_this_sheet():
+    """It showed stage names the pane never says ("Scanning: reading sheet data", "Testing each column's limits")."""
+    ws, _ = page()
+    first, pct, second, auto = pane_steps()
+    n = len(sample())
+    panel = ws.one("div", id="p-busy")
+    steps = [li for li in panel.one("ol", cls="stages").all("li")]
+    assert [li.text() for li in steps[:2]] == [first, second(n)]
+    assert steps[2].text() == f"{auto} only with Auto-fix on" and steps[2].one("span", cls="small").text() == "only with Auto-fix on"
+    assert ">Auto-fix (optional)</summary>" in (ROOT / "frontend/taskpane.html").read_text(encoding="utf-8")
+    assert panel.one("p", cls="ticker").text() == f"{pct} 0%"
+    # the ticker's words (site/home.js STAGES): step 1 at a whole percent, then step 2 for this sheet, in that order
+    home = (ROOT / "site/home.js").read_text(encoding="utf-8")
+    stages = json.loads(re.search(r"const STAGES = (\[[^\]]*\]);", home)[1])
+    assert stages[0] == f"{pct} 0%" and stages[-1] == second(n)
+    shown = [int(re.fullmatch(re.escape(pct) + r" (\d+)%", x)[1]) for x in stages[:-1]]
+    assert shown == sorted(shown) and 0 <= shown[0] and shown[-1] <= 100
 
 
 def test_every_finding_on_the_website_says_what_the_pane_says_and_offers_its_fix():
@@ -232,7 +261,7 @@ def test_every_finding_on_the_website_says_what_the_pane_says_and_offers_its_fix
     flagged = {i + 2: r for i, r in enumerate(body["rows"]) if r["severity"]}
     for n, r in flagged.items():
         row, said, rec = rows[n - 2], plain_reason(r["reason"]), recommend_fix(rows[n - 2], n, r)
-        tr = next(tr for tr in ws.one("table", cls="grid").one("tbody").all("tr") if tr.all("button", cls="rowbtn") and tr.one("th").text() == str(n))
+        tr = next(tr for tr in ws.one("div", id="p-found").one("table", cls="grid").one("tbody").all("tr") if tr.all("button", cls="rowbtn") and tr.one("th").text() == str(n))
         why = tr.one("td", cls="why")
         fix = why.all("b")
         short = why.text().split(" · Fix:")[0]
@@ -289,30 +318,87 @@ def test_the_after_fixes_tab_says_what_the_pane_says_once_the_three_fixes_are_in
     named = sorted(flagged)
     assert f"rows {', '.join(map(str, named[:-1]))} and {named[-1]}" in words, words
     sure = sum(r["severity"] in ("High", "Medium") for r in flagged.values())
-    assert panel.one("p", cls="verdict").text() == (f"SCAN COMPLETE: {sure} PROBABLY WRONG, {len(flagged) - sure} WORTH A CHECK")
+    assert panel.one("p", cls="verdict").text() == (f"Scan complete: {sure} probably wrong, {len(flagged) - sure} worth a check")
+    # the corrected sheet itself: the same 13 rows as the findings, each cell the fixed sheet's, the cells the fixes
+    # changed marked (and only those), the rows the engine still lists outlined on the cells it names, in its words
+    rows, before = fixed_sheet(), sample()
+    table = panel.one("table", cls="grid")
+    head = [th.text() for th in table.one("thead").all("th")]
+    assert head == ["Row", *COLUMNS, "Finding"]
+    found = [tr.one("th").text() for tr in ws.one("div", id="p-found").one("tbody").all("tr") if "skip" not in tr.classes()]
+    shown = [tr for tr in table.one("tbody").all("tr") if "skip" not in tr.classes()]
+    assert [tr.one("th").text() for tr in shown] == found
+    for tr in shown:
+        n = int(tr.one("th").text())
+        tds, want, was = tr.all("td"), rows[n - 2], before[n - 2]
+        got = [td.text() for td in tds[:5]]
+        assert got[:2] == want[:2] and [float(x) for x in got[2:]] == want[2:], f"after, row {n}: {got} vs {want}"
+        mended = {head[k + 1] for k, td in enumerate(tds[:5]) if "mended" in td.classes()}
+        changed = {COLUMNS[j] for j in range(5) if want[j] != was[j]}
+        assert mended == changed, f"after, row {n}: marked {mended}, the fixes changed {changed}"
+        r = flagged.get(n)
+        ring = {head[k + 1] for k, td in enumerate(tds[:5]) if "q" in td.classes() or "flag" in td.classes()}
+        assert ring == (set(r["cells"]) if r else set()), f"after, row {n}: outlined {ring}, the pane colours {r and r['cells']}"
+        assert not r or r["severity"] == "Low" and all("q" in td.classes() for td in tds[:5] if head[tds.index(td) + 1] in r["cells"])
+        why = tds[5].text()
+        if r:
+            assert why and why in plain_reason(r["reason"]), f"after, row {n}: '{why}'"
+        elif changed:
+            (col,) = changed
+            new, old = want[COLUMNS.index(col)], was[COLUMNS.index(col)]
+            assert why == f"Fixed: {col} {js(new)}, was " + (f'"{old}"' if isinstance(old, str) else js(old)), f"after, row {n}: '{why}'"
+        else:
+            assert why == "", f"after, row {n}: '{why}'"
+    # the key under the filters follows the state: its after-fixes counts are the engine's on the fixed sheet
+    key = ws.one("p", cls="key").all("b", cls="kcount")
+    assert [int(b.attrs["data-after"]) for b in key] == [sure, len(flagged) - sure]
+    assert [int(b.attrs["data-n"]) for b in key] == [int(b.text()) for b in key]
 
 
-def test_the_checks_examples_are_true_of_the_sample_or_an_engine_sentence_on_an_illustrative_sheet():
+def test_the_checks_table_says_what_the_sample_shows_or_that_it_has_none():
+    """The checks were 8 numbered cards with examples; they are a table (AH-98) whose third column, "In the sample above",
+    names the sample's own row where it has an instance and says plainly where it has none. Every row link lands on a
+    row the engine flags for that check, every number beside it is that row's, and the fact over the table counts both."""
     _, root = page()
     rows, body = sample(), scan(sample())
     flagged = {i + 2: r for i, r in enumerate(body["rows"]) if r["severity"]}
-    eg = [s.text() for s in root.one("ol", cls="num-grid").all("span", cls="eg")]
-    r22, r31 = rows[22 - 2], rows[31 - 2]
-    assert eg[0] == f"{js(r22[4])} ÷ {js(r22[3])} = {js(flagged[22]['likely']['Units'])}" and round(r22[4] / r22[3], 9) == 42
-    assert eg[1] == f"Units {r22[2]}, usual limit {js(body['limits']['Units'][3])}" and "Units weird limit is 105; this is 7777" in flagged[22]["reason"]
-    assert eg[2] == f'"{r31[1]}" to "{flagged[31]["likely"]["Region"]}"'
-    assert eg[3].endswith("a jump on 2026-01-09") and "Total jumped sharply near 2026-01-09" in plain_reason(flagged[5]["reason"])
+    table = root.one("table", cls="checks-table")
+    assert [th.text() for th in table.one("thead").all("th")] == ["Check", "What it catches", "In the sample above"]
+    checks = {tr.one("th").text(): tr.one("td", cls="in-sample") for tr in table.one("tbody").all("tr")}
+    assert list(checks) == ["Reconciliation", "Keying errors", "Consistency", "Temporal", "Completeness", "Plausibility", "Fairness", "Ask AI (optional)"]
+    assert root.one("p", cls="fact").text() == f"{len(checks)} checks · {len(flagged)} rows flagged in the sample above"
+    kind = {"Reconciliation": "recon", "Keying errors": "keying", "Consistency": "label", "Temporal": "time"}
+    for name, cell in checks.items():
+        links = cell.all("a", cls="to-row")
+        if name not in kind:  # none in this sample, said in so many words
+            assert not links and cell.one("span", cls="nil").text().startswith(("None in this sample", "Not run on this sample")), name
+            continue
+        (a,) = links
+        n = int(a.attrs["href"].removeprefix("#r"))
+        assert a.text() == f"Row {n}" and n in flagged and kind[name] in kinds(flagged[n]["reason"]), f"{name}: row {n}"
+        assert root.one("tr", id=f"r{n}").one("th").text() == str(n)
+        checks[name] = (n, rows[n - 2], flagged[n], cell.text().removeprefix(a.text()))
+    n, row, r, eg = checks["Reconciliation"]
+    assert eg == f"{js(row[4])} ÷ {js(row[3])} = {js(r['likely']['Units'])}" and js(round(row[4] / row[3], 9)) == js(r["likely"]["Units"])
+    n, row, r, eg = checks["Keying errors"]
+    assert eg == f"Units {row[2]}, usual limit {js(body['limits']['Units'][3])}" and f"Units weird limit is {js(body['limits']['Units'][3])}; this is {row[2]}" in r["reason"]
+    n, row, r, eg = checks["Consistency"]
+    assert eg == f'"{row[1]}" to "{r["likely"]["Region"]}"'
+    n, row, r, eg = checks["Temporal"]
+    assert eg == f"a jump in Total on {row[0]}" and f"Total jumped sharply near {row[0]}" in plain_reason(r["reason"])
     # the sample has no people column: no fairness test runs and the pane shows no fairness line, so the example is the
     # engine's sentence on an illustrative people sheet, never "Region: even" (which read like this sample's result)
     assert body["fairness"] == {"protected": {}, "tests": []}
     people = [[f"P{i}", ["Female", "Male"][i % 2], 25 + i % 30, 40000 + (i * 7919) % 20000] for i in range(200)]
     for i in (5, 50, 90, 133, 170):
         people[i][3] = 999999
-    r = APP.post("/scan", json={"columns": ["Name", "Gender", "Age", "Salary"], "rows": people, "strength": 5}).get_json()
-    said = [t["text"] for t in r["fairness"]["tests"]]
-    assert eg[6] in said and eg[6].split(":")[0] not in COLUMNS, f"{eg[6]} is not what the engine says: {said}"
-    # the rest are general forms, not claims about this sample (a change here is a change to re-check by hand)
-    assert eg[4:6] + eg[7:] == ["#N/A · a repeated row", "Month 13 · 99999", '"Use the usual spelling"']
+    f = APP.post("/scan", json={"columns": ["Name", "Gender", "Age", "Salary"], "rows": people, "strength": 5}).get_json()
+    said = [t["text"] for t in f["fairness"]["tests"]]
+    fair = checks["Fairness"].one("span", cls="other-sheet").one("span", cls="say").text()
+    assert fair in said and fair.split(":")[0] not in COLUMNS, f"{fair} is not what the engine says: {said}"
+    # the rest are general forms on another sheet, not claims about this one (a change here is a change to re-check by hand)
+    assert [checks[k].one("span", cls="other-sheet").text() for k in ("Completeness", "Plausibility", "Ask AI (optional)")] == [
+        "On another sheet: #N/A, a repeated row", "On another sheet: Month 13, 99999", 'A request: "Use the usual spelling"']
 
 
 def test_the_python_port_of_the_panes_words_matches_the_pane():

@@ -47,8 +47,8 @@ export async function openFix(i, selectInSheet) {
   if (u) return showAccepted(f, u);
   let rec = recommendFix(columns, rows, i, state.lastLimits, r.reason, startRow, startCol, r.likely, f.calc, r.maybe);
   if (state.fix === f) rec = await suggestTypo(f, r, rec).catch(() => rec); // no typo found or engine busy: the advice stays
-  const label = !rec.changes.length ? "What to check" : rec.typo ? "Possible typo - check it before you accept"
-    : rec.guess ? "Best guess - check it before you accept" : "Suggested fix";
+  const label = !rec.changes.length ? "What to check" : rec.typo ? "Possible typo: check it before you accept"
+    : rec.guess ? "Best guess: check it before you accept" : "Suggested fix";
   if (state.fix === f) await showFix(f, label, rec);
 }
 

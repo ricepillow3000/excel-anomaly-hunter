@@ -13,7 +13,7 @@ export function setAi(on) {
   show("ai-off", !state.aiAvailable);
   show("odd-box", state.aiAvailable);
   $("fix-ask").disabled = !state.aiAvailable || !!state.fix?.asking;
-  $("ai-state").textContent = state.aiAvailable ? "AI help is on." : "AI help is off. It's optional - fixes work without it.";
+  $("ai-state").textContent = state.aiAvailable ? "AI help is on." : "AI help is off. It's optional; fixes work without it.";
 }
 
 export async function saveKey(key) {
@@ -37,7 +37,7 @@ export async function askFix() { // talks to the engine only; the sheet is touch
   if (!state.fix || !state.aiAvailable || $("fix-ask").disabled) return;
   const f = state.fix, btn = $("fix-ask");
   f.asking = btn.disabled = true;
-  btn.textContent = "AI is thinking… (usually a few seconds; slower when Google is busy)";
+  btn.textContent = "Asking AI… (usually a few seconds; slower when Google is busy)";
   $("fix-status").textContent = "";
   try {
     const { columns, rows, startRow, startCol } = state.lastScan;
@@ -47,7 +47,7 @@ export async function askFix() { // talks to the engine only; the sheet is touch
     }, 300);
     const v = await checkFix(f, out.changes).catch(() => null); // Agent 3 looks first; null = a formula, judged after Accept
     if (v) out.explanation += v.clean ? " Checked: with this fix the row looks right."
-      : ` Checked: with this fix the row would still look unusual - ${plainReason(v.reason)}.`;
+      : ` Checked: with this fix the row would still look unusual: ${plainReason(v.reason)}.`;
     if (state.fix === f) await showFix(f, "AI's fix", out); // else: the user moved to another row meanwhile
   } catch (e) {
     if (state.fix === f) $("fix-status").textContent = "AI could not help: " + e.message;
@@ -67,9 +67,9 @@ export async function checkWords() {
   const item = (text) => Object.assign(document.createElement("li"), { textContent: text }); // AI text is never HTML
   try {
     const { odd, partial } = await post("/odd-text", { columns, rows }, 300);
-    $("odd-list").replaceChildren(...(odd.length ? odd.map((o) => item(`${at(o)}: "${o.value}" - the AI says: ${o.why}`))
+    $("odd-list").replaceChildren(...(odd.length ? odd.map((o) => item(`${at(o)}: "${o.value}". The AI says: ${o.why}`))
       : [item(partial ? "Nothing out of place so far." : "Nothing looks out of place.")]),
-    ...(partial ? [item("Google got busy before every word was checked. Click again to check the rest - the finished part is kept.")] : []));
+    ...(partial ? [item("Google got busy before every word was checked. Click again to check the rest. The finished part is kept.")] : []));
   } catch (e) { // Google busy (it often is), no key...: said right here, like Ask AI does
     $("odd-list").replaceChildren(item("AI could not check: " + e.message));
   }

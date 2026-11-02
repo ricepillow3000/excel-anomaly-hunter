@@ -253,10 +253,14 @@ const onTop = (page) => page.evaluate(async () => {
   // "After fixes": the sheet with the three suggested fixes in, where the engine still lists 4 jumps worth a check (AH-88,
   // backend/tests/test_site_sample.py checks the numbers against the engine)
   await p.click("#t-clean"); assert.deepEqual(await state(), { state: "clean", counts: "4 0 0 0 4", open: "", focus: "t-clean" });
+  // ... and the key under the filters with them: it read "Probably wrong: 3" over the corrected sheet (AH-98)
+  const key = () => p.$$eval("#preview .key span", (s) => s.map((x) => x.textContent).join(" | "));
+  assert.equal(await key(), "Probably wrong: 0 | Worth a check: 4", "the key after the fixes");
   await p.keyboard.press("ArrowRight"); assert.equal((await state()).focus, "t-found");
   await p.keyboard.press("ArrowLeft"); assert.equal((await state()).focus, "t-clean");
   await p.click('.typology button[data-kind="label"]'); // a filter brings the findings back
   assert.equal((await state()).state, "found");
+  assert.equal(await key(), "Probably wrong: 3 | Worth a check: 4", "the key back on the findings");
   const lit = () => p.$$eval("#p-found .grid tbody tr:not(.skip)", (rs) => rs.filter((r) => getComputedStyle(r).opacity === "1").map((r) => r.querySelector("th").textContent).join());
   assert.equal(await lit(), "31");
   await p.click('.typology button[data-kind="time"]'); assert.equal(await lit(), "5,21,22,41,57");
@@ -314,7 +318,7 @@ const onTop = (page) => page.evaluate(async () => {
 // once the sheet is 30% on screen (never before: the sheet starts below the fold at 1440 x 900), one band of light crosses
 // it, then the rows land; the layout never moves (CLS 0), and a press on the sheet ends it at once
 const bars = (p) => p.evaluate(() => {
-  const sel = ["#preview tbody tr:nth-child(5) td:nth-child(4)", "#preview tbody tr:nth-child(5) td.why", "#preview tbody tr:nth-child(2) th", "#preview .typology .n", "#preview .key span"];
+  const sel = ["#p-found tbody tr:nth-child(5) td:nth-child(4)", "#p-found tbody tr:nth-child(5) td.why", "#p-found tbody tr:nth-child(2) th", "#preview .typology .n", "#preview .key span"];
   return sel.map((s) => { const el = document.querySelector(s), r = el.getBoundingClientRect(), a = getComputedStyle(el, "::after"), c = getComputedStyle(el);
     const box = { left: r.left + el.clientLeft + parseFloat(a.left), top: r.top + el.clientTop + parseFloat(a.top), width: parseFloat(a.width), height: parseFloat(a.height) };
     return { s, content: a.content, color: c.color, inside: box.width > 2 && box.height > 2 && box.left >= r.left - 0.5 && box.left + box.width <= r.right + 0.5 && box.top >= r.top - 0.5 && box.top + box.height <= r.bottom + 0.5 }; });
@@ -354,10 +358,44 @@ const frameAt = (p) => p.evaluate(() => { let top = 0; for (let e = document.get
   await p.waitForTimeout(ENTERED);
   await p.evaluate((y) => scrollTo(0, y), await frameAt(p));
   await p.waitForFunction(() => document.getElementById("preview").getAttribute("data-loading") === "play", null, { timeout: 1000 });
-  const b = await p.locator("#preview tbody tr:nth-child(4) td:nth-child(3)").boundingBox();
+  const b = await p.locator("#p-found tbody tr:nth-child(4) td:nth-child(3)").boundingBox();
   await p.mouse.click(b.x + 5, b.y + 5);
   assert.equal(await loadingOf(p), null, "a press on the sheet did not end its skeleton");
   await done(t, "skeleton ended by a press", [API]);
+}
+// AH-99: the skeleton waits for "See a sample scan"'s glide to land (played on the way down, it had mostly finished by
+// the time the visitor arrived), and scrolled by hand it waits until the sheet is 60% in view: 30% is not enough
+{
+  const t = await open("index.html", { width: 1440, init: () => {
+    const m = window.__arrive = { at: 0, loading: undefined, play: 0, gone: 0 };
+    document.addEventListener("ah:glide-end", (e) => { if (e.detail.arrived && !m.at) { m.at = performance.now(); m.loading = document.getElementById("preview").getAttribute("data-loading"); } });
+    addEventListener("DOMContentLoaded", () => new MutationObserver(() => { const v = document.getElementById("preview").getAttribute("data-loading");
+      if (v === "play" && !m.play) m.play = performance.now();
+      if (v === null && !m.gone) m.gone = performance.now(); }).observe(document.getElementById("preview"), { attributes: true, attributeFilter: ["data-loading"] }));
+  } });
+  const p = t.page;
+  await p.waitForTimeout(ENTERED);
+  const b = await p.locator('a[data-glide="frame"][href="#preview"]').boundingBox();
+  await p.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+  await p.waitForFunction(() => window.__arrive.gone > 0, null, { timeout: 7000 });
+  const m = await p.evaluate(() => window.__arrive);
+  assert.ok(m.at > 0 && m.loading === "" && (m.play === 0 || m.play >= m.at), `the skeleton did not wait for the glide: ${JSON.stringify(m)}`);
+  assert.ok(m.gone - m.at >= 1200 && m.gone - m.at <= 2600, `the skeleton went ${Math.round(m.gone - m.at)} ms after the glide arrived`);
+  console.log(`skeleton after the glide: gone ${Math.round(m.gone - m.at)} ms after arrival`);
+  await done(t, "skeleton waits for the glide", [API]);
+}
+{
+  const t = await open("index.html", { width: 1440 });
+  const p = t.page;
+  await p.waitForTimeout(ENTERED);
+  // the sheet's top where `share` of it shows above the bottom of the screen
+  const showing = (share) => p.evaluate((f) => { const el = document.getElementById("preview"); let top = 0; for (let e = el; e; e = e.offsetParent) top += e.offsetTop;
+    scrollTo(0, top - innerHeight + f * el.offsetHeight); }, share);
+  await showing(0.3); await p.waitForTimeout(800);
+  assert.equal(await loadingOf(p), "", "the skeleton played with 30% of the sheet in view");
+  await showing(0.7);
+  await p.waitForFunction(() => document.getElementById("preview").getAttribute("data-loading") === "play", null, { timeout: 1000 });
+  await done(t, "skeleton waits for 60% in view", [API]);
 }
 // the download's facts: bars on their parent list while GitHub's answer is really on its way (never inside #sha or #rel),
 // for at least 700 ms, and gone once it has come, good or junk
@@ -413,7 +451,7 @@ for (const width of [1440, 1280]) {
   const p = t.page;
   await p.waitForTimeout(ENTERED);
   const y0 = await p.evaluate(() => scrollY);
-  const g = await glideTo(p, 'a[data-glide="frame"]', "#preview");
+  const g = await glideTo(p, 'a[data-glide="frame"][href="#preview"]', "#preview");
   const end = await p.evaluate(() => { const bar = document.querySelector(".bar").getBoundingClientRect().bottom, f = document.getElementById("preview").getBoundingClientRect(), n = document.querySelector(".next-up").getBoundingClientRect();
     return { y: scrollY, bar, top: f.top, bottom: n.bottom, checks: document.getElementById("checks").getBoundingClientRect().top, h: innerHeight, focus: document.activeElement.id }; });
   assert.ok(g.mid > y0 && g.mid < end.y, `${width}px: "See a sample scan" jumped (${y0} -> ${g.mid} at 300 ms -> ${end.y})`);
@@ -436,7 +474,7 @@ for (const width of [1440, 1280]) {
     assert.equal(await p.evaluate(() => getComputedStyle(document.getElementById("checks-title")).transform), "none", "the checks' heading is not at rest");
     // a wheel ends a glide where it is: back to the top, glide, wheel, and nothing more moves
     await p.evaluate(() => scrollTo(0, 0)); await p.waitForTimeout(300);
-    const b = await p.locator('a[data-glide="frame"]').boundingBox();
+    const b = await p.locator('a[data-glide="frame"][href="#preview"]').boundingBox();
     await p.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
     await p.waitForTimeout(500);
     await p.mouse.wheel(0, 40); await p.waitForTimeout(300);
@@ -448,7 +486,7 @@ for (const width of [1440, 1280]) {
 { // reduced motion: the ordinary jump
   const t = await open("index.html", { width: 1440, motion: "reduce" });
   const p = t.page;
-  await p.click('a[data-glide="frame"]'); await p.waitForTimeout(50);
+  await p.click('a[data-glide="frame"][href="#preview"]'); await p.waitForTimeout(50);
   assert.deepEqual(await p.evaluate(() => [location.hash, Math.round(document.getElementById("preview").getBoundingClientRect().top)]), ["#preview", 88], "reduced motion: See a sample scan does not jump");
   await done(t, "glide with reduced motion", [API]);
 }
@@ -568,9 +606,9 @@ async function scrollLinked(p, label, field) {
   const snap = async () => ({ deco: JSON.stringify(await decoration(p)), field: field ? (await fieldShot(p)).toString("base64") : "" });
   const go = async (y) => { await p.evaluate((y) => scrollTo(0, y), y); await p.waitForTimeout(400); };
   const vh = await p.evaluate(() => innerHeight);
-  // a quarter of the way through the screen: the checks' first row of hairlines, their second row, the three steps
+  // a quarter of the way through the screen: the checks table's first row's hairline, its fifth row's, the three steps
   const spots = [];
-  for (const sel of [".num-grid li:nth-child(1) .rule", ".num-grid li:nth-child(5) .rule", ".steps li:nth-child(1) .rule"]) spots.push(Math.round((await layoutTop(p, sel)) - vh * 0.75));
+  for (const sel of [".checks-table tbody tr:nth-child(1) .rule", ".checks-table tbody tr:nth-child(5) .rule", ".steps li:nth-child(1) .rule"]) spots.push(Math.round((await layoutTop(p, sel)) - vh * 0.75));
   for (const y of spots) {
     await go(0); await go(y);
     const a = await snap();
@@ -580,7 +618,7 @@ async function scrollLinked(p, label, field) {
     await go(await p.evaluate(() => document.documentElement.scrollHeight)); await go(y);
     assert.deepEqual(await snap(), a, `${label}, scroll ${y}: not the same after a trip to the bottom and back`);
   }
-  // step by step: the second hairline of the first row draws further, and the IT headline drifts further, at each of
+  // step by step: the second hairline (the checks table's second row) draws further, and the IT headline drifts further, at each of
   // three nearby positions
   const sxs = [], ys = [];
   for (const y of [spots[0] - 20, spots[0], spots[0] + 20]) { await go(y); sxs.push((await decoration(p)).filter((x) => x.rule)[1].sx); }
@@ -648,7 +686,7 @@ let reveal = null;
 {
   const t = await open("index.html", { width: 1440, init: () => { window.__unobserved = []; const un = IntersectionObserver.prototype.unobserve;
     IntersectionObserver.prototype.unobserve = function (el) { window.__unobserved.push(el); return un.call(this, el); }; } });
-  const p = t.page, GRID = ".num-grid > .reveal-item";
+  const p = t.page, GRID = ".checks-table tbody > .reveal-item"; // the checks table's 8 rows (AH-98; they were 8 cards)
   const tok = await tokens(p);
   // John's 2026-11-02 timings (AH-90): an unhurried cascade, 90 ms apart, each item 1.1 s
   assert.ok(tok.ease === "cubic-bezier(.16, 1, .3, 1)" && tok.stagger === 90 && tok.dur === 1100 && tok.rise >= 20 && tok.rise <= 30 && tok.cap >= 1, `the motion tokens: ${JSON.stringify(tok)}`);
@@ -660,13 +698,13 @@ let reveal = null;
   // scrolled into view in one step once the hero's entrance is over, traced: the window runs from the scroll to the last
   // item's transitionend
   await p.waitForFunction(() => document.getAnimations().every((a) => a.timeline !== document.timeline), null, { timeout: 3000 });
-  await p.evaluate(() => { let n = 0; addEventListener("transitionend", (e) => { if (e.propertyName === "opacity" && e.target.matches(".num-grid > .reveal-item") && ++n === 8) console.timeStamp("reveal-end"); }, true); });
+  await p.evaluate(() => { let n = 0; addEventListener("transitionend", (e) => { if (e.propertyName === "opacity" && e.target.matches(".checks-table tbody > .reveal-item") && ++n === 8) console.timeStamp("reveal-end"); }, true); });
   await browser.startTracing(p, { categories: ["devtools.timeline"] });
-  await p.evaluate(() => { const g = document.querySelector(".num-grid"); let top = 0; for (let e = g; e; e = e.offsetParent) top += e.offsetTop;
+  await p.evaluate(() => { const g = document.querySelector(".checks-table"); let top = 0; for (let e = g; e; e = e.offsetParent) top += e.offsetTop;
     console.timeStamp("reveal-start"); scrollTo(0, top - 120); });
   await p.waitForTimeout(100);
   const rising = await revealed(p, GRID);
-  await p.waitForFunction(() => document.querySelectorAll(".num-grid > [data-settled]").length === 8, null, { timeout: 4000 });
+  await p.waitForFunction(() => document.querySelectorAll(".checks-table tbody > [data-settled]").length === 8, null, { timeout: 4000 });
   await p.waitForTimeout(300);
   const events = JSON.parse((await browser.stopTracing()).toString()).traceEvents;
   const mark = (m) => events.find((e) => e.name === "TimeStamp" && e.args && e.args.data && e.args.data.message === m);
@@ -684,13 +722,13 @@ let reveal = null;
   // (c) settled: the layer is let go
   assert.ok(after.every((x) => x.settled && x.will === "auto"), `will-change after the reveal: ${after.map((x) => x.will)}`);
   // (d) revealed once: unobserved, and a trip away and back does not hide it again
-  assert.equal(await p.evaluate(() => [...document.querySelectorAll(".num-grid > .reveal-item")].filter((e) => window.__unobserved.includes(e)).length), 8, "the observer still watches a revealed check");
+  assert.equal(await p.evaluate(() => [...document.querySelectorAll(".checks-table tbody > .reveal-item")].filter((e) => window.__unobserved.includes(e)).length), 8, "the observer still watches a revealed check");
   await p.evaluate(() => scrollTo(0, 0)); await p.waitForTimeout(300);
   await p.evaluate(() => scrollTo(0, document.getElementById("checks").offsetTop)); await p.waitForTimeout(50);
   assert.ok((await revealed(p, GRID)).every((x) => x.op === "1" && x.tf === "none"), "a check hid again after a trip away and back");
   reveal = { delays: after.map((x) => x.delay), layout: count("Layout", s1.ts), paint: count("Paint", s1.ts), layoutAll: count("Layout", last), paintAll: count("Paint", last), ms: Math.round((s1.ts - s0.ts) / 1000) };
   // composite only: no layout from the scroll to the last transitionend; letting go of will-change afterwards lays the
-  // page out once a batch (two here: the checks' headline and lede above the grid are one look, the grid another at most)
+  // page out once a batch (two here: the checks' headline and lede above the table are one look, its rows another at most)
   assert.equal(reveal.layout, 0, `the reveal laid the page out ${reveal.layout} times`);
   assert.ok(reveal.layoutAll <= 2, `settling the reveal laid the page out ${reveal.layoutAll} times`);
   await done(t, "reveal", [API]);
@@ -705,6 +743,40 @@ let reveal = null;
   await p.evaluate(() => { location.hash = "#checks"; }); await p.waitForTimeout(50);
   assert.ok(await p.evaluate(() => [...document.querySelectorAll("#checks .reveal-item")].every((e) => e.hasAttribute("data-revealed"))), "a jump to #checks left its items hidden");
   await done(t, "reveal at an anchor", [API]);
+}
+// the checks table's "In the sample above" links glide to the sample's own row, framed on the screen (AH-98)
+{
+  const t = await open("index.html", { width: 1440 });
+  const p = t.page;
+  await p.waitForTimeout(ENTERED);
+  await p.evaluate(() => scrollTo(0, document.querySelector(".checks-table").getBoundingClientRect().top + scrollY - 200)); await p.waitForTimeout(1600);
+  const b = await p.locator('.to-row[href="#r22"]').first().boundingBox();
+  await p.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+  await p.waitForFunction(() => location.hash === "#r22", null, { timeout: 4500 });
+  const r = await p.evaluate(() => { const x = document.getElementById("r22").getBoundingClientRect(), bar = document.querySelector(".bar").getBoundingClientRect().bottom;
+    return { top: Math.round(x.top), bottom: Math.round(x.bottom), bar: Math.round(bar), h: innerHeight, focus: document.activeElement.id }; });
+  assert.ok(r.top > r.bar && r.bottom < r.h && r.focus === "r22", `the link to row 22 does not land on it: ${JSON.stringify(r)}`);
+  await done(t, "checks table row link", [API]);
+}
+// the field fades under the text outside the hero and the navy band (AH-98): each prose, list and table block there lies
+// on a still layer of its own section's colour that reaches past it on every side; nothing in the hero or the band does
+for (const [file, must] of [["index.html", ["#it .sec-lede", "#it .it-ledger", "#download .sec-lede", "#download dl.anchor", "#download .steps"]],
+  ["privacy.html", [".page-head p", ".toc", ".prose"]], ["support.html", [".page-head p"]]]) {
+  const t = await open(file, { width: 1440, motion: "reduce" });
+  const r = await t.page.evaluate((must) => {
+    const behind = (el) => { for (let e = el.parentElement; e; e = e.parentElement) { const c = getComputedStyle(e).backgroundColor; if (c !== "rgba(0, 0, 0, 0)") return c; } return ""; };
+    const bad = [];
+    for (const sel of must) for (const el of document.querySelectorAll(sel)) if (!el.closest(".calm")) bad.push(`${sel} is not calm`);
+    for (const el of document.querySelectorAll(".calm")) {
+      const a = getComputedStyle(el, "::before");
+      if (el.closest(".hero, #checks")) bad.push(`a calm block in the hero or the band: ${el.className}`);
+      if (a.content !== '""' || a.position !== "absolute" || a.zIndex !== "-1" || a.backgroundColor !== behind(el) || !(parseFloat(a.top) < 0 && parseFloat(a.left) < 0 && parseFloat(a.right) < 0 && parseFloat(a.bottom) < 0))
+        bad.push(`${el.className}: ${a.content} ${a.position} ${a.zIndex} ${a.backgroundColor} on ${behind(el)}, inset ${a.top} ${a.left}`);
+    }
+    return bad;
+  }, must);
+  assert.deepEqual(r, [], `${file}: the field is not faded under the text`);
+  await done(t, `${file}: the field under the text`, [API]);
 }
 // no JavaScript at all, or motion.js failing to arrive: every block is shown, in place, and all the text can be read
 const readable = (p) => p.evaluate(() => {
@@ -855,9 +927,9 @@ for (const width of [1280, 390]) {
   let checked = 0;
   for (const width of [1280, 390]) for (const file of PAGES) {
     const t = await open(file, { width, motion: "reduce" });
-    const states = file === "index.html" ? ["all", "recon", "keying", "label", "time"] : file === "support.html" ? ["empty", "sent"] : ["page"];
+    const states = file === "index.html" ? ["all", "recon", "keying", "label", "time", "busy", "clean"] : file === "support.html" ? ["empty", "sent"] : ["page"];
     for (const state of states) {
-      if (file === "index.html") await t.page.click(`.typology [data-kind="${state}"]`);
+      if (file === "index.html") await t.page.click(["busy", "clean"].includes(state) ? `#t-${state}` : `.typology [data-kind="${state}"]`);
       if (state === "sent") { await t.page.fill("#summary", "x"); await t.page.fill("#details", "y"); await t.page.check("#clean"); }
       if (file === "support.html") await t.page.click('button[type="submit"]');
       const bad = await t.page.evaluate(contrastProblems);

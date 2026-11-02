@@ -46,19 +46,19 @@ strong,b{font-weight:700}
 .hero .mark img{display:block}
 .hero h1{max-width:14em;font:800 clamp(var(--fs-4),6vw,var(--fs-6))/.95 var(--sans);letter-spacing:-.025em;color:var(--on-navy);text-wrap:balance}
 .hero .lead{max-width:600px;margin:var(--s3) 0 0;padding-top:var(--s2);border-top:1px solid var(--rule-navy);font-size:var(--fs-1);line-height:1.45;color:var(--on-navy-2)}
-.hero .meta{margin-top:var(--s2);font:700 var(--fs--2)/1.5 var(--sans);letter-spacing:var(--track);text-transform:uppercase;color:var(--gold-hi)}
+.hero .meta{margin-top:var(--s2);font:600 var(--fs--1)/1.5 var(--sans);color:var(--gold-hi)}
 
 /* ---------- shared containers ---------- */
 .wrap{max-width:calc(var(--wrap) + 2 * var(--margin));margin:0 auto;padding:0 var(--margin)}
 footer.pg{margin-top:var(--s6);padding:var(--s3) var(--inline);background:var(--tex-navy),var(--navy);border-top:1px solid var(--gold-hi);color:var(--on-navy-2);
-  font:700 var(--fs--2)/1.6 var(--sans);letter-spacing:var(--track);text-transform:uppercase;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  font:600 var(--fs--1)/1.6 var(--sans);display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
 footer.pg a{color:var(--on-navy);text-decoration-color:var(--gold-hi)}
 
 /* ---------- privacy: the quick-nav over 3 of 12 columns, the document over the other 9 ---------- */
 .shell{max-width:calc(var(--wrap) + 2 * var(--margin));margin:var(--s5) auto 0;padding:0 var(--margin);position:relative;z-index:2;
   display:grid;grid-template-columns:repeat(12,minmax(0,1fr));column-gap:var(--gutter);align-items:start}
 .sidenav{grid-column:1 / span 3;position:sticky;top:20px;border-top:2px solid var(--navy);padding:var(--s1) 0}
-.sidenav .lbl{font-size:var(--fs--2);letter-spacing:var(--track);text-transform:uppercase;color:var(--navy);font-weight:700;padding:var(--s1) 0 var(--s2)}
+.sidenav .lbl{font-size:var(--fs--1);color:var(--navy);font-weight:700;padding:var(--s1) 0 var(--s2)}
 .sidenav a{display:flex;align-items:center;gap:10px;padding:9px 12px 9px 10px;border-left:2px solid transparent;border-top:1px solid var(--rule);border-radius:0;font-size:var(--fs--1);font-weight:600;color:var(--ink);text-decoration:none;transition:border-color .3s var(--ease),background-color .3s var(--ease)}
 .sidenav a svg{width:15px;height:15px;flex:none;stroke:var(--muted);stroke-width:1.8;fill:none}
 .sidenav a:hover{background:var(--paper-2);border-left-color:var(--wine)}
@@ -75,21 +75,23 @@ body:has(#changes:target) a[href="#changes"] svg{stroke:var(--wine)}
 body:has(:target) a.on{background:none;border-left-color:transparent;color:var(--ink)} body:has(:target) a.on svg{stroke:var(--muted)}
 
 .doc{grid-column:4 / -1;min-width:0}
-.tldr{margin:0 0 var(--s2);padding:var(--s2) var(--s3);border-radius:0;background:var(--paper-2);border-left:4px solid var(--wine);font-size:var(--fs-0)}
+/* callouts: a hairline box and the flagged cell's square before the first word, never a stripe down the side (AH-98) */
+.tldr{margin:0 0 var(--s2);padding:var(--s2) var(--s3);border-radius:0;background:var(--paper-2);border:1px solid var(--navy);font-size:var(--fs-0)}
+.tldr::before,.callout::before{content:"";display:inline-block;width:10px;height:10px;margin-right:10px;background:var(--wine)}
 .tldr strong{color:var(--navy);font-weight:800}
 .doc section{padding:var(--s4) 0;border-top:1px solid var(--navy)}
 .doc h2{font:800 var(--fs-3)/1.05 var(--sans);letter-spacing:-.02em;color:var(--navy);margin-bottom:var(--s2)}
-.doc h3{font-size:var(--fs--2);letter-spacing:var(--track);text-transform:uppercase;font-weight:700;color:var(--navy);margin:var(--s3) 0 var(--s1);padding-top:var(--s1);border-top:1px solid var(--rule)}
+.doc h3{font-size:var(--fs-0);font-weight:700;color:var(--navy);margin:var(--s3) 0 var(--s1);padding-top:var(--s1);border-top:1px solid var(--rule)}
 .doc p{font-size:var(--fs-0);margin:0 0 12px;max-width:68ch}
 .doc ul{margin:0 0 12px;padding-left:19px;max-width:68ch} .doc li{font-size:14.5px;margin-bottom:6px}
 .doc li::marker{color:var(--wine)}
-.callout{font-size:14px;color:var(--muted);background:var(--paper-2);border-left:4px solid var(--navy);border-radius:0;padding:12px 16px;margin:12px 0}
+.callout{font-size:14px;color:var(--muted);background:var(--paper-2);border:1px solid var(--rule);border-radius:0;padding:12px 16px;margin:12px 0}
 .callout strong{color:var(--navy)}
 
 /* ---------- support: blocks under navy hairlines ---------- */
 .stack{max-width:calc(var(--wrap) + 2 * var(--margin));margin:var(--s5) auto 0;padding:0 var(--margin);position:relative;z-index:2}
 .card{border-top:1px solid var(--navy);border-radius:0;padding:var(--s3) 0 var(--s4);margin-bottom:var(--s3)}
-.kicker{font-size:var(--fs--2);letter-spacing:var(--track);text-transform:uppercase;font-weight:700;color:var(--navy);margin-bottom:var(--s2)}
+.kicker{font-size:var(--fs--1);font-weight:700;color:var(--navy);margin-bottom:var(--s2)}
 .card h2{font:800 var(--fs-3)/1.05 var(--sans);letter-spacing:-.02em;color:var(--navy);margin-bottom:var(--s2)}
 .card p{font-size:var(--fs-0);margin:0 0 12px}
 
@@ -107,13 +109,13 @@ details .a{padding:0 0 var(--s2);font-size:14.5px;color:var(--muted);line-height
 .opt{display:flex;gap:var(--s3);padding:var(--s3) 0;border-top:1px solid var(--rule)}
 .opt .n{flex:none;width:40px;font:800 var(--fs-3)/1 var(--sans);letter-spacing:-.02em;color:var(--wine)}
 .opt b,.opt strong{display:block;font-size:var(--fs-1);font-weight:800;letter-spacing:-.01em;color:var(--navy)} .opt p{margin:4px 0 var(--s2);font-size:14px;color:var(--muted)}
-/* buttons: rectangles. The main one in the flagged cell's wine, the other a navy frame in small capitals */
-.btn{display:inline-flex;align-items:center;gap:10px;min-height:48px;padding:0 var(--s3);border-radius:0;font-weight:700;font-size:var(--fs--1);letter-spacing:.04em;text-decoration:none;border:2px solid transparent;
+/* buttons: rectangles. The main one in the flagged cell's wine, the other a navy frame; sentence case, capitals only on a table's column heads (AH-98) */
+.btn{display:inline-flex;align-items:center;gap:10px;min-height:48px;padding:0 var(--s3);border-radius:0;font-weight:700;font-size:var(--fs--1);text-decoration:none;border:2px solid transparent;
   transition:background-color .3s var(--ease),color .3s var(--ease),border-color .3s var(--ease)}
 .btn svg{width:16px;height:16px;stroke:currentColor;stroke-width:2;fill:none}
 .btn-red{background:var(--wine);color:var(--on-wine)} .btn-red:hover{background:var(--navy)}
 .btn-red:focus-visible{outline:2px solid var(--navy);outline-offset:3px}
-.btn-line{background:transparent;color:var(--navy);border-color:var(--navy);font-size:var(--fs--2);letter-spacing:var(--track);text-transform:uppercase} .btn-line:hover{background:var(--navy);color:var(--paper)}
+.btn-line{background:transparent;color:var(--navy);border-color:var(--navy)} .btn-line:hover{background:var(--navy);color:var(--paper)}
 
 table{width:100%;border-collapse:collapse;margin-top:8px;font-size:14px}
 th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--rule)}

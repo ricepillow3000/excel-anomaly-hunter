@@ -18,7 +18,7 @@
 //   span.rule, data-depth     decoration tied to the scroll bar: a hairline drawn across, a label drifting at its own
 //                             rate. styles.css plays them on a scroll timeline (animation-timeline: view()); a browser
 //                             without one gets the same pure function of scrollY from the one scroll reader below,
-//                             for the decorations on screen only, written through --p and --drift
+//                             for every decoration, written through --p and --drift only when a pose changes
 //   data-band                 the dark band, so the field behind the page (field.js) can invert its lines there
 // Nothing smooths toward a target: stop scrolling and everything stops where it is, scroll back and it reverses
 // exactly, and no frame is asked for while nothing moves (the idle checks in tools/test_site.mjs).
@@ -50,7 +50,7 @@
   html.dataset.scroll = timelines ? "css" : "js";
 
   const subs = [];
-  let scope = document, band = null, raf = 0, observer = null, io = null, tail = null, onScreen = null, later = 0, vw = 0, vh = 0, inset = 0;
+  let scope = document, band = null, raf = 0, observer = null, io = null, tail = null, later = 0, vw = 0, vh = 0, inset = 0;
   let anims = [], decor = [], waiting = [];
   const entering = new WeakMap(); // a [data-enter] block -> its entrance, for the reveal items inside it
 
@@ -83,7 +83,7 @@
   function frame(now) {
     raf = 0;
     const y = still ? 0 : window.scrollY;
-    for (const it of decor) if (it.on) pose(it, y);
+    for (const it of decor) pose(it, y);
     let more = false;
     const state = { now, y, vw, vh, band: band && !still ? [band[0] - y, band[1] - y] : null };
     for (const f of subs) more = f(state) === true || more;
@@ -198,15 +198,15 @@
 
   // ---- the decoration's fallback: only where CSS has no scroll timeline ----
   function decorate(root) {
-    decor = [...root.querySelectorAll(".rule, [data-depth]")].map((el) => ({ el, rule: el.classList.contains("rule"), depth: parseFloat(el.dataset.depth) || 0, on: true, p: null }));
-    if (!decor.length) return;
-    const byEl = new Map(decor.map((it) => [it.el, it]));
-    // the ones on screen (and half a screen around it) are posed each frame; the rest keep their last pose
-    onScreen = new IntersectionObserver((es) => { for (const e of es) byEl.get(e.target).on = e.isIntersecting; request(); }, { rootMargin: "50% 0px" });
-    for (const it of decor) onScreen.observe(it.el);
+    decor = [...root.querySelectorAll(".rule, [data-depth]")].map((el) => ({ el, rule: el.classList.contains("rule"), depth: parseFloat(el.dataset.depth) || 0, p: null }));
+    // every one is posed each frame of a scroll: a pose is a few sums, written only when it changes, so the ones far off
+    // screen (held at an end of their range) cost nothing. Only those near the screen were posed, judged by an
+    // IntersectionObserver, which sees an element where its own drift has moved it: the IT headline's drift took it out of
+    // the band after a trip to the page's end and back, and it kept the far end's pose where a scroll timeline shows the
+    // near one (AH-98: the checks table made the page longer and put it at that edge)
   }
 
-  const relayout = () => { measure(); for (const it of decor) it.on = true; request(); };
+  const relayout = () => { measure(); request(); };
 
   function start(root = document, wait = 0) {
     stop();
@@ -230,8 +230,8 @@
     cancelAnimationFrame(raf); raf = 0; clearTimeout(later);
     if (glider) glider();
     removeEventListener("scroll", request); removeEventListener("resize", relayout); removeEventListener("scrollend", sweep);
-    for (const o of [observer, io, tail, onScreen]) if (o) o.disconnect();
-    observer = io = tail = onScreen = null;
+    for (const o of [observer, io, tail]) if (o) o.disconnect();
+    observer = io = tail = null;
     for (const a of anims) a.cancel();
     anims = []; decor = []; waiting = [];
   }
@@ -243,8 +243,12 @@
   // animations". A requestAnimationFrame loop for the length of the glide only, on a curve soft at both ends
   // (--ease-in-out): 1.6 to 2.4 s to frame the sheet, 2.4 to 3.2 s to the checks, longer the further it goes. A wheel,
   // a touch, a key or a press ends it where it is. On arrival the target takes focus (no scroll) and the address gets its
-  // #hash through history.pushState: setting location.hash would fire anchor() and show every item at once
+  // #hash through history.pushState: setting location.hash would fire anchor() and show every item at once.
+  // A glide says when it starts and ends ("ah:glide-start", "ah:glide-end" on document, detail { target, arrived }) and
+  // AH.gliding() is true while one runs: the sample sheet's skeleton waits for the glide to land (AH-99), since played
+  // on the way down it had mostly finished by the time the visitor arrived
   let glider = null;
+  const tell = (type, detail) => document.dispatchEvent(new CustomEvent(type, { detail }));
   const barBottom = () => { const b = document.querySelector(".bar"), c = b && getComputedStyle(b);
     return c && c.position === "sticky" ? (parseFloat(c.top) || 0) + b.offsetHeight : 0; };
   function glide(el, mode) {
@@ -258,13 +262,18 @@
     const from = scrollY, to = Math.round(Math.max(0, Math.min(want, html.scrollHeight - html.clientHeight))), d = to - from;
     const [lo, hi] = mode === "frame" ? [1600, 2400] : [2400, 3200], dur = lo + (hi - lo) * clamp(Math.abs(d) / 1600);
     let id = 0, t0 = 0;
-    const end = () => { cancelAnimationFrame(id); for (const k of STOPS) removeEventListener(k, end, true); if (glider === end) glider = null; };
+    const end = (how) => {
+      if (glider !== end) return;
+      cancelAnimationFrame(id); for (const k of STOPS) removeEventListener(k, end, true);
+      glider = null;
+      tell("ah:glide-end", { target: el, arrived: how === true });
+    };
     const step = (now) => {
       if (!t0) t0 = now;
       const p = clamp((now - t0) / dur);
       scrollTo(0, from + d * inout.at(p));
       if (p < 1) { id = requestAnimationFrame(step); return; }
-      end();
+      end(true);
       if (!el.hasAttribute("tabindex")) el.tabIndex = -1;
       el.focus({ preventScroll: true });
       const st = history.state && typeof history.state === "object" ? history.state : {};
@@ -273,6 +282,7 @@
     };
     for (const k of STOPS) addEventListener(k, end, { capture: true, passive: true });
     glider = end;
+    tell("ah:glide-start", { target: el });
     id = requestAnimationFrame(step);
   }
   const STOPS = ["wheel", "touchstart", "keydown", "pointerdown"];
@@ -287,7 +297,7 @@
     glide(el, a.dataset.glide);
   });
 
-  window.AH = { start, stop, request, still, ease, inout, INOUT, onFrame: (f) => { subs.push(f); request(); } };
+  window.AH = { start, stop, request, still, ease, inout, INOUT, gliding: () => !!glider, onFrame: (f) => { subs.push(f); request(); } };
   document.addEventListener("ah:page", (e) => start((e.detail && e.detail.root) || document, e.detail && e.detail.wait));
   start();
 })();

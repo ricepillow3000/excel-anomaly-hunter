@@ -69,11 +69,14 @@ Mark each block with `class="reveal-item"` and the parent whose children should 
 An item's group is its nearest `data-reveal-group` parent; items with none form one group per page.
 
 ```html
-<ol class="num-grid" data-reveal-group>
-  <li class="reveal-item"><h3>Reconciliation</h3><p>Totals that don't add up.</p></li>
-  <li class="reveal-item"><h3>Keying errors</h3><p>A figure typed ten times too large.</p></li>
-  <li class="reveal-item"><h3>Consistency</h3><p>The same label typed different ways.</p></li>
-</ol>
+<!-- the checks table (AH-98): each row rises in its turn; a table row can be a reveal item, and its .rule hairline is
+     placed against the row (position: relative on the tr) -->
+<table class="checks-table">
+  <tbody data-reveal-group>
+    <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Reconciliation</th><td>Totals that don't add up.</td></tr>
+    <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Keying errors</th><td>A figure typed ten times too large.</td></tr>
+  </tbody>
+</table>
 ```
 
 ### The first mark (blocking, in `<head>`)
@@ -201,8 +204,9 @@ own sideways overflow.
 
 ### What the tests hold it to
 
-At 1440 x 900 (`tools/test_site.mjs`): before scrolling, a check below the fold has opacity 0, `translateY` equal to
-`--reveal-rise` and `will-change: transform, opacity`; after it is scrolled into view the 8 checks rest at opacity 1
+At 1440 x 900 (`tools/test_site.mjs`): before scrolling, a row of the checks table below the fold has opacity 0,
+`translateY` equal to `--reveal-rise` and `will-change: transform, opacity`; after it is scrolled into view the table's 8
+rows (all 8 on one screen: rows padded 16 and 20 px, AH-98) rest at opacity 1
 with no transform, with transition delays 0, 90, 180, 270, 360, 450, 540, 540 ms; once landed `will-change` is `auto`;
 the observer has unobserved them and a trip away and back does not hide them; a Chromium trace of the reveal has no
 Layout event from the scroll to the last `transitionend`. With JavaScript off, or `motion.js` failing to load, every
@@ -213,9 +217,10 @@ The rest of the promises, all in `tools/test_site.mjs --browser`:
 - Entrance: 60 ms after load the hero's headline is left of its place and the sheet below it, the notice line and the
   brand left, the five links right; everything at rest by `--enter-lead` + 4 x `--enter-step` + `--enter-dur` + 150 ms
   (2.54 s), also at 20 frames a second; the bar's entrance never replays on a page change.
-- Skeleton: below the fold the sheet waits with bars inside their cells and no light moving; scrolled 30% into view
-  it plays one sweep, and the attribute is gone 1.3 to 2.4 s later with every value coloured again; CLS 0; a press ends
-  it at once; none under reduced motion or on a visit back.
+- Skeleton: below the fold the sheet waits with bars inside their cells and no light moving; framed on screen it plays
+  one sweep, and the attribute is gone 1.3 to 2.4 s later with every value coloured again; CLS 0; a press ends it at
+  once; none under reduced motion or on a visit back. Scrolled by hand to 30% in view it still waits, at 70% it plays;
+  after "See a sample scan" it is still waiting when the glide arrives and is gone 1.2 to 2.6 s after.
 - Download: with GitHub's answer 1.2 s away, the list shows its bars (the exact fallback markup still inside `#sha`
   and `#rel`) until the answer, good or a 403; an instant answer still shows them for 650 to 1200 ms; none on a visit
   back.
@@ -252,9 +257,11 @@ fights the reveal's `transform` on the same headline). In browsers with scroll t
 ```
 
 Where `CSS.supports("animation-timeline: view()")` is false, `motion.js` sets `data-scroll="js"` and plays the same
-keyframes itself: one passive scroll listener asks for at most one `requestAnimationFrame`, and that frame poses only
-the decorations an IntersectionObserver reports on screen (and half a screen around it), through two custom
-properties the CSS turns into transforms:
+keyframes itself: one passive scroll listener asks for at most one `requestAnimationFrame`, and that frame poses every
+decoration (a few sums each, written only when a pose changes, so those held at an end of their range cost nothing),
+through two custom properties the CSS turns into transforms. It posed only those an IntersectionObserver reported near
+the screen, but an observer sees an element where its own drift has moved it, and the IT headline kept a far-end pose
+after a trip to the page's end and back (AH-98):
 
 ```css
 html[data-scroll="js"] .rule { transform: scaleX(var(--p, 1)); }
@@ -264,7 +271,10 @@ html[data-scroll="js"] [data-depth] { translate: 0 var(--drift, 0px); }
 The fallback uses the timeline's own geometry (view progress inset by the page's `scroll-padding-top`) and the same
 cubic-bezier, so its poses match the CSS ones (worst measured difference 0.003 in `scaleX`, 0.03 px in drift). No frame
 is requested once the scrolling stops. Content is never scroll-linked. The WebGL field behind the page also follows
-the scroll, through the same frame.
+the scroll, through the same frame. It moves at full strength in the hero and on the navy band; under the prose, lists
+and tables of the other sections it fades out on a still layer of plain paper (`.calm::before`, z-index -1 in its wrap,
+32 px past the block and masked to nothing over those 32 px), so no contour line crosses body text (AH-98). That layer
+never moves or redraws, and works the same on a software renderer, where the field is one still picture.
 
 ## The sample sheet (AH-89, AH-92)
 
@@ -273,8 +283,11 @@ placements of our website... Do not make it too long, but also don't make it too
 The skeleton is the real table, so it is aligned by construction. While `#preview[data-loading]`, every value keeps its
 place with no colour (`color: transparent`, never a layout change) and an `::after` bar sits over the exact box of its
 text (measured by `home.js` into `--sk-x/y/w/h`): each cell, each count and each key line. CLS stays 0. It waits until
-the sheet is 30% on screen (an IntersectionObserver; if the sheet is entering, until its entrance is a third of the
-way), then one band of light (an `::after` moved by `transform` in the `sweep` keyframes, which exist only while it
+the sheet is 60% on screen, or covers 60% of a screen it is taller than (a phone), read from the layout each time an
+IntersectionObserver reports a step; if the sheet is entering, until its entrance is a third of the way. While a glide
+runs it waits for the glide to end (AH-99, John 2026-11-02: at 30% it played on the way down and had mostly finished
+by the time the visitor arrived): `motion.js` sends `ah:glide-start` and `ah:glide-end` on `document` and answers
+`AH.gliding()`, and the end, on arrival or cut short by a wheel, asks the same question again. Then one band of light (an `::after` moved by `transform` in the `sweep` keyframes, which exist only while it
 plays) crosses it in `--skeleton-dur`, and the rows land `--land-step` apart: a row's bars fade over `--land-fade` as it
 settles its last 5 px. About 2.2 s in all, once a visit. A press anywhere on the sheet ends it at once. Never over
 values someone may already have seen (late scripts, a visit back), never with reduced motion or without `motion.js`.
@@ -311,7 +324,9 @@ spreadsheet", and a button under it that goes on to the checks, "slow enough whe
 `--ease-in-out`: `data-glide="frame"` centres the sheet and the "See every check" button under it in the room below the
 sticky bar, with the checks still below the fold (1.6 to 2.4 s by distance; on a phone, where it cannot fit, the
 sheet's top goes to the top); `data-glide="top"` puts the checks' section just under the bar (2.4 to 3.2 s). A wheel, a
-touch, a key or a press ends it where it is. On arrival the target takes focus without scrolling and the address gets
+touch, a key or a press ends it where it is. The checks table's "Row 22" links are `data-glide="frame"` too: they frame
+the sample's own row (AH-98). Each glide sends `ah:glide-start` and `ah:glide-end` (detail `{ target,
+arrived }`) on `document`, and `AH.gliding()` is true while one runs: the sheet's skeleton waits for it. On arrival the target takes focus without scrolling and the address gets
 its `#hash` through `history.pushState`, never `location.hash`, which would fire the anchor rule above and show every
 item at once. With reduced motion the link jumps as any anchor does; without JavaScript it is a plain anchor. The bar's
 and the notice line's links are not glides: they still land at once.

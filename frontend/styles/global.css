@@ -3,7 +3,10 @@
    flagged cell (the Scan button, key numbers, the active part of a control). Dark gold only as
    rules and strokes on paper (3.6:1 is too low for small text there); its lighter twin carries text on navy.
    Paper carries a faint grain (assets/grain.svg: the pane CSP, default-src 'self', refuses the site's data: URIs) and
-   a fine grid drawn with gradients. The sheet's own fills (--high/--medium/--low) are Excel's Bad / Neutral / Note
+   a fine grid drawn with gradients; the grain's soft blotch layer was dropped, and the findings and the fix card lie
+   on plain paper, no grid (AH-98). Capitals only on a table's column heads (the limits table); every label, button
+   and summary is in sentence case at 12-14 px (AH-98: small spaced capitals everywhere read as machine-made, and
+   "Accept" sat beside "DISMISS"). The sheet's own fills (--high/--medium/--low) are Excel's Bad / Neutral / Note
    family and never change here: the engine and features/highlight.js own them. */
 :root {
   color-scheme: light;
@@ -26,7 +29,7 @@
   --sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
   /* a 1.25 type scale from a 14px body */
   --fs--2: 10.5px; --fs--1: 12px; --fs-0: 14px; --fs-1: 17.5px; --fs-2: 21.875px; --fs-3: 27.34px;
-  --track: .12em;      /* small uppercase labels */
+  --track: .12em;      /* the limits table's column heads, the one place in capitals */
   /* the 4px spacing scale and the grid: 4 columns, fixed gutters, a fixed margin */
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
   --cols: 4; --gutter: 12px; --margin: 16px;
@@ -54,7 +57,7 @@ a:hover { text-decoration-thickness: 2px; }
 :focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
 code { background: var(--paper-2); border: 1px solid var(--rule); padding: 0 4px; border-radius: 0; font-size: var(--fs--1); color: var(--navy); }
 h1, h2, h3 { color: var(--navy); }
-.label { margin: 0; font: 700 var(--fs--2)/1.4 var(--sans); letter-spacing: var(--track); text-transform: uppercase; color: var(--navy); }
+.label { margin: 0; font: 700 13px/1.4 var(--sans); color: var(--navy); }
 .cols { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); column-gap: var(--gutter); }
 
 /* the navy band on top: the Spear and Banner straight on it and the name flush left, the sheet's name under a hairline */
@@ -63,8 +66,8 @@ header .brand { display: flex; align-items: center; gap: var(--s3); }
 .mark, .mk { display: block; flex: none; line-height: 0; } /* no tile: the mark's gold rim and spear carry it on the navy band (John, 2026-10-30) */
 .mark img, .mk img { display: block; }
 h1 { margin: 0; font: 800 var(--fs-1)/1 var(--sans); letter-spacing: -.02em; color: var(--on-navy); }
-.sheet-name { margin: var(--s3) 0 0; padding-top: var(--s2); border-top: 1px solid var(--rule-navy); font: 700 var(--fs--2)/1.4 var(--sans);
-  letter-spacing: var(--track); text-transform: uppercase; color: var(--gold-hi); overflow-wrap: anywhere; }
+.sheet-name { margin: var(--s3) 0 0; padding-top: var(--s2); border-top: 1px solid var(--rule-navy); font: 700 var(--fs--1)/1.4 var(--sans);
+  color: var(--gold-hi); overflow-wrap: anywhere; }
 .sheet-name:empty { display: none; }
 h2 { position: relative; margin: var(--s5) 0 var(--s2); padding-top: var(--s3); font: 800 var(--fs-1)/1.1 var(--sans); letter-spacing: -.015em; color: var(--navy); }
 /* the hairline over each heading; where the browser has scroll timelines it draws across as the heading scrolls in,
@@ -76,21 +79,24 @@ h2::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height:
   }
 }
 @keyframes draw { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-h3 { margin: 0 0 var(--s2); font: 700 var(--fs--2)/1.4 var(--sans); letter-spacing: var(--track); text-transform: uppercase; color: var(--navy); }
+h3 { margin: 0 0 var(--s2); font: 700 13px/1.4 var(--sans); color: var(--navy); }
 .pad { padding: var(--margin); }
 .hint { margin: 0 0 var(--s3); color: var(--muted); font-size: var(--fs--1); }
 .warn { color: var(--wine); }
 #main-ui { padding: 0 var(--margin); }
 
-/* the hero: paper, a label, the Scan button and the slider over all 4 columns, the contour field behind
-   (components/field.js draws it on demand) */
+/* the hero: paper, the Scan button and the slider over all 4 columns, the contour field behind (components/field.js
+   draws it on demand). Its small capitals label ("Excel add-in · checks run on this PC") went (AH-98): the footer says
+   where scans run */
 .pane-hero { position: relative; isolation: isolate; margin: 0 calc(-1 * var(--margin)); padding: var(--s5) var(--margin) var(--s2); border-bottom: 1px solid var(--rule); }
 .pane-hero > canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
-.eyebrow { margin: 0; font: 700 var(--fs--2)/1.4 var(--sans); letter-spacing: var(--track); text-transform: uppercase; color: var(--navy); }
 
-/* buttons: rectangles. The main one is the flagged cell's wine; the others are navy frames in small capitals */
+/* buttons: rectangles. The main one is the flagged cell's wine; the others are navy frames, in sentence case like it */
 button { font: inherit; cursor: pointer; border-radius: 0; }
 button:disabled { cursor: default; opacity: 0.45; }
+/* a button disabled under the pointer (Check words with AI while it runs) shows its plain frame at once, never a
+   half-faded navy fill that read as a third button style (AH-98) */
+.primary:disabled, .secondary:disabled { transition: none; }
 .primary, .secondary { display: block; width: 100%; border-radius: 0;
   transition: background-color .3s var(--ease), color .3s var(--ease), border-color .3s var(--ease); }
 .primary { margin: var(--s3) 0; min-height: 48px; padding: 0 var(--s4); background: var(--wine); color: var(--on-wine); border: 0;
@@ -100,11 +106,12 @@ button:disabled { cursor: default; opacity: 0.45; }
 #scan { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
 #scan::after { content: ""; flex: none; width: 10px; height: 10px; background: currentColor; } /* one cell: the flagged cell */
 .secondary { margin: var(--s2) 0; min-height: 40px; padding: var(--s2) var(--s3); background: transparent; color: var(--navy); border: 1px solid var(--navy);
-  font: 700 var(--fs--2)/1.3 var(--sans); letter-spacing: var(--track); text-transform: uppercase; text-align: left; }
+  font: 700 13px/1.3 var(--sans); text-align: left; }
 .secondary:hover:not(:disabled) { background: var(--navy); color: var(--paper); }
 .row-buttons { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: var(--s2) var(--gutter); margin-top: var(--s2); }
 .row-buttons > * { grid-column: span 2; min-width: 0; margin: 0; }
-.link-btn { border: 0; background: none; color: var(--navy); padding: var(--s4) 0 0; font: 700 var(--fs--2)/1.4 var(--sans); letter-spacing: var(--track); text-transform: uppercase;
+.row-buttons > .primary { min-height: 40px; font-size: 13px; letter-spacing: 0; } /* "Accept" beside "Dismiss": one size, one case */
+.link-btn { border: 0; background: none; color: var(--navy); padding: var(--s4) 0 0; font: 700 13px/1.4 var(--sans);
   text-decoration: underline; text-decoration-color: var(--wine); text-underline-offset: 4px; }
 
 /* ---- skeleton loader: the pane's shape in still blocks, shown while Office + engine load.
@@ -121,14 +128,16 @@ button:disabled { cursor: default; opacity: 0.45; }
 .sk-row { height: 44px; margin-top: var(--s2); }
 .sk-foot { height: 112px; margin: var(--s6) calc(-1 * var(--margin)) 0; background: var(--navy); }
 
-#server-down { border-left: 4px solid var(--wine); margin: var(--margin); padding: var(--s2) 0 var(--s2) var(--s4); }
+/* a callout is a hairline box with the flagged cell's square before its first word, never a stripe down its side (AH-98) */
+#server-down { border: 1px solid var(--navy); background: var(--field); margin: var(--margin); padding: var(--s3) var(--s4); }
+#server-down p:first-child::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: var(--s2); background: var(--wine); }
 #server-down p { margin: 0 0 var(--s2); }
 #server-down b { font-weight: 800; font-size: var(--fs-1); line-height: 1.2; color: var(--navy); letter-spacing: -.01em; }
 
 /* ---- the options: a paper panel under a navy hairline ---- */
 .settings-band { margin: var(--s6) calc(-1 * var(--margin)) 0; padding: var(--s5) var(--margin) var(--s5); border-top: 1px solid var(--navy);
   background: var(--tex), var(--paper-2); }
-.band-label { margin: 0; font: 700 var(--fs--2)/1.4 var(--sans); letter-spacing: var(--track); text-transform: uppercase; color: var(--navy); }
+.band-label { margin: 0; font: 700 13px/1.4 var(--sans); color: var(--navy); }
 .settings-band details.more:first-of-type { margin-top: var(--s3); }
 
 /* ---- the footer: a navy band, the lockup flush left, the links as framed rectangles over 2 columns each ---- */
@@ -139,8 +148,8 @@ button:disabled { cursor: default; opacity: 0.45; }
 #pane-footer .pf-tag { margin: var(--s4) 0; padding-top: var(--s3); border-top: 1px solid var(--rule-navy); font-size: var(--fs--1); color: var(--on-navy-2); line-height: 1.5; }
 #pane-footer .pf-links { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); column-gap: var(--gutter); }
 #pane-footer .pf-links a { grid-column: span 2; color: var(--on-navy); border: 1px solid var(--on-navy-2); padding: var(--s3) var(--s3); text-decoration: none;
-  font: 700 var(--fs--2)/1 var(--sans); letter-spacing: var(--track); text-transform: uppercase; transition: background-color .3s var(--ease), color .3s var(--ease); }
+  font: 700 13px/1 var(--sans); transition: background-color .3s var(--ease), color .3s var(--ease); }
 #pane-footer .pf-links a:hover { background: var(--on-navy); color: var(--navy); }
 #pane-footer .pf-links a:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
-#pane-footer .pf-version { margin: var(--s4) 0 0; font: 700 var(--fs--2)/1.4 var(--sans); letter-spacing: var(--track); text-transform: uppercase; color: var(--gold-hi); }
+#pane-footer .pf-version { margin: var(--s4) 0 0; font: 600 var(--fs--1)/1.4 var(--sans); color: var(--gold-hi); }
 #pane-footer .pf-version:empty { display: none; }

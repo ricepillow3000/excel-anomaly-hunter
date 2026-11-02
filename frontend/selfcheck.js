@@ -143,7 +143,7 @@ assert.equal(fairnessNote({ protected: { sex: "demographic" }, tests: [
 // many gaps (census: 15): the 3 widest in the line, the rest in the list; the list puts gaps first, widest first
 const gap = (w, text) => ({ verdict: "gap", text, groups: { a: [50, 0.5 + w], b: [50, 0.5] } });
 const census = { protected: { sex: "demographic" }, tests: [{ verdict: "even", text: "e", groups: { a: [9, 0.9], b: [9, 0] } }, gap(0.1, "g1"), gap(0.4, "g4"), gap(0.2, "g2"), gap(0.3, "g3")] };
-assert.equal(fairnessNote(census), 'Fairness: sex is never used to decide which rows are unusual. Check these gaps between groups: g4; g3; g2 - and 1 more under "All fairness checks".');
+assert.equal(fairnessNote(census), 'Fairness: sex is never used to decide which rows are unusual. Check these gaps between groups: g4; g3; g2, and 1 more under "All fairness checks".');
 assert.deepEqual(fairnessTests(census).map((t) => t.text), ["g4", "g3", "g2", "g1", "e"]);
 assert.deepEqual(fairnessTests(undefined), []);
 
@@ -217,7 +217,7 @@ assert.equal(levelChange(at(5, sev("Medium", null, "Low", null, null)), at(9, se
 assert.equal(levelChange(at(5, sev(null, "Low", null, null, null)), at(6, sev(null, null, "Low", null, null))),
   "Level 6 (was 5): 1 other row worth a check; the rows that look wrong are the same.");
 assert.equal(levelChange(at(5, sev("High", null, null, null, "Low")), at(7, sev("High", null, null, null, "Low"))),
-  "Level 7 (was 5): the same rows as at 5 - nothing on this sheet sits between the two levels.");
+  "Level 7 (was 5): the same rows as at 5; nothing on this sheet sits between the two levels.");
 // nothing is said when the counts could mean something else: the same level, another sheet, an edited sheet, no scan before
 assert.equal(levelChange(at(5, sev("Medium")), at(5, sev(null))), "");
 assert.equal(levelChange(at(5, sev(null, "Low", null, null, null)), at(10, sev(null, "Low", "Low", null, null), H, "Costs")), "");
@@ -246,7 +246,7 @@ assert.deepEqual([100, 110, 109, 200, 300, 0, 999, 141].map((x) => levelAt(x, 10
   const wg = recommendFix(["State", "Share"], [["a", 0.5], ["b", 0.04]], 1, { Share: [0.3, 0.7, 0.2, 0.8] },
     "Flagged by 1 of 2: Share weird limit is 0.2; this is 0.04 (maybe 0.4)", 0, 0, {}, null, { Share: 0.4 });
   assert.deepEqual(wg.changes, [{ cell: "B3", new: "0.4" }]);
-  assert.ok(wg.guess && wg.explanation.includes("Share is 0.04 - it may be a typo for 0.4 (missing zeros - ÷10), but a real value can look the same"), wg.explanation);
+  assert.ok(wg.guess && wg.explanation.includes("Share is 0.04; it may be a typo for 0.4 (missing zeros, ÷10), but a real value can look the same"), wg.explanation);
   // a long-format blank judged inside its group says the group, not "the rest of the column", and writes nothing
   const lb = recommendFix(["Indicator", "Value"], [["GDP (bn)", 4], ["GDP (bn)", null]], 1, { Value: [1, 9, 0, 20] },
     "Blank cell in column Value, which is otherwise filled for Indicator GDP (bn)", 0, 0, {}, null, {});
@@ -287,7 +287,7 @@ assert.deepEqual(rec.changes, [], "inside limits: no change");
 assert.ok(rec.explanation.includes("Nothing here is clearly broken"));
 rec = recommendFix(cols, data, 2, lim, "Flagged by 0 of 4: Blank cell in column Units, which is otherwise filled", 0, 0);
 assert.deepEqual(rec.changes, [], "a blank gets no invented value (17,000 blanks-on-purpose were median-filled on one real sheet)");
-assert.ok(rec.explanation.includes("Units is blank where the rest of the column is filled - fill it in from the source."), rec.explanation);
+assert.ok(rec.explanation.includes("Units is blank where the rest of the column is filled. Fill it in from the source."), rec.explanation);
 assert.deepEqual(recommendFix(cols, data, 3, lim, "x", 0, 0).changes, [], "a blank elsewhere isn't touched");
 rec = recommendFix(cols, data, 1, lim, "Units weird limit is 0; this is -5 (likely 5)", 4, 2, { Units: 5 }); // data starts at C5
 assert.deepEqual(rec.changes, [{ cell: "E7", new: "5" }], "offset data: the fix lands in the sheet's own cell");
@@ -300,12 +300,12 @@ assert.deepEqual(recommendFix(cols, [["a", "b", 999]], 0, lim, "Units weird limi
 const ac = ["Units", "UnitCost", "Total"], ad = [[57, 2.99, 170.43], [-5, 2.99, 170.43], [49, 2.99, 146.51]];
 rec = recommendFix(ac, ad, 1, { Units: [30, 70, 0, 100] }, "Units weird limit is 0; this is -5; Total 170.43 does not add up: Units × UnitCost = -14.95", 0, 0, { Units: 57 });
 assert.deepEqual(rec.changes, [{ cell: "A3", new: "57" }]);
-assert.ok(rec.explanation.startsWith("Units is -5 - the row's own numbers say 57 (Total 170.43 = Units × UnitCost)"), rec.explanation);
+assert.ok(rec.explanation.startsWith("Units is -5, but the row's own numbers say 57 (Total 170.43 = Units × UnitCost)"), rec.explanation);
 assert.equal(rec.guess, false, "arithmetic is not a guess");
 // a total that doesn't add up, no single cell out of range: say which numbers disagree, never "nothing is broken"
 rec = recommendFix(ac, ad, 0, { Units: [30, 70, 0, 100] }, "Total 200 does not add up: Units × UnitCost = 170.43", 0, 0);
 assert.deepEqual(rec.changes, []);
-assert.ok(rec.explanation.startsWith("Total 200 does not add up: Units × UnitCost = 170.43 - one of these numbers is wrong") &&
+assert.ok(rec.explanation.startsWith("Total 200 does not add up: Units × UnitCost = 170.43, so one of these numbers is wrong") &&
   !rec.explanation.includes("Nothing here"), rec.explanation);
 
 // header below title rows; numeric year headers kept; dates converted using the first DATA row's format
@@ -320,12 +320,12 @@ assert.equal(tableFromGrid([["Title only"]], null, 0, 0), null);
 assert.equal(tableFromGrid([["A", "B"]], null, 0, 0), null, "header with no data");
 
 // engine-spotted typo becomes the fix; wide columns are never median-overwritten
-assert.equal(typoKind(2600, 26), "extra zeros - x100");
-assert.equal(typoKind(0.26, 26), "missing zeros - ÷100");
+assert.equal(typoKind(2600, 26), "extra zeros, x100");
+assert.equal(typoKind(0.26, 26), "missing zeros, ÷100");
 assert.equal(typoKind(-26, 26), "sign flipped");
 rec = recommendFix(cols, data, 1, lim, "Units weird limit is 0; this is -5 (likely 5)", 0, 0, { Units: 5 });
 assert.deepEqual(rec.changes, [{ cell: "C3", new: "5" }]);
-assert.ok(rec.explanation.startsWith("Units is -5 - looks like a typo for 5 (sign flipped)"), rec.explanation);
+assert.ok(rec.explanation.startsWith("Units is -5, which looks like a typo for 5 (sign flipped)"), rec.explanation);
 const wide = [["a", 100], ["b", 900], ["c", 15000], ["d", 2200], ["e", 400], ["f", 7000], ["g", 30000], ["h", 1300], ["i", 600], ["j", 5000], ["k", 999999]];
 rec = recommendFix(["Id", "Paid"], wide, 10, { Paid: [0, 20000, 0, 40000] }, "Paid weird limit is 40000; this is 999999", 0, 0);
 assert.deepEqual(rec.changes, [], "a huge value in a naturally wide column is not overwritten");
@@ -379,7 +379,7 @@ assert.ok(rec.explanation.includes("filter it for blanks"), rec.explanation);
 // a guess says what kind of guess: a short form is not "a misspelling, one letter off"
 rec = recommendFix(["Id", "Plan"], [["a", "Std"]], 0, null, 'Plan "Std" looks like a short form of "Standard"', 0, 0, null, null, { Plan: "Standard" });
 assert.deepEqual(rec.changes, [{ cell: "B2", new: "Standard" }]);
-assert.ok(rec.explanation.startsWith('Plan says "Std" - probably a short form of "Standard"'), rec.explanation);
+assert.ok(rec.explanation.startsWith('Plan says "Std", probably a short form of "Standard"'), rec.explanation);
 // a lone x10 slip the engine flags past the USUAL limit (inside a skewed column's wide weird one): its typo fix
 // stands - the pane checked only the weird limit, so Balance 169946 for 16994.65 got "may be real", no fix (2026-10-15)
 rec = recommendFix(["Id", "Paid"], wide, 10, { Paid: [0, 20000, 0, 2000000] }, "Paid weird limit is 20000; this is 999999 (likely 99999.9)", 0, 0, { Paid: 99999.9 });
@@ -425,13 +425,13 @@ assert.deepEqual(tableFromGrid([["Dept", "Dept", "Dept.1"], ["a", "b", "c"]], nu
 assert.deepEqual(tableFromGrid([["Name", "Name", "Name"], ["a", "b", "c"]], null, 0, 0).columns, ["Name", "Name.1", "Name.2"]);
 assert.deepEqual([asNumber(5), asNumber("2.5"), asNumber(null), asNumber(""), asNumber('1" onfocus="alert(1)'), asNumber(Infinity), asNumber(undefined)], [5, 2.5, "", "", "", "", ""]);
 
-assert.equal(cutNote([250001, 1048576]), "Too large to scan at once: checked down to row 250,001 of 1,048,576. Rows below 250,001 were NOT checked.");
+assert.equal(cutNote([250001, 1048576]), "Too large to scan at once: checked down to row 250,001 of 1,048,576. Rows below 250,001 were not checked.");
 
 // Batch 3: text cells are never overwritten; placeholders and text get a plain-English note
 const ph = recommendFix(["Pay", "Amt"], [["ERROR", 5], ["Card", 6]], 0, {}, 'Placeholder "ERROR" in column Pay', 0, 0, null, null);
-assert.ok(ph.explanation.includes('Pay says "ERROR" - a value of the column\'s own (a status, a log level) or a stand-in for a missing one') && !ph.changes.length);
+assert.ok(ph.explanation.includes('Pay says "ERROR": a value of the column\'s own (a status, a log level) or a stand-in for a missing one') && !ph.changes.length);
 const tx = recommendFix(["When"], [["UNKNOWN"]], 0, {}, 'Text "UNKNOWN" in date column When', 0, 0, null, null);
-assert.ok(tx.explanation.includes("where a date belongs - retype it as a date"));
+assert.ok(tx.explanation.includes("where a date belongs. Retype it as a date"));
 // AH-75: a code that lost its leading zeros is explained, never padded (a card never writes into an ID column)
 const lz = recommendFix(["PostalCode"], [["2134"], ["02134"]], 0, {}, 'PostalCode "2134" is 4 digits where the column writes 5: did it lose its leading zero?', 0, 0, null, null);
 assert.ok(!lz.changes.length && lz.explanation.includes("format the column as Text and retype the code"), lz.explanation);
@@ -465,7 +465,7 @@ assert.deepEqual(spots({}, ["A", "B"]), [0, 1]);
 assert.ok(Object.values(COLOR).every((c) => !OLD_COLOR.includes(c)) && OLD_COLOR.length === 3);
 // AH-48: the note for many repeated rows gets its own advice, never "the values are just unusual together"
 assert.match(recommendFix(["hotel", "adr"], [["City", 90]], 0, {}, "600 of 3000 rows repeat an earlier row exactly, all through the sheet - the first is this one, a copy of row 5", 0, 0).explanation,
-  /^600 of 3000 rows repeat an earlier row exactly, all through the sheet - the first is this one, a copy of row 5 - this many, spread out, are usually separate real records/);
+  /^600 of 3000 rows repeat an earlier row exactly, all through the sheet - the first is this one, a copy of row 5: this many, spread out, are usually separate real records/);
 // AH-49: amounts compared across groups are named like the other checks, and sorted by their relative width
 assert.equal(fairnessNote({ protected: { Sex: "demographic" }, tests: [even("flag"), even("amount")] }),
   "Fairness: Sex is never used to decide which rows are unusual. Flags and amounts are even across its groups.");
@@ -473,10 +473,10 @@ assert.deepEqual(fairnessTests({ tests: [{ verdict: "even", measure: "amount", g
   { verdict: "even", measure: "outcome", groups: { a: [50, 0.2], b: [50, 0.4] } }] }).map((t) => t.measure), ["outcome", "amount"]);
 // AH-32: a rare ERROR may be a log level; its card never calls it only a stand-in
 assert.match(recommendFix(["Time", "Level"], [["x", "ERROR"]], 0, {}, 'Placeholder "ERROR" in column Level', 0, 0).explanation, /a value of the column's own \(a status, a log level\) or a stand-in/);
-assert.match(recommendFix(["Id", "Stage"], [["x", "TBD"]], 0, {}, 'Placeholder "TBD" in column Stage', 0, 0).explanation, /^Stage says "TBD" - a stand-in for a missing value/);
+assert.match(recommendFix(["Id", "Stage"], [["x", "TBD"]], 0, {}, 'Placeholder "TBD" in column Stage', 0, 0).explanation, /^Stage says "TBD", a stand-in for a missing value/);
 // AH-46: the note for a sorted table's blank tail gets its own advice, never "the values are just unusual together"
 assert.match(recommendFix(["Name", "APPEARANCES"], [["Hulk", ""]], 0, {}, "APPEARANCES is blank in 130 of 2000 rows, all at the end of the table, which is sorted by APPEARANCES", 0, 0).explanation,
-  /^APPEARANCES is blank in 130 of 2000 rows, all at the end of the table, which is sorted by APPEARANCES - sorting puts blank cells last/);
+  /^APPEARANCES is blank in 130 of 2000 rows, all at the end of the table, which is sorted by APPEARANCES: sorting puts blank cells last/);
 // AH-94: the scan skeleton is one still block in the page, never built per scan (e2e counts nodes over 30 scans), and
 // its rows are made of the very classes a list row is (components/row-item.js), so each bar sits where text lands
 const html = readFileSync(new URL("taskpane.html", import.meta.url), "utf8");
