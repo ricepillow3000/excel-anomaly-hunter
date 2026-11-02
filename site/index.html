@@ -256,7 +256,7 @@
           <dt>SHA-256</dt><dd><code id="sha"><a href="https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest">shown on the release page</a></code></dd>
           <dt>Release</dt><dd id="rel">Latest, about 81 MB, free</dd>
           <dt>Works with</dt><dd>Desktop Excel for Microsoft 365 on Windows 10 or 11, 64-bit. Excel 2021 and 2024 are not tested yet. Not Mac, not Excel on the web.</dd>
-          <dt>Signature</dt><dd>Not code-signed yet. Your organisation may block unsigned apps: ask IT first.</dd>
+          <dt>Signature</dt><dd>Not code-signed yet. Your organisation may block unsigned apps: ask IT first. <a href="#code-signing">Code signing policy</a></dd>
           <dt>Data</dt><dd>Local scan engine: a scan never leaves your PC. AI help is optional: Ask AI and Check words with AI, when you click them, send part of the sheet to Google, through John's relay with an invite code.</dd>
         </dl>
       </div>
@@ -271,6 +271,19 @@
       </div>
     </div>
   </section>
+
+  <section class="section band-panel" id="code-signing" aria-labelledby="code-signing-title">
+    <div class="wrap cols" data-reveal-group>
+      <h2 class="sec-title reveal-item" data-depth="0.05" id="code-signing-title">Code signing policy</h2>
+      <p class="sec-lede calm reveal-item">Anomaly Hunter has applied to the SignPath Foundation's free code signing program for open-source projects. Until the application is accepted and the release build signs the file, AnomalyHunter.exe is not code-signed, and Windows may warn about it.</p>
+      <dl class="it-ledger calm" data-reveal-group>
+        <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>Once accepted</dt><dd>Releases will say: "Free code signing provided by <a href="https://signpath.io">SignPath.io</a>, certificate by <a href="https://signpath.org">SignPath Foundation</a>."</dd></div>
+        <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>What gets signed</dt><dd>Only AnomalyHunter.exe as built by this repository's GitHub Actions workflow (<a href="https://github.com/ricepillow3000/excel-anomaly-hunter/blob/main/.github/workflows/build-exe.yml">build-exe.yml</a>) from the public source code, after its tests pass, including the install on a fresh Windows PC. Nothing built anywhere else, and no other project's files.</dd></div>
+        <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>Team roles</dt><dd>Committer and reviewer: <a href="https://github.com/ricepillow3000">John Nguyen</a>. Approver: John Nguyen. Changes from anyone else are reviewed by John before they are merged.</dd></div>
+        <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>Privacy</dt><dd>This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. <a href="privacy.html">Privacy &amp; security</a> says what AI help sends when you click it.</dd></div>
+      </dl>
+    </div>
+  </section>
 </main>
 
 <footer class="foot">
@@ -278,6 +291,7 @@
     <span class="reveal-item">Anomaly Hunter · made by one person · free, with no warranty</span>
     <nav class="reveal-item" aria-label="Footer">
       <a href="#download">Download</a>
+      <a href="#code-signing">Code signing policy</a>
       <a href="privacy.html">Privacy &amp; security</a>
       <a href="support.html">Support</a>
       <a href="https://github.com/ricepillow3000/excel-anomaly-hunter">Source</a>
