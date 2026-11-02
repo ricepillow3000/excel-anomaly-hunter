@@ -56,7 +56,7 @@ Add a piece only when its "add it when" signal shows up in a measurement, and sa
 | Versioning | release tags `v0.1.<run>`; the pane shows the engine's version. No API versioning: the engine serves its own pane, so they can't disagree | `server.version`, `build-exe.yml` | someone else's code calls the engine |
 | Rollback | every release stays downloadable; installing an older exe replaces the newer one | GitHub Releases, `app.install` | |
 | Blue-green, rolling | not applicable: one PC; an update stops the old engine, swaps the file and waits for `/health` | `app.install` | a server many people use |
-| Docker, Kubernetes, Helm, Terraform | not applicable to a Windows desktop app; CI uses Docker for ZAP; `relay/wrangler.toml` is the relay's infrastructure as code | | a hosted multi-user service |
+| Docker, Kubernetes, Helm, Terraform | not applicable to a Windows desktop app: the one-file exe is the box (pinned, proven on a fresh Windows PC), and no server takes the crowd (`docs/SHARING.md`, AH-95); CI uses Docker for ZAP; `relay/wrangler.toml` is the relay's infrastructure as code | | a hosted multi-user service |
 
 ## Security
 | Piece | Here | Where |
