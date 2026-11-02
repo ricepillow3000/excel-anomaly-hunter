@@ -10,6 +10,10 @@
 const MODEL = "gemini-3.8-flash";
 const GEMINI = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 const MAX_BODY = 8 * 1024;
+// one call to Google may take this long: the invite's fix is already counted, so a hung Google must not hold the
+// request until Cloudflare or the engine cuts it (AH-87 audit). 90 s = the engine's own cap on one call (ai/client.py
+// min(90, left)); Gemini took 3.8 s to 90 s+ for the same request (2026-10-11)
+const GOOGLE_WAIT_MS = 90_000;
 
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
@@ -66,6 +70,7 @@ export default {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.GEMINI_KEY}` },
           body: JSON.stringify({ model: MODEL, messages: [{ role: "user", content: prompt }], response_format: body.response_format, max_tokens: 4096 }),
+          signal: AbortSignal.timeout(GOOGLE_WAIT_MS),
         });
         if (out.ok || ![500, 502, 503, 504].includes(out.status) || k === 2) break;
         await out.body?.cancel();
@@ -78,7 +83,9 @@ export default {
       const daily = /perday/i.test(await out.text());
       return json(429, { error: daily ? "The shared free AI is used up for today - it resets at midnight US Pacific time."
         : "The shared AI is busy right now - try again in a minute." });
-    } catch { // Google unreachable (network, DNS): our own JSON, never an uncaught throw
+    } catch (e) { // Google unreachable (network, DNS) or silent: our own JSON, never an uncaught throw
+      // a timeout is not tried again: 3 x 90 s would outlast the engine's 240 s for the whole request
+      if (e?.name === "TimeoutError") return json(504, { error: "Google AI did not answer in time - try again in a minute." });
       return json(502, { error: "Couldn't reach Google AI - try again in a minute." });
     }
   },

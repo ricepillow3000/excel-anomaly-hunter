@@ -109,6 +109,29 @@ const down = await call(good);
 assert.equal(down.status, 502, "Google unreachable");
 assert.ok((await down.json()).error, "still a JSON error");
 globalThis.fetch = realFetch;
+// a Google that never answers (AH-87 audit): the invite's fix is already counted, so the relay gives up on its own
+// clock and says so in its JSON, instead of holding the request until Cloudflare or the engine cuts it off
+env.COUNTER = namespace();
+const realTimeout = AbortSignal.timeout, asked = [];
+AbortSignal.timeout = (ms) => { // 90 s played back in 30 ms, aborted the way the real one is (Node's own timer is unref'd)
+  asked.push(ms);
+  const c = new AbortController();
+  setTimeout(() => c.abort(new DOMException("The operation timed out.", "TimeoutError")), 30);
+  return c.signal;
+};
+let hung = 0;
+globalThis.fetch = (url, init) => new Promise((_, fail) => {
+  hung++;
+  assert.ok(init.signal instanceof AbortSignal, "every call to Google carries a deadline");
+  init.signal.addEventListener("abort", () => fail(init.signal.reason));
+});
+const slow = await call(good);
+AbortSignal.timeout = realTimeout;
+globalThis.fetch = realFetch;
+assert.equal(slow.status, 504, "Google did not answer in time");
+assert.match((await slow.json()).error, /in time/, "in the relay's own words");
+assert.deepEqual(asked, [90_000], "90 s, the engine's own cap on one call to Google");
+assert.equal(hung, 1, "a call that timed out is not tried again: the engine's 240 s would run out first");
 const broken = await worker.fetch(new Request("https://relay.example/fix", { method: "POST", headers: { Authorization: "Bearer inv_ana" }, body: "{}" }),
   { ...env, TOKENS: "{bad" });
 assert.equal(broken.status, 500, "a mistyped TOKENS secret");
