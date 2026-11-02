@@ -9,6 +9,8 @@ import { strengthHint, asStrength, levelAt } from "./pages/strength.js";
 import { exactFixes, safeUndo } from "./features/autofix.js";
 import { readdirSync, readFileSync } from "node:fs";
 import { hash, rowHash, codes, codeAt, asBook, decide, PER_SHEET, SHEETS } from "./features/decisions.js";
+import { WORKBOOK_KEYS } from "./features/forget.js";
+import * as K from "./constants/index.js";
 
 // Fixed / Dismissed are kept in the workbook under a code per row, so they outlive the pane (2026-10-20: a dismissed
 // row came back flagged after a reload, an accepted fix vanished). Same values = same code, on any PC, every time.
@@ -100,6 +102,17 @@ for (const dir of ["./", "../site/"]) {
 for (const font of readdirSync(new URL("assets/", import.meta.url)).filter((f) => f.endsWith(".woff2")))
   assert.ok(font === "plus-jakarta-sans.woff2" && readFileSync(new URL("assets/OFL-PlusJakartaSans.txt", import.meta.url), "utf8").includes("SIL Open Font License, Version 1.1"),
     `assets/${font} ships without its licence text`);
+
+// "Forget what this workbook saved" forgets every key the pane saves in a workbook: a key added later and left off its
+// list would stay in people's files after they asked for it to go (AH-87)
+{
+  const saved = new Set();
+  for (const f of panes) {
+    const src = readFileSync(new URL(f, import.meta.url), "utf8");
+    for (const [, k] of src.matchAll(/settings(?:\(\))?\.set\(\s*([^,]+?)\s*,/g)) saved.add(/^["']/.test(k) ? k.slice(1, -1) : K[k]);
+  }
+  assert.deepEqual([...saved].sort(), WORKBOOK_KEYS.map(([k]) => k).sort(), "the keys the pane saves in a workbook and the ones Forget removes differ");
+}
 
 // fairness line: protected columns named; a real gap spelled out; nothing at all without a protected column
 assert.equal(fairnessNote({ protected: {}, tests: [] }), "");
