@@ -95,6 +95,12 @@ for (const dir of ["./", "../site/"]) {
   }
 }
 
+// the font ships in the pane (and so in the exe, which bundles frontend/ whole): the SIL Open Font License asks that its
+// text go with it (AH-87: only the website's copy had it)
+for (const font of readdirSync(new URL("assets/", import.meta.url)).filter((f) => f.endsWith(".woff2")))
+  assert.ok(font === "plus-jakarta-sans.woff2" && readFileSync(new URL("assets/OFL-PlusJakartaSans.txt", import.meta.url), "utf8").includes("SIL Open Font License, Version 1.1"),
+    `assets/${font} ships without its licence text`);
+
 // fairness line: protected columns named; a real gap spelled out; nothing at all without a protected column
 assert.equal(fairnessNote({ protected: {}, tests: [] }), "");
 assert.equal(fairnessNote(undefined), "");
