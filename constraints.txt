@@ -176,7 +176,7 @@ schemathesis==4.28.0
     # via anomaly-hunter (pyproject.toml)
 scipy==1.18.1
     # via anomaly-hunter (pyproject.toml)
-setuptools==84.0.0
+setuptools==84.1.0
     # via pyinstaller
 six==1.17.0
     # via python-dateutil

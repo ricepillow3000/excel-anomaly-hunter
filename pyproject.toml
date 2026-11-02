@@ -30,7 +30,7 @@ dev = ["pytest", "schemathesis==4.28.0", "ruff==0.17.0", "pip-audit==2.10.1", "p
 exe = ["pyinstaller==6.22.3", "pyinstaller-hooks-contrib==2026.8"]  # the one-file app (build-exe.yml)
 
 [build-system]
-requires = ["setuptools==84.0.0"]  # exact, like constraints.txt: the build tool ships nothing, but runs in CI
+requires = ["setuptools==84.1.0"]  # exact, like constraints.txt: the build tool ships nothing, but runs in CI
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
