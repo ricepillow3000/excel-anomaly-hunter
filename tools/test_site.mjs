@@ -48,6 +48,7 @@ for (const p of PAGES) {
   // axe 4.10, 2026-10-20: an empty header cell is read as nothing; the announcement line sat outside every landmark
   assert.ok(!/<th[^>]*><\/th>/.test(src), `${p}: an empty <th>`);
   assert.ok(/<aside class="notice-bar" aria-label="Announcement">/.test(src), `${p}: the announcement line is not a landmark`);
+  assert.ok(/<body[^>]*>\s*(?:<!--[\s\S]*?-->\s*)?<a class="skip" href="#page">Skip to content<\/a>/.test(src), `${p}: "Skip to content" is not the first thing in <body>`);
   // page transitions (AH-73): one swappable container a page, and every script on every page (the document never
   // reloads, so a page reached by a transition runs only what the first page loaded)
   assert.equal(src.match(/<main\b[^>]*>/g).join(), `<main id="page" data-page="${{ "index.html": "home", "privacy.html": "privacy", "support.html": "support" }[p]}">`, `${p}: not one <main id="page">`);
@@ -653,6 +654,30 @@ for (const width of [1280, 390]) {
     await done(t, `contrast of ${file} at ${width}px`, [API]);
   }
   console.log(`contrast: every text, text box edge and placeholder over WCAG AA in ${checked} page states`);
+}
+// ---- the skip link (AH-87): the notice bar, the brand and five links came before the page's content on every page, for
+// every keyboard visit. The first Tab lands on "Skip to content", shown while it has focus; Enter puts focus on the
+// page's content. After a page transition #page is the new page's <main>, and the link still lands there ----
+{
+  const at = (p) => p.evaluate(() => { const a = document.activeElement, r = a.getBoundingClientRect();
+    return { el: a.className || a.id || a.tagName, text: a.textContent.trim(), page: a.id === "page" ? a.dataset.page : null, shown: r.top >= 0 && r.bottom <= innerHeight && r.width > 2 }; });
+  for (const [file, page] of [["index.html", "home"], ["privacy.html", "privacy"], ["support.html", "support"]]) for (const width of [1280, 390]) {
+    const t = await open(file, { width });
+    await t.page.keyboard.press("Tab");
+    const first = await at(t.page);
+    assert.deepEqual([first.el, first.text, first.shown], ["skip", "Skip to content", true], `${file} at ${width}px: the first Tab does not show the skip link (${JSON.stringify(first)})`);
+    await t.page.keyboard.press("Enter");
+    assert.equal((await at(t.page)).page, page, `${file} at ${width}px: Enter on the skip link does not put focus on the page's content`);
+    await done(t, `skip link on ${file} at ${width}px`, [API]);
+  }
+  const t = await open("index.html");
+  await t.page.click('header a[href="privacy.html"]');
+  await t.page.waitForURL((u) => u.pathname === "/privacy.html");
+  await t.page.waitForFunction(() => document.querySelectorAll("main").length === 1);
+  await t.page.focus(".skip"); await t.page.keyboard.press("Enter");
+  assert.equal((await at(t.page)).page, "privacy", "after a page transition the skip link does not land on the new page's content");
+  await done(t, "skip link after a page transition", [API]);
+  console.log("skip link: first on every page, at both widths, and after a page transition");
 }
 // ---- page transitions (AH-73): one document, the old and the new page moving at once, never a white frame ----
 // per frame: how many <main>s are in the page and how many of them animate; when the click came, when the new page
