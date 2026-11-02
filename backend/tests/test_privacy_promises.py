@@ -35,7 +35,7 @@ def test_the_panes_privacy_sections_and_the_websites_are_word_for_word_the_same(
     def sections(page):
         src = (ROOT / page).read_text(encoding="utf-8")
         return {m[1]: " ".join(re.sub(r"<[^>]+>", "", m[2]).split())
-                for m in re.finditer(r'<section[^>]*\sid="(\w+)"[^>]*>(.*?)</section>', src, re.S)}
+                for m in re.finditer(r'<section[^>]*\sid="(\w+)"[^>]*>(.*?)</section>', src, re.DOTALL)}
     pane, site = sections("frontend/privacy.html"), sections("site/privacy.html")
     assert set(pane) == {"intro", "collect", "use", "share", "rights", "security", "changes"}
     assert {k: v for k, v in site.items() if k != "site"} == pane

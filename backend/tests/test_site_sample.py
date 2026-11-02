@@ -153,12 +153,14 @@ def test_the_websites_sample_shows_exactly_what_the_engine_finds():
         for dt, dd in zip(box["dl"][::2], box["dl"][1::2]):
             if dt == "Usual limit":
                 limit = re.search(r"usual limit of (-?[\d.]+)", said).group(1)
-                assert re.search(rf"\b{re.escape(limit)}\b", dd), (n, dd, said)
+                assert limit in re.findall(r"-?\d+(?:\.\d+)?", dd), (n, dd, said)
             elif dt == "Found" and "×" in dd:
                 assert dd.split(" = ")[1].split(",")[0] in said, (n, dd, said)
             elif dt == "Usual spelling":
                 usual = re.search(r'"(\w+)", in (\d+) other rows', dd)
                 assert sum(x[1] == usual.group(1) for x in rows) == int(usual.group(2)), (n, dd)
+    # one fixed pattern for every filter button (a pattern built from a name is what semgrep blocks)
+    buttons = {k: (int(n), int(m)) for k, n, m in re.findall(r'data-kind="(\w+)" aria-pressed="false">[^<]*<span class="n" data-n="(\d+)">(\d+)<', PAGE)}
     for kind in ("recon", "keying", "label", "time"):
         count = sum(kind in shown[n]["kind"] for n in flagged)
-        assert f'data-kind="{kind}" aria-pressed="false">' in PAGE and re.search(rf'data-kind="{kind}" aria-pressed="false">[^<]*<span class="n" data-n="{count}">{count}<', PAGE), kind
+        assert buttons[kind] == (count, count), (kind, buttons.get(kind), count)
