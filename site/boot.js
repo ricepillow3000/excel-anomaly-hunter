@@ -15,7 +15,7 @@
   // #page link left the next Tab on the header's links again. #page is whichever page is shown, after a page transition
   // too (transition.js gives the new page that id); the link stays in place across transitions, outside <main>
   document.addEventListener("click", (e) => {
-    const a = e.target.closest && e.target.closest("a.skip"), main = a && document.getElementById("page");
+    const a = e.target.closest && e.target.closest("a.skip-link"), main = a && document.getElementById("page");
     if (!main) return;
     e.preventDefault();
     main.tabIndex = -1;
