@@ -81,7 +81,7 @@
         <button id="clear-highlights" class="secondary">Remove highlights</button>
         <div id="odd-box" hidden>
           <button id="odd-check" class="secondary">Check words with AI</button>
-          <p class="hint">AI understands what words mean, so it can spot a value that doesn't belong, like a city in a product column. It sends only the different words in your text columns to Google - never your rows or numbers. Worth a look, not proof.</p>
+          <p class="hint">AI understands what words mean, so it can spot a value that doesn't belong, like a city in a product column. It sends only the different words in your text columns to Google (through John's relay if you use an invite code) - never your rows or numbers. Worth a look, not proof.</p>
           <ul id="odd-list" class="fix-changes"></ul>
         </div>
         <details class="more">
@@ -121,8 +121,9 @@
         </div>
         <div id="ai-box">
           <label for="fix-intent">Want a different fix? Describe it and AI writes it for you.</label>
-          <textarea id="fix-intent" rows="3" placeholder="e.g. Use the average Units for the East region"></textarea>
+          <textarea id="fix-intent" rows="3" maxlength="2000" aria-describedby="fix-sends" placeholder="e.g. Use the average Units for the East region"></textarea>
           <button id="fix-ask" class="secondary">Ask AI</button>
+          <p id="fix-sends" class="hint">Ask AI sends the column names, this row and up to 5 rows above and below it, the row's formulas, why it was flagged and what you type here, to Google (through John's relay if you use an invite code). Long cells are cut to 200 characters.</p>
         </div>
         <p id="ai-off" class="hint">Want AI help with fixes? Turn it on for free under <b>AI help</b> at the bottom.</p>
       </section>
@@ -149,6 +150,7 @@
           <li>Click <b>Create API key</b> and copy it.</li>
           <li>Paste it here and click Save.</li>
         </ol>
+        <p class="hint">A key from a Google project with billing turned on can be charged by Google for what AI help uses. Without billing, the free tier costs nothing.</p>
         <input id="ai-key" type="password" autocomplete="off" placeholder="Paste your key" aria-label="Google AI key" />
         <div class="row-buttons">
           <button id="save-key" class="secondary">Save key</button>
@@ -157,6 +159,13 @@
         <p class="hint">Got an invite code from John instead (starts with inv_)? Paste it in the same box - it uses his shared AI with a daily limit, and his key never reaches this PC.</p>
         <p class="hint">Ask AI sends the column names, the row you ask about, up to 5 rows above and below it, its formulas and anything you type; Check words with AI sends your text columns' different values. Both go to Google (through John's relay if you use an invite code). Google's free tier may use them to improve its products, so don't ask AI about private data. The key is stored only on this computer.</p>
         <p class="hint"><a href="privacy.html" target="_blank" rel="noopener">What leaves your PC</a> · <a href="support.html" target="_blank" rel="noopener">Questions or problems</a></p>
+      </details>
+
+      <details class="more">
+        <summary>Saved in this workbook</summary>
+        <p class="hint">This workbook keeps the limits you changed, the strength slider, the last auto-fixes with their old values (for Undo auto-fixes), a short code for each row you fixed or dismissed, and a setting that opens this pane with the file. They stay in the file after you uninstall. Forgetting them never changes a cell.</p>
+        <button id="forget-book" class="secondary">Forget what this workbook saved</button>
+        <p id="forget-state" class="hint" role="status" aria-live="polite"></p>
       </details>
       </div>
 

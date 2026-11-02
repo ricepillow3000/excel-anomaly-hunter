@@ -51,6 +51,8 @@ html { scroll-padding-top: 88px; } /* the sticky bar would cover an anchor's hea
 body { margin: 0; background: var(--grain), var(--grid), var(--paper); color: var(--ink-2); font: 400 var(--fs-0)/1.55 var(--sans); }
 a { color: var(--ink); text-decoration-color: var(--gold); text-underline-offset: 3px; text-decoration-thickness: 1px; }
 a:hover { text-decoration-thickness: 2px; }
+/* Chromium's own placeholder grey is 4.2:1 on paper: the notes' colour, at full strength (AH-87) */
+::placeholder { color: var(--muted); opacity: 1; }
 :focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 h1, h2, h3 { margin: 0; color: var(--ink); font-weight: 800; }
 h1, h2 { line-height: .95; letter-spacing: -.02em; text-wrap: balance; }
@@ -64,6 +66,12 @@ code { font-family: var(--mono); font-size: .88em; background: var(--paper-2); b
 .wrap { max-width: calc(var(--wrap) + 2 * var(--margin)); margin: 0 auto;
   padding-left: max(var(--margin), env(safe-area-inset-left, 0px)); padding-right: max(var(--margin), env(safe-area-inset-right, 0px)); }
 .cols { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); column-gap: var(--gutter); align-items: start; }
+
+/* "Skip to content": the first stop of the keyboard, above the bar and out of sight until it has focus (AH-87) */
+.skip-link { position: absolute; top: 0; left: var(--margin); z-index: 20; padding: 12px var(--s2); background: var(--dark); color: var(--on-dark);
+  font: 700 var(--fs--2)/1.2 var(--sans); letter-spacing: .12em; text-transform: uppercase; text-decoration: none; transform: translateY(-110%); }
+.skip-link:focus { transform: none; outline: 2px solid var(--gold-hi); outline-offset: -4px; }
+#page:focus { outline: none; } /* the content it lands on is a starting point, not a control */
 
 /* the announcement line and the bar */
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--dark); }
@@ -159,7 +167,9 @@ table.grid { width: 100%; border-collapse: collapse; font: 500 var(--fs--1)/1.3 
 .grid tr.skip td, .grid tr.skip th { padding: 2px 12px; background: var(--paper); color: var(--ink-2); }
 .grid tbody tr:last-child td, .grid tbody tr:last-child th { border-bottom: 0; }
 /* a filter dims the rows it does not cover; the sheet keeps its shape */
-.ws:not([data-filter="all"]) .grid tbody tr:not(.skip) { opacity: .3; }
+/* a row the filter leaves out steps back, but stays readable: at .3 its body text was 1.8:1; .7 is the least that keeps
+   every cell over 4.5:1, the wine cell's white figure included (measured in Chromium, tools/test_site.mjs, AH-87) */
+.ws:not([data-filter="all"]) .grid tbody tr:not(.skip) { opacity: .7; }
 .ws[data-filter="recon"] .grid tbody tr[data-kind~="recon"], .ws[data-filter="keying"] .grid tbody tr[data-kind~="keying"],
 .ws[data-filter="label"] .grid tbody tr[data-kind~="label"], .ws[data-filter="time"] .grid tbody tr[data-kind~="time"] { opacity: 1; }
 /* the detail box under its row */

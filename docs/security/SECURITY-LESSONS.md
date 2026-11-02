@@ -119,3 +119,22 @@ Ask AI and word-check code and only Google stubbed, gave no 500 and no answer th
 
 Lesson: **a guard must hold however the code is run.** An assert is a test, not a guard, and a call outside the
 try is a crash waiting for the one service that is down.
+
+### 2026-11-02: John's 75-item speed, legal and security list (AH-87)
+Nothing critical or high. No secret in the tree or in any of the 425 commits of history; no admin, debug or operator
+route; every route refuses other websites. Fixed:
+
+| Finding | Attack | Fix | Test |
+|---|---|---|---|
+| An environment variable was a debug switch | `FLASK_DEBUG=1` on the user's PC (set by another tool, or by someone with brief access) turned on Werkzeug's debugger and reloader in the engine, and errors came back as its HTML pages | `create_app` sets `debug` False and `main()` passes `debug`, `use_debugger`, `use_reloader` False and `load_dotenv` False: the engine has no debug mode however it is started (G1) | `test_an_environment_variable_can_never_turn_on_the_debugger` |
+| Secret files were world-readable off Windows | On Linux or a Mac (`serve`), the default umask wrote the Google key, the invite code and the TLS `key.pem` 0644: any account on the machine could read them | `server._write_private` creates them 0600 and tightens an older 0644 one | `test_the_ai_key_the_invite_code_and_the_tls_key_are_readable_only_by_their_owner` |
+| A hung Google held the relay | The invite's call is counted before Google; a Google that never answered kept the request open until Cloudflare or the engine cut it | Each call gives up after 90 s (the engine's own per-call cap) with the relay's own JSON 504, never retried | `relay/test.mjs` (a Google that never answers) |
+| No scan of the history for secrets | A key committed and deleted later is still in every clone, and only the working tree was scanned | `tools/secret_history.py` reads every added line of every commit and every file ever added with a secret's name; a gate in `tools/check.py` and in CI (full history) | `test_secret_history.py` |
+| Moving pins in the tooling | `ghcr.io/zaproxy/zaproxy:stable` and a bare `npx wrangler` (which holds the Gemini key and the invite list) run whatever was published last | ZAP pinned by digest, wrangler by version | (reviewed: `security.yml`, `relay/wrangler.toml`) |
+| Two promises without a test | "A cross-site preflight is refused" and "a scan never opens a connection off this PC" held, but no test would fail if they stopped | Pinned: every route's OPTIONS from another site is a 403 with no `Access-Control-Allow-*`; a scan with every socket refused still answers | `test_a_cross_site_preflight_is_refused_on_every_route`, `test_a_scan_never_opens_a_connection_off_this_pc` |
+
+Also: `Referrer-Policy: no-referrer` on every engine answer; pydantic and werkzeug, imported by the app, declared (not
+only reached through anthropic and flask); Pillow, imported by nothing, removed.
+
+Lesson: **the environment is input too.** A variable, a `.env` file or a moving tag decides what runs as surely as a
+request body does, so the code sets every switch it depends on itself.

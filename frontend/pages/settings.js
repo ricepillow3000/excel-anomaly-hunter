@@ -1,9 +1,37 @@
-import { $ } from "../utils/dom.js";
+import { $, show } from "../utils/dom.js";
 import { saveKey } from "../features/ai.js";
+import { forgetWorkbook } from "../features/forget.js";
+import { act } from "../hooks/use-action.js";
 
-// Settings: the optional free AI key (stored only on this PC by the back end).
+// One /key at a time: a double click on Save sent two, and each Google key is tried with Google for up to 15 s (AH-87).
+// Not act(): it would put "AI help is on/off" over the words the engine sent back about the key
+let sending = false;
+const once = (fn) => async () => {
+  if (sending) return;
+  sending = true;
+  const buttons = [$("save-key"), $("remove-key")];
+  buttons.forEach((b) => (b.disabled = true));
+  try {
+    await fn();
+  } finally {
+    sending = false;
+    buttons.forEach((b) => (b.disabled = false));
+  }
+};
+
+// Settings: the optional free AI key (stored only on this PC by the back end), and what the workbook keeps.
 export function initSettings() {
-  $("save-key").onclick = () => $("ai-key").value.trim() ? saveKey($("ai-key").value)
-    : ($("ai-state").textContent = "Paste a key in the box first, then click Save key."); // an empty Save is not a Remove
-  $("remove-key").onclick = () => saveKey("");
+  $("save-key").onclick = once(async () => {
+    if ($("ai-key").value.trim()) await saveKey($("ai-key").value);
+    else $("ai-state").textContent = "Paste a key in the box first, then click Save key."; // an empty Save is not a Remove
+  });
+  $("remove-key").onclick = once(() => saveKey(""));
+  $("forget-book").onclick = act(async () => {
+    $("forget-state").textContent = "";
+    const gone = await forgetWorkbook();
+    show("undo-auto", false); // its list is gone with the rest
+    $("forget-state").textContent = gone.length
+      ? `Removed from this workbook: ${gone.join("; ")}. Your cells are as they were. Save the workbook to keep the change in the file; the next scan saves the setting that opens this pane again.`
+      : "This workbook holds nothing Anomaly Hunter saved.";
+  });
 }

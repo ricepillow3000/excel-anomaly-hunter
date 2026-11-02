@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          fetch-depth: 0  # every commit of every branch, for the history secret scan below
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
         with:
           python-version: "3.14"
@@ -23,6 +25,10 @@ jobs:
           cache-dependency-path: |
             pyproject.toml
             constraints.txt
+      # stdlib only, so first: a key deleted in a later commit is still in the history GitHub serves (AH-87).
+      # --full: a shallow checkout here is a failure, never a skip
+      - name: Secrets anywhere in the git history (keys, invite codes, private keys, .env and key files)
+        run: python tools/secret_history.py --full
       - run: pip install -e ".[dev]" -c constraints.txt  # every package pinned (tools/pinned.py), shared with tools/check.py
 
       - name: Engine API tests + fuzzing (other websites refused, key never leaks, no input crashes the engine)
@@ -70,17 +76,19 @@ jobs:
           for i in $(seq 60); do curl -skf https://127.0.0.1:5055/health && exit 0; sleep 1; done
           cat "$RUNNER_TEMP/engine.log"; exit 1
 
+      # the image by its digest, like every action by its commit: a moving tag can change what CI runs overnight (AH-87).
+      # Pinned 2026-11-02 to what :stable was then; to move it, read the tag's new digest and change both lines
       - name: OWASP ZAP scan of the running engine
         run: |
           mkdir -m 777 zap && cp .zap/rules.tsv zap/
-          docker run --rm --network host -v "$PWD/zap:/zap/wrk" ghcr.io/zaproxy/zaproxy:stable \
+          docker run --rm --network host -v "$PWD/zap:/zap/wrk" ghcr.io/zaproxy/zaproxy:stable@sha256:030d3df57735dacbb83464854758e674dd9ad01d79d12a129a8e58b1fd384238 \
             zap-baseline.py -t https://127.0.0.1:5055/taskpane.html -c rules.tsv -r report.html
 
       - name: OWASP ZAP active attack on every API route (weekly and "Run workflow"; slow, so not on every push)
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: |
           cp backend/openapi.yaml zap/
-          docker run --rm --network host -v "$PWD/zap:/zap/wrk" ghcr.io/zaproxy/zaproxy:stable \
+          docker run --rm --network host -v "$PWD/zap:/zap/wrk" ghcr.io/zaproxy/zaproxy:stable@sha256:030d3df57735dacbb83464854758e674dd9ad01d79d12a129a8e58b1fd384238 \
             zap-api-scan.py -t openapi.yaml -f openapi -c rules.tsv -r api-report.html
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
