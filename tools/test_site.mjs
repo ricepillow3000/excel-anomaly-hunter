@@ -98,7 +98,11 @@ const server = http.createServer((q, s) => {
 });
 await new Promise((ok) => server.listen(0, "127.0.0.1", ok));
 const BASE = `http://127.0.0.1:${server.address().port}/`;
-const browser = await chromium.launch();
+// a box with no GPU (a cloud session, a CI runner): Chromium 141 (Playwright 1.56) falls back to software WebGL by itself
+// and warns about it on every page ("Automatic fallback to software WebGL has been deprecated"), which failed the console
+// check before any page was looked at (2026-11-02). This flag is that same fallback, asked for: no other renderer, no
+// slower compositing (unlike --use-angle=swiftshader above), and a no-op on a PC with a GPU
+const browser = await chromium.launch({ args: ["--enable-unsafe-swiftshader"] });
 // Headless Chromium composites in software, so it reads the first WebGL frame any page shows back from SwiftShader and
 // logs "GPU stall due to ReadPixels" four times, once per browser process, though the page never calls readPixels (the
 // static check above keeps it that way). A blank page shows one first, outside the console check. Measured 2026-10-30:
