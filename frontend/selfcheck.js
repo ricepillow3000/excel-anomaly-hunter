@@ -72,6 +72,29 @@ for (const f of panes) {
   }
 }
 
+// every value written into HTML goes through esc() (a number through asNumber()), not only the ones that look like they
+// come from the sheet: a row's "done" word and its severity were the last two left bare (AH-87 audit)
+for (const f of panes) {
+  const src = readFileSync(new URL(f, import.meta.url), "utf8");
+  if (!/\.innerHTML\s*=/.test(src)) continue;
+  for (const [tpl] of src.matchAll(/`[^`]*`/g)) {
+    if (!tpl.includes("<")) continue; // not markup
+    for (const [, v] of tpl.matchAll(/\$\{([^}]*)\}/g)) assert.match(v, /^\s*(?:esc|asNumber)\(/, `${f}: \${${v}} reaches innerHTML without esc()`);
+  }
+}
+
+// every inline <svg> is either a picture with a name (role="img" and a label) or hidden from screen readers
+// (aria-hidden="true", focusable="false" for old Edge): unnamed, a screen reader reads out "image" or its path data (AH-87)
+for (const dir of ["./", "../site/"]) {
+  for (const f of readdirSync(new URL(dir, import.meta.url)).filter((f) => f.endsWith(".html"))) {
+    const src = readFileSync(new URL(dir + f, import.meta.url), "utf8");
+    for (const [tag] of src.matchAll(/<svg\b[^>]*>/g)) {
+      const hidden = /\saria-hidden="true"/.test(tag), named = /\srole="img"/.test(tag) && /\saria-label(?:ledby)?="[^"]+"/.test(tag);
+      assert.ok(hidden || named, `${dir}${f}: ${tag.slice(0, 80)} is neither aria-hidden="true" nor role="img" with a label`);
+    }
+  }
+}
+
 // fairness line: protected columns named; a real gap spelled out; nothing at all without a protected column
 assert.equal(fairnessNote({ protected: {}, tests: [] }), "");
 assert.equal(fairnessNote(undefined), "");
