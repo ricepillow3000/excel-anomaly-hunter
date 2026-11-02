@@ -679,6 +679,47 @@ for (const width of [1280, 390]) {
   await done(t, "skip link after a page transition", [API]);
   console.log("skip link: first on every page, at both widths, and after a page transition");
 }
+// ---- a slow phone (AH-87): every check above runs at full speed on a fast box; the "4 s with the CPU slowed 8x" of
+// AH-22 was one manual run. Here the home page opens on a 390 x 844 phone with the CPU slowed 4x and a slow 4G line
+// (150 ms latency, 1.6 Mbps down, 750 kbps up), is scrolled to its end a screen at a time, and must show its headline
+// quickly, bring every block into place, leave nothing hidden, and log no error. The budgets are twice the slowest of 5
+// runs measured on 2026-11-02 (headline first shown 1066-1205 ms, at rest 1968-2028 ms, every block in place 617-624 ms
+// after the last scroll), so a slower page fails and a busy box does not ----
+{
+  const BUDGET = { shown: 2500, rest: 4100, settled: 1300 };
+  let t0 = 0;
+  const t = await open("index.html", { width: 390, height: 844, until: "commit", setup: async (p) => {
+    const cdp = await p.context().newCDPSession(p);
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+    await cdp.send("Network.enable");
+    await cdp.send("Network.emulateNetworkConditions", { offline: false, latency: 150, downloadThroughput: 1.6e6 / 8, uploadThroughput: 750e3 / 8 });
+    t0 = Date.now();
+  } });
+  const p = t.page;
+  await p.waitForFunction(() => { const h = document.querySelector(".hero-head"); return !!h && +getComputedStyle(h).opacity > 0; }, null, { polling: "raf", timeout: 30000 });
+  const shown = Date.now() - t0;
+  await p.waitForFunction(() => { const c = getComputedStyle(document.querySelector(".hero-head")); return c.opacity === "1" && c.transform === "none"; }, null, { polling: "raf", timeout: 30000 });
+  const rest = Date.now() - t0;
+  await p.waitForLoadState("load");
+  // the network really is slow: the stylesheet alone, 150 ms away at 1.6 Mbps
+  const css = await p.evaluate(() => performance.getEntriesByName(new URL("styles.css", location.href).href)[0].duration);
+  assert.ok(css > 300, `the slow line is not slow: styles.css came in ${Math.round(css)} ms`);
+  for (let k = 0; k < 80; k++) { // a screen at a time, as a thumb scrolls
+    await p.mouse.move(195, 420); await p.mouse.wheel(0, 700); await p.waitForTimeout(150);
+    if (await p.evaluate(() => innerHeight + scrollY >= document.documentElement.scrollHeight - 2)) break;
+  }
+  assert.ok(await p.evaluate(() => innerHeight + scrollY >= document.documentElement.scrollHeight - 2), "the slow phone never reached the end of the page");
+  const s1 = Date.now();
+  await p.waitForFunction(() => [...document.querySelectorAll(".reveal-item, [data-enter]")].every((e) => { const c = getComputedStyle(e); return c.opacity === "1" && c.transform === "none"; }),
+    null, { polling: 50, timeout: 30000 }).catch(() => {});
+  const settled = Date.now() - s1, left = await readable(p);
+  console.log(`slow phone (4x CPU, slow 4G, 390 x 844): headline shown at ${shown} ms and at rest at ${rest} ms, every block in place ${settled} ms after the last scroll, styles.css took ${Math.round(css)} ms`);
+  assert.ok(shown <= BUDGET.shown, `slow phone: the headline first showed at ${shown} ms (budget ${BUDGET.shown})`);
+  assert.ok(rest <= BUDGET.rest, `slow phone: the headline came to rest at ${rest} ms (budget ${BUDGET.rest})`);
+  assert.ok(settled <= BUDGET.settled, `slow phone: the last block came into place ${settled} ms after the scroll (budget ${BUDGET.settled})`);
+  assert.deepEqual([left.hooked, left.hidden], [0, 0], `slow phone: after a full scroll ${left.hooked} blocks are not in place and ${left.hidden} of ${left.texts} texts are hidden`);
+  await done(t, "slow phone", [API]);
+}
 // ---- page transitions (AH-73): one document, the old and the new page moving at once, never a white frame ----
 // per frame: how many <main>s are in the page and how many of them animate; when the click came, when the new page
 // went in and when the old one left (a MutationObserver sees the moment, a frame loop what the eye gets)
