@@ -377,3 +377,32 @@ def test_the_ai_key_the_invite_code_and_the_tls_key_are_readable_only_by_their_o
         assert client.KEY_FILE.stat().st_mode & 0o077 == 0
     finally:
         os.umask(old)
+
+
+def test_every_package_the_app_imports_is_declared_and_every_declared_one_is_used():
+    # AH-87 audit: ai/client.py imported pydantic, which only anthropic declared (an anthropic release that drops it
+    # breaks Ask AI with no pin of ours moving), and Pillow sat in the exe extra imported by nothing: one more download
+    # and one more package for pip-audit, bundled into the exe because openpyxl picks it up when it is there
+    import ast
+    import importlib.metadata as md
+    import pathlib
+    import re
+    import tomllib
+    root = pathlib.Path(__file__).resolve().parents[2]
+    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    name = lambda r: re.sub(r"[-_.]+", "-", re.match(r"[A-Za-z0-9_.-]+", r).group()).lower()
+    declared = {name(r) for r in project["dependencies"]}
+    tools = {"pyinstaller", "pyinstaller-hooks-contrib"}  # the exe extra builds the app: tools, never imported
+    imported = set()
+    for f in (root / "backend" / "anomaly_hunter").rglob("*.py"):
+        for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Import):
+                imported |= {a.name.split(".")[0] for a in node.names}
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                imported.add(node.module.split(".")[0])
+    dists = md.packages_distributions()
+    used = {name(d) for m in imported for d in dists.get(m, [])} - {"anomaly-hunter"}
+    assert used - declared == set(), "imported but not in pyproject.toml's dependencies"
+    assert declared - used == set(), "declared but imported nowhere"
+    exe = {name(r) for r in project["optional-dependencies"]["exe"]}
+    assert exe <= tools, exe - tools
