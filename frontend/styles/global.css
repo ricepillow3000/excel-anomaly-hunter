@@ -10,14 +10,14 @@
   --paper: #F7F5F0;    /* the pane */
   --paper-2: #EFECE4;  /* panels */
   --field: #FFFEFA;    /* inputs, the list */
-  --rule: #CBC6B8;     /* hairlines */
-  --navy: #0C1938;     /* headings, frames, the bands (16.6:1 on paper) */
-  --ink: #1F2638;      /* long text (14.5:1 on paper) */
-  --muted: #555D6E;    /* small print (6.3:1 on paper, 5.7:1 on paper-2) */
-  --on-navy: #EFE6D2;  /* text on navy (14.6:1) */
-  --on-navy-2: #B9B3A3;/* secondary text on navy (8.2:1) */
+  --rule: #CBC6B8;     /* hairlines between blocks only: 1.7:1 on field, too faint to mark a box you type in */
+  --navy: #0C1938;     /* headings, frames, the bands (15.9:1 on paper) */
+  --ink: #1F2638;      /* long text (13.8:1 on paper) */
+  --muted: #555D6E;    /* small print, and the edge of a text box (6.1:1 on paper, 5.6:1 on paper-2, 6.5:1 on field) */
+  --on-navy: #EFE6D2;  /* text on navy (14.0:1) */
+  --on-navy-2: #B9B3A3;/* secondary text on navy (8.3:1) */
   --rule-navy: #2E3D63;/* hairlines on navy */
-  --wine: #6B1E2E;     /* the flagged cell; white on it is 11.6:1, wine on paper 10.6:1 */
+  --wine: #6B1E2E;     /* the flagged cell; white on it is 11.3:1, wine on paper 10.4:1 */
   --on-wine: #FFFFFF;
   --gold: #997D3A;     /* rules and strokes on paper only, or text of 24px+ */
   --gold-hi: #C9A85A;  /* gold on navy, any size (7.6:1) */
@@ -47,6 +47,8 @@
 html, body { margin: 0; padding: 0; }
 body { font: 400 var(--fs-0)/1.5 var(--sans); color: var(--ink); background: var(--tex), var(--paper); font-variant-numeric: tabular-nums; }
 ::selection { background: #E7D9B0; }
+/* Chromium's own placeholder grey is 4.2:1 on paper: the small print's colour, at full strength (AH-87) */
+::placeholder { color: var(--muted); opacity: 1; }
 a { color: var(--navy); text-decoration-color: var(--wine); text-underline-offset: 3px; text-decoration-thickness: 1px; }
 a:hover { text-decoration-thickness: 2px; }
 :focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }

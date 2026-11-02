@@ -632,6 +632,28 @@ for (const width of [1280, 390]) {
   await supportForm(t.page);
   await done(t, `support form at ${width}px`);
 }
+// ---- contrast (AH-87): every text the pages show, read in Chromium against what lies under it, clears WCAG AA (4.5:1,
+// 3:1 for large text), every text box's edge 3:1, every placeholder 4.5:1. The sample's filtered-out rows were faded
+// to .3 (1.8:1), and the browser's own placeholder grey was 4.2:1. At rest (reduced motion: a rising block is see-through
+// on purpose for 700 ms), on every page, each filter of the sample, and the support form with its messages shown ----
+{
+  const { contrastProblems } = await import(pathToFileURL(path.join(SITE, "..", "e2e", "contrast.mjs")).href);
+  let checked = 0;
+  for (const width of [1280, 390]) for (const file of PAGES) {
+    const t = await open(file, { width, motion: "reduce" });
+    const states = file === "index.html" ? ["all", "recon", "keying", "label", "time"] : file === "support.html" ? ["empty", "sent"] : ["page"];
+    for (const state of states) {
+      if (file === "index.html") await t.page.click(`.typology [data-kind="${state}"]`);
+      if (state === "sent") { await t.page.fill("#summary", "x"); await t.page.fill("#details", "y"); await t.page.check("#clean"); }
+      if (file === "support.html") await t.page.click('button[type="submit"]');
+      const bad = await t.page.evaluate(contrastProblems);
+      assert.deepEqual(bad, [], `${file} at ${width}px (${state}): text or edges under WCAG AA`);
+      checked++;
+    }
+    await done(t, `contrast of ${file} at ${width}px`, [API]);
+  }
+  console.log(`contrast: every text, text box edge and placeholder over WCAG AA in ${checked} page states`);
+}
 // ---- page transitions (AH-73): one document, the old and the new page moving at once, never a white frame ----
 // per frame: how many <main>s are in the page and how many of them animate; when the click came, when the new page
 // went in and when the old one left (a MutationObserver sees the moment, a frame loop what the eye gets)
