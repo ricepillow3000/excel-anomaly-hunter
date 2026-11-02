@@ -97,6 +97,18 @@ await failing(/e2e recorder probe/, async () => {
 ok(unhandled.length === 2 && unhandled.some((u) => u.startsWith("unhandledrejection")) && unhandled.some((u) => u.startsWith("error")), "the page's recorder hears an unhandled rejection and an uncaught error - " + JSON.stringify(unhandled));
 errors.splice(0, Infinity, ...errors.filter((e) => !/e2e recorder probe/.test(e))); unhandled.length = 0;
 const text = (sel) => page.textContent(sel);
+// AH-94 motion: a transform's scale, and each change of #main-ui's data-scanning (the scan skeleton) with its time
+const scaleOf = (m) => +(/^matrix\(([-\d.e]+)/.exec(m) || [0, 1])[1]; // "none" = 1
+const watchSkeleton = () => page.evaluate(() => { const m = document.getElementById("main-ui"), first = !window.__sk; window.__sk = [];
+  if (first) new MutationObserver(() => __sk.push([performance.now(), m.hasAttribute("data-scanning")])).observe(m, { attributes: true, attributeFilter: ["data-scanning"] }); });
+const shown = () => page.evaluate(() => __sk.reduce((t, [at, on], k, a) => (on && a[k + 1] ? t.concat(a[k + 1][0] - at) : t), []));
+const shot = async (name) => process.env.SHOTS && page.screenshot({ path: `${process.env.SHOTS}/pane-${name}.png` });
+// a mid-motion picture: every clock-driven animation (CSS transitions included) paused at `at` ms, shot, then let go
+const midShot = async (name, at, sel) => { if (!process.env.SHOTS) return;
+  await page.evaluate(([at, sel]) => (sel ? document.querySelector(sel).getAnimations({ subtree: true }) : document.getAnimations())
+    .filter((a) => a.timeline === document.timeline).forEach((a) => { a.pause(); a.currentTime = at; }), [at, sel]);
+  await shot(name);
+  await page.evaluate(() => document.getAnimations().filter((a) => a.timeline === document.timeline).forEach((a) => a.play())); };
 const cell = (a) => page.evaluate((a) => __cell("Sales", a), a);
 const idle = () => page.waitForFunction(() => !document.getElementById("scan").disabled);
 const find = async () => { await page.click("#scan"); await idle(); await page.waitForSelector("#results", { state: "visible" }); };
@@ -105,10 +117,25 @@ const openRow = async (r) => { await page.click(`#flagged-list button:has-text("
 if (mode === "flow") {
   // 1) one click, no stop at a limits table; buttons are off while it works, so nothing queues silently
   const c0 = calls.length;
+  await watchSkeleton();
   await page.click("#scan");
   ok(await page.evaluate(() => document.getElementById("clear-highlights").disabled), "buttons are disabled while it works");
+  // AH-94: from the click until the results render, the scan skeleton stands where they land (in place of the empty
+  // state on a first scan), its rows built like a list row; a Find problems scan keeps it at least ~450 ms
+  // (read null-safe: a pane without a skeleton fails these checks by name instead of stopping the run)
+  const sk = await page.evaluate(() => { const s = document.getElementById("scan-skeleton"), r = s?.querySelector(".flagged-list .row-box")?.getBoundingClientRect();
+    return { on: !!s && s.offsetParent !== null, empty: document.getElementById("empty-state").offsetParent !== null, rows: s?.querySelectorAll(".flagged-list .row-box").length,
+      light: s && getComputedStyle(s, "::after").animationName, box: r ? [r.left, r.width, r.height] : [NaN, NaN, NaN] }; });
+  ok(sk.on && !sk.empty && sk.rows === 5 && sk.light === "sk-pass", "the scan skeleton shows at once, in place of the empty state, 5 rows and one passing light - " + JSON.stringify(sk));
+  await shot("skeleton");
   await idle();
   ok(await page.isVisible("#results"), "results after ONE click");
+  { const box = await page.evaluate(() => { const r = document.querySelector("#flagged-list button").getBoundingClientRect(); return [r.left, r.width, r.height]; });
+    const gone = await page.evaluate(() => document.getElementById("scan-skeleton")?.offsetParent === null && !document.getElementById("main-ui").hasAttribute("data-scanning"));
+    const held = await shown();
+    ok(gone && Math.abs(box[0] - sk.box[0]) < 0.5 && Math.abs(box[1] - sk.box[1]) < 0.5 && Math.abs(box[2] - sk.box[2]) <= 3 && held.length === 1 && held[0] >= 440,
+      `the skeleton goes when the results land, its first row where the real first row is (skeleton ${sk.box.map(Math.round)}, real ${box.map(Math.round)}), shown ${held.map(Math.round)} ms`); }
+  await shot("landed");
   await page.waitForTimeout(800); // room for a second, unwanted scan to show up, as the slider checks give it
   ok(since(c0) === "/scan" && calls[c0][1].strength === 5 && calls[c0][1].power_bi === false, "Find problems sends exactly one /scan, at the slider's level - " + since(c0));
   { const m = await matchesEngine(); ok(m.ok, "the list is exactly what the engine answered: each flagged row, its severity in words and its reason - " + m.why); }
@@ -128,8 +155,43 @@ if (mode === "flow") {
   const beside = await page.evaluate(() => ["A11", "B11", "A22", "B22", "A81", "C81", "A121", "B121"].map((a) => __cell("Sales", a).fill));
   ok(beside.join() === "#00B050,#00B050,,#00B0F0,,,,", "no other cell of a flagged row is coloured; the user's own fills stay - " + beside);
 
+  // AH-94: a list row, hovered or reached by keyboard, fills navy from the left and steps up on a shadow; its words stay
+  { const row = page.locator("#flagged-list button").first(), look = () => page.evaluate(() => { const b = document.querySelector("#flagged-list button");
+      return [getComputedStyle(b, "::before").transform, getComputedStyle(b).transform, getComputedStyle(b, "::after").opacity, getComputedStyle(b).zIndex, b.textContent]; });
+    const before = await look();
+    await row.hover();
+    await midShot("row-mid-fill", 40);
+    await page.waitForTimeout(600);
+    const after = await look();
+    await shot("podium-row");
+    ok(before[0] === "matrix(0, 0, 0, 1, 0, 0)" && after[0] === "matrix(1, 0, 0, 1, 0, 0)" && scaleOf(before[1]) === 1 && scaleOf(after[1]) > 1.01 && +after[2] === 1 && after[3] === "2" && after[4] === before[4],
+      "a hovered row: the fill sweeps from scaleX(0) to scaleX(1), the row lifts above its neighbours on a shadow, its words unchanged - " + JSON.stringify([before.slice(0, 4), after.slice(0, 4)]));
+    await page.mouse.move(1, 1); await page.focus("#strength"); await page.keyboard.press("Tab"); await page.waitForTimeout(600);
+    const keyed = await page.evaluate(() => { const b = document.activeElement; return [b.matches("#flagged-list button:focus-visible"), getComputedStyle(b, "::before").transform, getComputedStyle(b).transform]; });
+    ok(keyed[0] && keyed[1] === "matrix(1, 0, 0, 1, 0, 0)" && scaleOf(keyed[2]) > 1.01, "keyboard focus gets the same fill and lift - " + keyed);
+    await page.evaluate(() => document.activeElement.blur()); }
+
   // 2) open a row's card, Accept (Agent 3 checks it again, highlight goes), Undo
-  await openRow(11);
+  { // AH-94: the card turns in like a page (finite, so nothing waits on it forever) and lies flat by 800 ms
+    const t0 = Date.now();
+    await page.click('#flagged-list button:has-text("Row 11 ")');
+    const turning = await page.evaluate(() => { const v = document.getElementById("fix-view"), a = v.getAnimations({ subtree: true });
+      return { t: getComputedStyle(v).transform, n: a.length, end: Math.max(...a.map((x) => x.effect.getComputedTiming().endTime)) }; });
+    await idle(); await page.waitForFunction(() => document.getElementById("fix-changes").children.length || document.getElementById("fix-explanation").textContent);
+    await page.waitForTimeout(Math.max(0, 800 - (Date.now() - t0)));
+    const flat = await page.evaluate(() => ({ t: getComputedStyle(document.getElementById("fix-view")).transform, n: document.getElementById("fix-view").getAnimations({ subtree: true }).length }));
+    ok(turning.n >= 1 && turning.t !== "none" && turning.end > 0 && turning.end <= 700 && flat.t === "none" && flat.n === 0,
+      "opening a row turns its card in like a page, in under 700 ms, then it lies flat - " + JSON.stringify({ turning, flat }));
+    if (process.env.SHOTS) { // the turn once more, held half-way for its picture
+      await page.evaluate(async () => { const { turnIn } = await import("./components/motion.js"); turnIn(document.getElementById("fix-view")); });
+      await midShot("card-mid-turn", 160, "#fix-view");
+      await page.waitForTimeout(700); }
+    // each proposed change steps up on hover, like a podium
+    await page.hover("#fix-changes li"); await page.waitForTimeout(500);
+    const step = await page.evaluate(() => getComputedStyle(document.querySelector("#fix-changes li")).transform);
+    await shot("card-change-podium");
+    ok(scaleOf(step) >= 1.03, "a proposed change steps up on hover - " + step);
+    await page.mouse.move(1, 1); }
   ok((await text("#fix-title")) === "Row 11: probably wrong", "fix view titled in words");
   ok((await text("#fix-reason")) === "Total 170.43 does not add up: Units × UnitCost = -14.95 · Units is -5, below its usual limit of 0",
     "reason in plain words - " + (await text("#fix-reason")));
@@ -170,7 +232,11 @@ if (mode === "flow") {
   ok((await text("#fix-title")).startsWith("Row 22"), "sheet click opens the row");
   await idle();
   const beforeDismiss = await page.evaluate(() => __log.length), c2 = calls.length;
-  await page.click("#fix-dismiss"); await idle();
+  await page.click("#fix-dismiss");
+  // the next row's card turns in too
+  ok(await page.waitForFunction(() => document.getElementById("fix-view").getAnimations().length > 0, null, { polling: "raf", timeout: 3000 }).then(() => true, () => false),
+    "Dismiss: the next row's card turns in like a page");
+  await idle();
   ok(calls.slice(c2).every(([p, b]) => p === "/suggest" && b.row_index !== 20) && (await page.evaluate(() => Object.values(__settings.anomalyHunterDecisions?.Sales || {}).includes("dismissed"))),
     "Dismiss asks the engine nothing about the row (the next card may look for a typo: /suggest, never for row 22) and keeps Dismissed in the workbook - " + JSON.stringify(calls.slice(c2).map(([p, b]) => [p, b?.row_index])));
   ok((await cell("C22")).v === 7777 && (await cell("C22")).fill === null && (await cell("B22")).fill === "#00B0F0", "Dismiss keeps the value and removes only our highlight");
@@ -217,7 +283,9 @@ if (mode === "flow") {
   const level = () => page.getAttribute("#strength", "aria-valuenow");
   const listed5 = (await page.$$("#flagged-list li")).length;
   const s0 = scans.length;
+  await watchSkeleton();
   await slide(5, 0); await idle();
+  ok((await shown()).length === 1, "a slider re-check shows the scan skeleton too (no hold: it never waits for it) - " + (await shown()).map(Math.round));
   await page.waitForTimeout(800); // room for a second, unwanted re-scan to show up
   ok(scans.slice(s0).map((b) => b.strength).join() === "0", "a drag to 0 causes exactly one re-scan, at 0 - " + scans.slice(s0).map((b) => b.strength));
   { const m = await matchesEngine(); ok(m.ok, "at 0 the list is exactly what the engine answered at 0 - " + m.why); }
@@ -570,6 +638,35 @@ if (mode === "nokey") {
 }
 
 if (mode === "flow") {
+  // AH-94: under reduced motion the same states come without movement: no entrance, the skeleton without its light, a
+  // hovered row filled but not lifted, the card shown without a turn, the list back without a fade
+  {
+    const calm = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width: 360, height: 900 }, reducedMotion: "reduce" });
+    const heard = [];
+    calm.on("pageerror", (e) => heard.push(e.message));
+    await calm.route("https://appsforoffice.microsoft.com/**", (r) => r.fulfill({ contentType: "text/javascript", body: fs.readFileSync(DIR + "fake-office.js", "utf8") }));
+    await calm.goto("https://127.0.0.1:5055/taskpane.html");
+    await calm.evaluate((rows) => __load("Sales", rows, [0]), rows);
+    await calm.waitForSelector("#main-ui", { state: "visible" });
+    const still = () => calm.evaluate(() => document.getAnimations().filter((a) => a.timeline === document.timeline && (a.transitionProperty ? [a.transitionProperty]
+      : a.effect.getKeyframes().flatMap(Object.keys)).some((p) => /transform|opacity|translate|scale|rotate/.test(p))).length);
+    const seen = [];
+    seen.push(["opened", await still(), await calm.evaluate(() => [...document.querySelectorAll("[data-enter]")].filter((e) => e.style.transform).length)]);
+    await calm.click("#scan");
+    seen.push(["scanning", await still(), await calm.evaluate(() => document.getElementById("scan-skeleton")?.offsetParent != null), await calm.evaluate(() => { const s = document.getElementById("scan-skeleton"); return s && getComputedStyle(s, "::after").animationName; })]);
+    await calm.waitForFunction(() => !document.getElementById("scan").disabled);
+    await calm.hover("#flagged-list button");
+    seen.push(["hovered", await still(), await calm.evaluate(() => getComputedStyle(document.querySelector("#flagged-list button")).transform)]);
+    await calm.click('#flagged-list button:has-text("Row 11 ")');
+    seen.push(["card", await still(), await calm.evaluate(() => document.getElementById("fix-view").getAnimations({ subtree: true }).length)]);
+    await calm.waitForFunction(() => !document.getElementById("scan").disabled);
+    await calm.click("#fix-back");
+    seen.push(["back", await still()]);
+    ok(heard.length === 0 && JSON.stringify(seen) === '[["opened",0,0],["scanning",0,true,"none"],["hovered",0,"none"],["card",0,0],["back",0]]',
+      "reduced motion: the skeleton, the fill and the card come without any movement - " + JSON.stringify({ seen, heard }));
+    await calm.close();
+  }
+
   // the pane opened while the user is typing in a cell: real Excel rejects Excel.run (InvalidOperationInCellEditMode),
   // and the start-up sheet-name read left that rejection unhandled. A page of its own: its first Excel.run fails (AH-58)
   const busy = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width: 360, height: 900 } });

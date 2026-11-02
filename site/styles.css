@@ -33,13 +33,20 @@
   --s1: 8px; --s2: 16px; --s3: 24px; --s4: 32px; --s5: 48px; --s6: 64px; --s7: 96px; --s8: 128px;
   /* the grid: 12 columns, fixed gutters, a fixed margin; 4 columns on a phone */
   --cols: 12; --gutter: 24px; --margin: 32px; --wrap: 1280px;
-  /* motion (AH-83): the one source of every timing; motion.js and transition.js read these with getComputedStyle.
-     --ease-out starts fast and lands slowly. --stagger is the gap between items of a group that rise together (raise it
-     for a slower cascade); --stagger-cap the step after which later items start together; --reveal-rise how far an item
-     slides up into place */
+  /* motion (AH-83): the one source of every timing; motion.js, home.js and transition.js read these with
+     getComputedStyle. --ease-out starts fast and lands slowly. --stagger is the gap between items of a group that rise
+     together (raise it for a slower cascade); --stagger-cap the step after which later items start together;
+     --reveal-rise how far an item slides up into place. John, 2026-11-02: "when loading into the website, the transition
+     feels very fast, which seems like I'm rushing the user": the entrance went from 900 to 1400 ms, its steps from 90 to
+     160 ms, the reveal from 700 to 1100 ms and the stagger from 50 to 90 ms (AH-90) */
   --ease-out: cubic-bezier(.16, 1, .3, 1);
-  --enter-dur: 900ms; --enter-step: 90ms; --enter-shift: 120px; /* the hero's entrance */
-  --reveal-dur: 700ms; --reveal-rise: 24px; --stagger: 50ms; --stagger-cap: 6;
+  --ease-in-out: cubic-bezier(.65, 0, .35, 1); /* a glide and a page turn: soft at both ends, since they start from rest */
+  --enter-dur: 1400ms; --enter-step: 160ms; --enter-shift: 120px; /* the hero's entrance */
+  --enter-bar-step: 75ms; --enter-lead: 350ms; /* the bar's blocks start this far apart, the hero this long after them */
+  --reveal-dur: 1100ms; --reveal-rise: 24px; --stagger: 90ms; --stagger-cap: 6;
+  --lift-dur: 1200ms; --ease-lift: cubic-bezier(.33, 1, .68, 1); /* the checks' heading turned face up (AH-91) */
+  --skeleton-dur: 1300ms; --land-step: 32ms; --land-fade: 280ms; /* the sample sheet loading (AH-89) */
+  --turn-dur: 700ms; --fill-dur: 350ms; --podium-dur: 250ms; /* the sample sheet's page turn, button fill, raised cell (AH-92) */
 
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='m' filterUnits='userSpaceOnUse' x='0' y='0' width='320' height='320'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.011' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .05 0 0 0 0 .1 0 0 0 0 .22 0 0 0 -2.6 1.45'/%3E%3C/filter%3E%3Cfilter id='g' filterUnits='userSpaceOnUse' x='0' y='0' width='320' height='320'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' seed='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .05 0 0 0 0 .1 0 0 0 0 .22 0 0 0 -2 1.25'/%3E%3C/filter%3E%3Crect width='320' height='320' filter='url%28%23m%29' opacity='.045'/%3E%3Crect width='320' height='320' filter='url%28%23g%29' opacity='.07'/%3E%3C/svg%3E");
   --grain-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='m' filterUnits='userSpaceOnUse' x='0' y='0' width='320' height='320'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.011' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .94 0 0 0 0 .9 0 0 0 0 .82 0 0 0 -2.6 1.45'/%3E%3C/filter%3E%3Cfilter id='g' filterUnits='userSpaceOnUse' x='0' y='0' width='320' height='320'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' seed='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .94 0 0 0 0 .9 0 0 0 0 .82 0 0 0 -2 1.25'/%3E%3C/filter%3E%3Crect width='320' height='320' filter='url%28%23m%29' opacity='.04'/%3E%3Crect width='320' height='320' filter='url%28%23g%29' opacity='.06'/%3E%3C/svg%3E");
@@ -70,7 +77,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .notice-bar { background: var(--dark); color: var(--on-dark); }
 .notice-bar p { max-width: calc(var(--wrap) + 2 * var(--margin)); margin: 0 auto; padding: 9px var(--margin); font: 600 var(--fs--2)/1.5 var(--sans); letter-spacing: .12em; text-transform: uppercase; }
 .notice-bar a { color: var(--on-dark); text-decoration-color: var(--gold-hi); text-decoration-thickness: 2px; }
-.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 9; background: var(--grain), var(--paper); border-bottom: 1px solid var(--ink); }
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 9; background: var(--grain), var(--paper); border-bottom: 1px solid var(--ink); overflow-x: clip; } /* the links slide in from past its edge (AH-90): clipped there, the page never scrolls sideways meanwhile */
 .bar .cols { min-height: 64px; align-items: center; }
 .brand { grid-column: 1 / span 4; display: inline-flex; align-items: center; gap: 12px; justify-self: start; color: var(--ink); text-decoration: none;
   font: 800 var(--fs-1)/1 var(--sans); letter-spacing: -.02em; white-space: nowrap; }
@@ -102,7 +109,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .sec-lede { grid-column: 7 / span 5; margin-top: var(--s4); font-size: var(--fs-1); line-height: 1.45; color: var(--ink-2); }
 
 /* the dark band */
-.band-dark { background: var(--grain-dark), var(--grid-dark), var(--dark); color: var(--on-dark-2); border-top-color: var(--dark); }
+.band-dark { background: var(--grain-dark), var(--grid-dark), var(--dark); color: var(--on-dark-2); border-top-color: var(--dark); overflow-x: clip; } /* a heading lying face down (.lift) reaches past the screen's edge in perspective: never a sideways scroll */
 .band-dark h2, .band-dark h3 { color: var(--on-dark); }
 .band-dark .label { color: var(--gold-hi); }
 .band-dark .sec-lede { color: var(--on-dark-2); }
@@ -122,25 +129,36 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .ws-top > span { font-size: var(--fs--1); color: var(--on-dark-2); font-variant-numeric: tabular-nums; }
 .tabs { display: flex; margin-left: auto; align-self: stretch; }
 .tabs[hidden] { display: none; }
-.tabs button { font: 700 var(--fs--2)/1 var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--on-dark-2); background: none; border: 0; border-bottom: 3px solid transparent; border-radius: 0; padding: 3px 16px 0; cursor: pointer; }
+.tabs button { position: relative; font: 700 var(--fs--2)/1 var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--on-dark-2); background: none; border: 0; border-bottom: 3px solid transparent; border-radius: 0; padding: 3px 16px 0; cursor: pointer; }
 .tabs button:hover { color: var(--paper); }
-.tabs button[aria-selected="true"] { color: var(--paper); border-bottom-color: var(--gold-hi); }
+.tabs button[aria-selected="true"] { color: var(--paper); }
+/* the chosen tab's gold line, drawn from the left on hover and on choosing (AH-92); a hovered one shows it fainter */
+.tabs button::after { content: ""; position: absolute; left: 0; right: 0; bottom: -3px; height: 3px; background: var(--gold-hi); transform: scaleX(0); transform-origin: 0 50%; }
+.tabs button:is(:hover, :focus-visible, [aria-selected="true"])::after { transform: scaleX(1); }
+.tabs button:not([aria-selected="true"]):is(:hover, :focus-visible)::after { opacity: .5; }
 /* the filter column ends where the page's third column does: (12 columns - 11 gutters) / 4, plus its gutters */
-.ws-body { display: grid; grid-template-columns: calc((100% - 11 * var(--gutter)) / 4 + 2.5 * var(--gutter)) minmax(0, 1fr); }
+.ws-body { position: relative; display: grid; grid-template-columns: calc((100% - 11 * var(--gutter)) / 4 + 2.5 * var(--gutter)) minmax(0, 1fr); }
 .typology { display: grid; align-content: start; border-right: 1px solid var(--ink); }
 .typology .label { padding: var(--s2) var(--s2) 12px; color: var(--ink-2); }
-.typology button { display: flex; justify-content: space-between; gap: var(--s1); text-align: left; font: 700 var(--fs--2)/1.3 var(--sans); letter-spacing: .1em; text-transform: uppercase;
-  color: var(--ink); background: none; border: 0; border-top: 1px solid var(--rule); border-radius: 0; padding: 13px var(--s2); cursor: pointer; }
-.typology button:hover { background: var(--paper); }
-.typology button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
-.typology .n { font-variant-numeric: tabular-nums; letter-spacing: 0; }
+.typology button { position: relative; isolation: isolate; display: flex; justify-content: space-between; gap: var(--s1); text-align: left; font: 700 var(--fs--2)/1.3 var(--sans); letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink); background: var(--grain), var(--paper-2); border: 0; border-top: 1px solid var(--rule); border-radius: 0; padding: 13px var(--s2); cursor: pointer; }
+/* John, 2026-11-02: "when I hover over it, it turns to navy blue but not instantly... fills up blue from the left side
+   to the right side at a relatively fast pace" (AH-92). A colour can't move on the GPU, so the fill is a layer that
+   grows by scaleX. It lies over the label in difference mode: #E3D3AC less the paper (#EFECE4) is the navy #0C1938
+   exactly, and less the navy text it is a light gold, so the label reads at every frame of the sweep, half on paper and
+   half on navy. The button isolates the blend to its own paper; the layer sits above the count (z-index 1), which is
+   positioned for the skeleton's bar */
+.typology button::before { content: ""; position: absolute; inset: 0; z-index: 1; background: #E3D3AC; mix-blend-mode: difference; transform: scaleX(0); transform-origin: 0 50%; pointer-events: none; }
+.typology button:is(:hover, :focus-visible, [aria-pressed="true"])::before { transform: scaleX(1); }
+.typology .n { position: relative; font-variant-numeric: tabular-nums; letter-spacing: 0; }
 .typology .key { margin: 0; padding: 14px var(--s2); border-top: 1px solid var(--rule); display: grid; gap: 6px; font-size: var(--fs--1); color: var(--ink-2); }
+.key span { position: relative; }
 .key i, td.why i { display: inline-block; width: 10px; height: 10px; background: var(--wine); margin-right: 8px; vertical-align: -1px; }
 .key i.q, td.why i.q { background: transparent; box-shadow: inset 0 0 0 2px var(--wine); }
 .ws-main { position: relative; min-width: 0; }
 .scroll { overflow-x: auto; }
 table.grid { width: 100%; border-collapse: collapse; font: 500 var(--fs--1)/1.3 var(--sans); font-variant-numeric: tabular-nums; min-width: 640px; color: var(--ink); }
-.grid th, .grid td { padding: 9px 12px; border-bottom: 1px solid var(--rule); border-right: 1px solid var(--rule); text-align: right; white-space: nowrap; }
+.grid th, .grid td { position: relative; padding: 9px 12px; border-bottom: 1px solid var(--rule); border-right: 1px solid var(--rule); text-align: right; white-space: nowrap; }
 .grid th:last-child, .grid td:last-child { border-right: 0; }
 .grid thead th { background: var(--paper); color: var(--ink); font: 700 var(--fs--2)/1 var(--sans); letter-spacing: .1em; text-transform: uppercase; border-bottom-color: var(--ink); }
 .grid thead th:last-child { text-align: left; }
@@ -149,6 +167,12 @@ table.grid { width: 100%; border-collapse: collapse; font: 500 var(--fs--1)/1.3 
 .grid td.t { text-align: left; }
 .grid td.flag { background: var(--wine); color: var(--on-wine); font-weight: 800; }
 .grid td.q { box-shadow: inset 0 0 0 2px var(--wine); font-weight: 800; }
+/* John, 2026-11-02: "when I hover over the highlighted data... it enlarges up, not too much, but at a fairly noticeable
+   size... like stepping up to a podium" (AH-92): a coloured cell steps up 3 px and grows 13%, over its neighbours, and a
+   shadow under it fades in (a layer's opacity: a box-shadow itself never moves) */
+.grid td:is(.flag, .q):hover { z-index: 2; transform: translate3d(0, -3px, 0) scale(1.13); }
+.grid td:is(.flag, .q)::before { content: ""; position: absolute; inset: 0; box-shadow: 0 8px 18px rgba(12, 25, 56, .32), 0 2px 5px rgba(12, 25, 56, .22); opacity: 0; pointer-events: none; }
+.grid td:is(.flag, .q):hover::before { opacity: 1; }
 .grid td.why { text-align: left; color: var(--ink-2); }
 .grid td.why b { color: var(--ink); }
 .grid tr[data-kind] { cursor: pointer; }
@@ -163,6 +187,11 @@ table.grid { width: 100%; border-collapse: collapse; font: 500 var(--fs--1)/1.3 
 .ws[data-filter="recon"] .grid tbody tr[data-kind~="recon"], .ws[data-filter="keying"] .grid tbody tr[data-kind~="keying"],
 .ws[data-filter="label"] .grid tbody tr[data-kind~="label"], .ws[data-filter="time"] .grid tbody tr[data-kind~="time"] { opacity: 1; }
 /* the detail box under its row */
+/* the page turn (AH-92, home.js): a copy of the panel as it was, over the real one, turning away from its left edge while
+   the real panel already shows the new state underneath. The copy is clipped to the sheet */
+.ws-main:has(> [data-turn]) { overflow: clip; }
+[data-turn] { position: absolute; z-index: 3; margin: 0; background: var(--grain), var(--paper-2); transform-origin: 0 50%; backface-visibility: hidden; pointer-events: none; }
+[data-turn-shade] { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(12, 25, 56, .08), rgba(12, 25, 56, .45)); opacity: 0; }
 .matrix { position: absolute; left: var(--s2); z-index: 2; width: min(440px, calc(100% - 32px)); background: var(--paper); border: 1px solid var(--ink); font-size: var(--fs--1); color: var(--ink); }
 .matrix[hidden] { display: none; }
 .m-head { display: flex; justify-content: space-between; align-items: center; gap: var(--s2); padding: 8px 12px; background: var(--ink); color: var(--paper); }
@@ -189,6 +218,9 @@ table.grid { width: 100%; border-collapse: collapse; font: 500 var(--fs--1)/1.3 
 .clean-mark { width: 56px; height: 56px; color: var(--ink); }
 .verdict { font: 800 var(--fs--1)/1.4 var(--sans); letter-spacing: .12em; color: var(--ink); }
 .ws-foot { padding: 12px var(--s3); border-top: 1px solid var(--ink); font-size: var(--fs--1); color: var(--ink-2); }
+/* the way on to the checks, right under the sheet (AH-91) */
+.next-up { grid-column: 1 / -1; margin-top: var(--s3); display: flex; justify-content: center; }
+#preview:focus, #checks:focus { outline: none; } /* a glide's target takes focus for the keyboard and screen readers; the region itself shows no ring */
 
 /* the checks, on the navy band: four to a row, each 3 columns wide, its number in gold (wine on navy is 1.5:1) */
 .num-grid { grid-column: 1 / -1; list-style: none; margin: var(--s7) 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s5) var(--gutter); }
@@ -199,7 +231,7 @@ table.grid { width: 100%; border-collapse: collapse; font: 500 var(--fs--1)/1.3 
 
 /* for IT teams: four ruled cells */
 .it-ledger { grid-column: 1 / -1; margin: var(--s7) 0 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s5) var(--gutter); }
-.it-ledger > div { padding-top: var(--s2); border-top: 1px solid var(--ink); }
+.it-ledger > div { position: relative; padding-top: var(--s2); }
 .it-ledger dt { font: 700 var(--fs--2)/1.2 var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--ink); margin-bottom: 12px; }
 .it-ledger dd { margin: 0; font-size: var(--fs--1); color: var(--ink-2); }
 
@@ -210,13 +242,14 @@ table.grid { width: 100%; border-collapse: collapse; font: 500 var(--fs--1)/1.3 
 .stage { grid-column: 1 / span 5; grid-row: 2 / span 2; margin-top: var(--s5); display: grid; gap: var(--s4); justify-items: start; }
 .logo-lg { width: min(100%, 20rem); height: auto; aspect-ratio: 1; color: var(--ink); }
 .stage .btn { min-height: 64px; width: min(100%, 22rem); font-size: var(--fs-0); }
-dl.anchor { grid-column: 7 / -1; grid-row: 3; margin: var(--s6) 0 0; display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr); column-gap: var(--gutter); font-size: var(--fs--1); line-height: 1.5; border-top: 1px solid var(--ink); }
+dl.anchor { position: relative; grid-column: 7 / -1; grid-row: 3; margin: var(--s6) 0 0; display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr); column-gap: var(--gutter); font-size: var(--fs--1); line-height: 1.5; border-top: 1px solid var(--ink); }
 .anchor dt, .anchor dd { margin: 0; padding: 12px 0; border-bottom: 1px solid var(--rule); }
 .anchor dt { font: 700 var(--fs--2)/1.9 var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--ink); }
 .anchor dd { color: var(--ink-2); }
 .anchor dd.strong { color: var(--ink); font-weight: 700; }
 .anchor code { display: block; }
 .anchor code, .steps code { font: 500 var(--fs--1)/1.5 var(--mono); color: var(--ink); background: var(--paper); border: 1px solid var(--rule); padding: 3px 8px; word-break: break-all; }
+#sha, #rel { position: relative; }
 #rel { font-variant-numeric: tabular-nums; }
 .steps { grid-column: 1 / -1; margin-top: var(--s8); display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); column-gap: var(--gutter); row-gap: var(--s4); }
 .steps > .label { grid-column: 1 / -1; }
@@ -297,26 +330,62 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
 .foot nav { grid-column: 7 / -1; display: flex; justify-content: flex-end; gap: var(--s3); flex-wrap: wrap; }
 .foot a { color: var(--on-dark); text-decoration-color: var(--gold-hi); }
 
-/* motion (AH-72, AH-83, AH-84; docs/design/motion.md). boot.js marks the page before it paints: data-ah holds the
-   hero's blocks for their entrance (motion.js lifts it at once, boot.js itself after 1.4 s), and data-js, kept for the
+/* motion (AH-72, AH-83, AH-84, AH-89 to AH-93; docs/design/motion.md). boot.js marks the page before it paints: data-ah
+   holds the bar's and the hero's blocks for their entrance (motion.js lifts it at once, boot.js itself after 1.4 s), and data-js, kept for the
    whole visit, lets content wait hidden until it scrolls into view. Without JS, or with reduced motion, nothing is
    hidden and nothing moves. Only transform, translate and opacity are animated, so the GPU composites every frame. */
 @media (prefers-reduced-motion: no-preference) {
-  html[data-ah="enter"] [data-enter] { opacity: 0; }
+  html[data-ah="enter"] :is([data-enter], .notice-bar p, .bar .brand, .bar .links a) { opacity: 0; }
   /* a reveal item waits --reveal-rise below its place, see-through, already on its own layer */
   html[data-js] .reveal-item:not([data-revealed]) { opacity: 0; transform: translate3d(0, var(--reveal-rise), 0); will-change: transform, opacity; }
   /* seen (motion.js): it rises into place after its group delay --d; settled, its layer is let go */
   html[data-js] .reveal-item[data-revealed] { transition: opacity var(--reveal-dur) var(--ease-out) var(--d, 0ms), transform var(--reveal-dur) var(--ease-out) var(--d, 0ms); }
   html[data-js] .reveal-item[data-revealed]:not([data-settled]) { will-change: transform, opacity; }
+  /* John, 2026-11-02: the checks' heading "has that premium animation... as if it was face down and then it is being
+     lifted up like a deck of cards" (AH-91): a .lift item waits lying face down, hinged on its bottom edge and tipped
+     just past flat (its back is hidden), and turns up to face the reader. It uses transform only, so the data-depth
+     drift keeps the translate property */
+  html[data-js] .reveal-item.lift { transform-origin: 50% 100%; backface-visibility: hidden; }
+  html[data-js] .reveal-item.lift:not([data-revealed]) { transform: perspective(900px) rotateX(-95deg); }
+  /* on --ease-out the card was 80% turned in its first 300 ms, which read as a snap, not a presentation: a cubic
+     ease-out spreads the turn over the whole --lift-dur */
+  html[data-js] .reveal-item.lift[data-revealed] { transition-duration: var(--lift-dur), var(--lift-dur); transition-timing-function: var(--ease-lift), var(--ease-lift); }
+  .typology button::before { transition: transform var(--fill-dur) var(--ease-out); }
+  .tabs button::after { transition: transform var(--fill-dur) var(--ease-out), opacity var(--fill-dur) var(--ease-out); }
+  .grid td:is(.flag, .q) { transition: transform var(--podium-dur) var(--ease-out); }
+  .grid td:is(.flag, .q)::before { transition: opacity var(--podium-dur) var(--ease-out); }
+
+  /* the skeleton (AH-89, home.js). John, 2026-11-02: "a skeleton loader... perfectly aligns with the geometric shapes in
+     design placements of our website... very noticeable". It is the real sheet: while #preview[data-loading] every value
+     keeps its place but no colour, and a bar the size of its text (home.js measures it into --sk-x/y/w/h) sits exactly
+     where it will land, so nothing moves when the data arrives (CLS 0). One band of light sweeps across, once; then the
+     rows land one by one: each row's bars fade off its values as the row settles the last few pixels */
+  html[data-js] #preview[data-loading] :is(tbody tr:not([data-in]) :is(td, th, td *, th *), .n:not([data-in]), .key span:not([data-in])) { color: transparent; text-decoration-color: transparent; }
+  html[data-js] #preview[data-loading] tbody tr:not([data-in]) td.flag { background: transparent; }
+  html[data-js] #preview[data-loading] tbody tr:not([data-in]) td.q { box-shadow: none; }
+  html[data-js] #preview[data-loading] :is(tbody tr:not([data-in]) i, .key span:not([data-in]) i) { visibility: hidden; }
+  html[data-js] #preview[data-loading] :is(tbody tr > td, tbody tr > th, .n, .key span)::after,
+  html[data-js] dl.anchor[data-loading] :is(#sha, #rel)::after { content: ""; position: absolute; left: var(--sk-x, 0); top: var(--sk-y, 0); width: var(--sk-w, 0); height: var(--sk-h, 0);
+    background: #D9D3C4; pointer-events: none; transition: opacity var(--land-fade) var(--ease-out); }
+  html[data-js] #preview[data-loading] :is(tbody tr[data-in] > td, tbody tr[data-in] > th, .n[data-in], .key span[data-in])::after { opacity: 0; }
+  html[data-js] #preview[data-loading] tbody tr[data-in] { animation: land 360ms var(--ease-out) both; }
+  html[data-js] #preview[data-loading] .ws-body, html[data-js] dl.anchor[data-loading] { overflow: clip; }
+  html[data-js] #preview[data-loading="play"] .ws-body::after, html[data-js] dl.anchor[data-loading]::after { content: ""; position: absolute; inset: 0; z-index: 4; pointer-events: none;
+    background: linear-gradient(100deg, rgba(255, 255, 255, 0) 30%, rgba(255, 255, 255, .78) 50%, rgba(255, 255, 255, 0) 70%);
+    animation: sweep var(--skeleton-dur) var(--ease-in-out) both; }
+  html[data-js] dl.anchor[data-loading]::after { animation-iteration-count: infinite; }
+  html[data-js] dl.anchor[data-loading] :is(#sha, #sha *, #rel) { color: transparent; text-decoration-color: transparent; }
 }
+@keyframes sweep { from { transform: translate3d(-100%, 0, 0); } to { transform: translate3d(100%, 0, 0); } }
+@keyframes land { from { transform: translate3d(0, 5px, 0); } to { transform: translate3d(0, 0, 0); } }
 @media print { .reveal-item, [data-enter] { opacity: 1 !important; transform: none !important; } }
 /* a hairline item rule, drawn across by the scroll; without JS it is simply the item's top rule. --col staggers a row's
    hairlines left to right, like a sentence */
 .rule { position: absolute; top: 0; left: 0; right: 0; height: 1px; background: var(--ink); transform-origin: 0 50%; }
 .num-grid .rule { background: var(--gold-hi); }
-.num-grid li:nth-child(4n + 2) .rule, .steps li:nth-child(2) .rule { --col: 1; }
-.num-grid li:nth-child(4n + 3) .rule, .steps li:nth-child(3) .rule { --col: 2; }
-.num-grid li:nth-child(4n + 4) .rule { --col: 3; }
+.num-grid li:nth-child(4n + 2) .rule, .steps li:nth-child(2) .rule, .it-ledger > div:nth-child(4n + 2) .rule { --col: 1; }
+.num-grid li:nth-child(4n + 3) .rule, .steps li:nth-child(3) .rule, .it-ledger > div:nth-child(4n + 3) .rule { --col: 2; }
+.num-grid li:nth-child(4n + 4) .rule, .it-ledger > div:nth-child(4n + 4) .rule { --col: 3; }
 /* labels and headlines drift at their own rate (data-depth) for layered depth: zero where they sit mid-screen */
 [data-depth] { --depth: .05; }
 [data-depth="0.1"] { --depth: .1; }

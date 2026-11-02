@@ -50,16 +50,30 @@ input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var
 .sev-Medium .swatch, .swatch.sev-Medium { background: var(--medium); }
 .sev-Low .swatch, .swatch.sev-Low { background: var(--low); }
 
-.flagged-list { list-style: none; margin: 0 0 var(--s2); padding: 0; max-height: 320px; overflow-y: auto; background: var(--field);
-  border: 1px solid var(--navy); }
+.flagged-list { list-style: none; margin: 0 0 var(--s2); padding: var(--s1) 6px; max-height: 320px; overflow: hidden auto; background: var(--field);
+  border: 1px solid var(--navy); scrollbar-gutter: stable; } /* the inset gives a lifted row room; the gutter keeps the skeleton's rows as wide */
 .flagged-list li { border-bottom: 1px solid var(--rule); }
 .flagged-list li:last-child { border-bottom: 0; }
-.flagged-list button { display: block; width: 100%; text-align: left; border: 0; border-left: 3px solid transparent; border-radius: 0; background: none;
-  padding: 10px var(--s3) 10px 9px; color: var(--ink); transition: background-color .3s var(--ease), border-color .3s var(--ease); }
-.flagged-list button:hover:not(:disabled) { background: var(--paper-2); border-left-color: var(--wine); }
+.flagged-list button, .flagged-list .row-box { position: relative; isolation: isolate; display: block; width: 100%; text-align: left; border: 0;
+  border-left: 3px solid transparent; border-radius: 0; background: var(--field); padding: 10px var(--s3) 10px 9px; color: var(--ink); }
+/* AH-94, the website's tabs and podium: on hover or keyboard focus a navy fill sweeps in from the left and the row steps
+   up above its neighbours on a shadow that fades in. The fill is a light layer in "difference" over the row's own paper:
+   paper minus it is exactly navy, and every dark letter it passes turns light (navy to pale gold, the grey reason to a
+   5:1 gold), so the text reads at every frame, half swept or not. The swatch sits above it: Excel's fills never change. */
+.flagged-list button { transition: transform .35s var(--ease), border-color .3s var(--ease); }
+.flagged-list button::before { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; background: #F3E5C2; /* --field - --navy */
+  mix-blend-mode: difference; transform: scaleX(0); transform-origin: left; transition: transform .32s var(--ease); }
+.flagged-list button::after { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: 0; transition: opacity .35s var(--ease);
+  box-shadow: 0 10px 18px -8px rgb(12 25 56 / .5), 0 2px 5px rgb(12 25 56 / .14); }
+.flagged-list .swatch { position: relative; z-index: 2; }
+.flagged-list button:is(:hover, :focus-visible):not(:disabled) { z-index: 2; transform: translateY(-2px) scale(1.03); border-left-color: var(--wine); }
+.flagged-list button:is(:hover, :focus-visible):not(:disabled)::before { transform: scaleX(1); }
+.flagged-list button:is(:hover, :focus-visible):not(:disabled)::after { opacity: 1; }
+.flagged-list button:focus-visible { outline-offset: -2px; outline-color: var(--gold-hi); }
 .row-head { display: flex; align-items: center; gap: var(--s2); font: 700 13px/1.3 var(--sans); color: var(--navy); }
 .row-head .sev { margin-left: auto; font: 700 var(--fs--2)/1.4 var(--sans); letter-spacing: var(--track); text-transform: uppercase; color: var(--muted); }
-.sev-High .row-head .sev { color: var(--wine); }
+.sev-High .row-head .sev { color: var(--wine); transition: color .3s var(--ease); }
+.sev-High button:is(:hover, :focus-visible):not(:disabled) .row-head .sev { color: #2A3D68; } /* under the fill: gold, where wine would turn mint */
 .row-why { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 2px 0 0 20px; font-size: var(--fs--1); color: var(--muted); word-break: break-word; } /* full reason in the fix view */
 .flagged-list li.done { opacity: 0.6; } /* fixed or dismissed: still listed, so Undo is one click away */
 .flagged-list .more-rows { padding: var(--s2) var(--s3); font-size: var(--fs--1); color: var(--muted); }
@@ -101,6 +115,15 @@ details.more[open] summary { margin-bottom: var(--s3); }
 #fix-explanation { margin: var(--s2) 0 0; font-size: var(--fs--1); color: var(--muted); }
 .fix-changes { list-style: none; margin: 0; padding: 0; font-size: 15px; }
 .fix-changes li { padding: 2px 0; word-break: break-word; }
+/* each proposed change steps up on hover, like a podium (AH-94); from its left edge and only 8px wider on the left, so
+   at 1.04 it stays inside the card's padding */
+#fix-changes li { position: relative; margin-left: calc(-1 * var(--s2)); padding: 2px var(--s2); transform-origin: left center;
+  transition: transform .35s var(--ease), background-color .3s var(--ease), box-shadow .35s var(--ease); }
+#fix-changes li:hover { z-index: 1; transform: translateY(-1px) scale(1.04); background: var(--field); box-shadow: 0 8px 16px -10px rgb(12 25 56 / .45); }
+/* the card's page turn (components/motion.js turnIn): hinged on its left edge, a shade on it that lifts as it lands */
+#fix-view { position: relative; transform-origin: 0 120px; }
+#fix-view::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  background: linear-gradient(90deg, rgb(12 25 56 / .04), rgb(12 25 56 / .3)); }
 .fix-changes .old { color: var(--muted); text-decoration: line-through; }
 .fix-changes .new { color: var(--navy); font-weight: 800; text-decoration: underline; text-decoration-color: var(--wine); text-decoration-thickness: 2px; text-underline-offset: 3px; }
 .fix-result .row-buttons { margin-top: var(--s4); }
@@ -108,3 +131,30 @@ details.more[open] summary { margin-bottom: var(--s3); }
 #ai-box label { display: block; font-size: 13px; font-weight: 700; margin-bottom: var(--s2); color: var(--navy); }
 #fix-intent { padding: var(--s2) 10px; font-size: 13px; resize: vertical; }
 #odd-box { margin-top: var(--s3); }
+
+/* ---- the scan skeleton (AH-94): the results' shape in still bars while a scan runs, built from the same classes as the
+   results and a list row (taskpane.html), so each bar sits where its text lands. #main-ui[data-scanning] shows it in
+   place of the empty state or the old results (features/scan.js). Bars are a band through one line box of the real
+   font, so their lines are exactly as tall as text; one soft light passes over them, moved by transform only. ---- */
+#scan-skeleton { display: none; position: relative; clip-path: inset(0); --sk: #E0DACB; }
+#main-ui[data-scanning] #scan-skeleton { display: block; }
+#main-ui[data-scanning] :is(#empty-state, #results) { display: none; }
+.sk-bar { display: block; color: transparent; background: linear-gradient(var(--sk), var(--sk)) 0 50% / 100% .62em no-repeat; }
+.sk-long { width: 94%; } .sk-mid { width: 62%; } .sk-short { width: 38%; }
+.sk-chip { width: 7.5em; } .sk-title { width: 7.5em; } .sk-label { width: 3.8em; } .sk-tag { width: 9em; }
+#scan-skeleton .swatch { background: var(--sk); outline-color: transparent; }
+#scan-skeleton .flagged-list { overflow: hidden; }
+#scan-skeleton li:nth-child(2) .row-why .sk-mid { width: 44%; }
+#scan-skeleton li:nth-child(3) .row-why .sk-mid { width: 76%; }
+#scan-skeleton li:nth-child(4) .row-why .sk-mid { width: 52%; }
+#scan-skeleton::after { content: ""; position: absolute; inset: 0; z-index: 3; pointer-events: none; transform: translateX(-100%);
+  background: linear-gradient(105deg, transparent 30%, rgb(255 255 255 / .75) 50%, transparent 70%);
+  animation: sk-pass 1.2s cubic-bezier(.45, 0, .25, 1) infinite; }
+@keyframes sk-pass { to { transform: translateX(100%); } }
+
+/* reduced motion: the same states, reached without movement - the fill shows at once, nothing lifts, no light passes */
+@media (prefers-reduced-motion: reduce) {
+  .flagged-list button, .flagged-list button::before, .flagged-list button::after, #fix-changes li { transition: none; }
+  .flagged-list button:is(:hover, :focus-visible):not(:disabled), #fix-changes li:hover { transform: none; box-shadow: none; }
+  #scan-skeleton::after { animation: none; display: none; }
+}

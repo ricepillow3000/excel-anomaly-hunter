@@ -2,9 +2,16 @@
 // --reveal-*, --stagger, --stagger-cap), read here with getComputedStyle: one place to change the feel of the whole
 // site. Only transform and opacity ever move, so the browser composites them on the GPU (docs/design/motion.md).
 // Markup hooks:
-//   data-enter="left|bottom"  the hero's blocks fly in once on load, in page order, all at rest by 1.3 s. WAAPI, so
+//   data-enter="left|bottom"  the hero's blocks fly in once on load, in page order, all at rest by 2.4 s. WAAPI, so
 //                             they run by the clock on the compositor, never per frame (AH-22: the old per-frame
-//                             cursor light glided for 4.5 s on a busy machine)
+//                             cursor light glided for 4.5 s on a busy machine). On the first load only, the bar comes
+//                             first (AH-90, John 2026-11-02: "the Anomaly Hunter title slides in from the left, and the
+//                             products, checks, privacy and security, support and download slide in from the right"):
+//                             the notice line and the brand from the left, the links from the right, leftmost first,
+//                             --enter-bar-step apart; the hero follows --enter-lead later. The bar stays mounted
+//                             across page changes, so it never plays again
+//   a[data-glide="frame|top"] an in-page link that glides there instead of jumping (AH-91): "frame" centres the target
+//                             and the .next-up under it below the sticky bar, "top" puts the target under the bar
 //   class="reveal-item"       content that rises into place once, the first time it scrolls into view (an
 //                             IntersectionObserver, never a scroll listener); items of the nearest data-reveal-group
 //                             that arrive together start --stagger apart, at most --stagger-cap steps
@@ -25,16 +32,18 @@
   const ms = (n) => { const v = token(n); return (parseFloat(v) || 0) * (/[^m]s$/.test(v) ? 1000 : 1); };
   const EASE = token("--ease-out") || "cubic-bezier(.16, 1, .3, 1)";
   const ENTER = ms("--enter-dur"), STEP = ms("--enter-step"), SHIFT = parseFloat(token("--enter-shift")) || 0;
-  const LAST = 4 * STEP; // the fifth block and later start together: 4 * 90 + 900 = 1.26 s, inside boot.js's 1.4 s
+  const LAST = 4 * STEP; // the fifth block and later start together
+  const BAR = ms("--enter-bar-step"), LEAD = ms("--enter-lead");
   const REVEAL = ms("--reveal-dur"), STAGGER = ms("--stagger"), CAP = parseFloat(token("--stagger-cap")) || 0, RISE = parseFloat(token("--reveal-rise")) || 0;
   const SEEN = 0.15; // how much of an item must be on screen (above the bottom 8%) before it rises
 
   // the same curve as CSS's cubic-bezier(): at(x) is the progress at time x, when(y) the time a progress is reached
-  const ease = (([x1, y1, x2, y2]) => {
+  const curve = (css, fallback) => (([x1, y1, x2, y2]) => {
     const b = (s, p1, p2) => 3 * (1 - s) * (1 - s) * s * p1 + 3 * (1 - s) * s * s * p2 + s * s * s;
     const solve = (v, p1, p2) => { let lo = 0, hi = 1; for (let i = 0; i < 30; i++) { const m = (lo + hi) / 2; if (b(m, p1, p2) < v) lo = m; else hi = m; } return (lo + hi) / 2; };
     return { at: (x) => (x <= 0 ? 0 : x >= 1 ? 1 : b(solve(x, x1, x2), y1, y2)), when: (y) => (y <= 0 ? 0 : y >= 1 ? 1 : b(solve(y, y1, y2), x1, x2)) };
-  })((/cubic-bezier\(([^)]*)\)/.exec(EASE) || [0, ".16, 1, .3, 1"])[1].split(",").map(Number));
+  })((/cubic-bezier\(([^)]*)\)/.exec(css) || [0, fallback])[1].split(",").map(Number));
+  const ease = curve(EASE, ".16, 1, .3, 1"), INOUT = token("--ease-in-out") || "cubic-bezier(.65, 0, .35, 1)", inout = curve(INOUT, ".65, 0, .35, 1");
 
   // a scroll timeline in CSS, or this file plays the decoration (data-scroll="js" switches styles.css over)
   const timelines = !!(window.CSS && CSS.supports && CSS.supports("animation-timeline: view()"));
@@ -43,6 +52,7 @@
   const subs = [];
   let scope = document, band = null, raf = 0, observer = null, io = null, tail = null, onScreen = null, later = 0, vw = 0, vh = 0, inset = 0;
   let anims = [], decor = [], waiting = [];
+  const entering = new WeakMap(); // a [data-enter] block -> its entrance, for the reveal items inside it
 
   const clamp = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
   const request = () => { if (!raf) raf = requestAnimationFrame(frame); };
@@ -80,14 +90,35 @@
     if (more) request();
   }
 
-  // ---- the entrance: the hero's blocks from the left or from below, by the clock ----
+  // ---- the entrance: the bar's blocks, then the hero's from the left or from below, by the clock ----
+  const fly = (el, from, delay) => el.animate([{ transform: from, opacity: 0 }, { transform: "translate3d(0, 0, 0)", opacity: 1 }],
+    { duration: ENTER, delay, easing: EASE, fill: "backwards" });
   function enter(root, lead) {
+    let hero = lead;
+    // the first load: the notice line, the brand, then the links from the right, leftmost first. Rightmost first ran
+    // each waiting link over the settled one beside it ("PRODUC" over "CHECKS" mid-entrance); leftmost first, every
+    // link trails further right than its neighbour, so the gaps only widen as they land
+    if (root === document) {
+      const left = [document.querySelector(".notice-bar p"), document.querySelector(".bar .brand")].filter(Boolean);
+      const right = [...document.querySelectorAll(".bar .links a")];
+      left.forEach((el, n) => anims.push(fly(el, `translate3d(${-SHIFT}px, 0, 0)`, lead + n * BAR)));
+      right.forEach((el, n) => anims.push(fly(el, `translate3d(${SHIFT}px, 0, 0)`, lead + (left.length + n) * BAR)));
+      hero = lead + LEAD;
+    }
     [...root.querySelectorAll("[data-enter]")].forEach((el, n) => {
-      const from = el.dataset.enter === "left" ? `translate3d(${-SHIFT}px, 0, 0)` : `translate3d(0, ${SHIFT}px, 0)`;
-      anims.push(el.animate([{ transform: from, opacity: 0 }, { transform: "translate3d(0, 0, 0)", opacity: 1 }],
-        { duration: ENTER, delay: lead + Math.min(n * STEP, LAST), easing: EASE, fill: "backwards" }));
+      const a = fly(el, el.dataset.enter === "left" ? `translate3d(${-SHIFT}px, 0, 0)` : `translate3d(0, ${SHIFT}px, 0)`, hero + Math.min(n * STEP, LAST));
+      anims.push(a);
+      entering.set(el, a);
     });
   }
+  // a reveal item inside a block still waiting for its entrance (support.html's answers and form) waits too: it starts
+  // rising when its block is a quarter of the way in, never unseen inside a block that is still see-through
+  const host = (el) => {
+    const h = el.parentElement && el.parentElement.closest("[data-enter]"), a = h && entering.get(h);
+    if (!a || a.playState === "finished" || a.playState === "idle") return 0;
+    const t = a.effect.getComputedTiming();
+    return Math.max(0, Math.round(t.delay + 0.25 * t.duration - (a.currentTime || 0)));
+  };
 
   // ---- the reveal: content rises into place once, the first time it is seen ----
   // A batch is what one look at the screen revealed. It lets go of will-change all at once, when its last item has
@@ -119,7 +150,7 @@
     }
     for (const items of groups.values()) {
       items.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
-      items.forEach((el, i) => out.push([el, Math.min(i, CAP) * STAGGER]));
+      items.forEach((el, i) => out.push([el, host(el) + Math.min(i, CAP) * STAGGER]));
     }
     return out;
   }
@@ -147,7 +178,9 @@
     reveal([...before.map((x) => [x, 0]), ...cascade([...(own ? [own] : []), ...el.querySelectorAll(".reveal-item:not([data-revealed])")])]);
   }
   function reveals(root, lead) {
-    const items = waiting = [...root.querySelectorAll(".reveal-item:not([data-revealed])")];
+    // the footer stays mounted across page changes (transition.js): a page reached by one still watches its items
+    const kept = root === document ? [] : [...document.querySelectorAll(".foot .reveal-item:not([data-revealed])")];
+    const items = waiting = [...root.querySelectorAll(".reveal-item:not([data-revealed])"), ...kept];
     if (still || !window.IntersectionObserver) { reveal(items.map((el) => [el, 0])); return; } // no observer: all of it, now
     const begin = () => {
       const threshold = [0, 0.05, 0.1, SEEN], end = html.scrollHeight - html.clientHeight * 0.08;
@@ -195,6 +228,7 @@
 
   function stop() {
     cancelAnimationFrame(raf); raf = 0; clearTimeout(later);
+    if (glider) glider();
     removeEventListener("scroll", request); removeEventListener("resize", relayout); removeEventListener("scrollend", sweep);
     for (const o of [observer, io, tail, onScreen]) if (o) o.disconnect();
     observer = io = tail = onScreen = null;
@@ -202,7 +236,58 @@
     anims = []; decor = []; waiting = [];
   }
 
-  window.AH = { start, stop, request, still, ease, onFrame: (f) => { subs.push(f); request(); } };
+  // ---- the glide (AH-91): an in-page link that scrolls there slowly enough to watch, by the clock ----
+  // John, 2026-11-02: "When pressing the See sample button... it seems like I'm being teleported... I want it to very
+  // leisurely and smoothly scroll me down automatically to the sample page where I can see and click everything", and
+  // a button under it that goes on to the checks, "slow enough where you can see everything unfold with the
+  // animations". A requestAnimationFrame loop for the length of the glide only, on a curve soft at both ends
+  // (--ease-in-out): 1.6 to 2.4 s to frame the sheet, 2.4 to 3.2 s to the checks, longer the further it goes. A wheel,
+  // a touch, a key or a press ends it where it is. On arrival the target takes focus (no scroll) and the address gets its
+  // #hash through history.pushState: setting location.hash would fire anchor() and show every item at once
+  let glider = null;
+  const barBottom = () => { const b = document.querySelector(".bar"), c = b && getComputedStyle(b);
+    return c && c.position === "sticky" ? (parseFloat(c.top) || 0) + b.offsetHeight : 0; };
+  function glide(el, mode) {
+    if (glider) glider();
+    const bar = barBottom(), room = html.clientHeight - bar, top = place(el);
+    const next = mode === "frame" && el.nextElementSibling && el.nextElementSibling.classList.contains("next-up") ? el.nextElementSibling : null;
+    const h = (next ? place(next) + next.offsetHeight : top + el.offsetHeight) - top;
+    // framed: the sheet and the button under it centred in the room below the bar; too tall for the room (a phone): the
+    // sheet's top just under the bar
+    const want = mode === "frame" ? (h <= room ? top - bar - (room - h) / 2 : top - bar - 12) : top - bar;
+    const from = scrollY, to = Math.round(Math.max(0, Math.min(want, html.scrollHeight - html.clientHeight))), d = to - from;
+    const [lo, hi] = mode === "frame" ? [1600, 2400] : [2400, 3200], dur = lo + (hi - lo) * clamp(Math.abs(d) / 1600);
+    let id = 0, t0 = 0;
+    const end = () => { cancelAnimationFrame(id); for (const k of STOPS) removeEventListener(k, end, true); if (glider === end) glider = null; };
+    const step = (now) => {
+      if (!t0) t0 = now;
+      const p = clamp((now - t0) / dur);
+      scrollTo(0, from + d * inout.at(p));
+      if (p < 1) { id = requestAnimationFrame(step); return; }
+      end();
+      if (!el.hasAttribute("tabindex")) el.tabIndex = -1;
+      el.focus({ preventScroll: true });
+      const st = history.state && typeof history.state === "object" ? history.state : {};
+      history.replaceState({ ...st, y: Math.round(from) }, "");
+      history.pushState({ ah: 1, i: Number.isInteger(st.i) ? st.i : 0, y: Math.round(scrollY) }, "", "#" + el.id);
+    };
+    for (const k of STOPS) addEventListener(k, end, { capture: true, passive: true });
+    glider = end;
+    id = requestAnimationFrame(step);
+  }
+  const STOPS = ["wheel", "touchstart", "keydown", "pointerdown"];
+  document.addEventListener("click", (e) => {
+    if (still || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const a = e.target.closest ? e.target.closest("a[data-glide]") : null;
+    if (!a || a.pathname !== location.pathname) return;
+    let el = null;
+    try { el = document.getElementById(decodeURIComponent(a.hash.slice(1))); } catch { el = null; }
+    if (!el || !scope.contains(el)) return;
+    e.preventDefault();
+    glide(el, a.dataset.glide);
+  });
+
+  window.AH = { start, stop, request, still, ease, inout, INOUT, onFrame: (f) => { subs.push(f); request(); } };
   document.addEventListener("ah:page", (e) => start((e.detail && e.detail.root) || document, e.detail && e.detail.wait));
   start();
 })();

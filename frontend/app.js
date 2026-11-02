@@ -18,7 +18,7 @@ import { autoOn, setAuto, autoUndo, undoAutoFix } from "./features/autofix.js";
 import { notice } from "./components/progress.js";
 import { n } from "./utils/text.js";
 import { initSettings } from "./pages/settings.js";
-import { initMotion } from "./components/motion.js";
+import { fadeIn, initMotion } from "./components/motion.js";
 
 if (typeof Office !== "undefined") {
   Office.onReady((info) => {
@@ -26,14 +26,14 @@ if (typeof Office !== "undefined") {
     show("sideload-msg", false);
     show("app-body");
     initMotion();
-    $("scan").onclick = act(runScan);
+    $("scan").onclick = act(() => runScan(true, true)); // held: the skeleton stays long enough to be seen
     $("retry-health").onclick = checkHealth;
     $("clear-highlights").onclick = act(clearHighlights);
     $("edit-limits").onclick = openLimitsEditor;
     $("cancel-limits").onclick = () => only(state.lastScan ? "results" : "empty-state");
     $("save-limits").onclick = act(saveLimitsAndRescan);
     $("auto-limits").onclick = act(async () => (saveLimits(null), await runScan()));
-    $("fix-back").onclick = () => ((state.fix = null), listRows());
+    $("fix-back").onclick = () => { state.fix = null; listRows(); fadeIn($("results")); };
     $("fix-apply").onclick = act(() => state.fix && applyFix(state.fix, state.fix.changes, state.fix.sheet));
     $("fix-undo").onclick = act(() => state.fix && undoFix(state.fix));
     $("fix-dismiss").onclick = act(dismissFix);
