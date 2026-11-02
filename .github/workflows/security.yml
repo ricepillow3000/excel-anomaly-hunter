@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          fetch-depth: 0  # every commit of every branch, for the history secret scan below
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
         with:
           python-version: "3.14"
@@ -23,6 +25,10 @@ jobs:
           cache-dependency-path: |
             pyproject.toml
             constraints.txt
+      # stdlib only, so first: a key deleted in a later commit is still in the history GitHub serves (AH-87).
+      # --full: a shallow checkout here is a failure, never a skip
+      - name: Secrets anywhere in the git history (keys, invite codes, private keys, .env and key files)
+        run: python tools/secret_history.py --full
       - run: pip install -e ".[dev]" -c constraints.txt  # every package pinned (tools/pinned.py), shared with tools/check.py
 
       - name: Engine API tests + fuzzing (other websites refused, key never leaks, no input crashes the engine)
