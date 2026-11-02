@@ -235,3 +235,6 @@ Adding or removing a check: update this table in the same commit.
   "the engine's own result" had drifted twice (a dropped sentence, 19 for 20) before `test_site_sample.py` held it.
   On a box with no GPU, `test_site.mjs --browser` asks for `--enable-unsafe-swiftshader`: Chromium 141 warns on its own
   software fallback, and the console check fails on that warning (AH-87).
+  A class name on a new site element is grepped across `site/` first: the skip link's `.skip` was already the
+  sample's separator rows' class and pulled all five out of the table (AH-87 fix round 1; `tools/test_site.mjs` checks
+  those rows stay in place in every filter state).
