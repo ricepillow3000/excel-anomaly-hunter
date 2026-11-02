@@ -105,6 +105,9 @@ const find = async () => { await page.click("#scan"); await idle(); await page.w
 // every opacity above it, every text box's edge and placeholder too. Fixed rows were faded to 0.6 (their grey 2.7:1) and
 // the boxes framed in a 1.7:1 hairline. The options' sections are opened for the look and closed again as they were
 const contrast = async (where) => {
+  // the page at rest, as a person reads it: right after a reload the entrance (components/motion.js) still holds the
+  // slider at part opacity for up to 1.2 s, and the gate once measured "How hard to look" mid-fade at 3.8:1
+  await page.waitForFunction(() => [...document.querySelectorAll("[data-enter]")].every((e) => !e.style.opacity && !e.style.transform), null, { timeout: 5000 });
   const was = await page.$$eval("#main-ui details", (ds) => ds.map((d) => { const o = d.open; d.open = true; return o; }));
   const bad = await page.evaluate(contrastProblems);
   await page.$$eval("#main-ui details", (ds, was) => ds.forEach((d, k) => (d.open = was[k])), was);
