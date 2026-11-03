@@ -21,7 +21,8 @@ dependencies = [
 ]
 
 [project.scripts]
-anomaly-hunter = "anomaly_hunter.cli:main"
+arcas = "anomaly_hunter.cli:main"
+anomaly-hunter = "anomaly_hunter.cli:main"  # the name before AH-101: scripts written for it keep working
 anomaly-hunter-server = "anomaly_hunter.server:main"
 
 [project.optional-dependencies]

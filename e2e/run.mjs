@@ -39,7 +39,7 @@ await page.addInitScript(() => {
 // a failure this test causes on purpose: the console lines matching `expected` are its own; anything else still counts
 const failing = async (expected, fn) => { const k = errors.length; await fn(); errors.splice(k, Infinity, ...errors.slice(k).filter((e) => !expected.test(e))); };
 const DROPPED = /ERR_CONNECTION_RESET|ERR_CONNECTION_REFUSED|ERR_FAILED|checker isn't running|status of 50[23]|AI error|Couldn't save that/;
-const DOWN = "the checker isn't running. Double-click AnomalyHunter.exe again (from a source folder: install.bat), then try again.";
+const DOWN = "the checker isn't running. Double-click Arcas.exe again (from a source folder: install.bat), then try again.";
 const dropMidway = async (r) => { await new Promise((go) => setTimeout(go, 300)); await r.abort("connectionreset"); }; // sent, then the engine is gone
 const scans = []; // every /scan body the pane sent: the slider's level and the Power BI switch must reach the engine
 page.on("request", (r) => r.url().endsWith("/scan") && scans.push(JSON.parse(r.postData())));
@@ -429,7 +429,7 @@ if (mode === "flow") {
     const [pop] = await Promise.all([page.waitForEvent("popup"), page.click(`#pane-footer .pf-links a:has-text("${link}")`)]);
     await pop.waitForLoadState();
     const status = await pop.evaluate(() => performance.getEntriesByType("navigation")[0].responseStatus);
-    ok(status === 200 && (await pop.title()) === `Anomaly Hunter, ${link}`, `${link} link opens its page (HTTP ${status})`);
+    ok(status === 200 && (await pop.title()) === `Arcas, ${link}`, `${link} link opens its page (HTTP ${status})`);
     await pop.close();
   }
 
@@ -502,7 +502,7 @@ if (mode === "flow") {
     "the engine down mid-scan: said in plain words, buttons back - " + (await text("#notice")));
   // an engine from before a route existed answers 404 with no words of ours: told to update, naming the exe too
   await failing(/status of 404|out of date/, async () => { await page.route("**/scan", (r) => r.fulfill({ status: 404, body: "" }), { times: 1 }); await page.click("#scan"); await idle(); });
-  ok((await text("#notice")) === "Something went wrong: the checker is out of date. Close Excel, then run the newest AnomalyHunter.exe (from a source folder: install.bat).",
+  ok((await text("#notice")) === "Something went wrong: the checker is out of date. Close Excel, then run the newest Arcas.exe (from a source folder: install.bat).",
     "an engine too old for the pane: said in plain words - " + (await text("#notice")));
   // and mid-Accept (on the Other sheet, checked last): the cell is written, the re-check that could not run is said on the card
   await find(); await openRow(81);

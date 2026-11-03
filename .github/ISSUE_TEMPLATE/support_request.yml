@@ -25,7 +25,7 @@ body:
     id: version
     attributes:
       label: Engine version
-      description: Copy the "Engine ..." line at the bottom of the Anomaly Hunter pane.
+      description: Copy the "Engine ..." line at the bottom of the Arcas pane.
   - type: textarea
     id: details
     attributes:

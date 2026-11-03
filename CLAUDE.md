@@ -1,4 +1,4 @@
-# Anomaly Hunter: map for whoever changes this code next
+# Arcas: map for whoever changes this code next
 
 Excel add-in: a task pane (`frontend/`) talks to a local HTTPS engine (`backend/anomaly_hunter/`, 127.0.0.1:5055) that
 flags wrong cells and suggests fixes. Optional AI help goes to Google directly or through the invite relay (`relay/`).

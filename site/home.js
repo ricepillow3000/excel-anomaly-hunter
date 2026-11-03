@@ -236,7 +236,9 @@
     }
     asked.then(() => { answered = asked; }, () => {});
     asked.then((d) => {
-      const exe = (d.assets || []).find((a) => a.name === "AnomalyHunter.exe");
+      // Arcas.exe since AH-101; a release made before the rename has only the old name
+      const named = (n) => (d.assets || []).find((a) => a && a.name === n);
+      const exe = named("Arcas.exe") || named("AnomalyHunter.exe");
       const hash = /^sha256:([0-9a-f]{64})$/.exec((exe && exe.digest) || "");
       if (!hash) return;
       sha.textContent = hash[1];

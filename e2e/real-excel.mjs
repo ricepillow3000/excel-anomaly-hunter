@@ -5,7 +5,7 @@
 // Scans and opens rows like a user; it never accepts a fix, so the workbook is not changed (Remove highlights at the end).
 // nosemgrep: react-insecure-request - Edge's local debug port only speaks plain http
 const pane = (await (await fetch("http://127.0.0.1:9229/json")).json()).find((t) => t.url.includes("taskpane.html"));
-if (!pane) throw new Error("No Anomaly Hunter pane found - open it in Excel first (Excel started with the debug port).");
+if (!pane) throw new Error("No Arcas pane found - open it in Excel first (Excel started with the debug port).");
 const ws = new WebSocket(pane.webSocketDebuggerUrl);
 let id = 0, header = "(no document seen)";
 const pending = new Map(), errors = [];

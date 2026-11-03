@@ -1,4 +1,4 @@
-// Anomaly Hunter task pane - entry point. Plain JS modules, no build. Talks to the local back end at the same origin.
+// Arcas task pane - entry point. Plain JS modules, no build. Talks to the local back end at the same origin.
 // Workflow: Home -> Find problems (Agent 1 in the engine) -> highlight -> results (Agent 2) -> a row's card: Accept / Dismiss / Ask AI
 // -> Agent 3 in the engine checks AI fixes before they show, and every accepted fix after it is written.
 import { state } from "./hooks/use-state.js";

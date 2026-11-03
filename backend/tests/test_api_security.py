@@ -107,7 +107,7 @@ def test_safe_headers_on_every_answer():
         assert r.headers["Content-Security-Policy"] == (
             "default-src 'self'; script-src 'self' https://appsforoffice.microsoft.com; object-src 'none'; "
             "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
-    assert WSGIRequestHandler.version_string(None) == "Anomaly Hunter"  # the real server's Server header (ZAP checks it live)
+    assert WSGIRequestHandler.version_string(None) == "Arcas"  # the real server's Server header (ZAP checks it live)
 
 
 def test_every_error_is_json_never_a_framework_html_page():

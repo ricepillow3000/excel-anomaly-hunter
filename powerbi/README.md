@@ -11,7 +11,7 @@ uploaded (Power BI's cloud would need a Microsoft tenant and a Pro licence, and 
      sheet.
 3. Double-click a shortcut (needs Power BI Desktop): `anomaly-hunter.pbids` opens `latest-scan.csv`,
    `anomaly-hunter-flags.pbids` opens `latest-flags.csv`. Click **Load**.
-   - Installed with AnomalyHunter.exe: both shortcuts sit in `%LOCALAPPDATA%\AnomalyHunter`.
+   - Installed with Arcas.exe: both shortcuts sit in `%LOCALAPPDATA%\AnomalyHunter`.
    - From a source folder or kit (`install.bat`): both sit in this `powerbi` folder.
 4. After each new scan: **Refresh** in Power BI.
 
@@ -64,7 +64,7 @@ browser test checks `latest-flags.csv` lists exactly the pane's rows, and that a
 Status after the pane is reloaded. The `.pbids` files are checked for shape only.
 
 Not verifiable without Power BI Desktop (John, on his PC, about 10 minutes):
-1. Install with AnomalyHunter.exe; turn on the Power BI option; scan the Practice sheet in `Start here.xlsx`.
+1. Install with Arcas.exe; turn on the Power BI option; scan the Practice sheet in `Start here.xlsx`.
 2. Double-click `%LOCALAPPDATA%\AnomalyHunter\anomaly-hunter.pbids`. Check: it opens Power BI with the file
    preselected; the preview shows the header row as headers; `Excel Row` matches the pane's row numbers; accents read
    correctly; Severity is empty (not the text "null") on clean rows.

@@ -1,7 +1,7 @@
 # The engine's API, for the attack tools: Schemathesis (backend/tests/test_fuzz_api.py) and ZAP's active API scan (CI).
 # Input rules mirror _bad() in server.py; a test fails if a route is added without being listed here.
 openapi: 3.0.3
-info: {title: Anomaly Hunter engine, version: "1"}
+info: {title: Arcas engine, version: "1"}
 servers: [{url: "https://127.0.0.1:5055"}]
 paths:
   /health:

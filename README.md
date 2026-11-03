@@ -1,4 +1,4 @@
-# excel-anomaly-hunter
+# Arcas
 Excel add-in that flags abnormal rows and tells unusual-but-fine rows from broken ones. It never deletes data.
 Your sheet is checked on your own PC. Nothing leaves it unless you turn on AI help: see [What leaves your PC](PRIVACY.md).
 Website: [ricepillow3000.github.io/excel-anomaly-hunter](https://ricepillow3000.github.io/excel-anomaly-hunter/) (`site/`, published by `.github/workflows/pages.yml`).
@@ -6,20 +6,20 @@ Free and open source under the [MIT License](LICENSE).
 Questions or problems: [open an issue](https://github.com/ricepillow3000/excel-anomaly-hunter/issues).
 
 ## Install (Windows + desktop Excel, nothing else needed)
-1. **[Download AnomalyHunter.exe](https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest/download/AnomalyHunter.exe)**
+1. **[Download Arcas.exe](https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest/download/Arcas.exe)**
    (one file, about 81 MB, everything inside). If your browser says it "isn't commonly downloaded": click **...** > **Keep** > **Keep anyway**.
 2. **Double-click it.** A blue "Windows protected your PC" box appears: click **More info**, then **Run anyway**. (The file
    isn't code-signed yet, so Windows doesn't know it: [Code signing policy](https://ricepillow3000.github.io/excel-anomaly-hunter/#code-signing). Some PCs ask "Open File - Security Warning" instead: click **Run**.)
 3. Click **Yes** when Windows asks to trust the certificate (it covers only 127.0.0.1, this PC).
 4. Excel opens a **Start here** workbook. Follow its 5 clicks, once: **Home > Add-ins > More Add-ins > SHARED FOLDER >
-   Anomaly Hunter > Add**. Then try **Find problems** on its Practice sheet: it finds the 5 problems hidden there.
+   Arcas > Add**. Then try **Find problems** on its Practice sheet: it finds the 5 problems hidden there.
 
-The **Anomaly Hunter** button is now on the Home tab in every workbook (survives restarts), scanned workbooks reopen
+The **Arcas** button is now on the Home tab in every workbook (survives restarts), scanned workbooks reopen
 with the panel open, and the engine starts hidden at each logon. Double-click it again to repair;
-`AnomalyHunter.exe uninstall` removes it. (From a checkout with Python 3.14: `install.bat` does the same, `/u` uninstalls.)
+`Arcas.exe uninstall` removes it. (From a checkout with Python 3.14: `install.bat` does the same, `/u` uninstalls.)
 Every build on `main` is installed and used on a fresh Windows PC with no Python before it becomes that download link.
 Build the file: `pip install -e ".[exe]" -c constraints.txt` then `python -m PyInstaller packaging/AnomalyHunter.spec`
-on Windows -> `dist/AnomalyHunter.exe`.
+on Windows -> `dist/Arcas.exe`.
 Windows-only per-user install (trusted shared-folder catalog), not a store add-in.
 Why one file and not Docker or Kubernetes, and the free ways to make sharing smoother: [docs/SHARING.md](docs/SHARING.md).
 
@@ -44,7 +44,7 @@ no real person called probably wrong (7 worth a check), and its well-known gaps 
 $50K) reported as gaps. They are not re-run; the benches in `backend/bench` are (`score.py`).
 
 ## Power BI
-In the pane, turn on **Power BI (optional) > Save each scan for Power BI** (off by default), scan, then double-click `anomaly-hunter.pbids` (the whole sheet) or `anomaly-hunter-flags.pbids` (the flagged rows and the ones you fixed or dismissed; its columns never change); Refresh after each scan. Both sit in `%LOCALAPPDATA%\AnomalyHunter` (AnomalyHunter.exe) or `powerbi\` (`install.bat`). Schema and the steps to check it in Power BI Desktop: [`powerbi/README.md`](powerbi/README.md).
+In the pane, turn on **Power BI (optional) > Save each scan for Power BI** (off by default), scan, then double-click `anomaly-hunter.pbids` (the whole sheet) or `anomaly-hunter-flags.pbids` (the flagged rows and the ones you fixed or dismissed; its columns never change); Refresh after each scan. Both sit in `%LOCALAPPDATA%\AnomalyHunter` (Arcas.exe) or `powerbi\` (`install.bat`). Schema and the steps to check it in Power BI Desktop: [`powerbi/README.md`](powerbi/README.md).
 
 ## Use it
 Click **Find problems in this sheet**. A progress line shows each step; the cells to check are highlighted
@@ -73,7 +73,7 @@ plain-English request. Only the row asked about and a few rows around it go to G
 improve its products, so don't use it on private data). A Claude key (`ANTHROPIC_API_KEY`) also works.
 An invite kit (a zip from the author) needs no key: its `install.bat` switches AI help on by itself.
 Making kits: `node relay/new-invite.mjs "Name"` (see `relay/wrangler.toml` for the shared relay and its daily caps).
-No-Excel mode: `anomaly-hunter scan data.csv`.
+No-Excel mode: `arcas scan data.csv` (the older `anomaly-hunter scan` still works).
 
 ## Layout
 - `frontend/` the Excel pane, plain JS modules, no build: `pages/` (home, results, fix, limits, settings), `features/` (scan, highlight, fix, ai), `components/`, `hooks/` (shared state, one-action-at-a-time), `services/` (back end + Excel calls), `utils/`, `constants/`, `styles/`. Entry: `app.js`.

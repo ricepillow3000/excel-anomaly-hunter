@@ -1,4 +1,4 @@
-"""anomaly-hunter scan FILE... [--limits limits.csv] [--order-by COL] [--out report.xlsx]"""
+"""arcas scan FILE... [--limits limits.csv] [--order-by COL] [--out report.xlsx]"""
 import argparse
 import sys
 from pathlib import Path
@@ -32,7 +32,7 @@ def run_scan(files, limits_path, order_by, out_path):
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(prog="anomaly-hunter")
+    p = argparse.ArgumentParser(prog="arcas")
     s = p.add_subparsers(dest="command", required=True).add_parser("scan")
     s.add_argument("files", nargs="+")
     s.add_argument("--limits", default="limits.csv")

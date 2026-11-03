@@ -1,4 +1,4 @@
-# Sharing Anomaly Hunter: why one file, not Docker or Kubernetes
+# Sharing Arcas: why one file, not Docker or Kubernetes
 
 John's question (2026-11-02, AH-95): an app that runs on my PC but not on a friend's is solved by **containerization**:
 pack the app in a box (a Docker image) and hand the same box to anyone. When many people use it, **Kubernetes**
@@ -6,13 +6,13 @@ manages the boxes: it restarts the ones that crash, starts more when users pile 
 is a different way that is free, just as effective, go that route."
 
 ## The short answer
-The box already exists, it is free, and it fits this app better than Docker does: **`AnomalyHunter.exe`**, one
+The box already exists, it is free, and it fits this app better than Docker does: **`Arcas.exe`**, one
 file that carries Python, every package (each pinned to an exact version) and the pane. CI proves it on a fresh
 Windows PC before every release. Kubernetes has nothing to manage here, because no server takes the crowd: each
 person's own PC runs its own engine beside its own Excel.
 
 ```
-Docker's promise                     What Anomaly Hunter does instead (free)
+Docker's promise                     What Arcas does instead (free)
 "same box on every PC"          ->   one .exe with Python + pinned packages inside (packaging/AnomalyHunter.spec)
 "prove it runs elsewhere"       ->   CI installs it on a fresh Windows PC with no Python, scans, fixes, undoes,
                                      uninstalls, before it becomes the download link (build-exe.yml, new-user)

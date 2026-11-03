@@ -36,7 +36,7 @@ BANNED_OK = ()
 CAPS_OK = ("SHARED FOLDER",)  # Excel's own label for the shared folder's path, written as Excel writes it
 # proper nouns and UI names that keep their capitals inside a sentence-case heading
 PROPER = {
-    "Anomaly", "Hunter", "Excel", "Windows", "Microsoft", "Power", "BI", "Google", "Gemini", "Cloudflare", "Anthropic",
+    "Arcas", "Excel", "Windows", "Microsoft", "Power", "BI", "Google", "Gemini", "Cloudflare", "Anthropic",
     "GitHub", "Ask", "AI", "SHA-256", "PowerShell", "John", "OK", "Yes", "No", "Office", "Home", "Add-ins", "Find",
     "SmartScreen", "Defender", "Studio", "Mac", "Insert", "My", "Trust", "Center", "Options", "Run", "Properties",
     "Unblock", "Python", "API", "I", "Claude", "Worker", "Workers", "Edge", "WebView2", "Chrome", "Safari", "Firefox",

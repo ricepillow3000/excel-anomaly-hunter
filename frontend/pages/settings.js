@@ -32,6 +32,6 @@ export function initSettings() {
     show("undo-auto", false); // its list is gone with the rest
     $("forget-state").textContent = gone.length
       ? `Removed from this workbook: ${gone.join("; ")}. Your cells are as they were. Save the workbook to keep the change in the file; the next scan saves the setting that opens this pane again.`
-      : "This workbook holds nothing Anomaly Hunter saved.";
+      : "This workbook holds nothing Arcas saved.";
   });
 }

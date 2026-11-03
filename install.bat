@@ -1,6 +1,6 @@
 @echo off
-rem Anomaly Hunter installer. Per user, no admin. Double-click = install or repair. "install.bat /u" = uninstall.
-rem Result: Anomaly Hunter listed in Excel's Add-ins (Shared Folder); engine starts hidden at every logon.
+rem Arcas installer. Per user, no admin. Double-click = install or repair. "install.bat /u" = uninstall.
+rem Result: Arcas listed in Excel's Add-ins (Shared Folder); engine starts hidden at every logon.
 setlocal
 cd /d "%~dp0"
 set "ID=a64b585c-34c7-4447-b3ae-9aa8b3294bcf"
@@ -36,7 +36,7 @@ if %RC%==3 (
 rem AI help with no key: a kit from John (relay\new-invite.mjs) has this person's invite code next to this file.
 if exist "%~dp0invite-code.txt" copy /y "%~dp0invite-code.txt" "%AH%\invite-code.txt" >nul && echo       AI help: invite code installed - nothing to paste.
 
-echo [3/5] Listing Anomaly Hunter in Excel (Add-ins, Shared Folder)...
+echo [3/5] Listing Arcas in Excel (Add-ins, Shared Folder)...
 rem A trusted catalog is a real install: survives restarts, reopens with saved workbooks.
 rem (The old "developer" registry entry is debug-only - Office drops it from saved workbooks.)
 rem Catalogs must be a share path, so use this PC's own admin share: \\localhost\C$\...\frontend
@@ -69,8 +69,8 @@ ping -n 2 127.0.0.1 >nul
 goto wait
 :up
 echo.
-echo Installed. First install only - in Excel: Home ^> Add-ins ^> More Add-ins ^> SHARED FOLDER ^> Anomaly Hunter ^> Add.
-echo After that: Anomaly Hunter button in every workbook, survives restarts, scanned workbooks reopen with it.
+echo Installed. First install only - in Excel: Home ^> Add-ins ^> More Add-ins ^> SHARED FOLDER ^> Arcas ^> Add.
+echo After that: Arcas button in every workbook, survives restarts, scanned workbooks reopen with it.
 reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\excel.exe" >nul 2>&1 && start excel
 pause
 exit /b 0
