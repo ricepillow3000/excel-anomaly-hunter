@@ -1,4 +1,4 @@
-// Anomaly Hunter task pane. Talks to the local engine at the same origin. Plain JS, no build.
+// Arcas task pane. Talks to the local engine at the same origin. Plain JS, no build.
 // One path for anyone: Find problems -> rows to check (highlighted in the sheet) -> click one -> Accept / Dismiss the suggested fix.
 export const SERVER = "https://127.0.0.1:5055";
 

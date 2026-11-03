@@ -1,6 +1,6 @@
-# CI only: the user's hand. While AnomalyHunter.exe installs or uninstalls, answer the dialogs a person would answer -
+# CI only: the user's hand. While Arcas.exe installs or uninstalls, answer the dialogs a person would answer -
 # "Run" on Windows' warning for a file from the internet (and SmartScreen's "More info" > "Run anyway" if it shows),
-# "Yes" on Windows' certificate prompts (add, and remove on uninstall), "OK" on Anomaly Hunter's own message - and log
+# "Yes" on Windows' certificate prompts (add, and remove on uninstall), "OK" on the app's own message - and log
 # each dialog's words (+ a screenshot), and every new window that appears (so a dialog nobody planned for shows up in the log).
 # Clicks the button directly (BM_CLICK, what a mouse click sends a classic dialog); UI Automation's Invoke didn't land
 # there - it is only used for SmartScreen, which has no classic buttons.
@@ -133,7 +133,8 @@ while ((Get-Date) -lt $end) {
     "dialog $n 'SmartScreen': clicked $ss" | Out-File -Append -Encoding utf8 $log
     Start-Sleep -Milliseconds 1500
   }
-  foreach ($d in @(@('Open File - Security Warning', 'Run'), @('Security Warning', 'Yes'), @('Root Certificate Store', 'Yes'), @('Anomaly Hunter', 'OK'))) {
+  # the app's message boxes are titled Arcas; an exe made before AH-101 (the upgrade check installs one) says Anomaly Hunter
+  foreach ($d in @(@('Open File - Security Warning', 'Run'), @('Security Warning', 'Yes'), @('Root Certificate Store', 'Yes'), @('Arcas', 'OK'), @('Anomaly Hunter', 'OK'))) {
     $said = [Hand]::Find($d[0], $d[1])
     if ($null -ne $said) {
       $n++; Shot (Join-Path $Out ("dialog-{0}.png" -f $n))   # what the user sees, before the click

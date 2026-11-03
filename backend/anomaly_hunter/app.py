@@ -1,10 +1,10 @@
-"""The one-file Windows app (AnomalyHunter.exe, built by packaging/AnomalyHunter.spec). No Python needed on the PC.
-  AnomalyHunter.exe              install or repair: copy itself to %LOCALAPPDATA%\\AnomalyHunter, trust the local
-                                 HTTPS cert (Windows asks once), list the add-in in Excel, start the engine now and
-                                 at every logon, open Excel. Same steps as install.bat, without Python or a console.
-  AnomalyHunter.exe serve        the engine only (what Windows starts at logon)
-  AnomalyHunter.exe scan F...    no-Excel mode, same options as `anomaly-hunter scan`
-  AnomalyHunter.exe uninstall"""
+"""The one-file Windows app, Arcas.exe. No Python needed on the PC.
+  Arcas.exe              install or repair: copy itself to %LOCALAPPDATA%\\AnomalyHunter, trust the local HTTPS
+                         cert (Windows asks once), list the add-in in Excel, start the engine now and at every logon,
+                         open Excel. Same steps as install.bat, without Python or a console.
+  Arcas.exe serve        the engine only (what Windows starts at logon)
+  Arcas.exe scan F...    no-Excel mode, same options as `arcas scan`
+  Arcas.exe uninstall"""
 import os
 import shutil
 import subprocess
@@ -14,7 +14,11 @@ from pathlib import Path
 
 from anomaly_hunter import cli, powerbi, practice, server
 
-APP = "AnomalyHunter.exe"
+APP = "Arcas.exe"  # built by packaging/AnomalyHunter.spec; the docstring above is the usage a wrong command shows
+# Before AH-101 the app was AnomalyHunter.exe. The folder, the Run value and the certificate keep their old names, so an
+# update installed over an old install finds them; only the old exe is stopped and removed.
+LEGACY = "AnomalyHunter.exe"
+RUN_VALUE = "AnomalyHunter"  # the Run value's name: the same name, so an update overwrites the old entry
 ID = "a64b585c-34c7-4447-b3ae-9aa8b3294bcf"  # the add-in's Id in manifest.xml
 CATALOG = "{3f9a1c2e-7b4d-4e8a-9c61-5d2e8f0b7a13}"  # same trusted catalog as install.bat: an Add made there carries over
 CAT = rf"Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{CATALOG}"
@@ -41,7 +45,7 @@ def say(text, error=False):
     if os.name != "nt":
         return print(text, file=sys.stderr if error else sys.stdout)
     import ctypes
-    ctypes.windll.user32.MessageBoxW(None, text, "Anomaly Hunter", 0x10 if error else 0x40)
+    ctypes.windll.user32.MessageBoxW(None, text, "Arcas", 0x10 if error else 0x40)
 
 
 def fail(text):
@@ -52,7 +56,7 @@ def fail(text):
 def ask(text):
     """OK / Cancel box -> True for OK."""
     import ctypes
-    return ctypes.windll.user32.MessageBoxW(None, text, "Anomaly Hunter", 0x31) == 1
+    return ctypes.windll.user32.MessageBoxW(None, text, "Arcas", 0x31) == 1
 
 
 def tool(*args):
@@ -67,11 +71,25 @@ def excel_open():
 
 
 def stop_engines():
-    """Stop any running engine (this app's, or install.bat's pythonw), never this process or its one-file launcher."""
+    """Stop any running engine (this app's, the exe's old name's, or install.bat's pythonw), never this process or its
+    one-file launcher."""
     keep = f"{os.getpid()},{os.getppid()}"
     tool(r"WindowsPowerShell\v1.0\powershell.exe", "-NoProfile", "-Command",
          "Get-CimInstance Win32_Process | ? { ($_.Name -in 'pythonw.exe','python.exe' -and $_.CommandLine -match 'anomaly_hunter')"
-         f" -or ($_.Name -eq '{APP}' -and $_.ProcessId -notin @({keep})) }} | % {{ Stop-Process -Id $_.ProcessId -Force }}")
+         f" -or ($_.Name -in '{APP}','{LEGACY}' -and $_.ProcessId -notin @({keep})) }} | % {{ Stop-Process -Id $_.ProcessId -Force }}")
+
+
+def remove_legacy(home):
+    """An update over an install made before the rename: the old exe goes, so only Arcas.exe is left to start. A stopped
+    engine lets go of its file a moment later; one still held is left for uninstall, never a failed update."""
+    old, me = home / LEGACY, Path(sys.executable).resolve()
+    for _ in range(10):
+        try:
+            if old.exists() and old.resolve() != me:  # never this running file (an update saved under the old name)
+                old.unlink()
+            return
+        except OSError:
+            time.sleep(0.5)
 
 
 def reg_set(key, name, value):
@@ -128,6 +146,7 @@ def install():
         os.remove(f"{exe}:Zone.Identifier")
     except OSError:
         pass  # no mark (copied from a terminal download, or not Windows)
+    remove_legacy(home)
     invite = me.with_name("invite-code.txt")  # an invite kit from John: AI help with nothing to paste
     if invite.exists():
         shutil.copy2(invite, home / "invite-code.txt")
@@ -155,7 +174,7 @@ def install():
     # Power BI: double-click a .pbids; it opens the CSV every scan overwrites (the sheet, or its flagged rows)
     powerbi.shortcuts(home, home)
 
-    reg_set(RUN, "AnomalyHunter", f'"{exe}" serve')  # engine at every logon
+    reg_set(RUN, RUN_VALUE, f'"{exe}" serve')  # engine at every logon
     subprocess.Popen([str(exe), "serve"], creationflags=QUIET | 0x00000008)  # noqa: S603 - DETACHED_PROCESS: outlives this window
     for _ in range(120):  # the one-file engine unpacks itself first (~10-30 s)
         if server._already_running(home):
@@ -169,31 +188,33 @@ def install():
     excel = excel_exe()
     if excel:  # Excel itself, given the workbook: never a "Pick an app" question, never waits on Excel
         subprocess.Popen([str(excel), str(start)], creationflags=0x00000008)  # noqa: S603 - DETACHED_PROCESS
-    say("Anomaly Hunter is installed.\n\n" + ("Excel is opening a \"Start here\" workbook: follow its 5 steps to add Anomaly "
-        "Hunter to Excel (first time only), then try it on the Practice sheet." if excel else
+    say("Arcas is installed.\n\n" + ("Excel is opening a \"Start here\" workbook: follow its 5 steps to add Arcas to "
+        "Excel (first time only), then try it on the Practice sheet." if excel else
         f"Desktop Excel wasn't found. Once it is installed, open {start}: it shows the 5 steps.") +
-        "\n\nIn Excel: Home > Add-ins > More Add-ins > SHARED FOLDER > Anomaly Hunter > Add.")
+        "\n\nIn Excel: Home > Add-ins > More Add-ins > SHARED FOLDER > Arcas > Add.")
     return 0
 
 
 def uninstall():
     stop_engines()
-    for key, name in ((RUN, "AnomalyHunter"), (DEV, ID)):
+    for key, name in ((RUN, RUN_VALUE), (DEV, ID)):
         reg_delete(key, name)
     reg_delete(rf"{DEV}\{ID}")
     reg_delete(CAT)
     tool("certutil.exe", "-user", "-delstore", "Root", server.CERT_NAME)
     me = Path(sys.executable).resolve()
-    for p in server.HOME.glob("*"):  # everything but this running file
+    for p in server.HOME.glob("*"):  # everything but this running file: Arcas.exe, and the old AnomalyHunter.exe too
         if p.is_dir():
             shutil.rmtree(p, ignore_errors=True)
         elif p.resolve() != me:
-            try:
-                p.unlink()
-            except OSError:  # a just-stopped engine may hold its file a moment longer: left for the user to delete
-                pass
+            for _ in range(10):  # a just-stopped engine lets go of its exe a moment later
+                try:
+                    p.unlink()
+                    break
+                except OSError:  # still held after 5 s: left for the user to delete
+                    time.sleep(0.5)
     shutil.rmtree(Path(os.environ["LOCALAPPDATA"], r"Microsoft\Office\16.0\Wef"), ignore_errors=True)
-    say(f"Anomaly Hunter is uninstalled. You can delete {APP} now.")
+    say(f"Arcas is uninstalled. You can delete {me.name} now.")
     return 0
 
 

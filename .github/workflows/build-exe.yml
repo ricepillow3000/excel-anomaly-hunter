@@ -1,8 +1,10 @@
-# Builds the one-file Windows app, dist/AnomalyHunter.exe, then tests it on a Windows PC with Python taken away, then
+# Builds the one-file Windows app, dist/Arcas.exe, then tests it on a Windows PC with Python taken away, then
 # (main only, once a fresh PC installed and used it) publishes it as the latest Release: the README's one download
-# link, .../releases/latest/download/AnomalyHunter.exe - no GitHub account, no zip, no 90-day expiry. PyInstaller
+# link, .../releases/latest/download/Arcas.exe - no GitHub account, no zip, no 90-day expiry. PyInstaller
 # builds for the OS it runs on, so the Windows file is built here, on Windows.
-name: Build AnomalyHunter.exe
+# The app was AnomalyHunter.exe before AH-101: the artifact's name, the install folder, the Run value and the
+# certificate's name stay as they were, so an update installed over an old install finds them (the upgrade check below).
+name: Build Arcas.exe
 
 on:
   push:
@@ -28,7 +30,7 @@ jobs:
       - name: Every package in the exe is pinned (an unpinned scikit-learn broke every Windows install, 2026-10-11)
         run: python tools/pinned.py --exe
 
-      - name: Build the one file, stamped with its release tag (the pane shows which engine answers)
+      - name: Build the one file, stamped with its release tag (the pane shows which engine answers, the file's Properties too)
         run: |
           "v0.1.${{ github.run_number }} ($(Get-Date -Format yyyy-MM-dd))" | Set-Content frontend/version.txt
           python -m PyInstaller --noconfirm packaging/AnomalyHunter.spec
@@ -44,7 +46,7 @@ jobs:
           $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot;$env:SystemRoot\System32\WindowsPowerShell\v1.0"
           Remove-Item Env:PYTHON* -ErrorAction SilentlyContinue
           if (Get-Command python -ErrorAction SilentlyContinue) { throw "python is still reachable" }   # ...and not on PATH
-          $exe = (Resolve-Path dist\AnomalyHunter.exe).Path
+          $exe = (Resolve-Path dist\Arcas.exe).Path
           "size: {0:N0} MB" -f ((Get-Item $exe).Length / 1MB)
 
           # 1. no-Excel mode on a real .xlsx: run 1 suggests limits (exit 2), run 2 writes the report (exit 0)
@@ -70,22 +72,27 @@ jobs:
             -Body "{`"columns`": [`"Units`", `"Price`", `"Region`"], `"rows`": [$rows]}"
           if ($out.rows[10].severity -ne 'Medium' -or $out.rows[20].reason -notmatch 'east') { throw "scan answer wrong: $($out.rows[10] | ConvertTo-Json -Compress)" }
           "scan via engine: row 11 $($out.rows[10].severity) - $($out.rows[10].reason)"
-          Get-Process AnomalyHunter | Stop-Process -Force
+          $info = (Get-Item $exe).VersionInfo   # what Windows shows in Properties, and what SignPath reads from the signed file
+          "file: $($info.ProductName), $($info.FileDescription), $($info.CompanyName), $($info.OriginalFilename), $($info.ProductVersion)"
+          if ($info.ProductName -ne 'Arcas' -or $info.OriginalFilename -ne 'Arcas.exe' -or $info.ProductVersion -ne "0.1.${{ github.run_number }}") { throw "the file's version info is wrong" }
+          Get-Process Arcas | Stop-Process -Force
           Rename-Item "$py-hidden" $py
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
-          name: AnomalyHunter-exe
-          path: dist/AnomalyHunter.exe
+          name: AnomalyHunter-exe   # the artifact keeps its name; the file in it is Arcas.exe
+          path: dist/Arcas.exe
           if-no-files-found: error
 
-  # A brand-new Windows PC that never saw the build: it gets ONLY the downloaded AnomalyHunter.exe, no Python, and one
+  # A brand-new Windows PC that never saw the build: it gets ONLY the downloaded Arcas.exe, no Python, and one
   # double-click. A script plays the user's hand (Yes on Windows' certificate prompt, OK on the message), then the real
-  # pane runs in Edge (the browser Excel uses inside) against the engine the install started: scan, fix, undo.
+  # pane runs in Edge (the browser Excel uses inside) against the engine the install started: scan, fix, undo. Then the
+  # same PC is set back to the last release made before the rename (AnomalyHunter.exe) and updated with the new file,
+  # as a user's PC is, and the uninstall runs last.
   new-user:
     needs: exe
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7 - test tools only (e2e/ + the clicker): the app itself comes from the download
         with:
@@ -94,7 +101,7 @@ jobs:
             packaging
           path: tests
 
-      - name: Download AnomalyHunter.exe into Downloads - the one file a user gets
+      - name: Download Arcas.exe into Downloads - the one file a user gets
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
         with:
           name: AnomalyHunter-exe
@@ -104,10 +111,10 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force "$env:USERPROFILE\Downloads" | Out-Null
-          $exe = "$env:USERPROFILE\Downloads\AnomalyHunter.exe"
-          Move-Item "$env:RUNNER_TEMP\dl\AnomalyHunter.exe" $exe
+          $exe = "$env:USERPROFILE\Downloads\Arcas.exe"
+          Move-Item "$env:RUNNER_TEMP\dl\Arcas.exe" $exe
           # the Mark of the Web Edge/Chrome put on a download: Windows warns before it runs, as on the user's PC
-          Set-Content -Path $exe -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3`r`nHostUrl=https://github.com/$env:GITHUB_REPOSITORY/releases/latest/download/AnomalyHunter.exe"
+          Set-Content -Path $exe -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3`r`nHostUrl=https://github.com/$env:GITHUB_REPOSITORY/releases/latest/download/Arcas.exe"
           "mark of the web: $((Get-Content $exe -Stream Zone.Identifier) -join ' ')"
           foreach ($c in Get-Command python, python3, py -All -ErrorAction SilentlyContinue) {
             Rename-Item $c.Source "$($c.Source).hidden" -ErrorAction SilentlyContinue }
@@ -121,18 +128,18 @@ jobs:
       - name: Double-click it
         shell: pwsh
         run: |
-          $proof = "$env:RUNNER_TEMP\proof"; $exe = "$env:USERPROFILE\Downloads\AnomalyHunter.exe"
+          $proof = "$env:RUNNER_TEMP\proof"; $exe = "$env:USERPROFILE\Downloads\Arcas.exe"
           $hand = Start-Process powershell -PassThru -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
             "$env:GITHUB_WORKSPACE\tests\packaging\click-like-a-user.ps1", $proof, '8'
           $log = "$proof\clicks.log"   # (Select-String on a file not there yet stops the step, whatever -ErrorAction says)
           for ($i = 0; $i -lt 120 -and -not ((Test-Path $log) -and (Select-String -Quiet 'ready' $log)); $i++) { Start-Sleep -Milliseconds 500 }
           $t = [Diagnostics.Stopwatch]::StartNew()
           Start-Process explorer.exe -ArgumentList "`"$exe`""
-          $p = $null   # the first AnomalyHunter.exe from Downloads (one-file apps start a second copy of themselves)
+          $p = $null   # the first Arcas.exe from Downloads (one-file apps start a second copy of themselves)
           $tries = 1   # Windows' SmartScreen app sometimes never opens on a fresh runner (2026-10-15: 3 of ~10 runs), so
           while (-not $p -and $t.Elapsed.TotalSeconds -lt 300) {   # nothing starts and nothing asks: a person double-clicks again
             Start-Sleep -Milliseconds 500
-            $p = Get-Process AnomalyHunter -ErrorAction SilentlyContinue | Where-Object Path -eq $exe | Sort-Object StartTime | Select-Object -First 1
+            $p = Get-Process Arcas -ErrorAction SilentlyContinue | Where-Object Path -eq $exe | Sort-Object StartTime | Select-Object -First 1
             $asking = Get-Process CHXSmartScreen -ErrorAction SilentlyContinue | Where-Object MainWindowHandle -ne 0   # its box is up: the clicker answers it
             if (-not $p -and -not $asking -and $tries -lt 3 -and $t.Elapsed.TotalSeconds -gt 60 * $tries) {
               $tries++; "nothing on screen after $([int]$t.Elapsed.TotalSeconds) s - double-clicking again (try $tries)"
@@ -140,7 +147,7 @@ jobs:
             # still nothing after 3 double-clicks: the runner's SmartScreen is broken (2026-10-15, main too), not our app.
             # Start the file itself - no shell, so no prompt - and say loudly that the warning path went untested
             if (-not $p -and -not $asking -and $tries -eq 3 -and $t.Elapsed.TotalSeconds -gt 180) {
-              $tries++; "::warning::Windows never showed its SmartScreen box after 3 double-clicks - started AnomalyHunter.exe directly. The install, pane and uninstall are still tested; the 'Run anyway' step is NOT, this run."
+              $tries++; "::warning::Windows never showed its SmartScreen box after 3 double-clicks - started Arcas.exe directly. The install, pane and uninstall are still tested; the 'Run anyway' step is NOT, this run."
               $p = [Diagnostics.Process]::Start([Diagnostics.ProcessStartInfo]@{ FileName = $exe; UseShellExecute = $false }) } }
           if ($p) { $null = $p.Handle; $done = $p.WaitForExit(300000) }   # (a handle taken while it runs keeps its exit code)
           Start-Sleep 2; Stop-Process $hand -ErrorAction SilentlyContinue
@@ -157,9 +164,9 @@ jobs:
           $run = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run').AnomalyHunter
           $ca = Get-ChildItem Cert:\CurrentUser\Root | Where-Object Subject -match 'Anomaly Hunter local CA'
           $h = Invoke-RestMethod https://127.0.0.1:5055/health   # no certificate skipping: Windows trusts the engine now
-          "app copied:      $(Test-Path "$ah\AnomalyHunter.exe")"
+          "app copied:      $(Test-Path "$ah\Arcas.exe")"
           "start here:      $(Test-Path "$ah\Start here.xlsx") (the workbook Excel opens on: the 5 Add steps + a Practice sheet)"
-          $mark = $null; try { $mark = Get-Item "$ah\AnomalyHunter.exe" -Stream Zone.Identifier -ErrorAction Stop } catch { }
+          $mark = $null; try { $mark = Get-Item "$ah\Arcas.exe" -Stream Zone.Identifier -ErrorAction Stop } catch { }
           "internet mark:   $(if ($mark) { 'still on the installed copy - Windows would warn at every logon' } else { 'gone from the installed copy (no warning at logon)' })"
           if ($mark) { throw "the installed copy still carries the download's internet mark" }
           "Excel add-in:    $($cat.Url)\manifest.xml exists = $(Test-Path (Join-Path $cat.Url 'manifest.xml'))"
@@ -177,6 +184,60 @@ jobs:
           node run.mjs flow
           if ($LASTEXITCODE) { throw "pane flow failed" }
 
+      # An update over the old name (AH-101): a user's PC runs the last release made before the rename, its engine
+      # AnomalyHunter.exe. The new file, run over it, must stop that engine, remove the old exe, point the Run value at
+      # Arcas.exe and answer as the new version. It runs after the pane flow, so every check above still starts from a PC
+      # that never saw the app, and before the uninstall, which then removes an updated install.
+      - name: Update over the last release made before the rename (AnomalyHunter.exe)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ah = "$env:LOCALAPPDATA\AnomalyHunter"; $new = "$env:USERPROFILE\Downloads\Arcas.exe"; $proof = "$env:RUNNER_TEMP\proof\update"
+          # the newest release with AnomalyHunter.exe and no Arcas.exe: a release since the rename carries the new file
+          # under both names, so "the latest release" would test Arcas over Arcas
+          $tag = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" --jq '[.[] | select(any(.assets[]; .name == "AnomalyHunter.exe") and all(.assets[]; .name != "Arcas.exe"))][0].tag_name // empty'
+          if (-not $tag) { "::warning::No release made before the rename was found, so the update over AnomalyHunter.exe is NOT tested this run."; exit 0 }
+          gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern AnomalyHunter.exe --dir "$env:RUNNER_TEMP\old"
+          if ($LASTEXITCODE) { throw "could not download AnomalyHunter.exe from $tag" }
+          $old = "$env:RUNNER_TEMP\old\AnomalyHunter.exe"
+          function Run($exe, $command) {   # typed in a terminal (no internet-file warning), the user's hand on its dialogs
+            $log = "$proof\$command-$(Split-Path -Leaf $exe)\clicks.log"
+            $hand = Start-Process powershell -PassThru -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+              "$env:GITHUB_WORKSPACE\tests\packaging\click-like-a-user.ps1", (Split-Path $log), '6'
+            for ($i = 0; $i -lt 120 -and -not ((Test-Path $log) -and (Select-String -Quiet 'ready' $log)); $i++) { Start-Sleep -Milliseconds 500 }
+            $p = Start-Process $exe -ArgumentList $command -NoNewWindow -PassThru; $null = $p.Handle; $done = $p.WaitForExit(300000)
+            Start-Sleep 2; Stop-Process $hand -ErrorAction SilentlyContinue
+            Get-Content $log -ErrorAction SilentlyContinue
+            if (-not $done -or $p.ExitCode -ne 0) { Get-Content "$ah\server.log" -Tail 30 -ErrorAction SilentlyContinue; throw "$(Split-Path -Leaf $exe) $command did not finish (exit $($p.ExitCode))" }
+          }
+          Run $new 'uninstall'   # back to a PC without the app, then the old release on it, as a user's PC has it
+          Run $old 'install'
+          $h = Invoke-RestMethod https://127.0.0.1:5055/health
+          $was = Get-Process AnomalyHunter -ErrorAction SilentlyContinue | Where-Object Path -eq "$ah\AnomalyHunter.exe"
+          "old release $tag installed: engine $($h.version), $(@($was).Count) AnomalyHunter.exe process(es) from $ah"
+          if (-not $was -or $h.status -ne 'ok') { throw "the old release's engine is not running" }
+
+          Run $new 'install'
+          $h = $null
+          for ($i = 0; $i -lt 60; $i++) {
+            try { $h = Invoke-RestMethod https://127.0.0.1:5055/health } catch { $h = $null }
+            if ($h.version -like "v0.1.${{ github.run_number }} (*)") { break }
+            Start-Sleep 1 }
+          $left = Get-Process AnomalyHunter -ErrorAction SilentlyContinue
+          $engine = @(Get-Process Arcas -ErrorAction SilentlyContinue)
+          $run = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run').AnomalyHunter
+          "engine:          $($h | ConvertTo-Json -Compress)"
+          "processes:       Arcas.exe from $(($engine.Path | Sort-Object -Unique) -join ', '); AnomalyHunter.exe $(if ($left) { 'from ' + ($left.Path -join ', ') } else { 'none' })"
+          "old exe:         $(if (Test-Path "$ah\AnomalyHunter.exe") { 'still in ' + $ah } else { 'removed' })"
+          "starts at logon: $run"
+          if ($left) { throw "an AnomalyHunter.exe process still runs after the update" }
+          if (-not $engine -or @($engine | Where-Object Path -ne "$ah\Arcas.exe").Count) { throw "the engine is not Arcas.exe from $ah" }
+          if (Test-Path "$ah\AnomalyHunter.exe") { throw "the old exe is still installed" }
+          if ($run -ne "`"$ah\Arcas.exe`" serve") { throw "the Run value does not start Arcas.exe: $run" }
+          if ($h.version -notlike "v0.1.${{ github.run_number }} (*)") { throw "the engine answering is $($h.version), not this build" }
+          "updated from $tag to this build: one Arcas.exe engine, the old exe gone, the Run value on Arcas.exe"
+
       - name: Uninstall
         shell: pwsh
         run: |
@@ -184,16 +245,17 @@ jobs:
           $hand = Start-Process powershell -PassThru -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
             "$env:GITHUB_WORKSPACE\tests\packaging\click-like-a-user.ps1", $proof, '3'
           # typed in a terminal, as the README says (a terminal starts it directly: no internet-file warning)
-          $p = Start-Process "$env:USERPROFILE\Downloads\AnomalyHunter.exe" -ArgumentList 'uninstall' -NoNewWindow -PassThru; $done = $p.WaitForExit(120000)
+          $p = Start-Process "$env:USERPROFILE\Downloads\Arcas.exe" -ArgumentList 'uninstall' -NoNewWindow -PassThru; $done = $p.WaitForExit(120000)
           Start-Sleep 2; Stop-Process $hand -ErrorAction SilentlyContinue
           Get-Content "$proof\clicks.log" -ErrorAction SilentlyContinue
           if (-not $done -or $p.ExitCode -ne 0) { throw "uninstall did not finish (exit $($p.ExitCode))" }
           if (Test-Path 'HKCU:\Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{3f9a1c2e-7b4d-4e8a-9c61-5d2e8f0b7a13}') { throw "still listed in Excel" }
+          foreach ($f in 'Arcas.exe', 'AnomalyHunter.exe') { if (Test-Path "$env:LOCALAPPDATA\AnomalyHunter\$f") { throw "$f still installed" } }
           if ((Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run').AnomalyHunter) { throw "still starts at logon" }
           if (Get-ChildItem Cert:\CurrentUser\Root | Where-Object Subject -match 'Anomaly Hunter local CA') { throw "certificate still trusted" }
           $up = try { Invoke-RestMethod -SkipCertificateCheck -TimeoutSec 3 https://127.0.0.1:5055/health } catch { $null }
           if ($up) { throw "engine still running" }
-          "uninstalled: Excel listing, autostart, certificate and engine all gone"
+          "uninstalled: Excel listing, autostart, certificate, engine and both exe names all gone"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         if: always()
@@ -220,8 +282,11 @@ jobs:
           SHA: ${{ github.sha }}
           TAG: v0.1.${{ github.run_number }}
         run: |
-          sum=$(sha256sum dist/AnomalyHunter.exe | cut -d' ' -f1)
-          gh release create "$TAG" dist/AnomalyHunter.exe --repo "$REPO" --target "$SHA" --latest \
-            --title "Anomaly Hunter ${TAG#v}" \
-            --notes "Download AnomalyHunter.exe below and double-click it. A blue \"Windows protected your PC\" box appears: click More info, then Run anyway (some PCs ask \"Open File - Security Warning\" instead: click Run). Then click Yes on the certificate question. Tested on a fresh Windows PC before publishing. SHA-256: $sum. Code signing policy: https://ricepillow3000.github.io/excel-anomaly-hunter/#code-signing"
-          echo "published $TAG: https://github.com/$REPO/releases/latest/download/AnomalyHunter.exe ($sum)"
+          sum=$(sha256sum dist/Arcas.exe | cut -d' ' -f1)
+          # the same bytes under the old name too: every link made before the rename (AH-101: old READMEs, bookmarks,
+          # shared messages) ends in .../releases/latest/download/AnomalyHunter.exe, and keeps getting the newest app
+          cp dist/Arcas.exe dist/AnomalyHunter.exe
+          gh release create "$TAG" dist/Arcas.exe dist/AnomalyHunter.exe --repo "$REPO" --target "$SHA" --latest \
+            --title "Arcas ${TAG#v}" \
+            --notes "Download Arcas.exe below and double-click it. A blue \"Windows protected your PC\" box appears: click More info, then Run anyway (some PCs ask \"Open File - Security Warning\" instead: click Run). Then click Yes on the certificate question. Tested on a fresh Windows PC before publishing. SHA-256: $sum. Code signing policy: https://ricepillow3000.github.io/excel-anomaly-hunter/#code-signing. AnomalyHunter.exe is the same file under the app's old name, for links made before it was renamed Arcas."
+          echo "published $TAG: https://github.com/$REPO/releases/latest/download/Arcas.exe ($sum)"

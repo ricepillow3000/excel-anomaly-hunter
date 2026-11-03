@@ -65,7 +65,7 @@ assert.ok(/<code class="line" tabindex="0">/.test(html["index.html"]), "the Powe
   const text = sec.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/\s+/g, " ");
   assert.equal((/<h2\b[^>]*>([\s\S]*?)<\/h2>/.exec(sec) || [])[1], "Code signing policy", 'the code signing section\'s heading is not "Code signing policy"');
   assert.ok(text.includes("Free code signing provided by SignPath.io, certificate by SignPath Foundation"), "the code signing section lacks SignPath's attribution sentence");
-  assert.ok(/AnomalyHunter\.exe is not code-signed/.test(text), "the code signing section does not say the exe is not code-signed yet");
+  assert.ok(/Arcas\.exe is not code-signed/.test(text), "the code signing section does not say the exe is not code-signed yet");
   const sig = (/<dt>Signature<\/dt><dd>([\s\S]*?)<\/dd>/.exec(home) || [])[1] || "";
   assert.ok(/Not code-signed yet/.test(sig) && /<a href="#code-signing">Code signing policy<\/a>/.test(sig), "the download facts' Signature does not say not code-signed yet with a link to the code signing policy");
   for (const p of PAGES) assert.ok(/<footer[\s\S]*<a href="(index\.html)?#code-signing">Code signing policy<\/a>[\s\S]*<\/footer>/.test(html[p]), `${p}: the footer does not link the code signing policy`);
@@ -136,7 +136,8 @@ const browser = await chromium.launch({ args: ["--enable-unsafe-swiftshader"] })
   await Promise.race([said, new Promise((ok) => setTimeout(ok, 5000))]);
   await warm.close();
 }
-const release = { tag_name: "v0.1.102", published_at: "2026-10-20T05:15:43Z", assets: [{ name: "AnomalyHunter.exe", size: 81256476, digest: "sha256:" + "ab".repeat(32) }] };
+// a release since AH-101 carries the same file twice: Arcas.exe, and AnomalyHunter.exe for links posted before the rename
+const release = { tag_name: "v0.1.102", published_at: "2026-10-20T05:15:43Z", assets: ["Arcas.exe", "AnomalyHunter.exe"].map((name) => ({ name, size: 81256476, digest: "sha256:" + "ab".repeat(32) })) };
 const fallback = `<a href="${REPO}/releases/latest">shown on the release page</a>`;
 const json = (body, status = 200) => (r) => r.fulfill({ status, contentType: "application/json", body: typeof body === "string" ? body : JSON.stringify(body) });
 
@@ -230,7 +231,7 @@ for (const width of [1280, 390]) {
 // parts and the stage around it opaque and every part in place by the end of the page (AH-72's scroll motion must finish
 // there), and with no animation at all when motion is unwelcome
 const logo = (page) => page.evaluate(() => {
-  const l = document.querySelector("#download .logo"), b = document.querySelector('#download a[href$="AnomalyHunter.exe"]');
+  const l = document.querySelector("#download .logo"), b = document.querySelector('#download a[href$="Arcas.exe"]');
   const r = l.getBoundingClientRect(), q = b.getBoundingClientRect();
   const names = ["spear", "bar", "drape", "banner", "emblem"], part = (n) => l.querySelector(`[data-part="${n}"]`);
   const drawn = names.filter((n) => { const g = part(n), s = g && g.getBoundingClientRect();
@@ -870,8 +871,8 @@ console.log(`performance at 1440 x 900: FCP ${Math.round(perf.fcp)} ms, LCP ${Ma
 // GitHub's API down, rate-limited or answering junk: the release-page link stays, and nothing odd is shown
 const junk = {
   "a 403": json({ message: "API rate limit exceeded" }, 403), "no network": (r) => r.abort(), "not JSON": json("<html>"), "null": json("null"),
-  "assets not a list": json({ assets: "x" }), "a list of nulls": json({ assets: [null, 7] }), "an uppercase digest": json({ assets: [{ name: "AnomalyHunter.exe", size: 1, digest: "sha256:" + "A".repeat(64) }] }),
-  "markup in the digest": json({ tag_name: "<img src=x onerror=alert(1)>", assets: [{ name: "AnomalyHunter.exe", size: 1, digest: `sha256:${"a".repeat(64)}<img src=x>` }] }),
+  "assets not a list": json({ assets: "x" }), "a list of nulls": json({ assets: [null, 7] }), "an uppercase digest": json({ assets: [{ name: "Arcas.exe", size: 1, digest: "sha256:" + "A".repeat(64) }] }),
+  "markup in the digest": json({ tag_name: "<img src=x onerror=alert(1)>", assets: [{ name: "Arcas.exe", size: 1, digest: `sha256:${"a".repeat(64)}<img src=x>` }] }),
 };
 for (const [name, api] of Object.entries(junk)) {
   const t = await open("index.html", { api });
@@ -880,11 +881,21 @@ for (const [name, api] of Object.entries(junk)) {
   await done(t, `API ${name}`, [API]);
 }
 { // a good digest with odd neighbours: the hash shows, the rest only when it has the right shape (no "NaN MB")
-  const t = await open("index.html", { api: json({ tag_name: "<img src=x onerror=alert(1)>", published_at: 5, assets: [{ name: "AnomalyHunter.exe", size: "<b>", digest: "sha256:" + "c".repeat(64) }] }) });
+  const t = await open("index.html", { api: json({ tag_name: "<img src=x onerror=alert(1)>", published_at: 5, assets: [{ name: "Arcas.exe", size: "<b>", digest: "sha256:" + "c".repeat(64) }] }) });
   assert.equal(await t.page.$eval("#sha", (c) => c.innerHTML), "c".repeat(64));
   assert.equal(await t.page.textContent("#rel"), "Latest · free");
   assert.equal(await t.page.$$eval("#rel *, #sha *", (x) => x.length), 0);
   await done(t, "API odd neighbours", [API]);
+}
+// the exe's name (AH-101): Arcas.exe's checksum when the release has it, the old name's for a release made before the rename
+for (const [name, assets, sha] of [
+  ["a release made before the rename", [{ name: "AnomalyHunter.exe", size: 81256476, digest: "sha256:" + "d".repeat(64) }], "d".repeat(64)],
+  ["a release with both names", [{ name: "AnomalyHunter.exe", size: 1, digest: "sha256:" + "d".repeat(64) }, { name: "Arcas.exe", size: 81256476, digest: "sha256:" + "e".repeat(64) }], "e".repeat(64)],
+]) {
+  const t = await open("index.html", { api: json({ tag_name: "v0.1.90", assets }) });
+  assert.equal(await t.page.$eval("#sha", (c) => c.innerHTML), sha, name);
+  assert.equal(await t.page.textContent("#rel"), "v0.1.90 · 81 MB · free", name);
+  await done(t, `API ${name}`, [API]);
 }
 
 // the support form: nothing is sent; it builds a link to the repo's issue form with exactly what was typed
@@ -1142,8 +1153,8 @@ const press = async (p, sel) => { const b = await p.locator(sel).boundingBox(); 
     page: document.getElementById("page").dataset.page, current: document.querySelector('header a[aria-current="page"]').getAttribute("href"),
     desc: document.querySelector('meta[name="description"]').content, focus: document.activeElement.tagName + (document.activeElement.closest("#page") ? " in #page" : ""),
     brand: document.querySelector("header .brand").getAttribute("href"), notice: document.querySelector(".notice-bar a").getAttribute("href"), gl: !!document.getElementById("field") }));
-  assert.deepEqual(after, { marker: 1, title: "Anomaly Hunter Privacy", body: "privacy", mains: 1, page: "privacy", current: "privacy.html",
-    desc: after.desc.startsWith("What Anomaly Hunter keeps") ? after.desc : "(the home page's)", focus: "H1 in #page", brand: "index.html", notice: "index.html#download", gl: true }, "the move to privacy.html");
+  assert.deepEqual(after, { marker: 1, title: "Arcas Privacy", body: "privacy", mains: 1, page: "privacy", current: "privacy.html",
+    desc: after.desc.startsWith("What Arcas keeps") ? after.desc : "(the home page's)", focus: "H1 in #page", brand: "index.html", notice: "index.html#download", gl: true }, "the move to privacy.html");
   assert.equal(w.together, 2, "the new page did not go in while the old one was still there");
   assert.ok(w.both >= 3 && w.anims === 2, `the two pages did not move together (${w.both} frames with both, ${w.anims} moving at once)`);
   const whites = cast.frames.map(whiteShare);
@@ -1160,7 +1171,7 @@ const press = async (p, sel) => { const b = await p.locator(sel).boundingBox(); 
   await p.goBack();
   await p.waitForFunction(() => document.body.id === "home" && document.querySelectorAll("main").length === 1 && !document.documentElement.hasAttribute("data-moving"));
   const back = await p.evaluate(() => ({ marker: window.__marker, y: Math.round(scrollY), title: document.title, current: document.querySelector('header a[aria-current="page"]').getAttribute("href") }));
-  assert.ok(back.marker === 1 && Math.abs(back.y - 1200) <= 2 && back.title === "Excel Anomaly Hunter" && back.current === "index.html", `Back: ${JSON.stringify(back)}`);
+  assert.ok(back.marker === 1 && Math.abs(back.y - 1200) <= 2 && back.title === "Arcas" && back.current === "index.html", `Back: ${JSON.stringify(back)}`);
   // GitHub's answer is kept for the visit: no skeleton on the facts the second time (AH-89), nor on the sheet
   assert.deepEqual(await p.evaluate(() => [document.querySelector("dl.anchor").hasAttribute("data-loading"), document.getElementById("preview").hasAttribute("data-loading")]), [false, false], "a skeleton on a visit back");
   await p.waitForTimeout(1400);
@@ -1222,7 +1233,7 @@ const press = async (p, sel) => { const b = await p.locator(sel).boundingBox(); 
   await p.waitForURL((u) => u.pathname === "/privacy.html"); await settle(p); await p.waitForTimeout(300);
   await cast.stop();
   const w = await stopWatch(p);
-  assert.deepEqual([w.both, w.anims, await p.evaluate(() => [window.__marker, document.title, document.getAnimations().length])], [0, 0, [1, "Anomaly Hunter Privacy", 0]], "reduced motion: a slide");
+  assert.deepEqual([w.both, w.anims, await p.evaluate(() => [window.__marker, document.title, document.getAnimations().length])], [0, 0, [1, "Arcas Privacy", 0]], "reduced motion: a slide");
   assert.ok(atRest(await poses(p, `${HOOKED}, main`)), "reduced motion: something moved");
   assert.ok(Math.max(...cast.frames.map(whiteShare)) <= 0.02, "reduced motion: a white frame");
   await done(t, "page transitions with reduced motion", [API]);
@@ -1234,7 +1245,7 @@ const press = async (p, sel) => { const b = await p.locator(sel).boundingBox(); 
   await p.route("**/privacy.html", (r) => (r.request().resourceType() === "fetch" ? r.abort() : r.continue()));
   await p.click('header a[href="privacy.html"]');
   await p.waitForURL((u) => u.pathname === "/privacy.html"); await p.waitForLoadState("load");
-  assert.deepEqual(await p.evaluate(() => [window.__marker, document.title, document.getElementById("page").dataset.page]), [undefined, "Anomaly Hunter Privacy", "privacy"], "a failed fetch did not fall back to a normal navigation");
+  assert.deepEqual(await p.evaluate(() => [window.__marker, document.title, document.getElementById("page").dataset.page]), [undefined, "Arcas Privacy", "privacy"], "a failed fetch did not fall back to a normal navigation");
   await done(t, "page transition with a failed fetch", [API]);
 }
 console.log(`page transitions: ${measured.moving} ms of motion on screen (${measured.swap} ms in the page, ${measured.duration} ms from the click), both pages in ${measured.both} of ${measured.ofFrames} frames, ` +

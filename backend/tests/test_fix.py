@@ -420,7 +420,7 @@ def test_both_privacy_pages_name_every_place_data_goes_and_every_file_the_app_ke
     from pathlib import Path
     root = Path(__file__).resolve().parents[2]
     places = ("Google", "Cloudflare", "Anthropic", "GitHub", "Microsoft")
-    files = ("AnomalyHunter.exe", "server.log", "ai-cache", "gemini-key.txt", "invite-code.txt", "cert.pem",
+    files = ("Arcas.exe", "server.log", "ai-cache", "gemini-key.txt", "invite-code.txt", "cert.pem",
              "manifest.xml", "Start here.xlsx", "anomaly-hunter.pbids", "latest-scan.csv", "anomaly-hunter-flags.pbids",
              "latest-flags.csv")
     # what the pane keeps inside the workbook too: Fixed / Dismissed outlive the pane as a code per row (2026-10-20)

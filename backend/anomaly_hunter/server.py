@@ -42,7 +42,7 @@ ORIGINS = {None, f"https://127.0.0.1:{PORT}", f"https://localhost:{PORT}"}  # No
 CSP = ("default-src 'self'; script-src 'self' https://appsforoffice.microsoft.com; object-src 'none'; "
        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 # http.server writes its own "Server: Werkzeug/x Python/y" before any app header: no versions to look up CVEs for
-WSGIRequestHandler.version_string = lambda self: "Anomaly Hunter"
+WSGIRequestHandler.version_string = lambda self: "Arcas"
 # Werkzeug logged every request line in full, refused or not: a 60 KB URL wrote 60 KB, about 600 MB a minute at flood
 # rate until a restart (stress test 2026-10-16). Its warnings and errors stay; the engine's own errors go to app.logger
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
@@ -418,7 +418,7 @@ def main():
     if "--cert" in sys.argv:  # installer: exit 3 = new chain written, trust ca.pem
         sys.exit(3 if make_cert() else 0)
     if _already_running():
-        print("Anomaly Hunter engine already running.")
+        print("Arcas engine already running.")
         return
     HOME.mkdir(parents=True, exist_ok=True)
     if sys.stderr is None:  # pythonw (autostart) has no console: fresh log file each start

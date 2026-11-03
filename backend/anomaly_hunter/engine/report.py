@@ -29,7 +29,7 @@ def write_report(df, rows, status, out_path, limits_path, warnings, fair=None):
             for cell in data[data.max_row]:
                 cell.fill = FILL[r["severity"]]
             # ponytail: one note on Reason cell, not one per triggering cell
-            data.cell(data.max_row, len(head)).comment = Comment(r["reason"], "Anomaly Hunter")
+            data.cell(data.max_row, len(head)).comment = Comment(r["reason"], "Arcas")
 
     bad = wb.create_sheet("Anomalies")
     bad.append(head + ["Row"])

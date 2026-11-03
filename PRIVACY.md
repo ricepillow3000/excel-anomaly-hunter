@@ -1,6 +1,6 @@
 # What leaves your PC
 
-Anomaly Hunter is a free Excel add-in made by one person, John, in his spare time. It is not a company, and it is not
+Arcas is a free Excel add-in made by one person, John, in his spare time. It is not a company, and it is not
 affiliated with Microsoft, Google, Cloudflare, Anthropic or GitHub. This file and the pane's Privacy page
 (`frontend/privacy.html`) say the same thing; both describe what the code does.
 
@@ -14,23 +14,23 @@ A scan runs on your PC and sends nothing to the internet. Your sheet's data leav
 
   | File | What it holds |
   |---|---|
-  | `AnomalyHunter.exe` | a copy of the app, so the engine can start when you log on |
+  | `Arcas.exe` | a copy of the app, so the engine can start when you log on |
   | `server.log` | the engine's messages and errors; it starts empty each time the engine starts; an error can quote a value from your sheet |
   | `ai-cache` | up to 500 AI answers, so the same question isn't asked twice; an answer can quote your cells |
   | `gemini-key.txt`, `invite-code.txt` | your Google AI key or invite code, if you added one |
   | `ca.pem`, `cert.pem`, `key.pem` | the certificate the engine uses for HTTPS on this PC |
-  | `addin\manifest.xml` | the file that lists Anomaly Hunter in Excel |
+  | `addin\manifest.xml` | the file that lists Arcas in Excel |
   | `Start here.xlsx` | the practice workbook |
   | `anomaly-hunter.pbids`, `anomaly-hunter-flags.pbids` | shortcuts that open latest-scan.csv and latest-flags.csv in Power BI; they hold only those files' paths |
   | `latest-scan.csv` | **only if you turn on "Save each scan for Power BI"** (off unless you turn it on): a plain-text copy of every cell of the last sheet you scanned, with each row's number, result and suggested fix. Each scan replaces it; after you turn the option off, the next scan deletes it |
   | `latest-flags.csv` | **only with the same option on**: the sheet's name, the time of the scan, and the number, result, suggested fix and status (Open, Fixed or Dismissed) of each flagged row and each row you fixed or dismissed (results and fixes can quote your cells). Kept and deleted together with latest-scan.csv |
-- If you installed AnomalyHunter.exe, it unpacks itself into a temporary folder in `%TEMP%` each time it starts; if the engine is
+- If you installed Arcas.exe, it unpacks itself into a temporary folder in `%TEMP%` each time it starts; if the engine is
   stopped by force, that folder can be left behind. Install removes the "downloaded from the internet" mark from its
   own copy of the app, so Windows doesn't warn at every logon.
 - An invite kit (shared by John by a Google Drive or OneDrive link) runs from its own folder: `install.bat`
   downloads the Python packages it needs from PyPI, the Python package site (PyPI sees your IP address), and keeps
   them in a `.venv` folder there, with the Power BI shortcuts in its `powerbi` folder. It copies the kit's invite code
-  into the folder above. A kit has no AnomalyHunter.exe, `addin\manifest.xml` or Start here.xlsx: Excel lists the
+  into the folder above. A kit has no Arcas.exe, `addin\manifest.xml` or Start here.xlsx: Excel lists the
   add-in from the kit's `frontend` folder. Uninstall a kit with `install.bat /u`, then delete the kit folder.
 - Your workbook keeps the limits you changed, the strength slider, a list of the last auto-fixes with their old
   values and a copy of each fixed row (so Undo works), a short code for each row you fixed or dismissed (worked out
@@ -86,7 +86,7 @@ can be charged by Google for what AI help uses; without billing, the free tier c
   saved in the open workbook: the limits, the strength slider, the auto-fix list with its old values, the code of each
   row you fixed or dismissed, and the setting that opens the pane with the file. It changes no cell. Save the workbook
   afterwards to keep the change in the file.
-- To uninstall, run `"%LOCALAPPDATA%\AnomalyHunter\AnomalyHunter.exe" uninstall`. It removes the startup entry, the
+- To uninstall, run `"%LOCALAPPDATA%\AnomalyHunter\Arcas.exe" uninstall`. It removes the startup entry, the
   add-in listing, the certificate and the files in that folder, except the app file itself (delete it afterwards). It
   also deletes Excel's add-in cache (the Wef folder), so other web add-ins may need to be added again and may forget
   their settings. It never touches your workbooks, so settings a scan saved inside a workbook stay there until you use
@@ -96,7 +96,7 @@ can be charged by Google for what AI help uses; without billing, the free tier c
   may remain. John holds no other data about you.
 
 ## No warranty, changes, contact
-Anomaly Hunter is free and comes with no warranty. It can miss mistakes and flag correct values; check important data
+Arcas is free and comes with no warranty. It can miss mistakes and flag correct values; check important data
 yourself. Its code is open source under the MIT License ([LICENSE](LICENSE)). When this file changes, its history is on GitHub.
 The invite relay is for help with Excel fixes only. John can turn off any invite at any time, each invite has a daily
 cap (as set today: 10 AI calls per invite and 20 for everyone together a day), and there is no promise it is up.
