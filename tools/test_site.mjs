@@ -56,6 +56,20 @@ for (const p of PAGES) {
 }
 // a box that scrolls sideways must take keyboard focus, or a keyboard user can't read its end
 assert.ok(/<code class="line" tabindex="0">/.test(html["index.html"]), "the PowerShell line scrolls but can't be focused");
+// SignPath's free open-source signing (AH-100) asks for "Code signing policy" on the home and download pages, with the
+// sentence its releases will carry; until the exe is signed the page must say it is not, never claim a signature
+{
+  const home = html["index.html"];
+  const sec = (/<section\b[^>]*\sid="code-signing"[^>]*>([\s\S]*?)<\/section>/.exec(home) || [])[1];
+  assert.ok(sec, 'the home page has no section id="code-signing"');
+  const text = sec.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/\s+/g, " ");
+  assert.equal((/<h2\b[^>]*>([\s\S]*?)<\/h2>/.exec(sec) || [])[1], "Code signing policy", 'the code signing section\'s heading is not "Code signing policy"');
+  assert.ok(text.includes("Free code signing provided by SignPath.io, certificate by SignPath Foundation"), "the code signing section lacks SignPath's attribution sentence");
+  assert.ok(/AnomalyHunter\.exe is not code-signed/.test(text), "the code signing section does not say the exe is not code-signed yet");
+  const sig = (/<dt>Signature<\/dt><dd>([\s\S]*?)<\/dd>/.exec(home) || [])[1] || "";
+  assert.ok(/Not code-signed yet/.test(sig) && /<a href="#code-signing">Code signing policy<\/a>/.test(sig), "the download facts' Signature does not say not code-signed yet with a link to the code signing policy");
+  for (const p of PAGES) assert.ok(/<footer[\s\S]*<a href="(index\.html)?#code-signing">Code signing policy<\/a>[\s\S]*<\/footer>/.test(html[p]), `${p}: the footer does not link the code signing policy`);
+}
 
 // motion (AH-83): content rises in as a .reveal-item, never scrubbed by the scroll (the old data-scrub hooks are gone), and
 // every group of them that cascades is marked data-reveal-group
