@@ -98,7 +98,7 @@ def test_a_scan_never_sends_anything_to_google_even_with_a_key_saved(monkeypatch
 
 def test_safe_headers_on_every_answer():
     c = APP.test_client()
-    for r in (c.get("/health"), c.get("/taskpane.html"), c.get("/assets/crest-16.png"), c.post("/scan", data="x"), c.get("/nope"),
+    for r in (c.get("/health"), c.get("/taskpane.html"), c.get("/assets/crest2-16.png"), c.post("/scan", data="x"), c.get("/nope"),
               c.options("/scan", headers={"Origin": "https://evil.example"})):
         assert r.headers["X-Content-Type-Options"] == "nosniff"
         # AH-87 audit: a link out of the pane (Google's key page, the website) never carries the engine's address or path
