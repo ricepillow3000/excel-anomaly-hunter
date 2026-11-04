@@ -1,5 +1,5 @@
 @echo off
-rem Arcas installer. Per user, no admin. Double-click = install or repair. "install.bat /u" = uninstall.
+rem Arcas installer. Per user, no elevation, but the account must be an administrator (the C$ share below). Double-click = install or repair. "install.bat /u" = uninstall.
 rem Result: Arcas listed in Excel's Add-ins (Shared Folder); engine starts hidden at every logon.
 setlocal
 cd /d "%~dp0"
@@ -43,7 +43,7 @@ rem Catalogs must be a share path, so use this PC's own admin share: \\localhost
 reg delete "%DEV%" /v %ID% /f >nul 2>&1
 reg delete "%DEV%\%ID%" /f >nul 2>&1
 set "UNC=\\localhost\%P:~0,1%$%P:~2%"
-if not exist "%UNC%\manifest.xml" (echo Cannot reach %UNC% - the C$ admin share is off on this PC. & pause & exit /b 1)
+if not exist "%UNC%\manifest.xml" (echo Cannot reach %UNC%: this Windows account isn't an administrator on this PC, or the C$ admin share is off. & pause & exit /b 1)
 reg add "%CAT%" /v Id /t REG_SZ /d "{3f9a1c2e-7b4d-4e8a-9c61-5d2e8f0b7a13}" /f >nul
 reg add "%CAT%" /v Url /t REG_SZ /d "%UNC%" /f >nul
 reg add "%CAT%" /v Flags /t REG_DWORD /d 1 /f >nul

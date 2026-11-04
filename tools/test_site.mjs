@@ -146,6 +146,20 @@ for (const f of SCRIPTS) {
   assert.ok(!/readPixels|getImageData|toDataURL/.test(src), `${f}: reads pixels back`);
   for (const url of src.match(/https?:\/\/[^"'`\s)]+/g) || []) assert.ok(url === API || url.startsWith(REPO + "/issues/new"), `${f}: talks to ${url}`);
 }
+// AH-129: what the home page claims holds. The install lists the add-in through \\localhost\C$, an admin share, so a
+// standard account cannot install it; the fallback size went stale (81 MB for a 75 MB file) while home.js writes the
+// live one; the hero promised that nothing changes until you accept it, but Auto-fix (off at first) writes by itself
+{
+  const home = html["index.html"], said = (re) => ((re.exec(home) || [])[1] || "").replace(/<[^>]+>/g, "");
+  const scope = said(/<dt>Install scope<\/dt><dd>([\s\S]*?)<\/dd>/);
+  assert.ok(!/no administrator rights/i.test(home) && /must be an administrator on this PC/.test(scope), `the install scope says "${scope}"`);
+  assert.ok(!/\d\s*MB/.test(said(/<dd id="rel">([\s\S]*?)<\/dd>/)), "the release line's fallback names a size that goes stale (home.js writes the live one)");
+  const hero = said(/<section class="hero"[\s\S]*?<p>([\s\S]*?)<\/p>/);
+  assert.ok(/until you accept it/.test(hero) && /Auto-fix/.test(hero), `the hero leaves out Auto-fix: "${hero}"`);
+  assert.ok(/further down/.test(said(/<span class="note">([\s\S]*?)<\/span>/)) && !/at the end of the page/.test(home), "the hero note says the download is at the end of the page");
+  const version = (/<input id="version"[^>]*placeholder="([^"]*)"/.exec(html["support.html"]) || [])[1];
+  assert.ok(version !== undefined && !/\d/.test(version), `the support form's version placeholder names a version that goes stale: "${version}"`);
+}
 console.log(`website static check passed (${PAGES.length} pages, ${SCRIPTS.length} scripts)`);
 if (!process.argv.includes("--browser")) process.exit(0);
 
@@ -421,10 +435,16 @@ const onTop = (page) => page.evaluate(async () => {
   assert.equal(await key(), "Probably wrong: 0 | Worth a check: 4", "the key after the fixes");
   await p.keyboard.press("ArrowRight"); assert.equal((await state()).focus, "t-found");
   await p.keyboard.press("ArrowLeft"); assert.equal((await state()).focus, "t-clean");
-  await p.click('.typology button[data-kind="label"]'); // a filter brings the findings back
-  assert.equal((await state()).state, "found");
+  // a filter on After fixes filters the corrected sheet, with the counts it shows there: "Temporal outliers 4" jumped
+  // back to the findings and lit 5 rows, row 22 among them (AH-129)
+  const litIn = (id) => p.$$eval(`#${id} .grid tbody tr:not(.skip)`, (rs) => rs.filter((r) => getComputedStyle(r).opacity === "1").map((r) => r.querySelector("th").textContent).join());
+  await p.click('.typology button[data-kind="time"]');
+  assert.deepEqual([(await state()).state, (await state()).counts, await litIn("p-clean")], ["clean", "4 0 0 0 4", "5,21,41,57"], "a filter on After fixes");
+  await p.click('.typology button[data-kind="label"]'); assert.equal(await litIn("p-clean"), "", "the label filter on After fixes");
+  assert.equal(await key(), "Probably wrong: 0 | Worth a check: 4", "the key stays the corrected sheet's");
+  await p.click("#t-found"); // the filter carries over to the findings
   assert.equal(await key(), "Probably wrong: 3 | Worth a check: 4", "the key back on the findings");
-  const lit = () => p.$$eval("#p-found .grid tbody tr:not(.skip)", (rs) => rs.filter((r) => getComputedStyle(r).opacity === "1").map((r) => r.querySelector("th").textContent).join());
+  const lit = () => litIn("p-found");
   assert.equal(await lit(), "31");
   await p.click('.typology button[data-kind="time"]'); assert.equal(await lit(), "5,21,22,41,57");
   await p.click('.typology button[data-kind="all"]');
@@ -574,7 +594,7 @@ for (const [name, api, sha] of [["a good answer", json(release), "ab".repeat(32)
   await p.waitForTimeout(400);
   const pending = await p.evaluate(() => ({ on: document.querySelector("dl.anchor").hasAttribute("data-loading"), sha: document.getElementById("sha").innerHTML, rel: document.getElementById("rel").innerHTML,
     bar: getComputedStyle(document.getElementById("sha"), "::after").content, color: getComputedStyle(document.getElementById("rel")).color }));
-  assert.deepEqual(pending, { on: true, sha: fallback, rel: "Latest, about 81 MB, free", bar: '""', color: "rgba(0, 0, 0, 0)" }, `API ${name}: the facts while the answer is on its way`);
+  assert.deepEqual(pending, { on: true, sha: fallback, rel: "Latest, free", bar: '""', color: "rgba(0, 0, 0, 0)" }, `API ${name}: the facts while the answer is on its way`);
   await p.waitForFunction(() => window.__dl.off > 0, null, { timeout: 4000 });
   const m = await p.evaluate(() => window.__dl);
   assert.ok(m.off - m.on >= 1150, `API ${name}: the skeleton went before the answer came (${Math.round(m.off - m.on)} ms)`);
@@ -1025,7 +1045,7 @@ const junk = {
 for (const [name, api] of Object.entries(junk)) {
   const t = await open("index.html", { api });
   assert.equal(await t.page.$eval("#sha", (c) => c.innerHTML), fallback, `API ${name}: the checksum fallback is gone`);
-  assert.equal(await t.page.textContent("#rel"), "Latest, about 81 MB, free", `API ${name}`);
+  assert.equal(await t.page.textContent("#rel"), "Latest, free", `API ${name}`);
   await done(t, `API ${name}`, [API]);
 }
 { // a good digest with odd neighbours: the hash shows, the rest only when it has the right shape (no "NaN MB")

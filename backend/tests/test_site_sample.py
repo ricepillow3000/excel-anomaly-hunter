@@ -7,12 +7,14 @@ on which the engine still lists 4 rows worth a check. This test rebuilds the she
 (POST /scan, strength 5, dates as yyyy-mm-dd) and reads the page back cell by cell, word by word."""
 import datetime
 import json
+import math
 import re
 import shutil
 import subprocess
 from html.parser import HTMLParser
 from pathlib import Path
 
+from anomaly_hunter.engine.detectors import CYCLES
 from anomaly_hunter.server import create_app
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -245,13 +247,16 @@ def test_the_scanning_tab_shows_the_panes_own_progress_words_for_this_sheet():
     assert [li.text() for li in steps[:2]] == [first, second(n)]
     assert steps[2].text() == f"{auto} only with Auto-fix on" and steps[2].one("span", cls="small").text() == "only with Auto-fix on"
     assert ">Auto-fix (optional)</summary>" in (ROOT / "frontend/taskpane.html").read_text(encoding="utf-8")
-    assert panel.one("p", cls="ticker").text() == f"{pct} 0%"
-    # the ticker's words (site/home.js STAGES): step 1 at a whole percent, then step 2 for this sheet, in that order
+    # the ticker's words (site/home.js STAGES): what the pane shows for this sheet, in its order. Step 1 as it starts, then
+    # step 1 once after each slice it reads (frontend/services/excel.js readSheet: READ_CELLS cells a slice, the header
+    # row read too), then step 2. It showed 0% and 40%: a sheet of 305 cells is read in one slice, so the pane says 100%
     home = (ROOT / "site/home.js").read_text(encoding="utf-8")
     stages = json.loads(re.search(r"const STAGES = (\[[^\]]*\]);", home)[1])
-    assert stages[0] == f"{pct} 0%" and stages[-1] == second(n)
-    shown = [int(re.fullmatch(re.escape(pct) + r" (\d+)%", x)[1]) for x in stages[:-1]]
-    assert shown == sorted(shown) and 0 <= shown[0] and shown[-1] <= 100
+    cells = int(re.search(r"export const READ_CELLS = (\d+);", (ROOT / "frontend/constants/index.js").read_text(encoding="utf-8"))[1])
+    total, step = n + 1, max(1, cells // len(COLUMNS))
+    slices = [f"{pct} {math.floor(100 * min(k + step, total) / total + 0.5)}%" for k in range(0, total, step)]
+    assert stages == [first, *slices, second(n)]
+    assert panel.one("p", cls="ticker").text() == stages[0]
 
 
 def test_every_finding_on_the_website_says_what_the_pane_says_and_offers_its_fix():
@@ -298,6 +303,13 @@ def test_every_finding_on_the_website_says_what_the_pane_says_and_offers_its_fix
             assert not rec["changes"] and dl["What to check"] == rec["explanation"], f"row {n}: {dl}"
             m = re.fullmatch(r"Total (\S+) on (\S+), a sharp jump from the dates around it", dl["Found"])
             assert float(m[1]) == row[4] and m[2] == row[0] and f"Total jumped sharply near {row[0]}" in said
+            # ...and what is behind it: these four are honest rows, the peaks of the sample's own price cycle (a flat
+            # UnitCost gives no flag at all), which the series check does not take out (it knows 7, 12, 24, 52, 168)
+            m = re.fullmatch(r"UnitCost (\S+): the price peaks every (\d+) days, and Total jumps with it", dl["Behind it"])
+            costs = [x[3] for x in rows]
+            at = [k for k, c in enumerate(costs) if c == float(m[1])]
+            assert float(m[1]) == row[3] == max(costs) and {b - a for a, b in zip(at, at[1:])} == {int(m[2])}, dl["Behind it"]
+            assert int(m[2]) not in CYCLES
     # every detail box belongs to a flagged row, and every flagged row has one
     assert {int(m.attrs["id"][1:]) for m in ws.all("div", cls="matrix")} == set(flagged)
 
@@ -340,6 +352,8 @@ def test_the_after_fixes_tab_says_what_the_pane_says_once_the_three_fixes_are_in
         ring = {head[k + 1] for k, td in enumerate(tds[:5]) if "q" in td.classes() or "flag" in td.classes()}
         assert ring == (set(r["cells"]) if r else set()), f"after, row {n}: outlined {ring}, the pane colours {r and r['cells']}"
         assert not r or r["severity"] == "Low" and all("q" in td.classes() for td in tds[:5] if head[tds.index(td) + 1] in r["cells"])
+        # the filters filter these rows too, by the after-fixes counts (a filter here jumped back to the findings, AH-129)
+        assert set((tr.attrs.get("data-kind") or "").split()) == (kinds(r["reason"]) if r else set()), f"after, row {n}: data-kind"
         why = tds[5].text()
         if r:
             assert why and why in plain_reason(r["reason"]), f"after, row {n}: '{why}'"
@@ -365,6 +379,12 @@ def test_the_checks_table_says_what_the_sample_shows_or_that_it_has_none():
     table = root.one("table", cls="checks-table")
     assert [th.text() for th in table.one("thead").all("th")] == ["Check", "What it catches", "In the sample above"]
     checks = {tr.one("th").text(): tr.one("td", cls="in-sample") for tr in table.one("tbody").all("tr")}
+    what = {tr.one("th").text(): tr.all("td")[0].text() for tr in table.one("tbody").all("tr")}
+    # the cycles the series check leaves alone, named as it holds them (detectors.CYCLES) and no other: the row said
+    # "Repeating cycles are left alone" over a sample whose four Temporal flags are a 4-day price cycle's peaks
+    m = re.search(r"a cycle of ([\d, ]+ or \d+) rows", what["Temporal"])
+    assert m and [int(x) for x in re.findall(r"\d+", m[1])] == list(CYCLES), what["Temporal"]
+    assert "Repeating cycles" not in what["Temporal"]
     assert list(checks) == ["Reconciliation", "Keying errors", "Consistency", "Temporal", "Completeness", "Plausibility", "Fairness", "Ask AI (optional)"]
     assert root.one("p", cls="fact").text() == f"{len(checks)} checks · {len(flagged)} rows flagged in the sample above"
     kind = {"Reconciliation": "recon", "Keying errors": "keying", "Consistency": "label", "Temporal": "time"}
@@ -382,6 +402,8 @@ def test_the_checks_table_says_what_the_sample_shows_or_that_it_has_none():
     assert eg == f"{js(row[4])} ÷ {js(row[3])} = {js(r['likely']['Units'])}" and js(round(row[4] / row[3], 9)) == js(r["likely"]["Units"])
     n, row, r, eg = checks["Keying errors"]
     assert eg == f"Units {row[2]}, usual limit {js(body['limits']['Units'][3])}" and f"Units weird limit is {js(body['limits']['Units'][3])}; this is {row[2]}" in r["reason"]
+    # the example is a value past its column's usual limit, not a x10, a percent or a sign: the words must cover it
+    assert "a figure far past its column's usual range" in what["Keying errors"], what["Keying errors"]
     n, row, r, eg = checks["Consistency"]
     assert eg == f'"{row[1]}" to "{r["likely"]["Region"]}"'
     n, row, r, eg = checks["Temporal"]
@@ -399,6 +421,16 @@ def test_the_checks_table_says_what_the_sample_shows_or_that_it_has_none():
     # the rest are general forms on another sheet, not claims about this one (a change here is a change to re-check by hand)
     assert [checks[k].one("span", cls="other-sheet").text() for k in ("Completeness", "Plausibility", "Ask AI (optional)")] == [
         "On another sheet: #N/A, a repeated row", "On another sheet: Month 13, 99999", 'A request: "Use the usual spelling"']
+    # ...and those other-sheet examples are the engine's too: a small sheet with each one planted gets each one flagged
+    # for it (they were only words pinned here, AH-129)
+    cols, other = ["OrderID", "Month", "Region", "Units", "Total"], []
+    for k in range(60):
+        u = 40 + (k * 7) % 23
+        other.append([f"A{1000 + k}", 1 + k % 12, ["East", "West", "Central"][k % 3], u, round(u * 2.5 + (k * 13) % 7, 2)])
+    other[9][3], other[20], other[30][1], other[40][4] = "#N/A", list(other[19]), 13, 99999
+    said = {i + 2: r["reason"] for i, r in enumerate(APP.post("/scan", json={"columns": cols, "rows": other, "strength": 5}).get_json()["rows"]) if r["severity"]}
+    for n, words in ((11, "Excel error #N/A in Units"), (22, "Duplicate of row 21"), (32, "Month 13 is outside what Month can be"), (42, "Total 99999 looks like a code")):
+        assert words in said.get(n, ""), f"row {n}: {said.get(n)}"
 
 
 def test_the_python_port_of_the_panes_words_matches_the_pane():

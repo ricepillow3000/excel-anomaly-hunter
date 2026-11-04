@@ -211,8 +211,9 @@ table.grid { width: 100%; border-collapse: collapse; font: 500 var(--fs--1)/1.3 
 .grid td:is(.flag, .q):hover::before { opacity: 1; }
 .grid td.why { text-align: left; color: var(--ink-2); }
 .grid td.why b { color: var(--ink); }
-.grid tr[data-kind] { cursor: pointer; }
-.grid tr[data-kind]:hover td:not(.flag) { background: var(--paper); }
+/* only a finding opens a detail box: an After fixes row carries data-kind for the filters alone */
+#p-found .grid tr[data-kind] { cursor: pointer; }
+#p-found .grid tr[data-kind]:hover td:not(.flag) { background: var(--paper); }
 .rowbtn { width: 100%; min-height: 36px; font: 800 var(--fs--1)/1 var(--sans); color: var(--ink); background: none; border: 0; border-radius: 0; cursor: pointer;
   text-decoration: underline; text-decoration-color: var(--wine); text-decoration-thickness: 2px; text-underline-offset: 4px; font-variant-numeric: tabular-nums; }
 .rowbtn[aria-expanded="true"] { background: var(--ink); color: var(--paper); text-decoration: none; }

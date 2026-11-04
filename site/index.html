@@ -35,9 +35,9 @@
     <div class="wrap cols">
       <h1 class="hero-head" id="hero-title" data-enter="left">Find the error <em>before</em> it reaches the board</h1>
       <div class="hero-copy" data-enter="left">
-        <p>Arcas reads every row of an Excel sheet on your own PC, flags the figures that don't reconcile, explains each one in a sentence and proposes the correction. Nothing changes until you accept it.</p>
+        <p>Arcas reads every row of an Excel sheet on your own PC, flags the figures that don't reconcile, explains each one in a sentence and proposes the correction. Nothing changes until you accept it, or until you turn on Auto-fix, which is off at first.</p>
         <a class="btn btn-ghost" href="#preview" data-glide="frame">See a sample scan</a>
-        <span class="note">Free · Windows with desktop Excel · <a href="#download">download and checksum</a> at the end of the page</span>
+        <span class="note">Free · Windows with desktop Excel · <a href="#download">download and checksum</a> further down</span>
       </div>
 
       <!-- The engine's real result on this sample sheet (60 orders, 3 planted errors): 3 probably wrong, 4 worth a check. 13 of its
@@ -130,6 +130,7 @@
                   <dt>Check</dt><dd>Temporal outlier</dd>
                   <dt>Found</dt><dd>Total 304.39 on 2026-01-09, a sharp jump from the dates around it</dd>
                   <dt>What to check</dt><dd>Nothing here is clearly broken, but the values are unusual together. Check them against the source; if they're right, leave them.</dd>
+                  <dt>Behind it</dt><dd>UnitCost 4.99: the price peaks every 4 days, and Total jumps with it</dd>
                 </dl>
                 <p class="m-said">In the pane: "Total jumped sharply near 2026-01-09"</p>
               </div>
@@ -139,6 +140,7 @@
                   <dt>Check</dt><dd>Temporal outlier</dd>
                   <dt>Found</dt><dd>Total 289.42 on 2026-01-25, a sharp jump from the dates around it</dd>
                   <dt>What to check</dt><dd>Nothing here is clearly broken, but the values are unusual together. Check them against the source; if they're right, leave them.</dd>
+                  <dt>Behind it</dt><dd>UnitCost 4.99: the price peaks every 4 days, and Total jumps with it</dd>
                 </dl>
                 <p class="m-said">In the pane: "Total jumped sharply near 2026-01-25"</p>
               </div>
@@ -148,6 +150,7 @@
                   <dt>Check</dt><dd>Temporal outlier</dd>
                   <dt>Found</dt><dd>Total 299.40 on 2026-02-14, a sharp jump from the dates around it</dd>
                   <dt>What to check</dt><dd>Nothing here is clearly broken, but the values are unusual together. Check them against the source; if they're right, leave them.</dd>
+                  <dt>Behind it</dt><dd>UnitCost 4.99: the price peaks every 4 days, and Total jumps with it</dd>
                 </dl>
                 <p class="m-said">In the pane: "Total jumped sharply near 2026-02-14"</p>
               </div>
@@ -157,6 +160,7 @@
                   <dt>Check</dt><dd>Temporal outlier</dd>
                   <dt>Found</dt><dd>Total 284.43 on 2026-03-02, a sharp jump from the dates around it</dd>
                   <dt>What to check</dt><dd>Nothing here is clearly broken, but the values are unusual together. Check them against the source; if they're right, leave them.</dd>
+                  <dt>Behind it</dt><dd>UnitCost 4.99: the price peaks every 4 days, and Total jumps with it</dd>
                 </dl>
                 <p class="m-said">In the pane: "Total jumped sharply near 2026-03-02"</p>
               </div>
@@ -166,7 +170,7 @@
             <div class="panel" id="p-busy" role="tabpanel" aria-labelledby="t-busy" hidden>
               <div class="busy">
                 <div class="meter" aria-hidden="true"><span></span></div>
-                <p class="ticker" id="ticker">Step 1 of 3: reading your sheet… 0%</p>
+                <p class="ticker" id="ticker">Step 1 of 3: reading your sheet…</p>
                 <ol class="stages">
                   <li>Step 1 of 3: reading your sheet…</li>
                   <li>Step 2 of 3: checking 60 rows…</li>
@@ -184,23 +188,23 @@
                   <thead><tr><th scope="col">Row</th><th scope="col">OrderDate</th><th scope="col">Region</th><th scope="col">Units</th><th scope="col">UnitCost</th><th scope="col">Total</th><th scope="col">Finding</th></tr></thead>
                   <tbody>
                     <tr><th scope="row">4</th><td>2026-01-08</td><td class="t">Central</td><td>54</td><td>3.99</td><td>215.46</td><td class="why"></td></tr>
-                    <tr><th scope="row">5</th><td>2026-01-09</td><td class="t">East</td><td>61</td><td>4.99</td><td class="q">304.39</td><td class="why"><i class="q" aria-hidden="true"></i>Total jumped sharply near 2026-01-09</td></tr>
+                    <tr data-kind="time"><th scope="row">5</th><td>2026-01-09</td><td class="t">East</td><td>61</td><td>4.99</td><td class="q">304.39</td><td class="why"><i class="q" aria-hidden="true"></i>Total jumped sharply near 2026-01-09</td></tr>
                     <tr class="skip"><td></td><td colspan="6">⋯</td></tr>
                     <tr><th scope="row">10</th><td>2026-01-14</td><td class="t">Central</td><td>50</td><td>1.99</td><td>99.50</td><td class="why"></td></tr>
                     <tr><th scope="row">11</th><td>2026-01-15</td><td class="t">East</td><td class="mended">57</td><td>2.99</td><td>170.43</td><td class="why"><i class="ok" aria-hidden="true"></i>Fixed: Units 57, was -5</td></tr>
                     <tr><th scope="row">12</th><td>2026-01-16</td><td class="t">West</td><td>41</td><td>3.99</td><td>163.59</td><td class="why"></td></tr>
                     <tr class="skip"><td></td><td colspan="6">⋯</td></tr>
                     <tr><th scope="row">20</th><td>2026-01-24</td><td class="t">East</td><td>51</td><td>3.99</td><td>203.49</td><td class="why"></td></tr>
-                    <tr><th scope="row">21</th><td>2026-01-25</td><td class="t">West</td><td>58</td><td>4.99</td><td class="q">289.42</td><td class="why"><i class="q" aria-hidden="true"></i>Total jumped sharply near 2026-01-25</td></tr>
+                    <tr data-kind="time"><th scope="row">21</th><td>2026-01-25</td><td class="t">West</td><td>58</td><td>4.99</td><td class="q">289.42</td><td class="why"><i class="q" aria-hidden="true"></i>Total jumped sharply near 2026-01-25</td></tr>
                     <tr><th scope="row">22</th><td>2026-01-26</td><td class="t">Central</td><td class="mended">42</td><td>1.99</td><td>83.58</td><td class="why"><i class="ok" aria-hidden="true"></i>Fixed: Units 42, was 7777</td></tr>
                     <tr><th scope="row">23</th><td>2026-01-27</td><td class="t">East</td><td>49</td><td>2.99</td><td>146.51</td><td class="why"></td></tr>
                     <tr class="skip"><td></td><td colspan="6">⋯</td></tr>
                     <tr><th scope="row">30</th><td>2026-02-03</td><td class="t">West</td><td>52</td><td>1.99</td><td>103.48</td><td class="why"></td></tr>
                     <tr><th scope="row">31</th><td>2026-02-04</td><td class="t mended">East</td><td>59</td><td>2.99</td><td>176.41</td><td class="why"><i class="ok" aria-hidden="true"></i>Fixed: Region East, was "east&nbsp;"</td></tr>
                     <tr class="skip"><td></td><td colspan="6">⋯</td></tr>
-                    <tr><th scope="row">41</th><td>2026-02-14</td><td class="t">East</td><td>60</td><td>4.99</td><td class="q">299.40</td><td class="why"><i class="q" aria-hidden="true"></i>Total jumped sharply near 2026-02-14</td></tr>
+                    <tr data-kind="time"><th scope="row">41</th><td>2026-02-14</td><td class="t">East</td><td>60</td><td>4.99</td><td class="q">299.40</td><td class="why"><i class="q" aria-hidden="true"></i>Total jumped sharply near 2026-02-14</td></tr>
                     <tr class="skip"><td></td><td colspan="6">⋯</td></tr>
-                    <tr><th scope="row">57</th><td>2026-03-02</td><td class="t">West</td><td>57</td><td>4.99</td><td class="q">284.43</td><td class="why"><i class="q" aria-hidden="true"></i>Total jumped sharply near 2026-03-02</td></tr>
+                    <tr data-kind="time"><th scope="row">57</th><td>2026-03-02</td><td class="t">West</td><td>57</td><td>4.99</td><td class="q">284.43</td><td class="why"><i class="q" aria-hidden="true"></i>Total jumped sharply near 2026-03-02</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -224,9 +228,9 @@
         <thead><tr><th scope="col">Check</th><th scope="col">What it catches</th><th scope="col">In the sample above</th></tr></thead>
         <tbody data-reveal-group>
           <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Reconciliation</th><td>Totals and products that don't add up: A + B + C, Qty × Price, a price after a discount. When one cell is off, the row's own numbers give the exact correction.</td><td class="in-sample"><a class="to-row" href="#r22" data-glide="frame">Row 22</a><span class="val">83.58 ÷ 1.99 = 42</span></td></tr>
-          <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Keying errors</th><td>A figure typed ten or a hundred times too large, a percent typed as a whole number, a flipped sign.</td><td class="in-sample"><a class="to-row" href="#r22" data-glide="frame">Row 22</a><span class="val">Units 7777, usual limit 105</span></td></tr>
+          <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Keying errors</th><td>A figure typed ten or a hundred times too large, a percent typed as a whole number, a flipped sign, or a figure far past its column's usual range.</td><td class="in-sample"><a class="to-row" href="#r22" data-glide="frame">Row 22</a><span class="val">Units 7777, usual limit 105</span></td></tr>
           <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Consistency</th><td>The same label typed different ways: stray spaces, capitals, misspellings, short forms.</td><td class="in-sample"><a class="to-row" href="#r31" data-glide="frame">Row 31</a><span class="val">"east " to "East"</span></td></tr>
-          <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Temporal</th><td>A date far outside the rest, and sharp jumps in a dated series. Repeating cycles are left alone.</td><td class="in-sample"><a class="to-row" href="#r5" data-glide="frame">Row 5</a><span class="say">a jump in Total on 2026-01-09</span></td></tr>
+          <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Temporal</th><td>A date far outside the rest, and sharp jumps in a dated series. Left alone: the same jump coming back at one spacing, and a cycle of 7, 12, 24, 52 or 168 rows (a week of days, a year of months, a day of hours, a year of weeks, a week of hours).</td><td class="in-sample"><a class="to-row" href="#r5" data-glide="frame">Row 5</a><span class="say">a jump in Total on 2026-01-09</span></td></tr>
           <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Completeness</th><td>Blanks in a column that is otherwise filled, N/A and TBD placeholders, Excel errors, duplicate rows.</td><td class="in-sample"><span class="nil">None in this sample</span><span class="other-sheet">On another sheet: <span class="val">#N/A</span>, a repeated row</span></td></tr>
           <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Plausibility</th><td>A month past 12, an all-nines code, a lone decimal among whole numbers, combinations of values that don't fit the rest.</td><td class="in-sample"><span class="nil">None in this sample</span><span class="other-sheet">On another sheet: <span class="val">Month 13</span>, <span class="val">99999</span></span></td></tr>
           <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Fairness</th><td>Columns such as Age, Gender or Location never decide what is unusual. On a sheet about people, each scan checks whether flags, blanks and outcomes are even across their groups.</td><td class="in-sample"><span class="nil">None in this sample: it has no column about people</span><span class="other-sheet">On a sheet about people: <span class="say">Gender: rows flagged even across groups (2.0% to 3.0%, within normal variation)</span></span></td></tr>
@@ -242,7 +246,7 @@
       <p class="sec-lede calm reveal-item">No licence server and no admin console. Each install belongs to one Windows account and can be removed with one command.</p>
       <dl class="it-ledger calm" data-reveal-group>
         <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>Licence</dt><dd>Free, for any number of people. No seats to allocate. Open source under the <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/blob/main/LICENSE">MIT License</a>.</dd></div>
-        <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>Install scope</dt><dd>One Windows account. No administrator rights needed.</dd></div>
+        <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>Install scope</dt><dd>One Windows account, which must be an administrator on this PC. It never asks to run as administrator.</dd></div>
         <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>Network policy</dt><dd>The engine listens on 127.0.0.1 only. A scan runs offline.</dd></div>
         <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>Outbound</dt><dd>Microsoft's Office script for the pane. With AI help set up, and only then: saving a Google key asks Google once whether it works (the key, no sheet data), and Ask AI and Check words with AI send part of the sheet to Google when clicked, through John's relay on Cloudflare with an invite code.</dd></div>
       </dl>
@@ -261,7 +265,7 @@
       <div class="facts calm reveal-item">
         <dl class="anchor">
           <dt>SHA-256</dt><dd><code id="sha"><a href="https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest">shown on the release page</a></code></dd>
-          <dt>Release</dt><dd id="rel">Latest, about 81 MB, free</dd>
+          <dt>Release</dt><dd id="rel">Latest, free</dd>
           <dt>Works with</dt><dd>Desktop Excel for Microsoft 365 on Windows 10 or 11, 64-bit. Excel 2021 and 2024 are not tested yet. Not Mac, not Excel on the web.</dd>
           <dt>Signature</dt><dd>Not code-signed yet. Your organisation may block unsigned apps: ask IT first. <a href="#code-signing">Code signing policy</a></dd>
           <dt>Data</dt><dd>Local scan engine: a scan never leaves your PC. AI help is optional: Ask AI and Check words with AI, when you click them, send part of the sheet to Google, through John's relay with an invite code.</dd>

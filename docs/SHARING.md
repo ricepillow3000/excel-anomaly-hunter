@@ -48,6 +48,7 @@ until the app becomes a hosted multi-user service.
 | Excel on the web | Not supported | Not while the engine runs on the user's PC: every viewer would still need the engine installed and trusted, Excel on the web shows add-ins inside its own page, and the pane refuses to be framed (`frame-ancestors 'none'`, measured: desktop Excel shows it top-level) | Stays out by design |
 
 ## What a friend needs today (the honest list)
-Windows 10 or 11 (64-bit), desktop Excel for Microsoft 365, about 81 MB of disk, and the `C$` admin share left on
-(the installer registers the add-in through it). No Python, no admin rights, no internet after the download. AI help
+Windows 10 or 11 (64-bit), desktop Excel for Microsoft 365, about 75 MB of disk, a Windows account that is an
+administrator on the PC, and the `C$` admin share left on (the installer registers the add-in through it, and Windows
+opens that share to administrators only). No Python, no elevation prompt, no internet after the download. AI help
 is optional and works with the friend's own free Google key or an invite code from John.

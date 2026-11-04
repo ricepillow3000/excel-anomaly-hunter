@@ -171,7 +171,8 @@ def install():
     shutil.copy2(server.PANEL / "manifest.xml", addin / "manifest.xml")
     unc = rf"\\localhost\{str(addin)[0]}$" + str(addin)[2:]
     if not Path(unc, "manifest.xml").exists():
-        return fail(f"Can't reach {unc} - the C$ admin share is off on this PC.")
+        # Windows opens the admin share to administrators only: a standard account was told the share was off (AH-129)
+        return fail(f"Can't reach {unc}: this Windows account isn't an administrator on this PC, or the C$ admin share is off.")
     reg_delete(DEV, ID)
     reg_delete(rf"{DEV}\{ID}")
     reg_set(CAT, "Id", CATALOG)
