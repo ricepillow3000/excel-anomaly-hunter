@@ -27,7 +27,7 @@ export function typoKind(v, fix) {
 }
 
 // Pure: the reason's "Total 170.43 does not add up: Units × UnitCost = -14.95" parts -> [{text, total, rule, cols}]
-export const addUps = (reason) => String(reason || "").replace(/^Flagged by \d+ of \d+: /, "").split("; ")
+const addUps = (reason) => String(reason || "").replace(/^Flagged by \d+ of \d+: /, "").split("; ")
   .map((s) => /^(.+) (\S+) does not add up: ((.+?) [×+] (.+)) = \S+$/.exec(s)).filter(Boolean)
   .map((m) => ({ text: m[0], total: `${m[1]} ${m[2]}`, rule: m[3], cols: [m[1], m[4], m[5]] }));
 

@@ -461,6 +461,26 @@ def test_the_installer_seals_the_invite_kits_code_and_leaves_the_kit_as_it_was(m
     assert sealed.read(home / "invite-code.txt") == "inv_" + "e" * 24
 
 
+def test_an_invite_kit_leaves_out_the_docs_and_the_agent_skills_and_keeps_everything_install_bat_runs():
+    # relay/new-invite.mjs zips HEAD with git archive: a kit was 5.15 MB, 4.4 MB of it docs/ and .claude/ (AH-131),
+    # none of which install.bat, pip install -e . or the engine reads
+    import io
+    import pathlib
+    import shutil
+    import subprocess
+    import tarfile
+    root = pathlib.Path(__file__).resolve().parents[2]
+    if not shutil.which("git") or not (root / ".git").exists():
+        pytest.skip("not a git checkout")
+    git = ["git", "-C", str(root)]
+    tracked = subprocess.run(git + ["ls-tree", "-r", "--name-only", "HEAD"], capture_output=True, text=True, check=True).stdout.split()
+    kit = subprocess.run(git + ["archive", "--worktree-attributes", "--format=tar", "HEAD"], capture_output=True, check=True).stdout
+    with tarfile.open(fileobj=io.BytesIO(kit)) as tar:
+        names = tar.getnames()
+    assert not [n for n in names if n.startswith((".claude", "docs"))]
+    assert {f for f in tracked if not f.startswith((".claude/", "docs/"))} <= set(names)
+
+
 def test_off_windows_the_key_stays_plain_text_for_the_serve_command(monkeypatch):
     # Linux and a Mac have no DPAPI: the file stays readable by its owner alone (the test above this one's 0600)
     from anomaly_hunter import sealed

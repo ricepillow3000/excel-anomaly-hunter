@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from anomaly_hunter.engine import fairness
-from anomaly_hunter.engine.detectors import Why, _result, far_off, isolation_detector, limits_detector, say, sequence_detector
+from anomaly_hunter.engine.detectors import Why, _result, ecod_detector, far_off, limits_detector, say, sequence_detector
 from anomaly_hunter.engine.load import EXCEL_ERROR, NO_VALUE_WORD, PLACEHOLDER, _blank, _dates, _orders, numbers
 
 def summary_rows(df):
@@ -1173,7 +1173,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
     judged = {c: t for c, t in column_types.items() if c not in fairness.protected(column_types)}
     dets = {"limits": lim,
             "sequence": sequence_detector(df, judged, order_by, k) if s >= 3 else _result(n, "strength below 3"),
-            "isolation": isolation_detector(df, judged, k) if s >= 5 else _result(n, "strength below 5")}
+            "ecod": ecod_detector(df, judged, k) if s >= 5 else _result(n, "strength below 5")}
     # DBSCAN cut 2026-10-07: 90s/100k rows, 81% false alarms, bench same without it
     ran = [d for d in dets.values() if d["ran"]]
     (dup, repeats), (typ, typ_coded), (blank, spread) = duplicates(df, errors_log, column_types), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)

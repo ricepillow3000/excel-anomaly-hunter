@@ -70,7 +70,7 @@ def check_key(key):
     return True, "Key works. AI help is on."
 
 
-# ---- Fix one flagged row from a plain-English request. Claude proposes cell writes; the panel shows
+# ---- Fix one flagged row from a plain-English request. The AI proposes cell writes; the panel shows
 # them old -> new and writes nothing until the user clicks Apply (with Undo). ----
 
 MAX_CHANGES = 50

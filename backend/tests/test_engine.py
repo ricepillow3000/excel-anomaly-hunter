@@ -107,7 +107,7 @@ def test_hazmat_spike_in_ordered_series(tmp_path):
     assert 21 in flagged_orders  # df index 20 -> order value 21
 
 
-def test_hazmat_isolation_combo_runs_clean(tmp_path):
+def test_hazmat_ecod_combo_runs_clean(tmp_path):
     csv_path = tmp_path / "data.csv"
     n = 60
     rng = np.random.RandomState(2)
@@ -124,7 +124,7 @@ def test_hazmat_isolation_combo_runs_clean(tmp_path):
 
     out_path = tmp_path / "report.xlsx"
     # Not asserting this exact row is caught — ML detection on a 60-row sample is
-    # inherently noisy. This just proves the isolation path runs clean.
+    # inherently noisy. This just proves the ECOD path runs clean.
     assert run_scan([str(csv_path)], str(limits_path), None, str(out_path)) == 0
 
 

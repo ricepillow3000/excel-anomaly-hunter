@@ -50,7 +50,6 @@ strong,b{font-weight:700}
 .hero .meta{margin-top:var(--s2);font:600 var(--fs--1)/1.5 var(--sans);color:var(--gold-hi)}
 
 /* ---------- shared containers ---------- */
-.wrap{max-width:calc(var(--wrap) + 2 * var(--margin));margin:0 auto;padding:0 var(--margin)}
 footer.pg{margin-top:var(--s6);padding:var(--s3) var(--inline);background:var(--tex-navy),var(--navy);border-top:1px solid var(--gold-hi);color:var(--on-navy-2);
   font:600 var(--fs--1)/1.6 var(--sans);display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
 /* a footer link alone on its line is a target of its own: 24 px tall at least (WCAG 2.5.8, AH-115) */
