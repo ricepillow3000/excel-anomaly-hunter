@@ -227,7 +227,7 @@ for (const width of [1280, 390]) {
 
 // the download's logo: the original Spear and Banner (docs/design/logo/mark-80.svg; John brought it back on 2026-10-30)
 // directly above the Download button, shown whole: its five parts present and drawn inside the logo's box, each painted
-// in exactly the original's colors (the banner navy, the spear and bar in body and lit gold, the emblem paper), the logo, its
+// in exactly the site's own flat colors (the banner navy, the spear, bar and drape one gold, the emblem paper: AH-103), the logo, its
 // parts and the stage around it opaque and every part in place by the end of the page (AH-72's scroll motion must finish
 // there), and with no animation at all when motion is unwelcome
 const logo = (page) => page.evaluate(() => {
@@ -245,8 +245,8 @@ const logo = (page) => page.evaluate(() => {
     shown: parts.every((c) => c.opacity === "1" && c.visibility === "visible" && c.display !== "none"),
     placed: parts.slice(up.length).every((c) => c.transform === "none"), animated: parts.some((c) => c.animationName !== "none") };
 });
-const GOLD = "rgb(156, 122, 53) rgb(184, 149, 74)"; // #9C7A35 body, #B8954A lit
-const WHOLE = { parts: "spear,bar,drape,banner,emblem", banner: "rgb(12, 25, 56)", spear: GOLD, bar: GOLD, drape: "rgb(156, 122, 53)", emblem: "rgb(244, 241, 234)",
+const GOLD = "rgb(153, 125, 58)"; // --gold #997D3A, flat: no lit face (AH-103)
+const WHOLE = { parts: "spear,bar,drape,banner,emblem", banner: "rgb(12, 25, 56)", spear: GOLD, bar: GOLD, drape: GOLD, emblem: "rgb(247, 245, 240)",
   above: true, shown: true, placed: true };
 // brought to the middle of the screen, the banner and the blade are what the eye gets there: nothing covers them
 const onTop = (page) => page.evaluate(async () => {

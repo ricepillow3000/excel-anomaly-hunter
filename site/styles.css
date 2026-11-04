@@ -105,7 +105,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .bar .cols { min-height: 64px; align-items: center; }
 .brand { grid-column: 1 / span 4; display: inline-flex; align-items: center; gap: 12px; justify-self: start; color: var(--ink); text-decoration: none;
   font: 800 var(--fs-1)/1 var(--sans); letter-spacing: -.02em; white-space: nowrap; }
-.brand .logo { width: 32px; height: 32px; flex: none; } /* the 32 px drawing, on whole pixels */
+.brand .logo { width: auto; height: 40px; aspect-ratio: 59.793814 / 74.226804; flex: none; } /* the small drawing, framed tight: 40 px tall (John, AH-103) */
 .links { grid-column: 5 / -1; display: flex; justify-content: flex-end; align-items: center; gap: var(--s3); flex-wrap: wrap; }
 .links a { color: var(--ink); text-decoration: none; font: 600 var(--fs--1)/1 var(--sans); padding: 10px 0; border-bottom: 2px solid transparent; }
 .links a:hover { border-bottom-color: var(--ink); }
@@ -497,6 +497,7 @@ html[data-moving] #field { z-index: 2; }
   html { scroll-padding-top: 0; }
   .bar { position: relative; } /* on a phone the bar wraps to two rows: it scrolls away instead of covering the screen */
   .bar .cols { padding-block: 12px; row-gap: 8px; }
+  .brand .logo { margin-block: -4px; } /* drawn 40 px tall in the 32 px the old logo took, so the two-row bar keeps its height */
   .cols > *, .steps > *, .steps .aside, .facts, table.card, .foot span, .foot nav, .page-head h1, .page-head p { grid-column: 1 / -1; }
   .links { justify-content: flex-start; gap: 4px var(--s2); }
   .section, .hero, .page-head, .doc { padding-block: var(--s6); }
