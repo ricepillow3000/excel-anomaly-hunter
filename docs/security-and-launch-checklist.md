@@ -149,7 +149,8 @@ engine runs on each user's own PC beside their Excel, so items written for a web
 Four lists John pasted: security holes AI code makes, signs an app was vibe coded, AI-slop design looks, and the
 things to have before shipping. Two Researchers checked every item against the code, the running engine and the
 browser; each gap became its own ticket (AH-104 to AH-120), fixed test first. Items already answered above keep their
-row there and are only pointed to here.
+row there and are only pointed to here. Measured before and after on what is live (the website and the downloaded
+Arcas.exe): `docs/proof/2026-11-04-before-after.md`.
 
 ### Security
 | Item | Status | Where / evidence |
