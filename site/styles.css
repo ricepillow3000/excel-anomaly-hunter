@@ -28,8 +28,9 @@
 
   --sans: "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif;
   --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  /* a 1.25 type scale from a 17px body */
-  --fs--2: .68rem; --fs--1: .85rem; --fs-0: 1.0625rem; --fs-1: 1.328rem; --fs-2: 1.66rem; --fs-3: 2.075rem;
+  /* a 1.25 type scale from a 17px body; its smallest step is 12px, the least any text on the site may be (AH-116: the
+     sample's column heads were 10.88px at .68rem) */
+  --fs--2: .75rem; --fs--1: .85rem; --fs-0: 1.0625rem; --fs-1: 1.328rem; --fs-2: 1.66rem; --fs-3: 2.075rem;
   --fs-4: 2.594rem; --fs-5: 3.242rem; --fs-6: 4.053rem; --fs-7: 5.066rem; --fs-8: 6.333rem; --fs-9: 7.916rem;
   /* the 8px spacing scale */
   --s1: 8px; --s2: 16px; --s3: 24px; --s4: 32px; --s5: 48px; --s6: 64px; --s7: 96px; --s8: 128px;
@@ -65,10 +66,14 @@ a:hover { text-decoration-thickness: 2px; }
 ::placeholder { color: var(--muted); opacity: 1; }
 :focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 h1, h2, h3 { margin: 0; color: var(--ink); font-weight: 800; }
-h1, h2 { line-height: .95; letter-spacing: -.02em; text-wrap: balance; }
+h1, h2 { line-height: .95; letter-spacing: normal; text-wrap: balance; }
 h1 em, h2 em { font-style: normal; color: var(--wine); }
-h3 { font-size: var(--fs-0); line-height: 1.3; font-weight: 700; letter-spacing: -.005em; }
+h3 { font-size: var(--fs-0); line-height: 1.3; font-weight: 700; letter-spacing: normal; }
 p { margin: 0; }
+/* a long address or code (github.com/ricepillow3000/..., aistudio.google.com/apikey) breaks where it must: with the text
+   at 200% on a 320 px phone it pushed the privacy page 267 px sideways, and a list item never got narrower than it (AH-112) */
+a, code, li, h1, h2, h3 { overflow-wrap: anywhere; } /* a headline's long word too ("something" at 66 px beside its §) */
+body { overflow-wrap: break-word; }
 code { font-family: var(--mono); font-size: .88em; background: var(--paper-2); border: 1px solid var(--rule); padding: 1px 5px; word-break: break-word; color: var(--ink); }
 .label { display: block; font: 700 var(--fs--1)/1.3 var(--sans); color: var(--ink); }
 
@@ -101,10 +106,14 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .notice-bar { background: var(--dark); color: var(--on-dark); }
 .notice-bar p { max-width: calc(var(--wrap) + 2 * var(--margin)); margin: 0 auto; padding: 8px var(--margin); font: 500 var(--fs--1)/1.5 var(--sans); }
 .notice-bar a { color: var(--on-dark); text-decoration-color: var(--gold-hi); text-decoration-thickness: 2px; }
+/* a link standing alone (the notice's Download, the footer's, the checks' "Row 22") is a target of 24 px at least
+   (AH-115, WCAG 2.2 2.5.8: they were 17 and 21 px tall); the padding that makes it so is taken back by an equal margin, so
+   no line around it moves */
+:is(.notice-bar, .foot nav) a { display: inline-block; padding-block: 4px; margin-block: -4px; }
 .bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 9; background: var(--grain), var(--paper); border-bottom: 1px solid var(--ink); overflow-x: clip; } /* the links slide in from past its edge (AH-90): clipped there, the page never scrolls sideways meanwhile */
 .bar .cols { min-height: 64px; align-items: center; }
 .brand { grid-column: 1 / span 4; display: inline-flex; align-items: center; gap: 12px; justify-self: start; color: var(--ink); text-decoration: none;
-  font: 800 var(--fs-1)/1 var(--sans); letter-spacing: -.02em; white-space: nowrap; }
+  font: 800 var(--fs-1)/1 var(--sans); letter-spacing: normal; white-space: nowrap; }
 .brand .logo { width: 32px; height: 32px; flex: none; } /* the 32 px drawing, on whole pixels */
 .links { grid-column: 5 / -1; display: flex; justify-content: flex-end; align-items: center; gap: var(--s3); flex-wrap: wrap; }
 .links a { color: var(--ink); text-decoration: none; font: 600 var(--fs--1)/1 var(--sans); padding: 10px 0; border-bottom: 2px solid transparent; }
@@ -151,9 +160,9 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 /* the sample workspace: an ink frame, an ink title bar, the filters over three columns, the sheet beside them */
 .ws { grid-column: 1 / -1; position: relative; margin: var(--s7) 0 0; background: var(--grain), var(--paper-2); border: 1px solid var(--ink); text-align: left; color: var(--ink-2); }
 .ws-top { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s3); align-items: center; padding: 0 var(--s3); min-height: 52px; background: var(--ink); color: var(--paper); }
-.ws-top b { font: 800 var(--fs-0)/1.3 var(--sans); letter-spacing: -.01em; }
+.ws-top b { font: 800 var(--fs-0)/1.3 var(--sans); letter-spacing: normal; }
 .ws-top > span { font-size: var(--fs--1); color: var(--on-dark-2); font-variant-numeric: tabular-nums; }
-.tabs { display: flex; margin-left: auto; align-self: stretch; }
+.tabs { display: flex; flex-wrap: wrap; margin-left: auto; align-self: stretch; } /* text at 200% wraps them, never past the screen (AH-112) */
 .tabs[hidden] { display: none; }
 .tabs button { position: relative; font: 600 var(--fs--1)/1 var(--sans); color: var(--on-dark-2); background: none; border: 0; border-bottom: 3px solid transparent; border-radius: 0; padding: 3px 16px 0; cursor: pointer; }
 .tabs button:hover { color: var(--paper); }
@@ -267,12 +276,12 @@ td.why i.ok { display: inline-block; width: 10px; height: 10px; margin-right: 8p
 .checks-table thead th:nth-child(2) { width: 42.45%; }
 .checks-table tbody tr { position: relative; }
 .checks-table tbody th, .checks-table tbody td { padding: var(--s2) var(--gutter) 20px 0; vertical-align: top; border-bottom: 1px solid var(--rule-dark); }
-.checks-table tbody th { font: 700 var(--fs-1)/1.25 var(--sans); letter-spacing: -.01em; color: var(--on-dark); }
+.checks-table tbody th { font: 700 var(--fs-1)/1.25 var(--sans); letter-spacing: normal; color: var(--on-dark); }
 .checks-table tbody td { color: var(--on-dark-2); }
 .checks-table tbody :is(th, td):last-child { padding-right: 0; }
 .in-sample > * { display: block; width: fit-content; }
 .in-sample > * + * { margin-top: 6px; }
-.in-sample .to-row { font-weight: 700; color: var(--on-dark); text-decoration-color: var(--gold-hi); }
+.in-sample .to-row { padding-block: 2px; margin-block: -2px; font-weight: 700; color: var(--on-dark); text-decoration-color: var(--gold-hi); }
 .in-sample .val { font: 500 var(--fs--1)/1.5 var(--mono); color: var(--on-dark); }
 .in-sample .say { color: var(--on-dark); }
 .in-sample .nil { font-weight: 700; color: var(--on-dark); }
@@ -305,7 +314,7 @@ dl.anchor { position: relative; margin: 0; display: grid; grid-template-columns:
 .steps > .label { grid-column: 1 / -1; }
 .steps ol { grid-column: 1 / -1; margin: 0; padding: 0; list-style: none; counter-reset: step; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s5) var(--gutter); }
 .steps li { position: relative; counter-increment: step; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: var(--s2); padding-top: var(--s2); font-size: var(--fs--1); color: var(--ink-2); }
-.steps li::before { content: counter(step, decimal-leading-zero); font: 800 var(--fs-5)/.9 var(--sans); letter-spacing: -.03em; color: var(--wine); font-variant-numeric: tabular-nums; }
+.steps li::before { content: counter(step, decimal-leading-zero); font: 800 var(--fs-5)/.9 var(--sans); letter-spacing: normal; color: var(--wine); font-variant-numeric: tabular-nums; }
 .steps li b { color: var(--ink); }
 .steps .line { display: block; margin-top: 12px; font-size: var(--fs--2); word-break: normal; overflow-x: auto; white-space: nowrap; }
 .steps .aside { grid-column: 7 / -1; font-size: var(--fs--1); color: var(--ink-2); padding-top: var(--s2); border-top: 1px solid var(--rule); }
@@ -363,7 +372,7 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
 .faq .a p { margin: 0 0 8px; }
 .faq .a b { color: var(--ink); }
 .form-card { grid-column: 8 / -1; min-width: 0; border: 1px solid var(--ink); background: var(--grain), var(--grid), var(--paper-2); }
-.form-card h2 { font-size: var(--fs-2); padding: 18px var(--s3); background: var(--paper); border-bottom: 1px solid var(--ink); letter-spacing: -.01em; line-height: 1.1; }
+.form-card h2 { font-size: var(--fs-2); padding: 18px var(--s3); background: var(--paper); border-bottom: 1px solid var(--ink); letter-spacing: normal; line-height: 1.1; }
 .form-card form { display: grid; gap: 20px; padding: var(--s3); }
 .notice { font-size: var(--fs--1); color: var(--ink); padding: 12px 14px; }
 .field { display: grid; gap: 6px; }
@@ -374,8 +383,8 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
 .field select { background: var(--paper) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%230C1938' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 14px center; padding-right: 36px; }
 .field textarea { min-height: 140px; resize: vertical; }
 .field input:focus, .field select:focus, .field textarea:focus { outline: 2px solid var(--ink); outline-offset: 0; border-color: var(--ink); }
-.confirm { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; font-size: var(--fs--1); align-items: start; color: var(--ink); }
-.confirm input { width: 16px; height: 16px; margin: 3px 0 0; accent-color: var(--ink); }
+.confirm { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 10px; font-size: var(--fs--1); align-items: start; color: var(--ink); }
+.confirm input { width: 24px; height: 24px; margin: 0; accent-color: var(--ink); } /* 24 px, a target a thumb can hit (AH-115) */
 .result { border: 1px solid var(--ink); background: var(--paper); padding: 14px; display: grid; gap: 10px; font-size: var(--fs--1); color: var(--ink); justify-items: start; }
 .error { font-size: var(--fs--1); color: var(--ink); font-weight: 700; padding: 10px 12px; border: 1px solid var(--ink); background: var(--paper); }
 
@@ -385,6 +394,12 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
 .foot span { grid-column: 1 / span 6; }
 .foot nav { grid-column: 7 / -1; display: flex; justify-content: flex-end; gap: var(--s3); flex-wrap: wrap; }
 .foot a { color: var(--on-dark); text-decoration-color: var(--gold-hi); }
+
+/* pressed (AH-120): a hover said nothing to a finger on a phone, so everything that acts as a button draws a dark gold
+   line just inside its edge while it is held down (3.6:1 on paper, 4.4:1 on navy, so it shows on either fill). A colour,
+   never a movement: nothing shifts, with or without reduced motion, and nothing is animated */
+.btn:active, .links .btn-trim:active, .typology button:active, .tabs button:active, .rowbtn:active, .m-close:active, .faq summary:active {
+  outline: 2px solid var(--gold); outline-offset: -5px; }
 
 /* motion (AH-72, AH-83, AH-84, AH-89 to AH-93; docs/design/motion.md). boot.js marks the page before it paints: data-ah
    holds the bar's and the hero's blocks for their entrance (motion.js lifts it at once, boot.js itself after 1.4 s), and data-js, kept for the
@@ -485,6 +500,24 @@ html[data-moving] #field { z-index: 2; }
   ::view-transition-old(root), ::view-transition-new(root) { animation-timing-function: var(--ease-out); }
 }
 
+/* Windows High Contrast (AH-113): forced colours drop every fill and shadow, and those were the only marks of a flagged
+   cell, a cell worth a check, a fixed one, the key's squares and the bar's Download box. Here each keeps a mark the theme
+   draws in its own colours, and the kinds stay apart: a flagged cell and its square filled with the highlight, one worth a
+   check outlined dashed, a fixed one underlined solid and its square outlined solid */
+@media (forced-colors: active) {
+  .grid td.flag, .key i:not(.q), td.why i:not(.q, .ok) { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+  .grid td.q { outline: 2px dashed CanvasText; outline-offset: -4px; }
+  .key i.q, td.why i.q { border: 2px dashed CanvasText; }
+  .grid td.mended { border-bottom: 3px solid CanvasText; }
+  td.why i.ok { border: 2px solid CanvasText; }
+  .links .btn-trim { border: 1px solid ButtonText; }
+  .typology button[aria-pressed="true"] { outline: 2px solid Highlight; outline-offset: -4px; }
+  /* the chosen tab's line is its ::after, whose gold the theme would paint over with the page colour; a tab's own
+     transparent border would show on every tab */
+  .tabs button { border-bottom-color: Canvas; }
+  .tabs button::after { forced-color-adjust: none; background: CanvasText; }
+}
+
 @media (max-width: 1100px) {
   .it-ledger { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .faq, .form-card { grid-column: 1 / -1; }
@@ -506,7 +539,8 @@ html[data-moving] #field { z-index: 2; }
   .tabs { margin-left: 0; width: 100%; min-height: 44px; }
   .tabs button:first-child { padding-left: 0; }
   .ws-body { grid-template-columns: minmax(0, 1fr); }
-  .typology { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); border-right: 0; border-bottom: 1px solid var(--ink); }
+  /* two columns of filters, or one when the text is so large (200%, AH-112) that two 8rem columns don't fit */
+  .typology { grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr)); border-right: 0; border-bottom: 1px solid var(--ink); }
   .typology .label, .typology .key { grid-column: 1 / -1; }
   .typology button:nth-of-type(even) { border-left: 1px solid var(--rule); }
   .busy { min-height: 320px; padding: var(--s3); }

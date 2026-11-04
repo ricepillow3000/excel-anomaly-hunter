@@ -1,4 +1,5 @@
-import { DECISIONS_KEY, KEY, STRENGTH_KEY, UNDO_KEY } from "../constants/index.js";
+import { ACCEPT_UNDO_KEY, DECISIONS_KEY, KEY, STRENGTH_KEY, UNDO_KEY } from "../constants/index.js";
+import { ours } from "../utils/errors.js";
 
 // What the pane keeps inside the workbook (its document settings), named as the Privacy page names them. It stays in
 // the file after an uninstall, and nothing in the pane could clear it (AH-87). selfcheck.js fails when the pane saves
@@ -7,6 +8,7 @@ export const WORKBOOK_KEYS = [
   [KEY, "the limits you changed"],
   [STRENGTH_KEY, "the strength slider"],
   [UNDO_KEY, "the list of auto-fixes with their old values"],
+  [ACCEPT_UNDO_KEY, "the old values of the cells you changed with Accept"],
   [DECISIONS_KEY, "the codes of the rows you fixed or dismissed"],
   ["Office.AutoShowTaskpaneWithDocument", "the setting that opens this pane with the file"],
 ];
@@ -19,6 +21,6 @@ export async function forgetWorkbook() {
   const gone = WORKBOOK_KEYS.filter(([k]) => s.get(k) !== null && s.get(k) !== undefined);
   for (const [k] of gone) s.remove(k);
   const saved = await new Promise((ok) => s.saveAsync((r) => ok(!r || r.status === "succeeded")));
-  if (!saved) throw new Error("Excel couldn't save the workbook's settings. Try again.");
+  if (!saved) throw ours("Excel couldn't save the workbook's settings. Try again.");
   return gone.map(([, what]) => what);
 }

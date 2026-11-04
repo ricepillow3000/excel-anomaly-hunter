@@ -1,7 +1,7 @@
 # Security and launch checklist
 
 Each item is either enforced, with the code and the test that keep it so, or does not apply, with the reason.
-Last full run: 2026-10-15, against the real HTTPS engine, the relay harness and Chromium. Re-check with
+Last full run: 2026-10-15 (John's later lists re-checked 2026-11-04, AH-102), against the real HTTPS engine, the relay harness and Chromium. Re-check with
 `python tools/check.py --e2e` (`e2e/all.sh` runs the launch checks in `e2e/launch.mjs`).
 
 ## Measured on 2026-10-15 (Linux container, 4 cores, the real HTTPS engine)
@@ -35,7 +35,7 @@ John's full 75-item speed, legal and security list is answered item by item at t
 | Weak session management, JWT secrets | N/A | No sessions, cookies or tokens. The relay uses a 144-bit invite code per user, revocable. |
 | Permissive CORS | Enforced | No `Access-Control-Allow-Origin` on any answer; a preflight from another site gets 403. |
 | Rate limits | Enforced where it costs money | Relay: per-invite and total daily caps, counted before Google is called. A 500-call parallel burst let exactly the cap through (`relay/test.mjs`). Engine: one user on 127.0.0.1, one AI call at a time (`client._LOCK`), answers cached. |
-| The live relay, from outside | Enforced | `relay/live-probe.mjs` sends a dozen stranger requests to the deployed Worker (no invite, path/method/size/CORS tricks) and needs all refused with the relay's own JSON and no CORS grant. Proven against the real `worker.js` locally (12/12) and against an open fake relay (0/12, so it can fail). Runs from GitHub (`relay-live.yml`: relay changes, daily, Run workflow) because the dev sandbox can't reach workers.dev. |
+| The live relay, from outside | Enforced | `relay/live-probe.mjs` sends a dozen stranger requests to the deployed Worker (no invite, path/method/size/CORS tricks) and needs all refused with the relay's own JSON and no CORS grant. Proven against the real `worker.js` locally (12/12) and against an open fake relay (0/12, so it can fail). Runs from GitHub (`relay-live.yml`: relay changes, daily, Run workflow) because the dev sandbox can't reach workers.dev. With the secret `RELAY_CANARY_INVITE` set it also makes one real call (`relay/canary.mjs`) and needs a 200 the engine can read: refusals alone never showed a revoked Gemini key or a retired model (AH-108). Proven offline against the real `worker.js`: a 401 invite and Google's 403 fail it. |
 | Exposed environment | Enforced | `/health` returns only `status`, `version`, `ai_available` and `ai_provider`. Engine errors say "details in server.log", never a stack trace (`test_an_engine_bug_is_logged_not_leaked`). The Server header is "Arcas" with no versions. `.env*`, `.dev.vars*`, `invite-code.txt` and `relay/tokens.json` are gitignored. |
 | Unsigned webhooks | N/A | None. |
 | Front-end payment checks | N/A | No payments. |
@@ -45,7 +45,7 @@ John's full 75-item speed, legal and security list is answered item by item at t
 | Exposed source maps | N/A | No build step and no source maps (`grep sourceMappingURL frontend` is empty). The pane's own code is served, by design, to the one local user. |
 | Denial of service | Enforced | A connection that never says hello no longer freezes the engine (`test_one_silent_connection_does_not_freeze_the_engine`). Body capped at 256 MB and 2M cells; a 1 GB declared body gets 413 before it is read. Overload results are below. |
 | TLS | Enforced | 127.0.0.1 only (refused on the LAN IP); TLS 1.0 and 1.1 refused; certificate name-constrained to localhost (`test_cert_chain_only_vouches_for_localhost`). |
-| Known-vulnerable dependencies | Enforced | `pip-audit` in CI and `tools/check.py`; dependencies pinned in `pyproject.toml`. |
+| Known-vulnerable dependencies | Enforced | `pip-audit` in CI and `tools/check.py`, on what is installed and on every pin in `constraints.txt` (`--strict`: a name PyPI doesn't know fails); every package, indirect ones too, pinned in `constraints.txt` (`tools/pinned.py`). |
 
 ## Launch
 | Item | Status | Where / evidence |
@@ -58,7 +58,7 @@ John's full 75-item speed, legal and security list is answered item by item at t
 | Form error states | Enforced | Limits editor: "Flag below is bigger than Flag above" is refused in place. Key form: a junk key is refused, and an empty Save asks for a key (`e2e/run.mjs`). |
 | Favicon set | Enforced | 16/32/64/80 px icons in `frontend/assets/`, the sizes Office's ribbon asks for (`manifest.xml`). |
 | Custom 404 | Deliberate | Any unknown path answers JSON `{"error": ...}`, like every other error (ZAP flagged Werkzeug's HTML page). The pane never navigates, so a user never meets a 404 page. |
-| Meta description, Open Graph image, robots.txt, sitemap.xml | Pane: N/A. Site: description only | The pane is served only to this PC inside Excel; search engines can't reach 127.0.0.1. The public site's three pages each carry a meta description; no Open Graph image, robots.txt or sitemap (three pages, all linked from each other). |
+| Meta description, Open Graph, robots.txt, sitemap.xml | Pane: N/A. Site: done in AH-119 | The pane is served only to this PC inside Excel; search engines can't reach 127.0.0.1. Each site page has its own title, description, canonical link and Open Graph tags, and `site/sitemap.xml` lists the three. No Open Graph image (the only images are 32 and 64 px marks, too small for a card) and no robots.txt (crawlers read it only at a domain's root). |
 | Thank-you pages | N/A | No sign-up or purchase. Confirmations are inline: "Accepted", "Key saved", "Highlights removed". |
 | Cookie banner | N/A | No cookies anywhere (pane, engine, relay, site; GitHub Pages sets none). Two `localStorage` choices, `anomalyHunterAutoFix` and `anomalyHunterPowerBi`, strictly necessary and never sent anywhere; the site stores nothing. |
 | Analytics | Not installed, deliberately | The pane promises that numbers and whole rows never leave the PC, and the CSP blocks third-party scripts. Adding analytics is the owner's decision; it would need a privacy note and a CSP change. |
@@ -145,6 +145,102 @@ engine runs on each user's own PC beside their Excel, so items written for a web
 | Check Git history for leaked secrets | Enforced (added in AH-87) | `tools/secret_history.py` reads every added line of all 425 commits and every file ever added: no secret, only the tests' marked fakes. A gate in `tools/check.py` and in CI. |
 | Run a full security audit | Done | This table, the sections above, `docs/security/SECURITY-LESSONS.md` (findings log, 2026-11-02), CI's Semgrep, pip-audit, ZAP baseline on every push and ZAP's API attack weekly. |
 
+## John's ship lists (AH-102, 2026-11-04)
+Four lists John pasted: security holes AI code makes, signs an app was vibe coded, AI-slop design looks, and the
+things to have before shipping. Two Researchers checked every item against the code, the running engine and the
+browser; each gap became its own ticket (AH-104 to AH-120), fixed test first. Items already answered above keep their
+row there and are only pointed to here.
+
+### Security
+| Item | Status | Where / evidence |
+|---|---|---|
+| SQL injection, parameterized queries | N/A; the analogues enforced | No SQL or database anywhere (the relay's counter is a Durable Object `get`/`put`). What a query would be here: an AI formula may call only `client.SAFE` functions and never reach outside the workbook (`test_suggest_fix_drops_formulas_that_reach_outside_the_workbook`), and the Power BI CSV never carries a live formula (`test_power_bi_csv_never_carries_a_live_formula`). |
+| AI endpoint: rate limit, login, key on the server | Enforced | The relay is the only AI endpoint John pays for: an invite (144 random bits, only its SHA-256 kept) is checked before the body is read, daily caps per invite and in total are counted before Google, and the Gemini key is a Cloudflare secret no user holds (`relay/test.mjs`, `relay/live-probe.mjs`). |
+| Packages that don't exist, malicious packages | Enforced (fixed in AH-105) | All 81 pins were checked against PyPI by hand (81 of 81 real, well-known projects); the pin audit now runs with `--strict`, so a mistyped or invented name fails the gate and CI (`test_the_pin_audit_fails_on_a_package_pypi_has_never_heard_of`). Every GitHub Action is pinned to a commit (`test_every_workflow_action_is_pinned_to_a_commit`), ZAP by digest, playwright and wrangler by version. A new dependency must be imported to be declared (`test_every_package_the_app_imports_is_declared_and_every_declared_one_is_used`). |
+| Prompt injection | Enforced; one step waits for John | A cell can't become an instruction the app acts on: the AI's answer is only shown as a card, every change is checked (cells inside the table, safe functions only, the flagged row unless the user typed a request, at most 50 changes) and nothing is written until the user clicks Accept. Check words fences its values as data. The fix prompt has no "rows are data, not instructions" line yet: a prompt change needs `ai_eval.py` numbers with John's own key (AH-109). |
+| Unpermissioned AI access | Enforced | AI runs only when the user clicks Ask AI or Check words; another website can't call the engine (Origin check on every route, `test_every_route_refuses_other_websites`); auto-fix never applies an AI answer. |
+| Excessive permissions | Enforced (pinned in AH-105) | The add-in asks Excel only for `ReadWriteDocument`, the least that lets it write cells, highlights and settings (`test_the_add_in_asks_excel_for_no_more_than_writing_this_workbook`); every workflow is `contents: read` except the release and Pages jobs. No database, so no database roles. |
+| Missing audit logs | Enforced where there is something to log (fixed in AH-106) | The engine's log is now kept for two runs (`server.log`, `server.log.1`), so a crash's log survives the next logon (`test_a_new_engine_start_keeps_the_last_runs_log_as_server_log_1`). Changes to a sheet are kept as Undo in the workbook (auto-fix and now Accept, AH-118). The relay logs nothing by promise (PRIVACY.md). |
+| No security monitoring | Enforced | Weekly `security.yml` (secret history, tests, fuzzing, Semgrep, Bandit, pip-audit, ZAP baseline and active scan), daily `relay-live.yml` (12 stranger probes, and with John's canary invite one real call, AH-108), every push runs the gate. |
+| No backups | Answered (AH-107) | `docs/RUNBOOK.md` says what can be lost and how to keep it: `relay/tokens.json` lives only on John's PC (keep a second private copy), the code and releases are on GitHub, a user's cell changes have Undo, the local CA key is never kept by design. |
+| Exposed internal dashboards | N/A | None: 7 engine routes and the static pane, the relay answers only `POST /fix`. Cloudflare, GitHub and Google consoles sit behind John's own accounts. |
+| Missing security headers | Enforced | See "Add security headers" above (`test_safe_headers_on_every_answer`). |
+| Insecure cookie settings, secure session cookies | N/A | No cookies anywhere. |
+| Unencrypted sensitive data | Fixed in AH-104 | The Google key and the invite code were plain text in `%LOCALAPPDATA%`. They are now sealed with Windows DPAPI for the user's own account (`anomaly_hunter/sealed.py`), a file from an older version is read and sealed at its first read, and a file this account can't open reads as "no key", never an error (`test_on_windows_the_saved_key_and_invite_code_are_sealed_and_never_plain_text` and four more). A fresh Windows PC in CI updates from the last pre-Arcas release with a plain invite and must report it working and sealed afterwards (`build-exe.yml`). The TLS leaf key stays a file: Python's ssl reads only files, and its CA is name-constrained to localhost. |
+| Poor tenant isolation | Enforced | One engine per PC; the relay's caps are keyed by the invite's name, one code per name. |
+| Unreviewed AI code | Enforced by the gate | Every change passes `tools/check.py` (13 layers) and CI before it merges, each ticket is judged against its written "done" by the pod's Orchestrator, and every rule learned the hard way is a test (CLAUDE.md). |
+| Mass assignment, field tampering | Enforced | No body is ever bound to an object: each route reads the fields it knows and checks their type and range (`test_every_post_route_answers_a_hostile_body_with_a_clear_4xx`, Schemathesis). |
+| Command injection | N/A by construction | Every process is started from an argument list with no shell, and no part of any command comes from a user, a sheet, a file or the network (installer's System32 tools by full path, PowerShell built from constants and process ids). |
+| Insecure deserialization | N/A by construction | No pickle, marshal, `yaml.load`, `eval` or `new Function`; the AI cache is JSON read through pydantic; workbook settings are rebuilt as null-prototype objects (`decisions.js`, `autofix.js`, `undo-store.js`). |
+| Misconfigured OAuth | N/A | No OAuth. |
+| Hide API keys, purge Git secrets | Enforced | See "Hide my API keys" and "Check Git history" above (`tools/secret_history.py` reads every commit). |
+| Public DB key, row level security | N/A | No database. |
+| Server-side auth, lock record access | Enforced | See "Add proper authentication" above. |
+| Hash passwords, rate limit login, bot protection | N/A; the invite is the login | No passwords. An invite is 144 random bits, stored only as a hash, so guessing one is hopeless; the website's support form posts nowhere (it builds a GitHub issue link). A Cloudflare rate rule against floods is John's (below). |
+| Validate all input, escape user content | Enforced | See "Sanitize my forms" and "Protect against XSS" above. |
+| Restrict file uploads | N/A | No uploads. |
+| Trim API responses | Enforced | `/health` gives four fields, errors are our own sentences, the Server header has no version (`test_an_unexpected_engine_error_answers_in_our_own_words`). |
+| Force HTTPS | Enforced | The engine speaks only TLS 1.2+ on 127.0.0.1, the invite is sent only over https (`test_invite_code_is_only_ever_sent_over_https`), GitHub Pages serves the site over https, and no page links to http://. |
+| Scan dependencies | Enforced | pip-audit on every push and weekly, on what is installed and on every pin. |
+
+### Signs an app was vibe coded
+| Item | Status | Where / evidence |
+|---|---|---|
+| Purple gradients, gradient backgrounds | Absent | Every colour is navy, wine, gold or paper (16 to 21 hex values a stylesheet); gradients are only masks and the skeleton's light, never a coloured background. |
+| Too much padding, floating elements | Kept on purpose | Section padding is 64 px on a phone; the only lifted elements are the list rows and the sample's cells on hover, which John asked for (AH-92, AH-94). |
+| Keyboards covering input fields | Absent as measured | At 390 x 420 (a phone with its keyboard open) every support field scrolls into view when focused, and a failed submit now focuses the first missing field with its message beside it (AH-114). |
+| Buttons too small | Fixed in AH-115 | Every control that isn't a link inside a sentence is at least 24 x 24 px (WCAG 2.2 AA): the pane's summaries were 18 px, its footer links 16, the site's footer links 21 and the notice bar's Download 17. A sweep in `e2e/launch.mjs` and `tools/test_site.mjs` measures each one. |
+| No caching | Enforced | See "Browser caching" and "Cache frequently accessed data" above. |
+| Text too small | Fixed in AH-116 | The sample's and the limits table's heads were 10.5 to 10.9 px; nothing a user reads is under 12 px now, measured on every page. |
+| Loading spinners everywhere | Absent | No spinner: a scan shows a skeleton built from the list's own rows, the site's sample a skeleton of its own table. |
+| Emojis in buttons and icons | Absent | No emoji in any file or rendered text (scanned). |
+| Tapping twice does it twice | Enforced | Every pane action ignores a second click while one runs (`hooks/use-action.js`; `e2e/run.mjs`: a double click sends one request). |
+| New users land on an empty screen | Fixed in AH-111 | The first screen says what to click and what the sheet needs. A clean scan used to leave an empty list box, a stale "Click a row" hint and Remove highlights under "No problems found": now it shows the summary alone (`e2e/run.mjs` 8b). |
+| Scaling text breaks the UI | Fixed in AH-112 | At 200% text or 160 px wide the website scrolled sideways (by up to 267 px) and the pane's privacy and support pages cut words off. Long words, links and code now wrap; tested on every page at 160 px and at 320 px with 200% text. |
+| Dark and light mode switches break the UI | Absent; High Contrast fixed in AH-113 | Every page is light by design (`color-scheme: light`), so a dark setting changes nothing. Windows High Contrast did break it: the Find problems button turned into plain text, the slider vanished and the sample's two kinds of marks looked the same. Each now keeps a system-colour border or its own colours, tested with forced colours on. |
+| Raw error text shown to the user | Fixed in AH-110 | The pane showed Office's own words ("Something went wrong: InvalidOperationInCellEditMode"). Every error is now said in plain words, "Excel is busy editing a cell. Press Enter or Esc, then try again.", with the detail in the console (`utils/errors.js`, `e2e/run.mjs` 7d). |
+| No animations when tapping buttons | Fixed in AH-120 | Only the slider had a pressed look. Every button, summary and button-like link now has one, with no movement under reduced motion; `frontend/selfcheck.js` and `tools/test_site.mjs` check each has an `:active` rule. |
+| User preferences wiped on an update | Enforced (proved in AH-104) | Settings keys, the install folder and the page's address kept their names through the Arcas rename; the CI update test now saves an invite under the old release and needs it working after the update. |
+
+### AI-slop looks
+| Item | Status | Where / evidence |
+|---|---|---|
+| Tags and pills, squircles | Absent | Every corner is square (`border-radius: 0`). |
+| Excessive italics | Absent | No italic text is rendered. |
+| Instrument Serif | Absent | One self-hosted font, Plus Jakarta Sans. |
+| Negative kerning | Fixed in AH-117 | 19 negative letter-spacings (headings, the strength value) are gone; `frontend/selfcheck.js` and `tools/test_site.mjs` refuse a new one. |
+| Over-detailed UI, overly detailed diagrams | Kept, John's design | The contour field, grain and the sample's tabs were John's motion brief (AH-88 to AH-94); the field fades under text. No diagrams. |
+| Overusing dividers, containers with borders | Kept to the rule | No `<hr>`; borders are hairlines on tables and notices, which the design asks for ("a notice is a hairline box", layer 11). |
+| Multiple colour shades and opacities | Kept small | One palette of tokens; opacity only 0, 0.5 and 1 apart from a disabled control. |
+| Verbose or redundant text | Fixed where found | The pane said what Ask AI sends twice: the second copy now carries the free-tier warning instead. `test_plain_words.py` refuses dashes, "just", "simply" and the other AI tells. |
+| Code breadcrumbs | Kept where they are facts | The privacy pages name the files and settings keys the app keeps, as a promise a test holds them to; the Code signing policy names the workflow that builds the exe, as SignPath asks. |
+| Section numbering, eyebrows | Absent (fixed in AH-117) | No numbered headings; the pane's support page had "Answers" and "Contact" above its headings: gone, and refused by `frontend/selfcheck.js`. |
+| Dithering, ASCII images | Absent | None. |
+| Excessive monofonts | Kept to data | Monospace only for code, cell values and file names. |
+| All caps subtitles | Absent | Capitals only on table and column heads, by rule. |
+| Periods in titles | Fixed in AH-117 | Six site headings ended with a period (the pane's had none); `test_plain_words.py` now fails on any heading that does. |
+
+### Before shipping
+| Item | Status | Where / evidence |
+|---|---|---|
+| Layout that works on mobile | Measured | Pane at 160 to 500 px, site at 390 px and a slow phone (see Launch above). |
+| Loading indicators, skeleton loaders | Enforced | A step, a real percentage and a skeleton during a scan; "AI is thinking..." on Ask AI. |
+| Helpful empty states | Fixed in AH-111 | See "New users land on an empty screen". |
+| Error messages that explain | Fixed in AH-110, AH-114 | See "Raw error text"; the support form names each missing field and focuses it. |
+| Server-side validation, permission checks | Enforced | See Security above. |
+| Password recovery, confirmation emails | N/A | No accounts and no email. |
+| Keyboard navigation, labels on every field, alt text | Enforced | See "Add keyboard navigation" and "Add accessibility alt text" above; every field has a label or a name. |
+| Unique page titles and descriptions | Fixed in AH-119 | Each site page has its own title, description, canonical link and sharing tags (`tools/test_site.mjs`). |
+| A sitemap | Fixed in AH-119 | `site/sitemap.xml` lists the three pages. No robots.txt: the site lives under `/excel-anomaly-hunter/` and crawlers read robots.txt only at a domain's root. |
+| Privacy information | Enforced | PRIVACY.md and its two twins, held to the code by tests. |
+| HTTPS everywhere | Enforced | See "Force HTTPS". |
+| Analytics tracking | Not added, deliberately | The privacy promise is that nothing is tracked. What John can read without tracking anyone: GitHub's own traffic page (Insights, Traffic) for the site and repo, and each release's download count. |
+| Error monitoring | Enforced without tracking | No crash reporting from users' PCs (privacy); the daily relay check, and with the canary a real call, tells John when AI help breaks (AH-108); users report through GitHub Issues. |
+| Production environment variables | Enforced | See "Check my env variables". |
+| Backups, rollback plan | Done in AH-107 | `docs/RUNBOOK.md`. |
+| Optimistic rendering, tooltips on icon buttons | Enforced; N/A | Buttons react at once (see "Update the UI before the server responds"); there are no icon-only buttons, every control shows its words. |
+
 Left for John (not code): a Cloudflare WAF rate rule against floods of stranger requests to the relay (they are
 refused before Google, but count toward the Workers free plan's daily requests); whether to keep the developer-only
-Claude path (`ANTHROPIC_API_KEY`) in the exe.
+Claude path (`ANTHROPIC_API_KEY`) in the exe; an own-key `ai_eval.py` run so the fix prompt can say rows are data (AH-109);
+a canary invite saved as the repository secret `RELAY_CANARY_INVITE` (AH-108); a second private copy of `relay/tokens.json`.

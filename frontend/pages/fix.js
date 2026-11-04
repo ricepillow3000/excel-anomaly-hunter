@@ -52,8 +52,8 @@ export async function openFix(i, selectInSheet) {
   if (state.fix === f) await showFix(f, label, rec);
 }
 
-// A row fixed before this scan (another session, or before a re-check) that looks right now: the list selects it in
-// the sheet. Its Undo was the cells' old values, which only the pane that made the fix held.
+// A row fixed before this scan that looks right now, with no Undo kept for it (Forget, an edit or a sort since, a cell
+// too long to keep, or a formula's old value, which only the pane that made the fix held): the list selects it.
 async function selectFixed(i) {
   const { columns, startRow, startCol, sheet } = state.lastScan;
   await Excel.run(async (ctx) => {
@@ -62,7 +62,7 @@ async function selectFixed(i) {
     ws.getRangeByIndexes(startRow + 1 + i, startCol, 1, columns.length).select();
     await ctx.sync();
   });
-  notice(`Row ${startRow + i + 2} was fixed and looks right now. Undo is only offered right after a fix, before the sheet is checked again.`);
+  notice(`Row ${startRow + i + 2} was fixed and looks right now. There is nothing to undo here: its old values are no longer kept.`);
 }
 
 // Dismiss = leave this row as it is: its highlight goes, like a dismissed Grammarly underline. Then the next row.

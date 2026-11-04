@@ -55,9 +55,10 @@ jobs:
         run: ruff check --select S --ignore S101 backend/anomaly_hunter tools
       - name: Dependencies with known vulnerabilities
         run: pip-audit --skip-editable
-      # every pin too: the build tool and the Windows-only pins are never installed on this runner (AH-96)
+      # every pin too: the build tool and the Windows-only pins are never installed on this runner (AH-96). --strict: a
+      # mistyped or made-up name only printed "Dependency not found on PyPI" and passed (AH-105)
       - name: Every pinned package, installed here or not
-        run: pip-audit -r constraints.txt --no-deps --disable-pip
+        run: pip-audit -r constraints.txt --no-deps --disable-pip --strict
 
   zap:
     needs: checks

@@ -1,6 +1,9 @@
 // Attack the LIVE relay from outside, the way a stranger would: no invite code, tricks on the path, the method, the
 // size and CORS. Every request must be refused before the invite check passes, so none reaches Google or counts
 // against the daily caps. A dozen requests, no load. Run: node relay/live-probe.mjs [relay URL] (CI: relay-live.yml)
+// Then, with RELAY_CANARY_INVITE set, one real call that must work (canary.mjs, AH-108).
+import { canary } from "./canary.mjs";
+
 const R = process.argv[2] || "https://anomaly-hunter-relay.john4000-nguyen.workers.dev";
 const J = { "Content-Type": "application/json" };
 const fix = JSON.stringify({ messages: [{ role: "user", content: "say hi" }], response_format: { type: "json_object" } });
@@ -39,4 +42,15 @@ for (const [name, path, init, want] of probes) {
   console.log(line);
 }
 console.log(`${pass}/${probes.length} refused correctly`);
-process.exit(pass === probes.length ? 0 : 1);
+
+const invite = process.env.RELAY_CANARY_INVITE;
+let alive = true;
+if (!invite) {
+  console.log("Canary skipped: no RELAY_CANARY_INVITE. To turn it on, make an invite named canary " +
+    "(node relay/new-invite.mjs canary, upload tokens.json) and save its code as the repository secret RELAY_CANARY_INVITE.");
+} else {
+  const c = await canary(R, invite);
+  console.log(c.line);
+  alive = c.ok;
+}
+process.exit(pass === probes.length && alive ? 0 : 1);

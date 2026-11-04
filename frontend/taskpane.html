@@ -91,7 +91,7 @@
           <ul id="fairness-list" class="hint"></ul>
         </details>
         <h2 id="list-title">Rows to check</h2>
-        <p class="hint">Worst first. Click a row to see what's wrong and a suggested fix.</p>
+        <p id="list-hint" class="hint">Worst first. Click a row to see what's wrong and a suggested fix.</p>
         <ul id="flagged-list" class="flagged-list"></ul>
         <button id="clear-highlights" class="secondary">Remove highlights</button>
         <div id="odd-box" hidden>
@@ -172,13 +172,13 @@
           <button id="remove-key" class="secondary">Remove key</button>
         </div>
         <p class="hint">If John gave you an invite code (it starts with inv_), paste it in the same box. It uses his shared AI with a daily limit, and his key never reaches this PC.</p>
-        <p class="hint">Ask AI sends the column names, the row you ask about, up to 5 rows above and below it, its formulas and anything you type; Check words with AI sends your text columns' different values. Both go to Google (through John's relay if you use an invite code). Google's free tier may use them to improve its products, so don't ask AI about private data. The key is stored only on this computer.</p>
+        <p class="hint">Google's free tier may use what AI help sends to improve its products, so don't ask AI about private data. The key is stored only on this computer.</p>
         <p class="hint"><a href="privacy.html" target="_blank" rel="noopener">What leaves your PC</a> · <a href="support.html" target="_blank" rel="noopener">Questions or problems</a></p>
       </details>
 
       <details class="more">
         <summary>Saved in this workbook</summary>
-        <p class="hint">This workbook keeps the limits you changed, the strength slider, the last auto-fixes with their old values (for Undo auto-fixes), a short code for each row you fixed or dismissed, and a setting that opens this pane with the file. They stay in the file after you uninstall. Forgetting them never changes a cell.</p>
+        <p class="hint">This workbook keeps the limits you changed, the strength slider, the last auto-fixes with their old values (for Undo auto-fixes), the old values of the cells you changed with Accept (for Undo), a short code for each row you fixed or dismissed, and a setting that opens this pane with the file. They stay in the file after you uninstall. Forgetting them never changes a cell.</p>
         <button id="forget-book" class="secondary">Forget what this workbook saved</button>
         <p id="forget-state" class="hint" role="status" aria-live="polite"></p>
       </details>

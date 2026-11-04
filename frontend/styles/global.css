@@ -27,8 +27,8 @@
   --high: #ffc7ce; --medium: #ffeb9c; --low: #ffffcc; /* the same fills the sheet gets - never recolour without the engine */
 
   --sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
-  /* a 1.25 type scale from a 14px body */
-  --fs--2: 10.5px; --fs--1: 12px; --fs-0: 14px; --fs-1: 17.5px; --fs-2: 21.875px; --fs-3: 27.34px;
+  /* a 1.25 type scale from a 14px body, never under 12px (AH-116: the limits table's heads were 10.5) */
+  --fs--1: 12px; --fs-0: 14px; --fs-1: 17.5px; --fs-2: 21.875px; --fs-3: 27.34px;
   --track: .12em;      /* the limits table's column heads, the one place in capitals */
   /* the 4px spacing scale and the grid: 4 columns, fixed gutters, a fixed margin */
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
@@ -52,10 +52,11 @@ body { font: 400 var(--fs-0)/1.5 var(--sans); color: var(--ink); background: var
 ::selection { background: #E7D9B0; }
 /* Chromium's own placeholder grey is 4.2:1 on paper: the small print's colour, at full strength (AH-87) */
 ::placeholder { color: var(--muted); opacity: 1; }
-a { color: var(--navy); text-decoration-color: var(--wine); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+/* a long link or code breaks anywhere rather than run past a 160 px pane (a 320 px pane at 200% zoom, AH-112) */
+a { color: var(--navy); text-decoration-color: var(--wine); text-underline-offset: 3px; text-decoration-thickness: 1px; overflow-wrap: anywhere; }
 a:hover { text-decoration-thickness: 2px; }
 :focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
-code { background: var(--paper-2); border: 1px solid var(--rule); padding: 0 4px; border-radius: 0; font-size: var(--fs--1); color: var(--navy); }
+code { overflow-wrap: anywhere; background: var(--paper-2); border: 1px solid var(--rule); padding: 0 4px; border-radius: 0; font-size: var(--fs--1); color: var(--navy); }
 h1, h2, h3 { color: var(--navy); }
 .label { margin: 0; font: 700 13px/1.4 var(--sans); color: var(--navy); }
 .cols { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); column-gap: var(--gutter); }
@@ -65,11 +66,11 @@ header { padding: var(--s3) var(--margin); background: var(--tex-navy), var(--na
 header .brand { display: flex; align-items: center; gap: var(--s3); }
 .mark, .mk { display: block; flex: none; line-height: 0; } /* no tile: the mark's gold rim and spear carry it on the navy band (John, 2026-10-30) */
 .mark img, .mk img { display: block; }
-h1 { margin: 0; font: 800 var(--fs-1)/1 var(--sans); letter-spacing: -.02em; color: var(--on-navy); }
+h1 { margin: 0; font: 800 var(--fs-1)/1 var(--sans); color: var(--on-navy); }
 .sheet-name { margin: var(--s3) 0 0; padding-top: var(--s2); border-top: 1px solid var(--rule-navy); font: 700 var(--fs--1)/1.4 var(--sans);
   color: var(--gold-hi); overflow-wrap: anywhere; }
 .sheet-name:empty { display: none; }
-h2 { position: relative; margin: var(--s5) 0 var(--s2); padding-top: var(--s3); font: 800 var(--fs-1)/1.1 var(--sans); letter-spacing: -.015em; color: var(--navy); }
+h2 { position: relative; margin: var(--s5) 0 var(--s2); padding-top: var(--s3); font: 800 var(--fs-1)/1.1 var(--sans); color: var(--navy); }
 /* the hairline over each heading; where the browser has scroll timelines it draws across as the heading scrolls in,
    1:1 with the scroll bar (no easing, no script): scroll back and it undraws */
 h2::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px; background: var(--navy); transform-origin: left; }
@@ -113,6 +114,10 @@ button:disabled { cursor: default; opacity: 0.45; }
 .row-buttons > .primary { min-height: 40px; font-size: 13px; letter-spacing: 0; } /* "Accept" beside "Dismiss": one size, one case */
 .link-btn { border: 0; background: none; color: var(--navy); padding: var(--s4) 0 0; font: 700 13px/1.4 var(--sans);
   text-decoration: underline; text-decoration-color: var(--wine); text-underline-offset: 4px; }
+/* pressed (AH-120): only the slider's thumb answered a press, so a click on a slow Accept looked missed. A press is the
+   hover's fill with a ring inset in it, at once and with no movement */
+.primary:active:not(:disabled), .secondary:active:not(:disabled) { background: var(--navy); color: var(--paper); box-shadow: inset 0 0 0 2px var(--gold-hi); transition: none; }
+.link-btn:active:not(:disabled) { color: var(--wine); text-decoration-thickness: 2px; }
 
 /* ---- skeleton loader: the pane's shape in still blocks, shown while Office + engine load.
    :has() hides it the moment real content (main-ui) or the server-down notice appears. ---- */
@@ -132,7 +137,7 @@ button:disabled { cursor: default; opacity: 0.45; }
 #server-down { border: 1px solid var(--navy); background: var(--field); margin: var(--margin); padding: var(--s3) var(--s4); }
 #server-down p:first-child::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: var(--s2); background: var(--wine); }
 #server-down p { margin: 0 0 var(--s2); }
-#server-down b { font-weight: 800; font-size: var(--fs-1); line-height: 1.2; color: var(--navy); letter-spacing: -.01em; }
+#server-down b { font-weight: 800; font-size: var(--fs-1); line-height: 1.2; color: var(--navy); }
 
 /* ---- the options: a paper panel under a navy hairline ---- */
 .settings-band { margin: var(--s6) calc(-1 * var(--margin)) 0; padding: var(--s5) var(--margin) var(--s5); border-top: 1px solid var(--navy);
@@ -144,12 +149,21 @@ button:disabled { cursor: default; opacity: 0.45; }
 #pane-footer { margin: 0 calc(-1 * var(--margin)); padding: var(--s5) var(--margin) var(--s4); background: var(--tex-navy), var(--navy); color: var(--on-navy);
   border-top: 1px solid var(--gold-hi); display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); column-gap: var(--gutter); }
 #pane-footer > * { grid-column: 1 / -1; }
-#pane-footer .pf-brand { display: flex; align-items: center; gap: var(--s3); color: var(--on-navy); font: 800 var(--fs-1)/1 var(--sans); letter-spacing: -.02em; }
+#pane-footer .pf-brand { display: flex; align-items: center; gap: var(--s3); color: var(--on-navy); font: 800 var(--fs-1)/1 var(--sans); }
 #pane-footer .pf-tag { margin: var(--s4) 0; padding-top: var(--s3); border-top: 1px solid var(--rule-navy); font-size: var(--fs--1); color: var(--on-navy-2); line-height: 1.5; }
 #pane-footer .pf-links { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); column-gap: var(--gutter); }
 #pane-footer .pf-links a { grid-column: span 2; color: var(--on-navy); border: 1px solid var(--on-navy-2); padding: var(--s3) var(--s3); text-decoration: none;
   font: 700 13px/1 var(--sans); transition: background-color .3s var(--ease), color .3s var(--ease); }
 #pane-footer .pf-links a:hover { background: var(--on-navy); color: var(--navy); }
+#pane-footer .pf-links a:active { background: var(--on-navy-2); color: var(--navy); transition: none; }
 #pane-footer .pf-links a:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
 #pane-footer .pf-version { margin: var(--s4) 0 0; font: 600 var(--fs--1)/1.4 var(--sans); color: var(--gold-hi); }
 #pane-footer .pf-version:empty { display: none; }
+
+/* Windows High Contrast (AH-113): the system repaints every background in its own colours, so a filled button with no
+   border read as plain text, and the squares drawn as backgrounds vanished. A frame on filled buttons, the squares in
+   the text colour */
+@media (forced-colors: active) {
+  .primary { border: 2px solid ButtonText; }
+  #scan::after, #notice::before, #server-down p:first-child::before, h2::before { forced-color-adjust: none; background: CanvasText; }
+}

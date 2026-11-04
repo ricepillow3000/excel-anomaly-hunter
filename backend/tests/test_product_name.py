@@ -100,8 +100,9 @@ def test_every_place_that_names_the_product_says_arcas():
     manifest = ET.fromstring(text("frontend/manifest.xml"))
     assert manifest.find("o:DisplayName", ns).get("DefaultValue") == "Arcas"
     assert [s.get("DefaultValue") for s in manifest.iter(f"{{{ns['bt']}}}String") if s.get("id") == "Name"] == ["Arcas"]
-    assert title("site/index.html") == "Arcas" and title("frontend/taskpane.html") == "Arcas"
-    assert title("site/privacy.html") == "Arcas Privacy" and title("site/support.html") == "Arcas Support"
+    assert title("frontend/taskpane.html") == "Arcas"
+    # the website's titles say Arcas first, then what the page is (AH-119: "Arcas" alone named no page in a search)
+    assert [title(f"site/{p}.html").split(":")[0] for p in ("index", "privacy", "support")] == ["Arcas", "Arcas privacy", "Arcas support"]
     assert title("frontend/privacy.html") == "Arcas, Privacy" and title("frontend/support.html") == "Arcas, Support"
     assert 'aria-label="Arcas home"' in text("site/index.html")
     pane = text("frontend/taskpane.html")

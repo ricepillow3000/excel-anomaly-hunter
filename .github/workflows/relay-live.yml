@@ -1,6 +1,9 @@
 # Attack the LIVE AI relay from outside (the dev sandbox can't reach workers.dev): a dozen stranger requests - no
 # invite code, path/method/size/CORS tricks - each must be refused before the invite check, so none reaches Google
 # or counts against the daily caps. Runs when the relay changes, every day, and from the "Run workflow" button.
+# Then one real call with the canary invite (AH-108): refusals alone never showed a revoked Gemini key or a retired
+# model. It needs the secret RELAY_CANARY_INVITE (an invite named canary) and is skipped, with a note, without it. It
+# takes one of the shared daily calls each run; a fork's pull request gets no secret, so it skips there.
 name: Relay live probe
 
 on:
@@ -23,5 +26,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         with:
           sparse-checkout: relay
-      - name: Stranger requests to the live relay - all must be refused
+      - name: Stranger requests to the live relay - all must be refused, and the canary invite's real call must work
+        env:
+          RELAY_CANARY_INVITE: ${{ secrets.RELAY_CANARY_INVITE }}
         run: node relay/live-probe.mjs

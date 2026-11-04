@@ -498,4 +498,91 @@ const calmCss = css.slice(css.lastIndexOf("@media (prefers-reduced-motion: reduc
 for (const sel of [".flagged-list button::before", ".flagged-list button:is(:hover, :focus-visible):not(:disabled)", "#fix-changes li:hover", "#scan-skeleton::after"])
   assert.ok(calmCss.includes(sel), `no reduced-motion rule for ${sel}`);
 assert.ok(/turnIn\(el\) \{\s*if \(!el \|\| still\(\)/.test(motion) && /fadeIn\(el\) \{\s*if \(!el \|\| still\(\)/.test(motion), "the page turn and the fade skip reduced motion");
+
+// AH-110: Office's and the browser's own words never reach the screen ("Something went wrong:
+// InvalidOperationInCellEditMode", "Cannot read properties of undefined (reading 'values')"). The engine's and the network's
+// sentences are ours (services/api.js builds them) and are said as they are; Excel's codes get a sentence each; anything
+// else one plain sentence with no internal word in it
+{
+  const { plainError, ours } = await import("./utils/errors.js");
+  const quiet = console.error;
+  console.error = () => {}; // plainError logs the detail for a person debugging: not this check's output
+  try {
+    assert.equal(plainError(ours("the checker isn't running.")), "Something went wrong: the checker isn't running.");
+    assert.equal(plainError(ours("the checker isn't running."), "Accept failed"), "Accept failed: the checker isn't running.");
+    assert.equal(plainError(Object.assign(new Error("InvalidOperationInCellEditMode"), { code: "InvalidOperationInCellEditMode" })),
+      "Excel is busy editing a cell. Press Enter or Esc, then try again.");
+    assert.match(plainError(Object.assign(new Error("ItemNotFound"), { code: "ItemNotFound" })), /^The sheet or cells this was about are gone\b.*Find problems/);
+    for (const e of [new TypeError("Cannot read properties of undefined (reading 'values')"), new Error("GeneralException"), "x", null,
+      Object.assign(new Error("AccessDenied"), { code: "AccessDenied" })]) {
+      const said = plainError(e, "Undo failed");
+      assert.ok(said.startsWith("Undo failed. ") && !/TypeError|undefined|properties|values|Exception|AccessDenied|null/.test(said), said);
+    }
+  } finally {
+    console.error = quiet;
+  }
+}
+
+// AH-118: Accept's Undo is kept in the workbook like auto-fix's, so a reload no longer loses the old values. A crafted
+// workbook can carry anything under the key: only plain values into plain A1 cells, never a formula, capped
+{
+  const { asUndos, keepUndo, dropUndo, undoRecord, MAX_UNDOS, MAX_CHARS } = await import("./features/undo-store.js");
+  const rec = { sheet: "S", code: "a1.0", before: "b2.0", was: null, cells: [["C11", -5, "General", "5", 5]] };
+  assert.deepEqual(asUndos([rec]).map((r) => ({ ...r })), [rec]);
+  assert.equal(Object.getPrototypeOf(asUndos([rec])[0]), null, "null-prototype records");
+  const bad = JSON.parse('[{"sheet":"S","code":"a1.0","before":"b.0","was":null,"cells":[["C11","=HYPERLINK(\\"x\\")","General","1",1]]},' +
+    '{"sheet":"S","code":"a1.0","before":"b.0","was":null,"cells":[["C11; D1",1,"General","1",1]]},' +
+    '{"sheet":"S","code":"<img>","before":"b.0","was":null,"cells":[["C11",1,"General","1",1]]},' +
+    '{"sheet":"S","code":"a1.0","before":"b.0","was":"admin","cells":[["C11",1,"General","1",1]]},' +
+    '{"sheet":"S","code":"a1.0","before":"b.0","was":null,"cells":[["C11",{"x":1},"General","1",1]]},' +
+    '{"sheet":"S","code":"a1.0","before":"b.0","was":null,"cells":[]},{"__proto__":{"polluted":1}}, 5, "x"]');
+  assert.deepEqual(asUndos(bad), [], "a formula, a crafted address or code, an unknown word, an object or an empty record never survives");
+  assert.equal(({}).polluted, undefined);
+  for (const junk of [null, "x", 5, {}, { a: 1 }]) assert.deepEqual(asUndos(junk), []);
+  let u = keepUndo([], rec);
+  u = keepUndo(u, { ...rec, cells: [["C11", -6, "General", "6", 6]] });
+  assert.equal(u.length, 1, "the same row kept again replaces its record");
+  assert.equal(u[0].cells[0][1], -6);
+  assert.deepEqual(dropUndo(u, "S", "a1.0"), []);
+  assert.equal(keepUndo([], { ...rec, cells: [["C11", "x".repeat(MAX_CHARS), "General", "5", 5]] }).length, 0, "a record too big to keep is left out");
+  let many = [];
+  for (let k = 0; k <= MAX_UNDOS; k++) many = keepUndo(many, { ...rec, code: `r${k}.0` });
+  assert.equal(many.length, MAX_UNDOS);
+  assert.equal(many[0].code, "r1.0", "the oldest goes first");
+  // the pane's own Undo record -> what the workbook keeps: never a formula's old value (only memory keeps those)
+  const mem = { sheet: "S", code: "a1.0", before: "b2.0", was: "dismissed", changes: [{ cell: "C11", new: "5" }], after: [5],
+    writes: [{ cell: "C11", value: -5, format: "General" }] };
+  assert.deepEqual({ ...undoRecord(mem) }, { sheet: "S", code: "a1.0", before: "b2.0", was: "dismissed", cells: [["C11", -5, "General", "5", 5]] });
+  assert.equal(undoRecord({ ...mem, writes: [{ cell: "C11", value: "=B11*2", format: "General" }] }), null);
+}
+
+// AH-117: no negative letter-spacing (John: "negative kerning", a generated page's look) in any pane stylesheet, and no
+// small label over a heading that the heading already says (support.html's "Answers" over "Common questions")
+const sheetsCss = ["styles/global.css", "styles/components.css", "legal.css"].map((f) => [f, readFileSync(new URL(f, import.meta.url), "utf8")]);
+for (const [f, src] of sheetsCss) {
+  const neg = /letter-spacing\s*:\s*-[^;}]*/.exec(src);
+  assert.ok(!neg, `${f}: "${neg?.[0]}" - letter-spacing is normal or wider, never negative`);
+  assert.ok(!/\.(kicker|eyebrow)\b/.test(src), `${f}: an eyebrow class is styled`);
+}
+for (const f of readdirSync(new URL(".", import.meta.url)).filter((f) => f.endsWith(".html")))
+  assert.ok(!/class="[^"]*\b(kicker|eyebrow)\b/.test(readFileSync(new URL(f, import.meta.url), "utf8")), `${f}: an eyebrow label above a heading`);
+
+// AH-120: every kind of button shows it was pressed (only the slider's thumb did). Each class a pane <button> or a page's
+// button link wears, the list's row buttons and every details summary have an :active rule
+{
+  const allCss = sheetsCss.map(([, src]) => src).join("\n");
+  const pressed = [...allCss.matchAll(/[^{}]*:active[^{}]*\{/g)].map((m) => m[0]);
+  const classes = new Set();
+  for (const f of ["taskpane.html", "privacy.html", "support.html"]) {
+    const src = readFileSync(new URL(f, import.meta.url), "utf8");
+    for (const [, c] of src.matchAll(/<button\b[^>]*\bclass="([^"]+)"/g)) c.split(/\s+/).forEach((x) => classes.add(x));
+    for (const [, c] of src.matchAll(/<a\b[^>]*\bclass="(btn[^"]*)"/g)) c.split(/\s+/).forEach((x) => classes.add(x));
+  }
+  classes.delete("btn"); // the shared frame: its colours live on btn-red / btn-line
+  for (const c of [...classes].map((x) => "." + x).concat([".flagged-list button", "#pane-footer .pf-links a"]))
+    assert.ok(pressed.some((s) => s.includes(c)), `no :active rule for ${c}: a press shows nothing`);
+  for (const [f, src] of sheetsCss) if (/summary\s*\{/.test(src))
+    assert.ok([...src.matchAll(/[^{}]*:active[^{}]*\{/g)].some((m) => m[0].includes("summary")), `${f}: no :active rule for summary`);
+}
+
 console.log("panel self-check passed");

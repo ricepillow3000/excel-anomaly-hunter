@@ -292,3 +292,17 @@ def test_the_tells_are_caught_where_they_are_written():
 def test_nothing_a_person_reads_carries_the_tells_of_machine_writing():
     found = tells()
     assert found == [], f"{len(found)} tells:\n" + "\n".join(msg for _, msg in found)
+
+
+def periods():
+    """Every h1-h4 that ends with a period: a heading is a title, not a sentence (AH-117, John: "Find the error before
+    it reaches the board." read as generated). A question mark stays: "How do I update?" asks something."""
+    return [f"{path.relative_to(ROOT).as_posix()}:{line}: <{tag}> {text!r}" for path, _, heads in sources()
+            for line, tag, text in heads if tag in ("h1", "h2", "h3", "h4") and text.rstrip().endswith(".")]
+
+
+def test_a_heading_never_ends_with_a_period():
+    _, heads = page_text("<h1>Find the error.</h1><h2>How do I update?</h2><h3>Install on your PC</h3><p>A sentence.</p>")
+    assert [t for _, tag, t in heads if tag.startswith("h") and t.endswith(".")] == ["Find the error."]
+    found = periods()
+    assert found == [], f"{len(found)} headings end with a period:\n" + "\n".join(found)
