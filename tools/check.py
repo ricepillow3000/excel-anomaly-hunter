@@ -27,7 +27,8 @@ LAYERS = [
     ("known-vulnerable dependencies", [PY, "-m", "pip_audit", "--skip-editable"]),
     # every pin too, not only what this PC installed: setuptools (the build tool) and the Windows-only pins are never
     # installed here, and setuptools 84.0.0 carried GHSA-xmj3-9gf7-h52w while the line above was green (AH-96)
-    ("known-vulnerable pins", [PY, "-m", "pip_audit", "-r", "constraints.txt", "--no-deps", "--disable-pip"]),
+    # --strict: a mistyped or made-up name in constraints.txt only printed "Dependency not found on PyPI" and passed (AH-105)
+    ("known-vulnerable pins", [PY, "-m", "pip_audit", "-r", "constraints.txt", "--no-deps", "--disable-pip", "--strict"]),
 ]
 if "--e2e" in sys.argv:
     LAYERS.append(("browser e2e", ["bash", "e2e/all.sh"]))

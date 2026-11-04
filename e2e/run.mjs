@@ -406,8 +406,25 @@ if (mode === "flow") {
     "a decided row is not highlighted again; the others are - " + JSON.stringify([await cell("C22"), await cell("C11"), await cell("A51")]));
   ok(/2 of \d+ done/.test(await text("#list-title")), "and counted done - " + (await text("#list-title")));
   await contrast("the list with a Fixed and a Dismissed row");
+  // AH-118: Accept's Undo outlives the pane too. It lived only in the pane's memory, so after a reload the fixed row only
+  // selected itself ("Undo is only offered right after a fix") and the user's old value was gone from reach
+  ok(await page.evaluate(() => (__settings.anomalyHunterAcceptUndo || []).some((u) => u.sheet === "Sales" && u.cells.some((c) => c[0] === "C11" && c[1] === -5))),
+    "Accept keeps its Undo (the old value) in the workbook");
+  await openRow(11);
+  ok((await text("#fix-title")) === "Row 11: fixed" && (await page.isVisible("#fix-undo")) && (await text("#fix-changes")).startsWith("C11: -5 → "),
+    "after a reload the fixed row's card still offers Undo - " + (await text("#fix-title")) + " / " + (await text("#fix-changes")));
+  await page.click("#fix-undo"); await idle();
+  ok((await cell("C11")).v === -5 && (await text("#fix-status")).startsWith("Undone.") && (await kept()) === "dismissed"
+    && !(await page.evaluate(() => (__settings.anomalyHunterAcceptUndo || []).some((u) => u.sheet === "Sales"))),
+    "and Undo after a reload puts the old value back, takes the Fixed out and forgets the old value - " + (await text("#fix-status")) + " / " + (await kept()));
+  await page.click("#fix-apply"); await idle(); // fixed again, for the steps below
+  ok((await cell("C11")).v !== -5 && (await kept()) === "dismissed,fixed", "Accept again after that Undo - " + (await kept()));
+  await page.click("#fix-back");
+  // a fixed row whose old values the workbook no longer holds (Forget, or another PC's pane) only selects its row
+  await page.evaluate(() => { window.__keptUndo = __settings.anomalyHunterAcceptUndo; delete __settings.anomalyHunterAcceptUndo; }); await find();
   await page.click('#flagged-list button:has-text("Row 11 ")'); await idle();
-  ok(await page.isVisible("#results") && (await text("#notice")).includes("Undo is only offered right after a fix"), "a row fixed before only selects its row, and says why there's no Undo - " + (await text("#notice")));
+  ok(await page.isVisible("#results") && (await text("#notice")).includes("its old values are no longer kept"), "a row fixed with no Undo kept only selects its row, and says why - " + (await text("#notice")));
+  await page.evaluate(() => { __settings.anomalyHunterAcceptUndo = window.__keptUndo; }); // back, for Forget (6g) to find
   await openRow(22);
   ok((await text("#fix-title")).startsWith("Row 22") && (await page.isVisible("#fix-apply")), "a dismissed row's card still opens from the list, so it can still be fixed");
   await page.click("#fix-back");
@@ -438,11 +455,11 @@ if (mode === "flow") {
   // (row 22 dismissed, row 11 fixed) are there first
   await openStrict(); await page.click("#edit-limits");
   await page.locator('#limits-rows .limits-row[data-column="Units"] input').nth(1).fill("10000"); await page.click("#save-limits"); await idle();
-  const BOOK = ["anomalyHunterLimits", "anomalyHunterStrength", "anomalyHunterAutoUndo", "anomalyHunterDecisions", "Office.AutoShowTaskpaneWithDocument"];
+  const BOOK = ["anomalyHunterLimits", "anomalyHunterStrength", "anomalyHunterAutoUndo", "anomalyHunterAcceptUndo", "anomalyHunterDecisions", "Office.AutoShowTaskpaneWithDocument"];
   const held = () => page.evaluate((ks) => ks.filter((k) => __settings[k] !== undefined && __settings[k] !== null), BOOK);
   const sheetNow = () => page.evaluate(() => { const out = []; for (let r = 1; r <= 301; r++) for (const c of "ABCDE") out.push(__cell("Sales", c + r)); return JSON.stringify(out); });
   const heldBefore = await held(), cellsBefore = await sheetNow(), wrote0 = await page.evaluate(() => __log.length);
-  ok(heldBefore.includes("anomalyHunterLimits") && heldBefore.includes("anomalyHunterDecisions"), "a limit and decisions are in the workbook first - " + heldBefore);
+  ok(heldBefore.includes("anomalyHunterLimits") && heldBefore.includes("anomalyHunterDecisions") && heldBefore.includes("anomalyHunterAcceptUndo"), "a limit, decisions and Accept's Undo are in the workbook first - " + heldBefore);
   await page.locator("details.more:has(#forget-book)").evaluate((d) => (d.open = true));
   await page.click("#forget-book"); await idle();
   const forgot = await text("#forget-state");
@@ -511,10 +528,36 @@ if (mode === "flow") {
     "the engine down mid-Accept: the fix is in, and the card says the re-check couldn't run - " + (await text("#fix-status")));
   await page.click("#fix-undo"); await idle(); await page.click("#fix-back");
 
+  // 7d) AH-110: Excel's and the browser's own words never reach the screen. "Something went wrong:
+  // InvalidOperationInCellEditMode" (a cell being typed in) and "Something went wrong: Cannot read properties of
+  // undefined (reading 'values')" were shown as they came
+  const internal = /InvalidOperation|CellEditMode|ItemNotFound|TypeError|undefined|Cannot read|properties|reading '/;
+  await failing(/InvalidOperationInCellEditMode/, async () => { await page.evaluate(() => (window.__cellEdit = 1)); await page.click("#scan"); await idle(); });
+  ok((await text("#notice")) === "Excel is busy editing a cell. Press Enter or Esc, then try again.", "a scan while a cell is being typed in: Excel's code said in plain words - " + (await text("#notice")));
+  await failing(/Cannot read properties/, async () => { await page.evaluate(() => (window.__typeError = 1)); await page.click("#scan"); await idle(); });
+  const said7d = await text("#notice");
+  ok(said7d.startsWith("Something went wrong. ") && !internal.test(said7d) && !(await page.evaluate(() => document.getElementById("scan").disabled)),
+    "a script error: one plain sentence, no internal word, and the pane usable again - " + said7d);
+  await find(); // the list of the Other sheet; then the sheet is deleted under it
+  await page.evaluate(() => __drop("Other"));
+  await failing(/ItemNotFound/, async () => { await page.click('#flagged-list button:has-text("Row 81 ")'); await idle(); });
+  const gone7d = await text("#notice");
+  ok(/^The sheet or cells this was about are gone\b.*Find problems/.test(gone7d) && !internal.test(gone7d), "a sheet deleted under its list: said in plain words - " + gone7d);
+
   // 8) an empty sheet gets a plain message, not an error
   await page.evaluate(() => __load("Empty", [["only a header"]]));
   await page.click("#scan"); await idle();
   ok((await text("#notice")).startsWith("Not enough data here."), "empty sheet explained");
+
+  // 8b) AH-111: a sheet with nothing wrong says so and shows no list. Under "No problems found in 60 rows." it showed
+  // "Worst first. Click a row to see what's wrong...", an empty framed list and Remove highlights. The next scan that
+  // flags rows brings them back
+  const listBits = () => page.evaluate(() => ["list-hint", "flagged-list", "clear-highlights", "list-title"].map((id) => document.getElementById(id)?.checkVisibility() ? id : "").filter(Boolean).join());
+  await page.evaluate(() => __load("Clean", [["Item", "Units", "Cost"], ...Array.from({ length: 60 }, (_, k) => [["Pen", "Pad", "Ink"][k % 3], 40 + ((k * 7) % 23), +(1.99 + (k % 4)).toFixed(2)])]));
+  await find();
+  ok((await text("#summary")) === "No problems found in 60 rows." && (await listBits()) === "", "a clean sheet: the summary alone, no hint, no empty list, no Remove highlights - " + (await listBits()));
+  await page.evaluate(() => __activate("Sales")); await find();
+  ok((await listBits()) === "list-hint,flagged-list,clear-highlights,list-title", "the next scan that flags rows shows the list again - " + (await listBits()));
 
   // 9) the engine down when the pane opens: the pane says so, and Try again brings it back once it answers.
   // Every /health is refused until the pane has said so, not only the first: with { times: 1 } any other request for

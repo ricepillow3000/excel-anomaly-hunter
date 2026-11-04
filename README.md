@@ -86,4 +86,5 @@ self-check, relay abuse tests, engine tests + fuzzing, both accuracy benchmarks,
 test). Industry benchmark alone (15 fields + held-out traps, real pane + engine, pass/fail gates): `python backend/bench/score.py .`;
 `--blind` scores 14 more domains written without reading the detector. Browser test (real panel + engine, fake Excel; needs
 node + playwright; stop the installed engine first, it uses port 5055): `e2e/all.sh`. Code map, layers and patterns for the
-next change: `CLAUDE.md`. Security and launch items with evidence: `docs/security-and-launch-checklist.md`.
+next change: `CLAUDE.md`. Security and launch items with evidence: `docs/security-and-launch-checklist.md`. Rolling a
+release, the relay or the website back, and what to back up: `docs/RUNBOOK.md`.

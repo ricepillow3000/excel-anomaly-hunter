@@ -18,6 +18,7 @@ import anthropic
 from openpyxl.utils import column_index_from_string, get_column_letter
 from pydantic import BaseModel, ValidationError
 
+from anomaly_hunter import sealed
 from anomaly_hunter.ai import bias_context
 
 MODEL = "claude-opus-5"
@@ -31,11 +32,11 @@ INVITE_FILE = KEY_FILE.with_name("invite-code.txt")
 
 
 def gemini_key():
-    return os.environ.get("GEMINI_API_KEY") or (KEY_FILE.read_text(encoding="utf-8").strip() if KEY_FILE.exists() else "")
+    return os.environ.get("GEMINI_API_KEY") or sealed.read(KEY_FILE)
 
 
 def invite_code():
-    return INVITE_FILE.read_text(encoding="utf-8").strip() if INVITE_FILE.exists() else ""
+    return sealed.read(INVITE_FILE)
 
 
 def provider():

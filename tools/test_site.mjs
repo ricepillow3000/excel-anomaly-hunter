@@ -15,8 +15,12 @@ const PAGES = ["index.html", "privacy.html", "support.html"];
 const SCRIPTS = ["boot.js", "motion.js", "field.js", "home.js", "support.js", "transition.js"];
 const REPO = "https://github.com/ricepillow3000/excel-anomaly-hunter";
 const API = "https://api.github.com/repos/ricepillow3000/excel-anomaly-hunter/releases/latest";
+// where GitHub Pages publishes each page (pages.yml uploads site/ whole): the canonical, og:url and sitemap.xml say these
+const SITE_URL = "https://ricepillow3000.github.io/excel-anomaly-hunter/";
+const PUBLIC = { "index.html": SITE_URL, "privacy.html": SITE_URL + "privacy.html", "support.html": SITE_URL + "support.html" };
 const read = (f) => fs.readFileSync(path.join(SITE, f), "utf8");
 const html = Object.fromEntries(PAGES.map((p) => [p, read(p)]));
+const TITLE = Object.fromEntries(PAGES.map((p) => [p, (/<title>([^<]*)<\/title>/.exec(html[p]) || [])[1]]));
 const ids = (src) => [...src.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
 // one fixed pattern for every attribute, filtered by name: semgrep blocks a RegExp built from a variable (ReDoS)
 const attr = (src, name) => [...src.matchAll(/\s([a-z-]+)="([^"]*)"/g)].filter((m) => m[1] === name).map((m) => m[2]);
@@ -39,8 +43,10 @@ for (const p of PAGES) {
   }
   for (const name of ["aria-controls", "aria-labelledby", "for"]) for (const id of attr(src, name)) assert.ok(own.includes(id), `${p}: ${name}="${id}" names no element`);
   // nothing loads from outside: fonts, styles, scripts and images are our own files; the CSP makes the browser hold to it
+  // (the one exception, <link rel="canonical">, loads nothing: it names the page's own public address, checked below)
   for (const tag of src.match(/<(script|link|img)\b[^>]*>/g)) {
     const url = (/\s(?:src|href)="([^"]*)"/.exec(tag) || [])[1] || "";
+    if (/^<link rel="canonical" href="[^"]*">$/.test(tag) && url === PUBLIC[p]) continue;
     assert.ok(!/^(https?:)?\/\//.test(url), `${p}: loads ${url} from outside`);
   }
   assert.ok(!/<script>|<style|\sstyle="|\son[a-z]+="/.test(src), `${p}: inline script or style (the CSP would block it)`);
@@ -95,6 +101,42 @@ const used = PAGES.map((p) => html[p]).join("") + SCRIPTS.map(read).join("");
 const classes = new Set(used.match(/class="[^"]*"/g).flatMap((c) => c.slice(7, -1).split(/\s+/)));
 for (const c of new Set(css.replace(/url\([^)]*\)/g, "").match(/\.[a-zA-Z_][\w-]*/g))) assert.ok(classes.has(c.slice(1)), `styles.css styles ${c}, which no page uses`);
 
+// AH-117: a negative letter-spacing (h1 -.02em, h2, the brand...) is one of the looks John listed as generated; type keeps
+// the spacing its designer drew
+for (const m of css.matchAll(/letter-spacing\s*:\s*([^;}]+)/g)) assert.ok(!/^-/.test(m[1].trim()), `styles.css: a negative letter-spacing (${m[1].trim()})`);
+// AH-120: everything that acts as a button shows it is pressed; a hover alone said nothing to a finger on a phone
+{
+  const selectors = [...css.matchAll(/([^{}]+)\{/g)].flatMap((m) => m[1].split(",").map((x) => x.trim().replace(/\s+/g, " ")));
+  for (const sel of [".btn", ".links .btn-trim", ".typology button", ".tabs button", ".rowbtn", ".m-close", ".faq summary"])
+    assert.ok(selectors.includes(sel + ":active"), `styles.css: no pressed (:active) look for ${sel}`);
+}
+// AH-119: each page names itself to search engines and to a shared link: its own title (Arcas first, then what the page
+// is), a description, a canonical at its public address, and the basic Open Graph tags (no og:image: the only images are
+// the 32 and 64 px marks, under the 200 px a card needs). sitemap.xml lists exactly the three pages at those addresses.
+// No robots.txt: a project site lives under /excel-anomaly-hunter/ and crawlers read robots.txt only at the domain's
+// root, so one here would do nothing; the sitemap is what gets submitted to a search console
+{
+  const meta = (src, key, name) => [...src.matchAll(/<meta ([a-z]+)="([^"]+)" content="([^"]*)">/g)].filter((m) => m[1] === key && m[2] === name).map((m) => m[3]);
+  const titles = PAGES.map((p) => (/<title>([^<]*)<\/title>/.exec(html[p]) || [])[1] || "");
+  assert.equal(new Set(titles).size, PAGES.length, `the pages share a title: ${titles}`);
+  for (const [i, p] of PAGES.entries()) {
+    const src = html[p], title = titles[i];
+    assert.ok(/^Arcas\b.{20,}$/.test(title) && !/[–—]| - /.test(title), `${p}: the title "${title}" does not say Arcas, then what the page is`);
+    const desc = meta(src, "name", "description");
+    assert.ok(desc.length === 1 && desc[0].length >= 50, `${p}: no description`);
+    assert.deepEqual([...src.matchAll(/<link rel="canonical" href="([^"]*)">/g)].map((m) => m[1]), [PUBLIC[p]], `${p}: the canonical is not ${PUBLIC[p]}`);
+    for (const [prop, want] of [["og:title", title], ["og:description", desc[0]], ["og:url", PUBLIC[p]], ["og:type", "website"], ["og:site_name", "Arcas"]])
+      assert.deepEqual(meta(src, "property", prop), [want], `${p}: ${prop} is not "${want}"`);
+    assert.deepEqual(meta(src, "name", "twitter:card"), ["summary"], `${p}: no twitter:card`);
+  }
+  const map = read("sitemap.xml");
+  assert.ok(/^<\?xml version="1\.0" encoding="UTF-8"\?>\s*<urlset xmlns="http:\/\/www\.sitemaps\.org\/schemas\/sitemap\/0\.9">[\s\S]*<\/urlset>\s*$/.test(map), "sitemap.xml is not a sitemap");
+  const body = map.replace(/<!--[\s\S]*?-->/g, "").replace(/^<\?xml[^>]*\?>\s*<urlset[^>]*>|<\/urlset>\s*$/g, "");
+  assert.ok(/^(\s*<url>\s*<loc>[^<]+<\/loc>\s*<\/url>)*\s*$/.test(body), "sitemap.xml holds more than <url><loc> entries");
+  assert.deepEqual([...body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]), PAGES.map((p) => PUBLIC[p]), "sitemap.xml does not list exactly the three pages at their canonical addresses");
+  assert.ok(!fs.existsSync(path.join(SITE, "robots.txt")), "robots.txt under a project site's path is never read");
+}
+
 for (const f of SCRIPTS) {
   const src = read(f);
   new vm.Script(src, { filename: f }); // a syntax error throws here
@@ -145,8 +187,8 @@ const json = (body, status = 200) => (r) => r.fulfill({ status, contentType: "ap
 // field's own motion (its pointer bend, its scroll-linked shape, its inversion on the band) name a GPU instead
 const GPU = () => { const get = WebGL2RenderingContext.prototype.getParameter;
   WebGL2RenderingContext.prototype.getParameter = function (k) { return k === 0x1F01 || k === 0x9246 ? "ANGLE (a test GPU)" : get.call(this, k); }; };
-async function open(file, { width = 1280, height = 900, api = json(release), motion = "no-preference", until = "networkidle", init = null, gpu = false, js = true, setup = null } = {}) {
-  const ctx = await browser.newContext({ viewport: { width, height }, reducedMotion: motion, javaScriptEnabled: js });
+async function open(file, { width = 1280, height = 900, api = json(release), motion = "no-preference", until = "networkidle", init = null, gpu = false, js = true, setup = null, colors = "none" } = {}) {
+  const ctx = await browser.newContext({ viewport: { width, height }, reducedMotion: motion, javaScriptEnabled: js, forcedColors: colors });
   const page = await ctx.newPage();
   if (gpu) await page.addInitScript(GPU);
   if (init) await page.addInitScript(init);
@@ -166,6 +208,112 @@ const done = async ({ ctx, problems, outside }, label, allowed = []) => {
   assert.deepEqual(outside.filter((u) => !allowed.includes(u)), [], `${label}: requests outside the site`);
   await ctx.close();
 };
+
+// ---- reading the pages the way people with other settings read them (AH-112 to AH-116). Each check collects what it
+// finds and the group fails once with all of it, so one run names every page that falls short ----
+{
+  const short = [];
+  // AH-112: text at 200% (WCAG 1.4.4, 1.4.10) on a 320 and a 390 px phone. With the root font at 200% the sample's tabs
+  // ran off the screen, privacy's github.com address and its list items pushed the page 267 px sideways, support's
+  // aistudio.google.com/apikey link 192 px: nothing may scroll sideways, at 100% or at 200%, in any of the sample's states
+  for (const file of PAGES) for (const width of [320, 390]) for (const size of ["100%", "200%"]) {
+    const t = await open(file, { width, height: 800, motion: "reduce" });
+    await t.page.evaluate((size) => { document.documentElement.style.fontSize = size; }, size);
+    for (const tab of file === "index.html" ? ["t-found", "t-busy", "t-clean"] : [""]) {
+      if (tab) await t.page.click("#" + tab);
+      await t.page.waitForTimeout(100);
+      const over = await t.page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      if (over > 0) short.push(`AH-112 ${file} at ${width}px, text ${size}${tab ? ", " + tab : ""}: scrolls ${over} px sideways`);
+    }
+    await done(t, `${file} at ${width}px with text at ${size}`, [API]);
+  }
+  // AH-113: Windows High Contrast (forced colours) drops every fill and shadow the page draws: the sample's "probably
+  // wrong" cells (a wine fill) and "worth a check" cells (an inset line) looked like every other cell, the key's squares
+  // vanished, and the bar's Download lost its box. Each mark must show as something the theme keeps, and the two kinds
+  // must differ from each other and from a plain cell
+  {
+    const t = await open("index.html", { motion: "reduce", colors: "active" });
+    const marks = (p) => p.evaluate(() => {
+      const under = (e) => { for (let a = e.parentElement; a; a = a.parentElement) { const c = getComputedStyle(a).backgroundColor; if (!/^rgba\(.*, 0\)$/.test(c) && c !== "transparent") return c; } return "rgb(255, 255, 255)"; };
+      const mark = (sel) => { const e = document.querySelector(sel), c = getComputedStyle(e), bg = under(e), drawn = (style, width, color) => style !== "none" && parseFloat(width) > 0 && color !== bg;
+        return [!/, 0\)$/.test(c.backgroundColor) && c.backgroundColor !== bg ? "fill " + c.backgroundColor : "",
+          drawn(c.borderTopStyle, c.borderTopWidth, c.borderTopColor) ? `border ${c.borderTopStyle} ${c.borderTopWidth}` : "", drawn(c.borderBottomStyle, c.borderBottomWidth, c.borderBottomColor) ? `underline ${c.borderBottomStyle} ${c.borderBottomWidth}` : "", drawn(c.outlineStyle, c.outlineWidth, c.outlineColor) ? `outline ${c.outlineStyle}` : ""].filter(Boolean).join(", ") || "nothing"; };
+      return { flag: mark("#p-found td.flag"), check: mark("#p-found td.q"), plain: mark('#p-found tbody tr:not([data-kind]) td:not(.t):not(.why)'),
+        keyFlag: mark(".key i:not(.q)"), keyCheck: mark(".key i.q"), download: mark(".links .btn-trim"), mended: mark("#p-clean td.mended"), ok: mark("#p-clean td.why i.ok") };
+    });
+    const m = await marks(t.page);
+    for (const [k, v] of Object.entries(m)) if (k !== "plain" && v === "nothing") short.push(`AH-113 forced colours: ${k} shows no mark`);
+    if (new Set([m.flag, m.check, m.mended, m.plain]).size < 4) short.push(`AH-113 forced colours: a flagged cell (${m.flag}), one worth a check (${m.check}), a fixed one (${m.mended}) and a plain one (${m.plain}) cannot all be told apart`);
+    if (new Set([m.keyFlag, m.keyCheck, m.ok]).size < 3) short.push(`AH-113 forced colours: the squares for probably wrong (${m.keyFlag}), worth a check (${m.keyCheck}) and fixed (${m.ok}) are not all different`);
+    if (!/border|outline/.test(m.download)) short.push(`AH-113 forced colours: the bar's Download has no box (${m.download})`);
+    console.log(`forced colours: ${JSON.stringify(m)}`);
+    await done(t, "forced colours", [API]);
+  }
+  // AH-114: the support form on a phone with its keyboard open (390 x 420): an empty submit left focus on the button and
+  // its message under it, off the screen, tied to no field. Now focus goes to the first missing field, each missing field
+  // says it is invalid and is described by the message, the message shows on screen beside it, and a filled field lets go
+  {
+    const t = await open("support.html", { width: 390, height: 420, motion: "reduce" });
+    const p = t.page;
+    const look = () => p.evaluate(() => { const m = document.getElementById("missing"), r = m.getBoundingClientRect(), a = document.activeElement, f = a.getBoundingClientRect();
+      const on = (r) => r.top >= 0 && r.bottom <= innerHeight && r.height > 0;
+      return { focus: a.id, text: m.hidden ? "" : m.textContent, shown: !m.hidden && on(r), fieldShown: on(f),
+        invalid: ["summary", "details", "clean"].filter((id) => document.getElementById(id).getAttribute("aria-invalid") === "true").join(),
+        described: ["summary", "details", "clean"].filter((id) => (document.getElementById(id).getAttribute("aria-describedby") || "").split(" ").includes("missing")).join() }; });
+    const want = (got, exp, step) => { if (JSON.stringify(got) !== JSON.stringify(exp)) short.push(`AH-114 support form ${step}: ${JSON.stringify(got)}, want ${JSON.stringify(exp)}`); };
+    await p.click('button[type="submit"]');
+    want(await look(), { focus: "summary", text: "Please add a short summary, what happened, the box that says it contains no key or private data.", shown: true, fieldShown: true, invalid: "summary,details,clean", described: "summary,details,clean" }, "after an empty submit");
+    await p.keyboard.type("Scan stops");
+    const typed = await look();
+    want([typed.invalid, typed.described], ["details,clean", "details,clean"], "once the summary is typed");
+    await p.click('button[type="submit"]');
+    want(await look(), { focus: "details", text: "Please add what happened, the box that says it contains no key or private data.", shown: true, fieldShown: true, invalid: "details,clean", described: "details,clean" }, "after a second submit");
+    await p.keyboard.type("It stops"); await p.check("#clean");
+    const filled = await look();
+    want([filled.invalid, filled.described, filled.text], ["", "", ""], "once everything is filled");
+    await done(t, "support form errors on a small phone");
+  }
+  // AH-115 and AH-116, on each page at a phone's 390 x 844 and at 1280: every control a finger or pointer presses, other
+  // than a link inside a sentence, is at least 24 x 24 px (WCAG 2.2 2.5.8: the footer's links were 21 px, the notice's
+  // Download 17), and no text is under 12 px (the sample's column heads were 10.88), in every state the page has
+  for (const file of PAGES) for (const [width, height] of [[390, 844], [1280, 900]]) {
+    const t = await open(file, { width, height, motion: "reduce" });
+    const p = t.page;
+    const small = await p.evaluate(() => {
+      const out = [], blockOf = (e) => { let a = e.parentElement; while (a && /^inline|^contents/.test(getComputedStyle(a).display)) a = a.parentElement; return a; };
+      const words = (e) => (e.textContent || "").replace(/\s+/g, " ").trim();
+      for (const e of document.querySelectorAll("a[href], button, summary, select, input, textarea")) {
+        if (!e.getClientRects().length || getComputedStyle(e).visibility !== "visible" || e.closest("[hidden], [aria-hidden=true], .skip-link")) continue;
+        const inSentence = e.tagName === "A" && getComputedStyle(e).display === "inline" && !e.closest("header, footer, .notice-bar") && words(blockOf(e)) !== words(e);
+        const r = e.getBoundingClientRect();
+        if (!inSentence && (r.width < 24 || r.height < 24)) out.push(`${e.tagName.toLowerCase()}${e.className ? "." + e.className.split(" ")[0] : ""}${e.id ? "#" + e.id : ""} "${words(e).slice(0, 24)}" ${Math.round(r.width)}x${Math.round(r.height)}`);
+      }
+      return out;
+    });
+    for (const s of small) short.push(`AH-115 ${file} at ${width}px: a small target, ${s}`);
+    const states = file === "index.html" ? ["t-found", "t-busy", "t-clean", "m11"] : file === "support.html" ? ["", "submit"] : [""];
+    for (const state of states) {
+      if (state.startsWith("t-")) await p.click("#" + state);
+      if (state === "m11") { await p.click("#t-found"); await p.click('.rowbtn[aria-controls="m11"]'); }
+      if (state === "submit") await p.click('button[type="submit"]');
+      const tiny = await p.evaluate(() => {
+        const out = new Map();
+        for (const e of document.body.querySelectorAll("*")) {
+          if (e.closest("script, style, noscript, [hidden]") || !e.getClientRects().length) continue;
+          const sizes = [];
+          if ([...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) sizes.push(["", getComputedStyle(e).fontSize]);
+          for (const pseudo of ["::before", "::after"]) { const c = getComputedStyle(e, pseudo); if (!["none", "normal", '""'].includes(c.content) && c.display !== "none") sizes.push([pseudo, c.fontSize]); }
+          for (const [pseudo, fs] of sizes) if (parseFloat(fs) < 12) { const k = `${e.tagName.toLowerCase()}${e.className && typeof e.className === "string" ? "." + e.className.split(" ")[0] : ""}${pseudo} ${fs}`; out.set(k, (out.get(k) || 0) + 1); }
+        }
+        return [...out].map(([k, n]) => `${k} x${n}`);
+      });
+      for (const s of tiny) short.push(`AH-116 ${file} at ${width}px${state ? " (" + state + ")" : ""}: text under 12 px, ${s}`);
+    }
+    await done(t, `targets and text size on ${file} at ${width}px`, [API]);
+  }
+  assert.deepEqual(short, [], `the pages fall short for some readers:\n${short.join("\n")}`);
+  console.log("other readers: no sideways scroll with text at 200% (320 and 390 px), marks kept in forced colours, the support form's errors on a small phone, every target 24 px, no text under 12 px");
+}
 
 // ---- motion (AH-72): helpers to read what the page shows ----
 // a PNG from page.screenshot as RGBA rows (8-bit, not interlaced, which is what Chromium writes)
@@ -1151,10 +1299,11 @@ const press = async (p, sel) => { const b = await p.locator(sel).boundingBox(); 
   const w = await stopWatch(p);
   const after = await p.evaluate(() => ({ marker: window.__marker, title: document.title, body: document.body.id, mains: document.querySelectorAll("main#page").length,
     page: document.getElementById("page").dataset.page, current: document.querySelector('header a[aria-current="page"]').getAttribute("href"),
-    desc: document.querySelector('meta[name="description"]').content, focus: document.activeElement.tagName + (document.activeElement.closest("#page") ? " in #page" : ""),
+    desc: document.querySelector('meta[name="description"]').content, canonical: document.querySelector('link[rel="canonical"]').href,
+    og: document.querySelector('meta[property="og:url"]').content, focus: document.activeElement.tagName + (document.activeElement.closest("#page") ? " in #page" : ""),
     brand: document.querySelector("header .brand").getAttribute("href"), notice: document.querySelector(".notice-bar a").getAttribute("href"), gl: !!document.getElementById("field") }));
-  assert.deepEqual(after, { marker: 1, title: "Arcas Privacy", body: "privacy", mains: 1, page: "privacy", current: "privacy.html",
-    desc: after.desc.startsWith("What Arcas keeps") ? after.desc : "(the home page's)", focus: "H1 in #page", brand: "index.html", notice: "index.html#download", gl: true }, "the move to privacy.html");
+  assert.deepEqual(after, { marker: 1, title: TITLE["privacy.html"], body: "privacy", mains: 1, page: "privacy", current: "privacy.html",
+    canonical: PUBLIC["privacy.html"], og: PUBLIC["privacy.html"], desc: after.desc.startsWith("What Arcas keeps") ? after.desc : "(the home page's)", focus: "H1 in #page", brand: "index.html", notice: "index.html#download", gl: true }, "the move to privacy.html");
   assert.equal(w.together, 2, "the new page did not go in while the old one was still there");
   assert.ok(w.both >= 3 && w.anims === 2, `the two pages did not move together (${w.both} frames with both, ${w.anims} moving at once)`);
   const whites = cast.frames.map(whiteShare);
@@ -1171,7 +1320,7 @@ const press = async (p, sel) => { const b = await p.locator(sel).boundingBox(); 
   await p.goBack();
   await p.waitForFunction(() => document.body.id === "home" && document.querySelectorAll("main").length === 1 && !document.documentElement.hasAttribute("data-moving"));
   const back = await p.evaluate(() => ({ marker: window.__marker, y: Math.round(scrollY), title: document.title, current: document.querySelector('header a[aria-current="page"]').getAttribute("href") }));
-  assert.ok(back.marker === 1 && Math.abs(back.y - 1200) <= 2 && back.title === "Arcas" && back.current === "index.html", `Back: ${JSON.stringify(back)}`);
+  assert.ok(back.marker === 1 && Math.abs(back.y - 1200) <= 2 && back.title === TITLE["index.html"] && back.current === "index.html", `Back: ${JSON.stringify(back)}`);
   // GitHub's answer is kept for the visit: no skeleton on the facts the second time (AH-89), nor on the sheet
   assert.deepEqual(await p.evaluate(() => [document.querySelector("dl.anchor").hasAttribute("data-loading"), document.getElementById("preview").hasAttribute("data-loading")]), [false, false], "a skeleton on a visit back");
   await p.waitForTimeout(1400);
@@ -1233,7 +1382,7 @@ const press = async (p, sel) => { const b = await p.locator(sel).boundingBox(); 
   await p.waitForURL((u) => u.pathname === "/privacy.html"); await settle(p); await p.waitForTimeout(300);
   await cast.stop();
   const w = await stopWatch(p);
-  assert.deepEqual([w.both, w.anims, await p.evaluate(() => [window.__marker, document.title, document.getAnimations().length])], [0, 0, [1, "Arcas Privacy", 0]], "reduced motion: a slide");
+  assert.deepEqual([w.both, w.anims, await p.evaluate(() => [window.__marker, document.title, document.getAnimations().length])], [0, 0, [1, TITLE["privacy.html"], 0]], "reduced motion: a slide");
   assert.ok(atRest(await poses(p, `${HOOKED}, main`)), "reduced motion: something moved");
   assert.ok(Math.max(...cast.frames.map(whiteShare)) <= 0.02, "reduced motion: a white frame");
   await done(t, "page transitions with reduced motion", [API]);
@@ -1245,7 +1394,7 @@ const press = async (p, sel) => { const b = await p.locator(sel).boundingBox(); 
   await p.route("**/privacy.html", (r) => (r.request().resourceType() === "fetch" ? r.abort() : r.continue()));
   await p.click('header a[href="privacy.html"]');
   await p.waitForURL((u) => u.pathname === "/privacy.html"); await p.waitForLoadState("load");
-  assert.deepEqual(await p.evaluate(() => [window.__marker, document.title, document.getElementById("page").dataset.page]), [undefined, "Arcas Privacy", "privacy"], "a failed fetch did not fall back to a normal navigation");
+  assert.deepEqual(await p.evaluate(() => [window.__marker, document.title, document.getElementById("page").dataset.page]), [undefined, TITLE["privacy.html"], "privacy"], "a failed fetch did not fall back to a normal navigation");
   await done(t, "page transition with a failed fetch", [API]);
 }
 console.log(`page transitions: ${measured.moving} ms of motion on screen (${measured.swap} ms in the page, ${measured.duration} ms from the click), both pages in ${measured.both} of ${measured.ofFrames} frames, ` +

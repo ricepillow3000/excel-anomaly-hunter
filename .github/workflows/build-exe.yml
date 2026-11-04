@@ -217,6 +217,10 @@ jobs:
           $was = Get-Process AnomalyHunter -ErrorAction SilentlyContinue | Where-Object Path -eq "$ah\AnomalyHunter.exe"
           "old release $tag installed: engine $($h.version), $(@($was).Count) AnomalyHunter.exe process(es) from $ah"
           if (-not $was -or $h.status -ne 'ok') { throw "the old release's engine is not running" }
+          # an invite code saved the way every release before AH-104 (and install.bat) left it: plain text. The new engine
+          # must still read it, and seal it with DPAPI at its first read, so an update keeps AI help (a made-up code)
+          $invite = "$ah\invite-code.txt"; $canary = 'inv_ci_canary_not_real'
+          [IO.File]::WriteAllText($invite, $canary)
 
           Run $new 'install'
           $h = $null
@@ -236,7 +240,11 @@ jobs:
           if (Test-Path "$ah\AnomalyHunter.exe") { throw "the old exe is still installed" }
           if ($run -ne "`"$ah\Arcas.exe`" serve") { throw "the Run value does not start Arcas.exe: $run" }
           if ($h.version -notlike "v0.1.${{ github.run_number }} (*)") { throw "the engine answering is $($h.version), not this build" }
-          "updated from $tag to this build: one Arcas.exe engine, the old exe gone, the Run value on Arcas.exe"
+          $saved = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($invite))
+          "invite code:     AI $($h.ai_available) through $($h.ai_provider); the file now starts $($saved.Substring(0, [Math]::Min(7, $saved.Length)))"
+          if (-not ($h.ai_available -eq $true -and $h.ai_provider -eq 'relay')) { throw "the new engine did not read the invite code an old version saved" }
+          if ($saved.Contains($canary) -or -not $saved.StartsWith('DPAPI1:')) { throw "the invite code is still plain text after the new engine read it" }
+          "updated from $tag to this build: one Arcas.exe engine, the old exe gone, the Run value on Arcas.exe, the old invite code sealed"
 
       - name: Uninstall
         shell: pwsh

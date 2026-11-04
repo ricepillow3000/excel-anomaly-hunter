@@ -38,7 +38,9 @@ export function listRows() {
   const status = (i) => (decided[i] === "fixed" ? (SEV[lastRows[i].severity] ? "Fix accepted" : "Fixed")
     : decided[i] === "dismissed" ? "Dismissed" : null);
   const done = order.filter(status).length;
-  show("list-title", order.length > 0);
+  // a sheet with nothing to list shows its summary alone: no "Worst first" hint over an empty framed list, and no Remove
+  // highlights with nothing highlighted (AH-111). The next scan that flags rows brings them back
+  for (const id of ["list-title", "list-hint", "flagged-list", "clear-highlights"]) show(id, order.length > 0);
   $("list-title").textContent = done ? `Rows to check (${n(done)} of ${n(order.length)} done)` : "Rows to check";
   $("flagged-list").replaceChildren(...order.slice(0, CAP).map((i) => rowItem({ ...lastRows[i], i }, startRow, act(() => openFix(i, true)), status(i))));
   if (order.length > CAP) {

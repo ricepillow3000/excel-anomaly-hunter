@@ -5,6 +5,7 @@ import { showFix } from "../components/fix-preview.js";
 import { checkFix } from "./fix.js";
 import { plainReason } from "./scan.js";
 import { colLetter } from "../utils/sheet.js";
+import { isOurs, plainError } from "../utils/errors.js";
 
 // Ask AI: the API client in the workflow (the engine forwards to Gemini). Optional; fixes work without it.
 export function setAi(on) {
@@ -29,7 +30,7 @@ export async function saveKey(key) {
     // a key the engine refused (Google said no, or it is not a key) is no use to retry: it leaves the screen like a
     // saved one (AH-15); a save that failed (the disk, the engine gone) keeps it in the box to try again
     if (e.status === 400) $("ai-key").value = "";
-    $("ai-state").textContent = e.message;
+    $("ai-state").textContent = isOurs(e) ? e.message : plainError(e, "The key wasn't saved");
   }
 }
 
@@ -50,7 +51,7 @@ export async function askFix() { // talks to the engine only; the sheet is touch
       : ` Checked: with this fix the row would still look unusual: ${plainReason(v.reason)}.`;
     if (state.fix === f) await showFix(f, "AI's fix", out); // else: the user moved to another row meanwhile
   } catch (e) {
-    if (state.fix === f) $("fix-status").textContent = "AI could not help: " + e.message;
+    if (state.fix === f) $("fix-status").textContent = plainError(e, "AI could not help");
   } finally {
     f.asking = false;
     if (state.fix === f) (btn.disabled = !state.aiAvailable), (btn.textContent = "Ask AI");
@@ -71,6 +72,6 @@ export async function checkWords() {
       : [item(partial ? "Nothing out of place so far." : "Nothing looks out of place.")]),
     ...(partial ? [item("Google got busy before every word was checked. Click again to check the rest. The finished part is kept.")] : []));
   } catch (e) { // Google busy (it often is), no key...: said right here, like Ask AI does
-    $("odd-list").replaceChildren(item("AI could not check: " + e.message));
+    $("odd-list").replaceChildren(item(plainError(e, "AI could not check")));
   }
 }

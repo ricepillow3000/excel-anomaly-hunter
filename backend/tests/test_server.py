@@ -365,3 +365,36 @@ def test_the_power_bi_copy_is_kept_only_when_turned_on_and_removed_when_turned_o
     assert c.post("/scan", json={"columns": columns, "rows": rows, "power_bi": True}).status_code == 200 and out.exists()
     assert c.post("/scan", json={"columns": columns, "rows": rows, "power_bi": False}).status_code == 200 and not out.exists()
     assert c.post("/scan", json={"columns": columns, "rows": rows, "power_bi": "yes"}).status_code == 400
+
+
+def test_a_new_engine_start_keeps_the_last_runs_log_as_server_log_1(tmp_path):
+    # AH-106: each start opened server.log with "w", so the log of a crash was gone at the next logon, before anyone
+    # could read it. The run before is kept as server.log.1 (one only: the folder never grows).
+    from anomaly_hunter.server import open_log
+    log = open_log(tmp_path)
+    log.write("first run\n")
+    log.close()
+    log = open_log(tmp_path)
+    log.write("second run\n")
+    log.close()
+    assert (tmp_path / "server.log.1").read_text(encoding="utf-8") == "first run\n"
+    assert (tmp_path / "server.log").read_text(encoding="utf-8") == "second run\n"
+    open_log(tmp_path).close()  # a third start replaces the older .1
+    assert (tmp_path / "server.log.1").read_text(encoding="utf-8") == "second run\n"
+    assert (tmp_path / "server.log").read_text(encoding="utf-8") == ""
+
+
+def test_a_log_that_cannot_be_moved_aside_still_lets_the_engine_start(tmp_path, monkeypatch):
+    # a log still held by a stopped engine's last moment, or a .1 the user opened: the engine starts all the same
+    import os
+
+    from anomaly_hunter.server import open_log
+    (tmp_path / "server.log").write_text("kept\n", encoding="utf-8")
+
+    def held(*a):
+        raise PermissionError("in use")
+    monkeypatch.setattr(os, "replace", held)
+    log = open_log(tmp_path)
+    log.write("new run\n")
+    log.close()
+    assert (tmp_path / "server.log").read_text(encoding="utf-8") == "new run\n"

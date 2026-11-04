@@ -9,6 +9,8 @@ import { readCells, readRows, writeCells } from "../services/excel.js";
 import { fillRow } from "./highlight.js";
 import { plainReason } from "./scan.js";
 import { codeAt, rowHash, saveDecisions } from "./decisions.js";
+import { isOurs, plainError } from "../utils/errors.js";
+import { forgetUndo, saveUndo } from "./undo-store.js";
 
 // Fix one row: the instant suggested fix (no AI), and Apply / Undo.
 // Pure: a reason -> its parts ("Units weird limit is 0; this is -5" stays ONE part)
@@ -257,13 +259,14 @@ export async function applyFix(f, changes, sheet) { // the fix, its changes and 
     const code = codeAt(state.hashes, f.i, rowHash(readAs(fixed.values, state.lastScan.dates)));
     // all read before any write; the cells (with their number formats), the row and its verdict as they were, for Undo
     state.undos[f.i] = { sheet, changes, after, writes: cells.map((cell, k) => ({ cell, value: olds[k], format: formats[k] })),
-      row: state.lastScan.rows[f.i], verdict: state.lastRows[f.i], was: state.decided[f.i], code }; // dismissed: stays so
+      row: state.lastScan.rows[f.i], verdict: state.lastRows[f.i], was: state.decided[f.i], code, before: state.codes[f.i] }; // dismissed: stays so
+    saveUndo(state.undos[f.i]); // kept in the workbook too: a reload no longer loses the old values (AH-118)
     state.decided[f.i] = "fixed";
     saveDecisions(sheet, [[state.codes[f.i], null], [code, "fixed"]]); // an Accept after a Dismiss replaces it
     if (state.fix === f) setApplied(true);
   } catch (e) {
     if (state.fix === f) $("fix-apply").disabled = false;
-    status("Accept failed: " + e.message);
+    status(plainError(e, "Accept failed"));
     throw e;
   }
   status("Accepted. Checking the row again…");
@@ -271,7 +274,8 @@ export async function applyFix(f, changes, sheet) { // the fix, its changes and 
   try {
     v = await checkFix(f, changes);
   } catch (e) {
-    return status(`Accepted. Couldn't check it again (${e.message}). Click Find problems to check the sheet.`);
+    const why = isOurs(e) ? ` (${e.message})` : (console.error(e), ""); // never a script's own words on the card (AH-110)
+    return status(`Accepted. Couldn't check it again${why}. Click Find problems to check the sheet.`);
   }
   if (!v) return status("Accepted. A formula is checked when you click Find problems again.");
   const { startRow, startCol } = state.lastScan, row = [...state.lastScan.rows[f.i]];
@@ -301,18 +305,26 @@ export async function undoFix(f) {
     if (edited.length) return say(`${edited.join(", ")} changed after the fix, so Undo left the row alone.`);
     await writeCells(u.sheet, u.writes); // back on the sheet it was applied to
     delete state.undos[f.i];
+    forgetUndo(u.sheet, u.code);
+    // an Undo kept in the workbook (AH-118) carries no verdict (the engine's sentence about the old values stays out of
+    // the file): the row as it is again is checked once more, the way an Accept is
+    const v = u.verdict ? null : await checkFix(f, u.writes.map((w) => ({ cell: w.cell, new: w.value }))).catch(() => null);
     state.lastScan.rows[f.i] = u.row;
-    state.lastRows[f.i] = u.verdict;
+    state.lastRows[f.i] = u.verdict || (v ? { ...state.lastRows[f.i], severity: v.severity, reason: v.reason }
+      : { ...state.lastRows[f.i], severity: "Low", reason: "Undo put the old values back. Click Find problems to check this row again" });
     if (u.was) state.decided[f.i] = u.was;
     else delete state.decided[f.i];
-    saveDecisions(u.sheet, [[u.code, null], [state.codes[f.i], u.was || null]]); // the fix's decision goes; a Dismiss before it comes back
+    const before = u.before || state.codes[f.i]; // after a re-scan the list knows this row by its fixed code
+    saveDecisions(u.sheet, [[u.code, null], [before, u.was || null]]); // the fix's decision goes; a Dismiss before it comes back
+    state.codes[f.i] = before;
+    state.hashes[f.i] = before.slice(0, before.lastIndexOf("."));
     await fillRow(f.i, !u.was); // flagged again - unless it had been dismissed, then it stays unhighlighted
     if (state.fix === f) {
       setApplied(false);
       $("fix-status").textContent = "Undone. The cells are back to what they were.";
     }
   } catch (e) {
-    if (state.fix === f) $("fix-status").textContent = "Undo failed: " + e.message;
+    if (state.fix === f) $("fix-status").textContent = plainError(e, "Undo failed");
     throw e;
   }
 }

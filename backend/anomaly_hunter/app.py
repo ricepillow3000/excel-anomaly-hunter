@@ -12,7 +12,7 @@ import sys
 import time
 from pathlib import Path
 
-from anomaly_hunter import cli, powerbi, practice, server
+from anomaly_hunter import cli, powerbi, practice, sealed, server
 
 APP = "Arcas.exe"  # built by packaging/AnomalyHunter.spec; the docstring above is the usage a wrong command shows
 # Before AH-101 the app was AnomalyHunter.exe. The folder, the Run value and the certificate keep their old names, so an
@@ -92,6 +92,15 @@ def remove_legacy(home):
             time.sleep(0.5)
 
 
+def keep_invite(me, home):
+    """An invite kit from John (relay/new-invite.mjs) holds the code next to the exe: AI help with nothing to paste. It
+    was copied as it was, plain text in %LOCALAPPDATA% (AH-104); it is sealed there now, and the kit is left as John
+    made it (a read of it through `sealed` would seal the kit's own copy)."""
+    kit = me.with_name("invite-code.txt")
+    if kit.exists():
+        sealed.save(home / "invite-code.txt", kit.read_text(encoding="utf-8").strip())
+
+
 def reg_set(key, name, value):
     import winreg
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key) as k:
@@ -147,9 +156,7 @@ def install():
     except OSError:
         pass  # no mark (copied from a terminal download, or not Windows)
     remove_legacy(home)
-    invite = me.with_name("invite-code.txt")  # an invite kit from John: AI help with nothing to paste
-    if invite.exists():
-        shutil.copy2(invite, home / "invite-code.txt")
+    keep_invite(me, home)
 
     # HTTPS that only works for 127.0.0.1: Excel only loads add-ins over https. Windows asks once - Yes.
     if server.make_cert(home) or tool("certutil.exe", "-user", "-store", "Root", server.CERT_NAME):
