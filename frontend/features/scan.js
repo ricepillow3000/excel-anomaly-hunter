@@ -11,6 +11,7 @@ import { onSelect } from "../pages/fix.js";
 import { strength } from "../pages/strength.js";
 import { autoFix, autoOn, autoUndo } from "./autofix.js";
 import { codes, decisionsFor, rowHash } from "./decisions.js";
+import { undosFor } from "./undo-store.js";
 
 // Keep each scan for Power BI (a plain-text copy of the sheet on this PC): off unless turned on, like auto-fix
 export const powerBiOn = () => { try { return localStorage.getItem(POWER_BI_KEY) === "1"; } catch { return false; } };
@@ -62,7 +63,7 @@ async function scan(auto, held, t0) {
   state.lastScan = s;
   state.lastRows = body.rows;
   state.lastLimits = body.limits || {};
-  state.undos = {};
+  state.undos = undosFor(s, keys); // an accepted fix found again keeps its Undo, after a reload too (AH-118)
   Object.assign(state, { hashes, codes: keys, decided });
   $("sheet-name").textContent = s.sheet;
   renderResults(body.rows, s, body.fairness);

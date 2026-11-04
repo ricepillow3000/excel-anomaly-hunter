@@ -1,6 +1,7 @@
 // Abuse tests for the relay, run on this PC with a stand-in Google and an in-memory counter: node relay/test.mjs
 import assert from "node:assert";
 import worker, { Counter, dayKey } from "./worker.js";
+import { canary } from "./canary.mjs";
 
 const hash = async (t) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)))]
   .map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -158,4 +159,36 @@ const offCall = await worker.fetch(new Request("https://relay.example/fix", {
   method: "POST", headers: { Authorization: "Bearer inv_ana" }, body: JSON.stringify(good) }), off);
 assert.equal(offCall.status, 429, "a total cap of 0 refuses");
 assert.equal(sent.length, before, "and never reaches Google");
+
+// AH-108: the daily canary's one real call. Its body must pass this very worker's checks and reach Google, and it
+// fails on a refused invite, on Google's error and on an answer the engine could not read. The invite never shows.
+{
+  const secret = "inv_SECRETcanaryMadeUpForTheTest";
+  const cenv = { GEMINI_KEY: "AQ.the-secret", TOKENS: JSON.stringify({ [await hash(secret)]: "canary" }), COUNTER: namespace(),
+    DAILY_PER_INVITE: "10", DAILY_TOTAL: "20" };
+  const through = (e) => (url, init) => worker.fetch(new Request(url, init), e);
+  googleStatus = 200;
+  const before = sent.length;
+  const fine = await canary("https://relay.example", secret, through(cenv));
+  assert.ok(fine.ok, fine.line);
+  assert.equal(sent.length, before + 1, "one call reached Google");
+  assert.deepEqual(Object.keys(sent.at(-1).body.response_format.json_schema.schema.properties), ["explanation", "changes"],
+    "the engine's own answer shape is asked for");
+  assert.ok(!JSON.stringify(sent.at(-1).body).includes(secret), "the invite is never in the body");
+  const refused = await canary("https://relay.example", "inv_SECRETswitchedOffCanary", through(cenv));
+  assert.ok(!refused.ok && /401/.test(refused.line), refused.line);
+  googleStatus = 403; // a revoked Gemini key: the relay answers 502 in its own words
+  const broken = await canary("https://relay.example", secret, through({ ...cenv, COUNTER: namespace() }));
+  assert.ok(!broken.ok && /502/.test(broken.line), broken.line);
+  googleStatus = 200;
+  for (const [what, answer] of [["not JSON", "<html>"], ["no choices", "{}"], ["cut off", '{"choices":[{"finish_reason":"length","message":{"content":"{\\"expl"}}]}'],
+    ["not the fix shape", '{"choices":[{"message":{"content":"{\\"hello\\":1}"}}]}']]) {
+    const odd = await canary("https://relay.example", secret, async () => new Response(answer, { status: 200 }));
+    assert.ok(!odd.ok, `${what}: ${odd.line}`);
+  }
+  const echo = await canary("https://relay.example", secret, async () => new Response(JSON.stringify({ error: `bad ${secret}` }), { status: 401 }));
+  assert.ok(!echo.ok && !echo.line.includes(secret), "an answer that quotes the invite is printed without it");
+  const down = await canary("https://relay.example", secret, async () => { throw new TypeError("fetch failed"); });
+  assert.ok(!down.ok && !down.line.includes(secret), down.line);
+}
 console.log("relay abuse tests passed");

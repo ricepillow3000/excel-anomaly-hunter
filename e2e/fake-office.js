@@ -41,7 +41,7 @@
   const ctx = { workbook: null, sync: async () => {} };
   const handle = (list, h) => ({ context: ctx, remove() { list.splice(list.indexOf(h), 1); } });
   ctx.workbook = { worksheets: {
-    getActiveWorksheet: () => sheets[active], getItem: (n) => { if (!sheets[n]) throw new Error("ItemNotFound " + n); return sheets[n]; },
+    getActiveWorksheet: () => sheets[active], getItem: (n) => { if (!sheets[n]) throw Object.assign(new Error("ItemNotFound"), { code: "ItemNotFound" }); return sheets[n]; }, // as Office.js names it
     getItemOrNullObject: (n) => sheets[n] || { isNullObject: true, load() { return this; } },
     add: (n) => (sheets[n] = makeSheet(n)),
   } };
@@ -70,10 +70,11 @@
     HostType: { Excel: "Excel" }, onReady: (cb) => setTimeout(() => cb({ host: "Excel" }), 0),
     context: { document: { settings: { get: (k) => settings[k] ?? null, set: (k, v) => (settings[k] = v), remove: (k) => delete settings[k], saveAsync, refreshAsync: (cb) => cb() } } },
   };
-  // window.__cellEdit = n (set before the pane loads): the next n Excel.run calls reject as real Excel does while the
-  // user is typing in a cell
+  // window.__cellEdit = n (set before the pane loads, or any time): the next n Excel.run calls reject as real Excel does
+  // while the user is typing in a cell. window.__typeError = n: the next n throw a script error, as a bug of ours would
   window.Excel = { run: async (a, b) => {
     if (window.__cellEdit > 0) { window.__cellEdit--; throw Object.assign(new Error("InvalidOperationInCellEditMode"), { code: "InvalidOperationInCellEditMode" }); }
+    if (window.__typeError > 0) { window.__typeError--; throw new TypeError("Cannot read properties of undefined (reading 'values')"); }
     return (b || a)(ctx);
   } };
   // test hooks

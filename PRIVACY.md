@@ -15,9 +15,9 @@ A scan runs on your PC and sends nothing to the internet. Your sheet's data leav
   | File | What it holds |
   |---|---|
   | `Arcas.exe` | a copy of the app, so the engine can start when you log on |
-  | `server.log` | the engine's messages and errors; it starts empty each time the engine starts; an error can quote a value from your sheet |
+  | `server.log`, `server.log.1` | the engine's messages and errors; server.log starts empty each time the engine starts, and server.log.1 keeps the run before (each start replaces it); an error can quote a value from your sheet |
   | `ai-cache` | up to 500 AI answers, so the same question isn't asked twice; an answer can quote your cells |
-  | `gemini-key.txt`, `invite-code.txt` | your Google AI key or invite code, if you added one |
+  | `gemini-key.txt`, `invite-code.txt` | your Google AI key or invite code, if you added one; each is sealed with Windows' own encryption (DPAPI) for your Windows account, so a copy of the file is no use on another account, though a program running as you could still open it |
   | `ca.pem`, `cert.pem`, `key.pem` | the certificate the engine uses for HTTPS on this PC |
   | `addin\manifest.xml` | the file that lists Arcas in Excel |
   | `Start here.xlsx` | the practice workbook |
@@ -33,7 +33,8 @@ A scan runs on your PC and sends nothing to the internet. Your sheet's data leav
   into the folder above. A kit has no Arcas.exe, `addin\manifest.xml` or Start here.xlsx: Excel lists the
   add-in from the kit's `frontend` folder. Uninstall a kit with `install.bat /u`, then delete the kit folder.
 - Your workbook keeps the limits you changed, the strength slider, a list of the last auto-fixes with their old
-  values and a copy of each fixed row (so Undo works), a short code for each row you fixed or dismissed (worked out
+  values and a copy of each fixed row (so Undo works), the old values of the cells you changed with **Accept** (so
+  Undo still works after the pane is closed and opened again), a short code for each row you fixed or dismissed (worked out
   from the row's values, never the values themselves, so the row is still Fixed or Dismissed when the pane opens
   again), and a setting that opens the pane with that file. Highlights are fill colours in your cells.
   A fix changes your cells only when you click **Accept**, or when auto-fix runs, if you turned it on.
@@ -81,10 +82,10 @@ can be charged by Google for what AI help uses; without billing, the free tier c
 - **Remove key** (in the pane) deletes the key and invite code saved in `%LOCALAPPDATA%\AnomalyHunter`. Scans and
   fixes keep working. An invite kit keeps its own copy, and running its install.bat again turns AI help back on, so
   also delete `invite-code.txt` from the kit folder. A `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` setting keeps AI help on.
-- You can delete `ai-cache` or `server.log` in the folder above whenever you like.
+- You can delete `ai-cache`, `server.log` or `server.log.1` in the folder above whenever you like.
 - **Forget what this workbook saved** (in the pane, under Options > Saved in this workbook) removes everything the pane
-  saved in the open workbook: the limits, the strength slider, the auto-fix list with its old values, the code of each
-  row you fixed or dismissed, and the setting that opens the pane with the file. It changes no cell. Save the workbook
+  saved in the open workbook: the limits, the strength slider, the auto-fix list with its old values, the old values
+  Accept keeps for Undo, the code of each row you fixed or dismissed, and the setting that opens the pane with the file. It changes no cell. Save the workbook
   afterwards to keep the change in the file.
 - To uninstall, run `"%LOCALAPPDATA%\AnomalyHunter\Arcas.exe" uninstall`. It removes the startup entry, the
   add-in listing, the certificate and the files in that folder, except the app file itself (delete it afterwards). It

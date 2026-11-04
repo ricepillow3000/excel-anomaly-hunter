@@ -54,7 +54,7 @@ Add a piece only when its "add it when" signal shows up in a measurement, and sa
 | Dependency hell | every package, indirect ones too, is pinned in `constraints.txt` and checked by `tools/pinned.py` (an unpinned scikit-learn 1.9.1 broke every Windows install, 2026-10-11) | `constraints.txt`, `tools/pinned.py` | regenerate when pyproject changes (see `tools/pinned.py`) |
 | Build caching | pip cache keyed on `pyproject.toml` + `constraints.txt` | workflows | builds get slow |
 | Versioning | release tags `v0.1.<run>`; the pane shows the engine's version. No API versioning: the engine serves its own pane, so they can't disagree | `server.version`, `build-exe.yml` | someone else's code calls the engine |
-| Rollback | every release stays downloadable; installing an older exe replaces the newer one | GitHub Releases, `app.install` | |
+| Rollback | every release stays downloadable; mark a good one latest and revert main. An older exe installed over a newer one replaces it, except across the rename: a release before v0.1.263 never stops Arcas.exe, which keeps the port until the user signs out (AH-107) | GitHub Releases, `app.install`, `docs/RUNBOOK.md` (each piece's rollback and what to back up) | |
 | Blue-green, rolling | not applicable: one PC; an update stops the old engine, swaps the file and waits for `/health` | `app.install` | a server many people use |
 | Docker, Kubernetes, Helm, Terraform | not applicable to a Windows desktop app: the one-file exe is the box (pinned, proven on a fresh Windows PC), and no server takes the crowd (`docs/SHARING.md`, AH-95); CI uses Docker for ZAP; `relay/wrangler.toml` is the relay's infrastructure as code | | a hosted multi-user service |
 
@@ -76,7 +76,7 @@ Add a piece only when its "add it when" signal shows up in a measurement, and sa
 | Sharding, partitioning, replication, read replicas | no database; a sheet is at most 2M cells in memory | data that doesn't fit one machine |
 | Leader election, service discovery, distributed locks, sagas, distributed transactions, CAP, eventual consistency, multi-region | one process; the relay's counter is a single Cloudflare Durable Object (one writer, consistent) | several servers sharing state |
 | Auto-scaling, vertical scaling, serverless, cost | the relay is serverless (no cold starts to speak of) and capped; the engine is the user's own CPU | a bill that grows with users |
-| Metrics, alerts, distributed tracing, on-call | one live probe of the relay in CI (`relay-live.yml`); incidents are written up as tests and lessons (CLAUDE.md, SECURITY-LESSONS.md) | users John can't hear from directly |
+| Metrics, alerts, distributed tracing, on-call | one live probe of the relay in CI (`relay-live.yml`), with one real call through a canary invite once its secret is set (`relay/canary.mjs`, AH-108); incidents are written up as tests and lessons (CLAUDE.md, SECURITY-LESSONS.md) | users John can't hear from directly |
 | Clock skew | certificate valid from a day back; deadlines use a monotonic clock; the relay's day is Pacific time on Cloudflare's clock | machines comparing their own times |
 | HTTP/2, HTTP/3 | loopback, one request at a time; Cloudflare speaks them to the relay | many requests per page over the internet |
 

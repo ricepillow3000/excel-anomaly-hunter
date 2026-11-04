@@ -74,3 +74,8 @@ export function spots(r, columns) {
   const j = (r?.cells || []).map((c) => columns.indexOf(c)).filter((k) => k >= 0);
   return j.length ? j : columns.map((_, k) => k);
 }
+
+// A value kept in the workbook goes back into a cell only as a plain value, into a plain A1 cell: a crafted .xlsx can
+// carry any record (2026-10-15 audit). Text Excel would read as a formula is refused, a signed number is not
+export const A1 = /^[A-Z]{1,3}[1-9][0-9]{0,6}$/;
+export const typedAsFormula = (v) => typeof v === "string" && /^[=+\-@＝＋－＠\t\r]/.test(v) && !/^[+\-]?\d[\d.,]*$/.test(v);

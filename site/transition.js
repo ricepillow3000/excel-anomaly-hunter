@@ -139,11 +139,15 @@
     html.setAttribute("data-moving", "");
 
     document.title = doc.title;
-    const meta = (d) => d.querySelector('meta[name="description"]');
-    const theirs = meta(doc), mine = meta(document);
-    if (theirs && mine) mine.setAttribute("content", theirs.getAttribute("content"));
-    else if (theirs) document.head.append(document.importNode(theirs, true));
-    else if (mine) mine.remove();
+    // the head tags that say which page this is (AH-119): a link copied from the address bar after a page change shares
+    // the new page's canonical address and card, never the first page's
+    for (const [sel, at] of [['meta[name="description"]', "content"], ['link[rel="canonical"]', "href"], ['meta[property="og:title"]', "content"],
+      ['meta[property="og:description"]', "content"], ['meta[property="og:url"]', "content"]]) {
+      const theirs = doc.querySelector(sel), mine = document.querySelector(sel);
+      if (theirs && mine) mine.setAttribute(at, theirs.getAttribute(at));
+      else if (theirs) document.head.append(document.importNode(theirs, true));
+      else if (mine) mine.remove();
+    }
     if (doc.body.id) document.body.id = doc.body.id; else document.body.removeAttribute("id");
     for (const sel of [".notice-bar", "header.bar", "footer.foot"]) {
       const a = document.querySelector(sel), b = doc.querySelector(sel);

@@ -24,6 +24,9 @@ def test_every_privacy_page_says_what_the_pane_keeps_how_to_clear_it_and_the_rel
         f"{caps['DAILY_PER_INVITE']} AI calls per invite and {caps['DAILY_TOTAL']} for everyone together a day",
         "John can turn off any invite at any time", "no promise it is up",
         "billing turned on can be charged by Google",
+        # AH-104: the key and the invite code are sealed for this Windows account, and what that does not stop is said
+        "sealed with Windows' own encryption (DPAPI) for your Windows account", "a program running as you could still open it",
+        "server.log.1 keeps the run before",  # AH-106: the last run's log outlives the next start
     )
     for page in PAGES:
         said = words(page)

@@ -1,6 +1,6 @@
 import { AUTO_KEY, UNDO_KEY } from "../constants/index.js";
 import { state } from "../hooks/use-state.js";
-import { cellAt, colLetter, sameRow } from "../utils/sheet.js";
+import { A1, cellAt, colLetter, sameRow, typedAsFormula } from "../utils/sheet.js";
 import { readCells, readRows, writeCells } from "../services/excel.js";
 import { afterFix } from "./fix.js";
 
@@ -43,8 +43,6 @@ export async function autoFix() {
 
 // The undo record lives in the workbook, so a crafted .xlsx can carry its own: only plain values go back, only into a
 // plain A1 cell (2026-10-15 audit). A real record never holds a formula - autoFix skips formula cells.
-const A1 = /^[A-Z]{1,3}[1-9][0-9]{0,6}$/;
-const typedAsFormula = (v) => typeof v === "string" && /^[=+\-@＝＋－＠\t\r]/.test(v) && !/^[+\-]?\d[\d.,]*$/.test(v);
 export const safeUndo = (writes) => writes.filter((w) => A1.test(String(w?.cell)) && !typedAsFormula(w.old));
 
 // Put the auto-fixed cells back - only where the row still looks as auto-fix left it (same record, not edited since)

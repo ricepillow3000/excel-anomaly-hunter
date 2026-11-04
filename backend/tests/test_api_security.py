@@ -379,6 +379,127 @@ def test_the_ai_key_the_invite_code_and_the_tls_key_are_readable_only_by_their_o
         os.umask(old)
 
 
+def _fake_dpapi(monkeypatch):
+    """Windows' DPAPI as a test can run it anywhere: sealing ties the bytes to this account, and a blob from another
+    account (or a damaged one) is refused, the way CryptUnprotectData refuses it."""
+    from anomaly_hunter import sealed
+
+    def protect(data):
+        return b"this-account:" + data[::-1]
+
+    def unprotect(blob):
+        if not blob.startswith(b"this-account:"):
+            raise OSError("DPAPI refused the blob")
+        return blob.removeprefix(b"this-account:")[::-1]
+    monkeypatch.setattr(sealed, "SEAL", (protect, unprotect))
+    return sealed
+
+
+def test_on_windows_the_saved_key_and_invite_code_are_sealed_and_never_plain_text(monkeypatch):
+    # AH-104: gemini-key.txt and invite-code.txt were plain text: a backup, a synced folder or another program that
+    # copied the file carried a working key. Sealed with DPAPI, the bytes work only for this Windows account.
+    sealed = _fake_dpapi(monkeypatch)
+    monkeypatch.setattr(client, "check_key", lambda k: (True, "Key works."))
+    monkeypatch.setattr(client, "RELAY_URL", "https://relay.example")
+    c = create_app().test_client()
+    invite, key = "inv_" + "c" * 24, "AIzaMadeUpSealedKey789"  # gitleaks:allow - made-up
+    assert c.post("/key", json={"key": invite}).get_json()["ai_provider"] == "relay"
+    assert c.post("/key", json={"key": key}).get_json()["ai_provider"] == "gemini"
+    for f, plain in ((client.INVITE_FILE, invite), (client.KEY_FILE, key)):
+        raw = f.read_bytes()
+        assert raw.startswith(sealed.PREFIX) and plain.encode() not in raw and plain[::-1].encode() not in raw, f.name
+    assert client.invite_code() == invite and client.gemini_key() == key
+
+
+def test_a_key_an_older_version_saved_in_plain_text_still_works_and_is_sealed_at_its_first_read(monkeypatch):
+    # AH-104: an update must keep the user's key: install.bat and every release before this one wrote plain text
+    sealed = _fake_dpapi(monkeypatch)
+    monkeypatch.setattr(client, "RELAY_URL", "https://relay.example")
+    client.INVITE_FILE.write_text("inv_" + "d" * 24 + "\r\n", encoding="utf-8")
+    assert client.provider() == "relay" and client.invite_code() == "inv_" + "d" * 24
+    raw = client.INVITE_FILE.read_bytes()
+    assert raw.startswith(sealed.PREFIX) and b"dddd" not in raw
+    assert client.invite_code() == "inv_" + "d" * 24  # and read back sealed
+
+
+def test_a_sealed_key_this_account_cannot_open_reads_as_no_key_never_an_engine_error(monkeypatch):
+    # a file copied from another account or PC, or a damaged one: AI help reads as off, and the pane can save a new key
+    sealed = _fake_dpapi(monkeypatch)
+    monkeypatch.setattr(client, "RELAY_URL", "https://relay.example")
+    for junk in (b"other-account:yek", b"not base64 at all \xff", b"", b"\x00" * 9):
+        client.KEY_FILE.write_bytes(sealed.PREFIX + junk)
+        client.INVITE_FILE.write_bytes(sealed.PREFIX + junk)
+        r = create_app().test_client().get("/health")
+        assert r.status_code == 200 and r.get_json()["ai_available"] is False, junk
+    assert client.KEY_FILE.read_bytes() == sealed.PREFIX + b"\x00" * 9  # never rewritten: it may be the user's to recover
+
+
+def test_a_plain_text_key_that_cannot_be_sealed_again_is_still_read(monkeypatch, tmp_path):
+    # the migration is best effort: a read-only file or a full disk must never cost the user their key
+    sealed = _fake_dpapi(monkeypatch)
+    client.KEY_FILE.write_text("AIzaReadOnlyMadeUp", encoding="utf-8")  # gitleaks:allow - made-up
+
+    def full_disk(path, data):
+        raise OSError("no space left")
+    monkeypatch.setattr(sealed, "write_private", full_disk)
+    assert client.gemini_key() == "AIzaReadOnlyMadeUp"
+
+
+def test_the_installer_seals_the_invite_kits_code_and_leaves_the_kit_as_it_was(monkeypatch, tmp_path):
+    # app.py copied the kit's invite-code.txt as it was (shutil.copy2): plain text in %LOCALAPPDATA% at every install
+    from anomaly_hunter import app
+    sealed = _fake_dpapi(monkeypatch)
+    kit, home = tmp_path / "kit", tmp_path / "home"
+    kit.mkdir()
+    home.mkdir()
+    (kit / "invite-code.txt").write_text("inv_" + "e" * 24 + "\n", encoding="utf-8")
+    app.keep_invite(kit / "Arcas.exe", home)
+    assert (kit / "invite-code.txt").read_text(encoding="utf-8") == "inv_" + "e" * 24 + "\n"  # the kit is John's
+    assert (home / "invite-code.txt").read_bytes().startswith(sealed.PREFIX)
+    assert sealed.read(home / "invite-code.txt") == "inv_" + "e" * 24
+    app.keep_invite(tmp_path / "no-kit" / "Arcas.exe", home)  # no kit: the code saved before stays
+    assert sealed.read(home / "invite-code.txt") == "inv_" + "e" * 24
+
+
+def test_off_windows_the_key_stays_plain_text_for_the_serve_command(monkeypatch):
+    # Linux and a Mac have no DPAPI: the file stays readable by its owner alone (the test above this one's 0600)
+    from anomaly_hunter import sealed
+    monkeypatch.setattr(sealed, "SEAL", None)
+    sealed.save(client.KEY_FILE, "AIzaPlainMadeUp")  # gitleaks:allow - made-up
+    assert client.KEY_FILE.read_text(encoding="utf-8") == "AIzaPlainMadeUp" and client.gemini_key() == "AIzaPlainMadeUp"
+    client.KEY_FILE.write_bytes(b"DPAPI1:c2VhbGVk")  # sealed on Windows, then copied here: no key, no crash
+    assert client.gemini_key() == ""
+
+
+@pytest.mark.skipif(__import__("os").name != "nt", reason="Windows' own DPAPI (CI proves it in build-exe.yml)")
+def test_windows_dpapi_seals_and_opens_a_key_for_this_account(tmp_path):
+    from anomaly_hunter import sealed
+    assert sealed.SEAL is not None
+    sealed.save(tmp_path / "k.txt", "AIzaRealDpapiMadeUp")  # gitleaks:allow - made-up
+    raw = (tmp_path / "k.txt").read_bytes()
+    assert raw.startswith(sealed.PREFIX) and b"AIzaRealDpapiMadeUp" not in raw
+    assert sealed.read(tmp_path / "k.txt") == "AIzaRealDpapiMadeUp"
+
+
+def test_the_add_in_asks_excel_for_no_more_than_writing_this_workbook():
+    # AH-105: ReadWriteDocument is the least that lets the pane write cells, highlights and its settings. A wider one
+    # (ReadWriteMailbox, ReadAllDocument) would be granted silently at the next install, so it may never slip in.
+    import re
+    from pathlib import Path
+    manifest = (Path(__file__).resolve().parents[2] / "frontend" / "manifest.xml").read_text(encoding="utf-8")
+    assert re.findall(r"<Permissions>\s*(.*?)\s*</Permissions>", manifest, re.DOTALL) == ["ReadWriteDocument"]
+
+
+def test_the_pin_audit_fails_on_a_package_pypi_has_never_heard_of():
+    # AH-105, measured: without --strict pip-audit prints "Dependency not found on PyPI" for a mistyped or made-up name
+    # in constraints.txt and still exits 0, so a pin that audits nothing looked green
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2]
+    for f in ("tools/check.py", ".github/workflows/security.yml"):
+        audits = [line for line in (root / f).read_text(encoding="utf-8").splitlines() if "constraints.txt" in line and "pip_audit" in line.replace("-", "_")]
+        assert audits and all("--strict" in line for line in audits), (f, audits)
+
+
 def test_every_package_the_app_imports_is_declared_and_every_declared_one_is_used():
     # AH-87 audit: ai/client.py imported pydantic, which only anthropic declared (an anthropic release that drops it
     # breaks Ask AI with no pin of ours moving), and Pillow sat in the exe extra imported by nothing: one more download

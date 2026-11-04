@@ -3,7 +3,7 @@
    selection anywhere on it */
 .strength { margin: var(--s1) 0 var(--s3); user-select: none; -webkit-user-select: none; }
 .strength-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--gutter); font: 700 13px/1.4 var(--sans); color: var(--navy); }
-.strength-head b { font: 800 var(--fs-1)/1 var(--sans); letter-spacing: -.01em; color: var(--wine); font-variant-numeric: tabular-nums; }
+.strength-head b { font: 800 var(--fs-1)/1 var(--sans); color: var(--wine); font-variant-numeric: tabular-nums; }
 .slider { --pct: 50%; position: relative; height: 28px; margin: var(--s1) 7px 0; cursor: pointer; touch-action: none; outline: none; }
 .slider-track { position: absolute; left: 0; right: 0; top: 12px; height: 3px; border-radius: 0; background: var(--rule); overflow: hidden; }
 .slider-fill { width: var(--pct); height: 100%; background: var(--wine); }
@@ -17,10 +17,13 @@
 }
 .slider:hover .slider-thumb, .slider:active .slider-thumb { background: var(--navy); }
 .slider:focus-visible .slider-thumb { outline: 2px solid var(--wine); outline-offset: 2px; }
-.slider-scale { display: flex; justify-content: space-between; margin: 0; font: 600 var(--fs--1)/1.4 var(--sans); color: var(--muted); }
+/* at 160 px (a 320 px pane at 200% zoom) the three words wrap, the last one still at the right (AH-112) */
+.slider-scale { display: flex; flex-wrap: wrap; justify-content: space-between; column-gap: var(--s2); margin: 0; font: 600 var(--fs--1)/1.4 var(--sans); color: var(--muted); }
+.slider-scale span:last-child { margin-left: auto; }
 #strength-hint { min-height: 2.9em; margin: var(--s2) 0 0; } /* the words change length; the layout under them doesn't jump */
 
-label.check { display: flex; align-items: center; gap: var(--s2); font-size: 13px; margin-bottom: var(--s2); color: var(--ink); }
+/* a 16 px box inside a label at least 24 px tall: the label is the target (WCAG 2.5.8, AH-115) */
+label.check { display: flex; align-items: center; min-height: 24px; gap: var(--s2); font-size: 13px; margin-bottom: var(--s2); color: var(--ink); }
 input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var(--wine); }
 
 /* progress: a real fraction while reading/highlighting, a moving sliver while the engine checks */
@@ -37,10 +40,10 @@ input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var
 #notice:empty { display: none; }
 
 #empty-state { margin-top: var(--s5); }
-#empty-state p:first-child { margin: 0 0 var(--s2); font: 800 var(--fs-1)/1.2 var(--sans); letter-spacing: -.015em; color: var(--navy); }
+#empty-state p:first-child { margin: 0 0 var(--s2); font: 800 var(--fs-1)/1.2 var(--sans); color: var(--navy); }
 
 /* results: the summary as a bold headline, the legend in two columns, then the rows as a ruled ledger */
-.summary { margin: var(--s5) 0 var(--s3); font: 800 var(--fs-2)/1.1 var(--sans); letter-spacing: -.02em; color: var(--navy); text-wrap: balance; }
+.summary { margin: var(--s5) 0 var(--s3); font: 800 var(--fs-2)/1.1 var(--sans); color: var(--navy); text-wrap: balance; }
 .legend { list-style: none; margin: 0 0 var(--s2); padding: var(--s2) 0 0; border-top: 1px solid var(--rule);
   display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); column-gap: var(--gutter); font-size: var(--fs--1); color: var(--muted); }
 .legend:empty { display: none; }
@@ -71,6 +74,8 @@ input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var
 .flagged-list button:is(:hover, :focus-visible):not(:disabled)::before { transform: scaleX(1); }
 .flagged-list button:is(:hover, :focus-visible):not(:disabled)::after { opacity: 1; }
 .flagged-list button:focus-visible { outline-offset: -2px; outline-color: var(--gold-hi); }
+/* pressed (AH-120): the lifted row sets down most of the way */
+.flagged-list button:active:not(:disabled) { transform: translateY(0) scale(1.01); transition-duration: .08s; }
 .row-head { display: flex; align-items: center; gap: var(--s2); font: 700 13px/1.3 var(--sans); color: var(--navy); }
 .row-head .sev { margin-left: auto; font: 700 var(--fs--1)/1.4 var(--sans); color: var(--muted); }
 .sev-High .row-head .sev { color: var(--wine); transition: color .3s var(--ease); }
@@ -83,13 +88,15 @@ input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var
 
 /* collapsible sections: a bold summary under a hairline, a square plus that loses its upright when open */
 details.more { margin-top: var(--s5); border-top: 1px solid var(--rule); padding-top: var(--s3); }
+/* at least 24 px tall, a target a finger or a shaky hand can hit (it was 18, WCAG 2.5.8, AH-115) */
 details.more summary { list-style: none; display: flex; justify-content: space-between; align-items: center; gap: var(--gutter); cursor: pointer;
-  font: 700 13px/1.4 var(--sans); color: var(--navy); }
+  min-height: 28px; font: 700 13px/1.4 var(--sans); color: var(--navy); }
 details.more summary::-webkit-details-marker { display: none; }
 details.more summary::after { content: ""; flex: none; width: 12px; height: 12px;
   background: linear-gradient(currentColor, currentColor) center / 11px 1.5px no-repeat, linear-gradient(currentColor, currentColor) center / 1.5px 11px no-repeat; }
 details.more[open] summary::after { background: linear-gradient(currentColor, currentColor) center / 11px 1.5px no-repeat; }
 details.more summary:hover { color: var(--wine); }
+details.more summary:active { color: var(--wine); background: var(--rule); } /* pressed (AH-120) */
 details.more[open] summary { margin-bottom: var(--s3); }
 .steps { margin: 0 0 var(--s3); padding-left: 18px; font-size: var(--fs--1); }
 .steps li { margin-bottom: var(--s1); }
@@ -106,7 +113,7 @@ details.more[open] summary { margin-bottom: var(--s3); }
 .limits-row { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); column-gap: var(--gutter); align-items: center; padding: var(--s2) 0;
   font-size: var(--fs--1); border-bottom: 1px solid var(--rule); }
 .limits-row > :first-child { grid-column: span 2; word-break: break-word; }
-.limits-head { font: 700 var(--fs--2)/1.4 var(--sans); letter-spacing: var(--track); text-transform: uppercase; color: var(--navy); border-bottom-color: var(--navy); }
+.limits-head { font: 700 var(--fs--1)/1.4 var(--sans); letter-spacing: var(--track); text-transform: uppercase; color: var(--navy); border-bottom-color: var(--navy); }
 .limits-row input { padding: 6px; font-size: var(--fs--1); }
 
 /* the suggestion card: plain paper in a navy hairline frame, the flagged cell's square before its title (a 4px wine stripe
@@ -162,7 +169,7 @@ details.more[open] summary { margin-bottom: var(--s3); }
 /* reduced motion: the same states, reached without movement - the fill shows at once, nothing lifts, no light passes */
 @media (prefers-reduced-motion: reduce) {
   .flagged-list button, .flagged-list button::before, .flagged-list button::after, #fix-changes li { transition: none; }
-  .flagged-list button:is(:hover, :focus-visible):not(:disabled), #fix-changes li:hover { transform: none; box-shadow: none; }
+  .flagged-list button:is(:hover, :focus-visible):not(:disabled), .flagged-list button:active:not(:disabled), #fix-changes li:hover { transform: none; box-shadow: none; }
   #scan-skeleton::after { animation: none; display: none; }
 }
 
@@ -171,3 +178,14 @@ details.more[open] summary { margin-bottom: var(--s3); }
 #results, #fix-view { display: flow-root; }
 #results, #fix-view, #scan-skeleton { margin: 0 calc(-1 * var(--margin)); padding: 0 var(--margin) var(--s2); background: var(--paper); }
 #main-ui[data-scanning] #scan-skeleton { display: flow-root; }
+
+/* Windows High Contrast (AH-113): a background is repainted in the page's own colour, so the slider's track and fill
+   vanished and the three swatches went blank. Track and fill in system colours, the swatches keep Excel's fills (they
+   are what the sheet shows) in a frame; the row's sweeping fill is dropped (it would cover the row's words) */
+@media (forced-colors: active) {
+  .slider-track { forced-color-adjust: none; background: GrayText; }
+  .slider-fill { forced-color-adjust: none; background: Highlight; }
+  .slider-thumb { forced-color-adjust: none; background: Canvas; border-color: CanvasText; }
+  .swatch { forced-color-adjust: none; outline: 1px solid CanvasText; }
+  .flagged-list button::before { display: none; }
+}

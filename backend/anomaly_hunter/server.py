@@ -24,11 +24,12 @@ from flask.json.provider import DefaultJSONProvider
 from werkzeug.exceptions import HTTPException
 from werkzeug.serving import WSGIRequestHandler
 
-from anomaly_hunter import powerbi
+from anomaly_hunter import powerbi, sealed
 from anomaly_hunter.agents import checker, scan_agent
 from anomaly_hunter.ai import client
 from anomaly_hunter.engine.load import load_from_records
 from anomaly_hunter.engine.pipeline import knobs
+from anomaly_hunter.sealed import write_private as _write_private
 
 # the pane, served as-is: beside the code in a checkout, inside the bundle in the one-file app (unpacked to _MEIPASS)
 PANEL = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2])) / "frontend"
@@ -228,14 +229,14 @@ def create_app(scan_csv=None):
         if key.startswith("inv_"):  # an invite code to John's relay: kept here, checked by the relay on use
             if not re.fullmatch(r"inv_[A-Za-z0-9_\-]{20,64}", key):
                 return {"error": "That doesn't look like a whole invite code - copy it again."}, 400
-            _write_private(client.INVITE_FILE, key)
+            sealed.save(client.INVITE_FILE, key)
             on = client.provider() == "relay"
             return {"ai_available": client.api_key_configured(), "ai_provider": client.provider(),
                     "message": "Invite code saved. AI help is on." if on else "Invite code saved - the shared AI isn't switched on yet."}
         ok, words = client.check_key(key)  # tested now, not at the first Ask AI
         if ok is False:
             return {"error": words}, 400  # a rejected key is not kept
-        _write_private(client.KEY_FILE, key)
+        sealed.save(client.KEY_FILE, key)
         return {"ai_available": client.api_key_configured(), "ai_provider": client.provider(), "message": words}
 
     @app.post("/fix")
@@ -312,17 +313,6 @@ def create_app(scan_csv=None):
     return app
 
 
-def _write_private(path, data):
-    """A secret file only its owner can read. On Linux and a Mac (`serve`) the key, the invite code and key.pem were
-    written 0644 by the default umask: any account on the machine could read them (AH-87 audit). Windows has no such
-    bits: the file sits in %LOCALAPPDATA%, whose ACL already gives it to this user (and SYSTEM, admins) alone."""
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0), 0o600)  # 0600 from birth
-    with os.fdopen(fd, "wb") as f:
-        if os.name != "nt":
-            os.fchmod(fd, 0o600)  # a file an older version wrote 0644 is tightened too
-        f.write(data.encode("utf-8") if isinstance(data, str) else data)
-
-
 def _ku(**on):
     names = ("digital_signature", "content_commitment", "key_encipherment", "data_encipherment",
              "key_agreement", "key_cert_sign", "crl_sign", "encipher_only", "decipher_only")
@@ -382,6 +372,8 @@ def make_cert(folder=HOME, days=5 * 365):
     folder.mkdir(parents=True, exist_ok=True)
     pem = serialization.Encoding.PEM
     (folder / "cert.pem").unlink(missing_ok=True)  # cert.pem = "done" marker: crash mid-write -> regenerated next run
+    # key.pem stays a plain PEM file (never sealed like the AI key): Python's ssl loads a key only from a file, and a
+    # stolen copy can only pretend to be localhost, since the CA that signed it is name-constrained to it
     _write_private(folder / "key.pem", key.private_bytes(pem, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
     (folder / "ca.pem").write_bytes(ca.public_bytes(pem))
     (folder / "cert.pem").write_bytes(leaf.public_bytes(pem))
@@ -414,6 +406,16 @@ def _already_running(folder=HOME, port=PORT):
         return False
 
 
+def open_log(folder):
+    """A fresh server.log for this run, the run before kept as server.log.1 (AH-106): opened with "w" alone, a crash's
+    log was gone at the next logon, before anyone could read it. One older log only, so the folder never grows."""
+    try:
+        os.replace(folder / "server.log", folder / "server.log.1")
+    except OSError:
+        pass  # no log yet, or one still held (an engine stopping, a .1 open in an editor): start all the same
+    return open(folder / "server.log", "w", encoding="utf-8", errors="replace", buffering=1)
+
+
 def main():
     if "--cert" in sys.argv:  # installer: exit 3 = new chain written, trust ca.pem
         sys.exit(3 if make_cert() else 0)
@@ -422,7 +424,7 @@ def main():
         return
     HOME.mkdir(parents=True, exist_ok=True)
     if sys.stderr is None:  # pythonw (autostart) has no console: fresh log file each start
-        sys.stdout = sys.stderr = open(HOME / "server.log", "w", encoding="utf-8", errors="replace", buffering=1)
+        sys.stdout = sys.stderr = open_log(HOME)
     crt, key = HOME / "cert.pem", HOME / "key.pem"
     if not (crt.exists() and key.exists()):
         sys.exit(f"No HTTPS cert in {HOME}. Run install.bat.")
