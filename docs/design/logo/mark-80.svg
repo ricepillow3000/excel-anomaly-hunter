@@ -1,36 +1,31 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80">
-  <!-- the large drawing (shown over 48 px): flat site gold, navy and paper, square ends, and the details as navy
-       hairlines; no shading, no outline, no rounded corner, so it sits on the hairline page (AH-103) -->
-  <g transform="translate(40 40) scale(.97) translate(-40 -40)">
-  <g fill="#997D3A">
-    <!-- pole, then the finial: blade and curled wings, measured from John's reference, each one shape mirrored on x = 40 -->
-    <rect x="38.5" y="25" width="3" height="19"/>
-    <path d="M40 4.5 C39.9 13 38.9 20.5 36.6 24.1 L38.4 25.3 H41.6 L43.4 24.1 C41.1 20.5 40.1 13 40 4.5 Z"/>
+  <!-- the large drawing, for 80 px and over (the download's logo at 240 and 320 px, the ribbon's 80, the exe's 256): one unit is one
+       pixel at 80, every straight edge on a whole unit, so it is sharp at 80 and at 3x and 4x. Flat site gold, navy and paper, square ends, no
+       outline. Its details are solid navy lines one unit wide (never a see-through hairline: at 55% on gold they read grey,
+       AH-121): the blade's midrib (one navy wedge on the axis, its own part so the spear still fills in one gold), a band where the blade meets the pole, each wing's inner curl, the collar's two bands, the end
+       caps' bands, the X lashing the bar to the pole, the line between the bar and the drape and the drape's two folds. Pole, collar and lashing share one centre and the collar and lashing one width, so no seam -->
+  <g data-part="spear" fill="#997D3A">
+    <path d="M40 4 C39.9 12.5 38.8 20 36.5 23.5 L38 25 H42 L43.5 23.5 C41.2 20 40.1 12.5 40 4 Z"/>
+    <rect x="38" y="24" width="4" height="20"/>
     <path d="M40 26.9 C38 25.9 35 25.6 33.2 26.6 C31.7 27.4 31.4 29.8 32.5 32.3 C32.6 30.6 33.1 29.5 34.1 29.1 C36 28.5 38.3 28.9 40 29.5 C41.7 28.9 44 28.5 45.9 29.1 C46.9 29.5 47.4 30.6 47.5 32.3 C48.6 29.8 48.3 27.4 46.8 26.6 C45 25.6 42 25.9 40 26.9 Z"/>
-    <rect x="38.4" y="25" width="3.2" height="1.6"/>
-    <!-- collar -->
-    <rect x="37.4" y="35.6" width="5.2" height="4.4"/>
+    <rect x="37" y="35" width="6" height="5"/>
+    <path d="M38 25.5 H42 M37 36.5 H43 M37 38.5 H43 M33 29.25 C33.8 28.4 35.5 27.95 38.5 28.4 M47 29.25 C46.2 28.4 44.5 27.95 41.5 28.4" fill="none" stroke="#0C1938"/>
   </g>
-  <!-- banner: navy, gold rim, shallow V hem -->
-  <path d="M19.5 46 H60.5 V71.5 L40 75 L19.5 71.5 Z" fill="#0C1938" stroke="#997D3A" stroke-width="1.2" stroke-linejoin="miter"/>
-  <g fill="#997D3A">
-    <!-- the drape hanging from the bar, the bar, its two end caps and the knot where it meets the pole -->
-    <path d="M18.9 45.5 H61.1 V46.8 Q40 57 18.9 46.8 Z"/>
+  <path data-part="midrib" d="M40 11 L40.6 24 H39.4 Z" fill="#0C1938"/>
+  <g data-part="banner"><path d="M19.5 46 H60.5 V71.6 L40 75.5 L19.5 71.6 Z" fill="#0C1938" stroke="#997D3A" stroke-linejoin="miter"/></g>
+  <g data-part="drape">
+    <path d="M19 46 H61 V48 Q40 61 19 48 Z" fill="#997D3A"/>
+    <path d="M19 47.5 H61 M22 48.9 Q40 56.7 58 48.9 M27 48.5 Q40 52.5 53 48.5" fill="none" stroke="#0C1938"/>
+  </g>
+  <g data-part="bar" fill="#997D3A">
     <rect x="17" y="43" width="46" height="4"/>
-    <rect x="12" y="42.5" width="6.5" height="5"/><rect x="61.5" y="42.5" width="6.5" height="5"/>
-    <rect x="37.8" y="42.8" width="4.4" height="4.4"/>
+    <rect x="12" y="42" width="6" height="6"/><rect x="62" y="42" width="6" height="6"/>
+    <rect x="37" y="42" width="6" height="6"/>
+    <path d="M14.5 42 V48 M16.5 42 V48 M63.5 42 V48 M65.5 42 V48 M38 43 L42 47 M42 43 L38 47" fill="none" stroke="#0C1938"/>
   </g>
-  <!-- hairlines: the collar's two rings, the caps' grooves, the drape's two folds -->
-  <g fill="none" stroke="#0C1938" stroke-width=".5" stroke-opacity=".55">
-    <path d="M37.4 37.1h5.2M37.4 38.5h5.2M14.4 42.5v5M16.4 42.5v5M63.6 42.5v5M65.6 42.5v5"/>
-    <path d="M22 47.3 Q40 54 58 47.3M25 47.1 Q40 51.4 55 47.1"/>
-  </g>
-  <!-- emblem (John's sketch): two panels leaning in, meeting at their inner top corners; a slashed ring above -->
-  <g fill="#F7F5F0">
-    <path d="M30.4 63.4 H40 L36 69 H26.4 Z"/>
-    <path d="M49.6 63.4 H40 L44 69 H53.6 Z"/>
-  </g>
-  <circle cx="40" cy="58.7" r="2.7" fill="none" stroke="#F7F5F0" stroke-width="1.15"/>
-  <path d="M35.75 62.05 L44.25 55.35" stroke="#F7F5F0" stroke-width="1.15" stroke-linecap="square"/>
+  <g data-part="emblem">
+    <g fill="#F7F5F0"><path d="M30 65 H40 L36 71 H26 Z"/><path d="M50 65 H40 L44 71 H54 Z"/></g>
+    <circle cx="40" cy="60" r="3.1" fill="none" stroke="#F7F5F0" stroke-width="1.5"/>
+    <path d="M35.4 63.62 L44.6 56.38" fill="none" stroke="#F7F5F0" stroke-width="1.5" stroke-linecap="square"/>
   </g>
 </svg>

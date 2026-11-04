@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- the large drawing redrawn on a 64 grid (the pane's logo at 2x, the manifest's high resolution icon, the 64 px favicon and
+       exe entry): the same parts, each straight edge on a whole pixel at 64, never the 80 drawing scaled by .8; a tip 2 px wide from its first
+       row, and fewer navy details (no end-cap bands, drape folds, midrib or lashing X: at 64 they read as noise) (AH-121) -->
+  <g fill="#997D3A">
+    <path d="M32 3 L33 3.6 C33 9 32.6 15.5 34.8 18.8 L34 20 H30 L29.2 18.8 C31.4 15.5 31 9 31 3.6 Z"/>
+    <rect x="30" y="19" width="4" height="17"/>
+    <path d="M32 21.54 C30.4 20.74 28 20.5 26.56 21.3 C25.36 21.94 25.12 23.86 26 25.86 C26.08 24.5 26.48 23.62 27.28 23.3 C28.8 22.82 30.64 23.14 32 23.62 C33.36 23.14 35.2 22.82 36.72 23.3 C37.52 23.62 37.92 24.5 38 25.86 C38.88 23.86 38.64 21.94 37.44 21.3 C36 20.5 33.6 20.74 32 21.54 Z"/>
+    <rect x="29" y="28" width="6" height="5"/>
+  </g>
+  <path d="M30 20.5 H34 M29 29.5 H35 M29 31.5 H35 M25.6 23.38 C26.24 22.74 27.6 22.38 30.8 22.74 M38.4 23.38 C37.76 22.74 36.4 22.38 33.2 22.74" fill="none" stroke="#0C1938"/>
+  <path d="M15.5 37 H48.5 V57.4 L32 60.4 L15.5 57.4 Z" fill="#0C1938" stroke="#997D3A" stroke-linejoin="miter"/>
+  <path d="M15 37 H49 V39 Q32 50 15 39 Z" fill="#997D3A"/>
+  <path d="M15 38.5 H49" fill="none" stroke="#0C1938"/>
+  <g fill="#997D3A">
+    <rect x="14" y="35" width="36" height="3"/>
+    <rect x="9" y="34" width="5" height="5"/><rect x="50" y="34" width="5" height="5"/>
+    <rect x="29" y="34" width="6" height="5"/>
+  </g>
+  <g fill="#F7F5F0"><path d="M24 52 H32 L29 57 H21 Z"/><path d="M40 52 H32 L35 57 H43 Z"/></g>
+  <circle cx="32" cy="48.5" r="2.2" fill="none" stroke="#F7F5F0"/>
+  <path d="M28.6 51.18 L35.4 45.82" fill="none" stroke="#F7F5F0" stroke-linecap="square"/>
+</svg>

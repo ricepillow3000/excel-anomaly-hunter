@@ -114,7 +114,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .bar .cols { min-height: 64px; align-items: center; }
 .brand { grid-column: 1 / span 4; display: inline-flex; align-items: center; gap: 12px; justify-self: start; color: var(--ink); text-decoration: none;
   font: 800 var(--fs-1)/1 var(--sans); letter-spacing: normal; white-space: nowrap; }
-.brand .logo { width: auto; height: 40px; aspect-ratio: 59.793814 / 74.226804; flex: none; } /* the small drawing, framed tight: 40 px tall (John, AH-103) */
+.brand .logo { width: auto; height: 40px; aspect-ratio: 32 / 40; flex: none; } /* drawn for this size: 40 px tall, one unit a CSS pixel, so its edges land on whole pixels (John, AH-103; AH-121) */
 .links { grid-column: 5 / -1; display: flex; justify-content: flex-end; align-items: center; gap: var(--s3); flex-wrap: wrap; }
 .links a { color: var(--ink); text-decoration: none; font: 600 var(--fs--1)/1 var(--sans); padding: 10px 0; border-bottom: 2px solid transparent; }
 .links a:hover { border-bottom-color: var(--ink); }

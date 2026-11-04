@@ -175,7 +175,7 @@ Adding or removing a check: update this table in the same commit.
   called Loan_Amount_Term. Amounts are named ones with 10+ values, never across a bucket or a lookup of the group, and
   100 pure-noise sheets must read even in 95 (`fairness._amounts`, AH-49).
 - Office caches ribbon icons per URL and the manifest per `<Version>`: the v0.1.71 logo kept the old file names and
-  Version, so an upgraded ribbon would keep the old icon. A new logo gets new file names (now `assets/crest-*.png` since AH-103, drawn in
+  Version, so an upgraded ribbon would keep the old icon. A new logo gets new file names (now `assets/crest2-*.png` since AH-121, drawn in
   `docs/design/logo/`) and a `<Version>` bump; never clear the
   Wef cache in install (it is where Excel remembers the Add, `install.bat`).
 - One package for one function is a download cost: pyod (for ECOD) brought numba, llvmlite, matplotlib and
