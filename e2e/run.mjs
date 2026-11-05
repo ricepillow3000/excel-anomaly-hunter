@@ -762,6 +762,8 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
   ok(posts.join() === "/fix" && asks() === asked0, `and nothing reaches the AI: ${posts}; ${asks() - asked0} new AI calls`);
   ok(!(await page.isVisible("#fix-apply")) && (await page.$eval("#fix-care", (p) => p.children.length)) === 0,
     "no Accept beside it, and the message is plain text");
+  ok(!(await page.isVisible("#fix-label")) && (await page.$eval("#fix-changes", (u) => u.children.length)) === 0 && (await text("#fix-explanation")) === "",
+    "and no earlier suggestion beside it");
   await contrast("a row's card with the helpline message");
   // the next ask clears it, and a real fix brings Accept back
   await page.fill("#fix-intent", ""); await page.click("#fix-intent");
