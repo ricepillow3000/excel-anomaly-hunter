@@ -450,6 +450,8 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
    (the reveal must composite only, tools/test_site.mjs), and contain keeps its arrival from reaching past its own box */
 .maker img { display: block; width: 240px; height: 300px; object-fit: cover; contain: strict; border: 1px solid var(--ink); background: var(--paper-2); }
 .maker-text { display: grid; gap: var(--s2); max-width: 40rem; font-size: var(--fs-1); line-height: 1.45; color: var(--ink-2); }
+/* John's own words lead the section, in the ink of the body text; the byline under them stays the quieter grey */
+.maker-text .story { display: grid; gap: var(--s2); color: var(--ink); }
 .profiles { display: flex; flex-wrap: wrap; gap: 12px; margin-top: var(--s1); }
 .profiles .btn { font-size: var(--fs--1); }
 /* the thank-you page's words and its way back, beside the headline's lede (AH-133) */
