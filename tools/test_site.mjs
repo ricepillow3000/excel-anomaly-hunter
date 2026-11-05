@@ -1454,7 +1454,7 @@ for (const [name, api] of Object.entries(junk)) {
   const gaveUp = await t.page.waitForEvent("requestfailed", { predicate: (r) => r.url() === API, timeout: 9000 }).then(() => true, () => false);
   assert.ok(gaveUp, "API never answers: the page still waits on it after 9 s");
   assert.equal(await t.page.$eval("#sha", (c) => c.innerHTML), fallback, "API never answers");
-  assert.equal(await t.page.textContent("#rel"), "Latest, about 81 MB, free", "API never answers");
+  assert.equal(await t.page.textContent("#rel"), "Latest, free", "API never answers");
   const cleared = await t.page.waitForFunction(() => !document.querySelector("dl.anchor[data-loading]"), null, { timeout: 1000 }).then(() => true, () => false);
   assert.ok(cleared, "API never answers: the skeleton stays"); // it goes on the same 6 s clock, a moment after the request
   await done(t, "API never answers", [API]);
@@ -1852,8 +1852,9 @@ const press = async (p, sel) => { const b = await p.locator(sel).boundingBox(); 
 }
 // a link to the page you are on never reloads it (AH-132): transition.js left it to the browser, so "Privacy & security"
 // on privacy.html reloaded the document (a white frame, the entrance again, the scroll and the page's state gone), and
-// ten clicks 60 ms apart gave about four reloads. It takes the reader to the page's top instead
-for (const file of PAGES) {
+// ten clicks 60 ms apart gave about four reloads. It takes the reader to the page's top instead. Every page whose bar
+// marks it (terms.html is reached from the footer and has no mark in the bar; transition.js treats its link the same)
+for (const file of PAGES.filter((f) => /<header[\s\S]*aria-current="page"[\s\S]*<\/header>/.test(read(f)))) {
   const t = await open(file);
   const p = t.page;
   await p.waitForTimeout(ENTERED);
