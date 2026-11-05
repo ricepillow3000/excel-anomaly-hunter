@@ -58,6 +58,9 @@
   --grid-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M.5 0V24M0 .5H24' fill='none' stroke='%23EFE6D2' stroke-opacity='.045'/%3E%3C/svg%3E");
 }
 * { box-sizing: border-box; }
+/* the hidden attribute always wins (AH-132): .result's display: grid outranked the browser's own [hidden] rule, and
+   support.html drew its "Ready. Open it on GitHub" box, with a link to a blank question, on every load */
+[hidden] { display: none !important; }
 html { scroll-padding-top: 88px; } /* the sticky bar would cover an anchor's heading */
 body { margin: 0; background: var(--grain), var(--grid), var(--paper); color: var(--ink-2); font: 400 var(--fs-0)/1.55 var(--sans); }
 a { color: var(--ink); text-decoration-color: var(--gold); text-underline-offset: 3px; text-decoration-thickness: 1px; }
@@ -163,7 +166,6 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .ws-top b { font: 800 var(--fs-0)/1.3 var(--sans); letter-spacing: normal; }
 .ws-top > span { font-size: var(--fs--1); color: var(--on-dark-2); font-variant-numeric: tabular-nums; }
 .tabs { display: flex; flex-wrap: wrap; margin-left: auto; align-self: stretch; } /* text at 200% wraps them, never past the screen (AH-112) */
-.tabs[hidden] { display: none; }
 .tabs button { position: relative; font: 600 var(--fs--1)/1 var(--sans); color: var(--on-dark-2); background: none; border: 0; border-bottom: 3px solid transparent; border-radius: 0; padding: 3px 16px 0; cursor: pointer; }
 .tabs button:hover { color: var(--paper); }
 .tabs button[aria-selected="true"] { color: var(--paper); }
@@ -232,7 +234,6 @@ table.grid { width: 100%; border-collapse: collapse; font: 500 var(--fs--1)/1.3 
 [data-turn] { position: absolute; z-index: 3; margin: 0; background: var(--grain), var(--paper-2); transform-origin: 0 50%; backface-visibility: hidden; pointer-events: none; }
 [data-turn-shade] { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(12, 25, 56, .08), rgba(12, 25, 56, .45)); opacity: 0; }
 .matrix { position: absolute; left: var(--s2); z-index: 2; width: min(440px, calc(100% - 32px)); background: var(--paper); border: 1px solid var(--ink); font-size: var(--fs--1); color: var(--ink); }
-.matrix[hidden] { display: none; }
 .m-head { display: flex; justify-content: space-between; align-items: center; gap: var(--s2); padding: 8px 12px; background: var(--ink); color: var(--paper); }
 .m-head b { font: 700 var(--fs--1)/1.3 var(--sans); }
 .m-close { font: 700 var(--fs--1)/1 var(--sans); color: var(--paper); background: none; border: 1px solid var(--paper); border-radius: 0; padding: 6px 8px; cursor: pointer; }
@@ -310,6 +311,11 @@ dl.anchor { position: relative; margin: 0; display: grid; grid-template-columns:
 .anchor code { display: block; }
 .anchor code, .steps code { font: 500 var(--fs--1)/1.5 var(--mono); color: var(--ink); background: var(--paper); border: 1px solid var(--rule); padding: 3px 8px; word-break: break-all; }
 #sha, #rel { position: relative; }
+/* the checksum's box holds the 64-character hash's height from the start (AH-132): the hash took 2 to 4 lines where the
+   link to the release page took 1 or 2, so the facts grew when GitHub answered. An invisible hash of zeros, floated
+   under the text with no width of its own, keeps the box that tall at every width */
+#sha { display: flow-root; }
+#sha::before { content: "0000000000000000000000000000000000000000000000000000000000000000"; float: left; width: 100%; margin-right: -100%; visibility: hidden; }
 #rel { font-variant-numeric: tabular-nums; }
 .steps { grid-column: 1 / -1; margin-top: var(--s8); display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); column-gap: var(--gutter); row-gap: var(--s4); }
 .steps > .label { grid-column: 1 / -1; }
@@ -459,7 +465,9 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
 .steps li:nth-child(3) .rule, .it-ledger > div:nth-child(4n + 3) .rule { --col: 2; }
 .it-ledger > div:nth-child(4n + 4) .rule { --col: 3; }
 /* labels and headlines drift at their own rate (data-depth) for layered depth: zero where they sit mid-screen */
-[data-depth] { --depth: .05; }
+/* .03: at .05 a two-line headline near the top of the screen came 26 px down, its glyphs 4 px into the lede under it and
+   onto the fact's hairline (AH-132, 1440 x 900); data-depth in index.html says the same number, which motion.js reads */
+[data-depth] { --depth: .03; }
 [data-depth="0.1"] { --depth: .1; }
 /* a hairline draws from 10% to 50% of the way through the screen (4% later a column), so it is drawn while the item it
    tops is rising into view, not before. Both are a pure function of the scroll position: a scroll timeline where the
@@ -485,7 +493,6 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
    their text, which sits on positioned wraps. The bars and the footer are positioned too, so no line crosses them.
    It runs at full strength in the hero and on the navy band, and fades under .calm blocks (above) */
 #field { position: fixed; inset: 0; z-index: 0; width: 100%; height: 100%; pointer-events: none; }
-#field[hidden] { display: none; }
 .wrap, .notice-bar, .foot { position: relative; z-index: 1; }
 /* page transitions (AH-73, transition.js): while two pages move they are layers of their own, which would hide the field
    under their paper until they land, so it is lifted over them for those 800 ms; the bars stay above it, and above the
@@ -539,6 +546,10 @@ html[data-moving] #field { z-index: 2; }
   .fact { grid-row: auto; }
   .ws { margin-top: var(--s6); }
   .tabs { margin-left: 0; width: 100%; min-height: 44px; }
+  /* at 320 px the three tabs did not fit beside 24 px of padding, and "After fixes" wrapped onto a line of its own, each
+     tab 22 px tall (AH-132): 16 px, the filters' own, and 12 px between the tabs leave them room on one line */
+  .ws-top { padding-inline: var(--s2); }
+  .tabs button { padding-inline: 12px; }
   .tabs button:first-child { padding-left: 0; }
   .ws-body { grid-template-columns: minmax(0, 1fr); }
   /* two columns of filters, or one when the text is so large (200%, AH-112) that two 8rem columns don't fit */

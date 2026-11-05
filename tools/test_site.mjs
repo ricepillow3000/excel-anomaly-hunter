@@ -239,6 +239,12 @@ const done = async ({ ctx, problems, outside }, label, allowed = []) => {
       const over = await t.page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       if (over > 0) short.push(`AH-112 ${file} at ${width}px, text ${size}${tab ? ", " + tab : ""}: scrolls ${over} px sideways`);
     }
+    // AH-132: at 320 px the sample's tabs wrapped, "After fixes" alone on a second line and each tab 22 px tall; at 100%
+    // text they share one line, each 24 px or more
+    if (file === "index.html" && size === "100%") {
+      const tabs = await t.page.$$eval('[role="tab"]', (b) => b.map((x) => { const r = x.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.width), Math.round(r.height)]; }));
+      if (new Set(tabs.map(([top]) => top)).size > 1 || tabs.some(([, w, h]) => w < 24 || h < 24)) short.push(`AH-132 index.html at ${width}px: the sample's tabs are not one line of 24 px targets (top, width, height: ${JSON.stringify(tabs)})`);
+    }
     await done(t, `${file} at ${width}px with text at ${size}`, [API]);
   }
   // AH-113: Windows High Contrast (forced colours) drops every fill and shadow the page draws: the sample's "probably
@@ -371,6 +377,10 @@ for (const width of [1280, 390]) {
     const t = await open(file, { width });
     const p = t.page;
     assert.equal(await p.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0, `${file} at ${width}px scrolls sideways`);
+    // a hidden element is never drawn (AH-132): .result's display: grid outranked the hidden attribute, so support.html
+    // showed "Ready. Open it on GitHub" on every load, while the .hidden property, all this file read, said it was hidden
+    const drawn = await p.$$eval("[hidden]", (es) => es.filter((e) => getComputedStyle(e).display !== "none").map((e) => e.id || e.className || e.tagName));
+    assert.deepEqual(drawn, [], `${file} at ${width}px: hidden, but drawn`);
     // every link in the bar, the announcement line and the footer is visible and lands on its page and anchor
     const links = await p.$$eval("header a, footer a, .notice-bar a", (as) => as.map((a) => a.getAttribute("href")));
     for (const [i, href] of links.entries()) {
@@ -435,6 +445,11 @@ const onTop = (page) => page.evaluate(async () => {
   assert.equal(await key(), "Probably wrong: 0 | Worth a check: 4", "the key after the fixes");
   await p.keyboard.press("ArrowRight"); assert.equal((await state()).focus, "t-found");
   await p.keyboard.press("ArrowLeft"); assert.equal((await state()).focus, "t-clean");
+  // ... and Home and End go to the first and the last tab, as the WAI-ARIA tabs pattern says; End no longer scrolls the
+  // page to its bottom (AH-132: the list knew only the arrows)
+  const y0 = await p.evaluate(() => scrollY);
+  await p.keyboard.press("Home"); assert.deepEqual([(await state()).focus, (await state()).state], ["t-found", "found"], "Home in the tab list");
+  await p.keyboard.press("End"); assert.deepEqual([(await state()).focus, (await state()).state, await p.evaluate(() => scrollY)], ["t-clean", "clean", y0], "End in the tab list");
   // a filter on After fixes filters the corrected sheet, with the counts it shows there: "Temporal outliers 4" jumped
   // back to the findings and lit 5 rows, row 22 among them (AH-129)
   const litIn = (id) => p.$$eval(`#${id} .grid tbody tr:not(.skip)`, (rs) => rs.filter((r) => getComputedStyle(r).opacity === "1").map((r) => r.querySelector("th").textContent).join());
@@ -452,6 +467,11 @@ const onTop = (page) => page.evaluate(async () => {
   await p.focus('.rowbtn[aria-controls="m11"]'); await p.keyboard.press("Enter");
   assert.deepEqual(await state(), { state: "found", counts: "7 2 2 1 5", open: "m11", focus: "m-close" });
   await p.keyboard.press("Escape"); assert.deepEqual([(await state()).open, await p.evaluate(() => document.activeElement.textContent)], ["", "11"]);
+  // Tab out of the box closes it, and focus goes on where Tab took it: the box stayed open, floating over the rows,
+  // with focus already past it (AH-132)
+  await p.keyboard.press("Enter"); assert.equal((await state()).open, "m11");
+  await p.keyboard.press("Tab");
+  assert.deepEqual(await p.evaluate(() => [[...document.querySelectorAll(".matrix")].filter((m) => !m.hidden).length, !!document.activeElement.closest(".matrix"), document.activeElement !== document.body]), [0, false, true], "Tab out of a detail box");
   await p.click('tr[data-kind="label"] td.why'); assert.equal((await state()).open, "m31");
   await p.click("#m31 dl"); assert.equal((await state()).open, "m31");
   await p.click("#m31 .m-close"); assert.deepEqual([(await state()).open, await p.evaluate(() => document.activeElement.textContent)], ["", "31"]);
@@ -496,6 +516,24 @@ const onTop = (page) => page.evaluate(async () => {
   assert.equal(await p.textContent("#rel"), "v0.1.102, 2026-10-20 · 81 MB · free");
   await done(t, "workspace", [API]);
 }
+// a row's detail box stays inside the sheet (AH-132): opened under its row, the boxes of rows 22, 31, 41 and 57 ran
+// past the findings' bottom, over the caption and "See every check", whose clicks then did nothing (row 57's box ended
+// 246 px past the findings at 1280 px). Each opens above its row where it would pass the bottom
+for (const width of [1280, 390]) {
+  const t = await open("index.html", { width, motion: "reduce" });
+  const p = t.page, out = [];
+  for (const m of ["m11", "m22", "m31", "m5", "m21", "m41", "m57"]) {
+    await p.click(`.rowbtn[aria-controls="${m}"]`);
+    const r = await p.evaluate((m) => { const b = document.getElementById(m).getBoundingClientRect(), s = document.getElementById("p-found").getBoundingClientRect(), n = document.querySelector(".next-up a").getBoundingClientRect();
+      return { inside: b.top >= s.top - 0.5 && b.bottom <= s.bottom + 0.5 && b.left >= s.left - 0.5 && b.right <= s.right + 0.5, covers: b.bottom > n.top && b.top < n.bottom && b.right > n.left && b.left < n.right,
+        box: [Math.round(b.top - s.top), Math.round(b.bottom - s.top)], sheet: Math.round(s.height) }; }, m);
+    if (!r.inside || r.covers) out.push(`${m}: ${JSON.stringify(r)}`);
+    await p.keyboard.press("Escape");
+  }
+  assert.deepEqual(out, [], `index.html at ${width}px: a detail box leaves the sheet`);
+  await done(t, `detail boxes at ${width}px`, [API]);
+}
+console.log("sample: every row's detail box opens inside the findings and off the button under them, at 1280 and 390 px");
 // ---- the sample sheet's motion (AH-89, AH-91, AH-92; John 2026-11-02) ----
 // the skeleton: the real sheet waits with no colour on its values and a bar exactly where each value will land; it plays
 // once the sheet is 30% on screen (never before: the sheet starts below the fold at 1440 x 900), one band of light crosses
@@ -851,6 +889,36 @@ let decoCss = null;
   console.log(`scroll-linked decoration: hairline scaleX ${decoCss.sxs.map((x) => x.toFixed(4)).join(" < ")} and drift ${decoCss.ys.map((x) => x.toFixed(2)).join(" < ")} px at three nearby positions (timeline); scroll reader ${js.sxs.map((x) => x.toFixed(4)).join(" < ")}, worst difference from the timeline ${Math.max(...same.map((x) => x[0])).toFixed(4)} scaleX, ${Math.max(...same.map((x) => x[1])).toFixed(3)} px`);
   await done(t, "scroll reader", [API]);
 }
+{ // the headlines' drift never runs into the text under them (AH-132): near the top of the screen a headline drifted
+  // 26 px down, its glyphs 4 px into the lede and onto the fact, whose gold hairline then read as its underline. At
+  // 1440 x 900, every 40 px down the page, each headline's lines stay 4 px or more above the lines of its lede, its fact
+  // and the download's stage
+  const t = await open("index.html", { width: 1440, height: 900 });
+  const p = t.page;
+  await p.waitForTimeout(ENTERED);
+  const worst = await p.evaluate(async () => {
+    const wait = (ms) => new Promise((ok) => setTimeout(ok, ms)), frame = () => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
+    const H = document.documentElement.scrollHeight;
+    for (let y = 0; y < H; y += 400) { scrollTo(0, y); await wait(120); } // every block revealed, then at rest
+    await wait(1600);
+    const lines = (e) => { const r = document.createRange(); r.selectNodeContents(e); return [...r.getClientRects()].filter((x) => x.width > 0); };
+    let worst = { gap: Infinity };
+    for (let y = 0; y < H; y += 40) {
+      scrollTo(0, y); await frame();
+      for (const h of document.querySelectorAll("h2[data-depth]")) {
+        const hb = h.getBoundingClientRect();
+        if (hb.bottom < 0 || hb.top > innerHeight) continue;
+        const own = lines(h);
+        for (const s of h.parentElement.querySelectorAll(":scope > .sec-lede, :scope > .fact, :scope > .stage")) for (const b of lines(s)) for (const a of own)
+          if (a.left < b.right && b.left < a.right && b.top - a.bottom < worst.gap) worst = { gap: Math.round((b.top - a.bottom) * 10) / 10, y, headline: h.id, under: s.className.split(" ")[0] };
+      }
+    }
+    return worst;
+  });
+  assert.ok(worst.gap >= 4, `a headline's drift runs into the text under it: ${JSON.stringify(worst)}`);
+  console.log(`headline drift at 1440 x 900: the closest a headline came to the text under it was ${worst.gap} px (${worst.headline} over its ${worst.under}, scrolled to ${worst.y})`);
+  await done(t, "headline drift", [API]);
+}
 { // no WebGL: no canvas, the paper's CSS texture is the background, and the console stays clean
   const t = await open("index.html", { init: () => { const get = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (k, o) { return /webgl/.test(k) ? null : get.call(this, k, o); }; } });
   assert.deepEqual(await t.page.evaluate(() => [document.documentElement.dataset.gl, !!document.getElementById("field")]), ["off", false]);
@@ -926,6 +994,22 @@ let reveal = null;
   await p.evaluate(() => { location.hash = "#checks"; }); await p.waitForTimeout(50);
   assert.ok(await p.evaluate(() => [...document.querySelectorAll("#checks .reveal-item")].every((e) => e.hasAttribute("data-revealed"))), "a jump to #checks left its items hidden");
   await done(t, "reveal at an anchor", [API]);
+}
+{ // a jump lands on its target at rest (AH-132): privacy.html's contents links landed on a section still waiting 24 px
+  // low and see-through, which then rose under the reader. Right after the jump the section is shown, in place, and
+  // 1.3 s later it has not moved
+  const t = await open("privacy.html", { width: 1280 });
+  const p = t.page;
+  await p.waitForTimeout(ENTERED);
+  const look = () => p.evaluate(() => { const e = document.getElementById("use"), c = getComputedStyle(e); return { top: Math.round(e.getBoundingClientRect().top), opacity: c.opacity, transform: c.transform }; });
+  await p.click('.toc a[href="#use"]');
+  await p.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))));
+  const at = await look();
+  await p.waitForTimeout(1300);
+  const later = await look();
+  assert.deepEqual(at, { ...later, opacity: "1", transform: "none" }, `privacy.html's #use right after the jump (${JSON.stringify(at)}) and 1.3 s later (${JSON.stringify(later)})`);
+  assert.equal(later.top, await p.evaluate(() => parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop)), "privacy.html's #use is not under the bar's edge");
+  await done(t, "a jump on privacy.html", [API]);
 }
 // the checks table's "In the sample above" links glide to the sample's own row, framed on the screen (AH-98)
 {
@@ -1065,11 +1149,25 @@ for (const [name, assets, sha] of [
   assert.equal(await t.page.textContent("#rel"), "v0.1.90 · 81 MB · free", name);
   await done(t, `API ${name}`, [API]);
 }
+// GitHub's answer never moves the facts (AH-132): the hash took 2 to 4 lines where the link to the release page took 1
+// or 2, so the facts grew 20 to 41 px when it came. The checksum's box keeps the hash's height from the start
+for (const width of [1440, 761, 390, 320]) {
+  const heights = [];
+  for (const api of [json(release), json("", 503)]) {
+    const t = await open("index.html", { width, motion: "reduce", api });
+    heights.push(await t.page.$eval("#sha", (c) => Math.round(c.getBoundingClientRect().height * 10) / 10));
+    await done(t, `the checksum's box at ${width}px`, [API]);
+  }
+  assert.equal(heights[1], heights[0], `at ${width}px the checksum's box is ${heights[1]} px tall without GitHub's answer and ${heights[0]} px with it`);
+}
 
 // the support form: nothing is sent; it builds a link to the repo's issue form with exactly what was typed
 async function supportForm(p) {
-  const submit = async () => { await p.click('button[type="submit"]'); return p.evaluate(() => ({ missing: document.getElementById("missing").hidden ? "" : document.getElementById("missing").textContent,
-    ready: !document.getElementById("result").hidden, cut: !document.getElementById("cut").hidden, href: document.getElementById("open").href, focus: document.activeElement.id })); };
+  // what is drawn, never the .hidden property: the "Ready" box showed from the first load while .hidden said true (AH-132)
+  const look = () => p.evaluate(() => { const shown = (id) => getComputedStyle(document.getElementById(id)).display !== "none";
+    return { missing: shown("missing") ? document.getElementById("missing").textContent : "", ready: shown("result"), cut: shown("cut"), href: document.getElementById("open").href, focus: document.activeElement.id }; });
+  const submit = async () => { await p.click('button[type="submit"]'); return look(); };
+  assert.equal((await look()).ready, false, 'the "Ready" box shows before anything is typed');
   let r = await submit();
   assert.deepEqual([r.missing, r.ready], ["Please add a short summary, what happened, the box that says it contains no key or private data.", false]);
   const cases = [
@@ -1416,6 +1514,25 @@ const press = async (p, sel) => { const b = await p.locator(sel).boundingBox(); 
   await p.waitForURL((u) => u.pathname === "/privacy.html"); await p.waitForLoadState("load");
   assert.deepEqual(await p.evaluate(() => [window.__marker, document.title, document.getElementById("page").dataset.page]), [undefined, TITLE["privacy.html"], "privacy"], "a failed fetch did not fall back to a normal navigation");
   await done(t, "page transition with a failed fetch", [API]);
+}
+// a link to the page you are on never reloads it (AH-132): transition.js left it to the browser, so "Privacy & security"
+// on privacy.html reloaded the document (a white frame, the entrance again, the scroll and the page's state gone), and
+// ten clicks 60 ms apart gave about four reloads. It takes the reader to the page's top instead
+for (const file of PAGES) {
+  const t = await open(file);
+  const p = t.page;
+  await p.waitForTimeout(ENTERED);
+  await p.evaluate(() => { window.__marker = 1; scrollTo(0, 600); });
+  await p.waitForTimeout(300);
+  await press(p, 'header a[aria-current="page"]');
+  await p.waitForFunction(() => scrollY === 0, null, { timeout: 3000 }).catch(() => {});
+  const once = await p.evaluate(() => ({ marker: window.__marker, mains: document.querySelectorAll("main").length, y: scrollY }));
+  const b = await p.locator('header a[aria-current="page"]').boundingBox();
+  for (let k = 0; k < 10; k++) { await p.mouse.click(b.x + b.width / 2, b.y + b.height / 2); await p.waitForTimeout(60); }
+  await p.waitForTimeout(800);
+  const ten = await p.evaluate(() => ({ marker: window.__marker, mains: document.querySelectorAll("main").length, y: scrollY, at: location.pathname }));
+  assert.deepEqual([once, ten], [{ marker: 1, mains: 1, y: 0 }, { marker: 1, mains: 1, y: 0, at: "/" + file }], `${file}: its own link in the bar, once and then ten times quickly`);
+  await done(t, `${file}'s own link`, [API]);
 }
 console.log(`page transitions: ${measured.moving} ms of motion on screen (${measured.swap} ms in the page, ${measured.duration} ms from the click), both pages in ${measured.both} of ${measured.ofFrames} frames, ` +
   `the whitest of ${measured.frames} screencast frames ${(measured.white * 100).toFixed(2)}% white; seeked to its middle (${measured.mid.t} ms, the seek took ${measured.mid.spent} ms) the old page shows ${measured.mid.old.toFixed(1)} px and the new ${measured.mid.new.toFixed(1)} px of ${measured.mid.width}, ` +

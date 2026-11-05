@@ -163,10 +163,13 @@
     }
     const pick = (tab) => { if (tab.getAttribute("aria-selected") === "true") show(tab); else turn(() => show(tab)); };
     for (const t of tabs) t.addEventListener("click", () => pick(t));
-    ws.querySelector(".tabs").addEventListener("keydown", (e) => {  // arrow keys move between tabs, as in any tab list
-      const i = tabs.indexOf(document.activeElement);
-      if (i < 0 || !["ArrowLeft", "ArrowRight"].includes(e.key)) return;
-      const next = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+    // the arrows, Home and End move between tabs, as in any tab list (WAI-ARIA tabs; Home and End since AH-132, and End
+    // no longer scrolls the page to its bottom)
+    ws.querySelector(".tabs").addEventListener("keydown", (e) => {
+      const i = tabs.indexOf(document.activeElement), to = { ArrowLeft: i - 1, ArrowRight: i + 1, Home: 0, End: tabs.length - 1 };
+      if (i < 0 || !Object.hasOwn(to, e.key)) return;
+      e.preventDefault();
+      const next = tabs[(to[e.key] + tabs.length) % tabs.length];
       next.focus(); pick(next);
     });
 
@@ -197,9 +200,13 @@
       const same = open && open.btn === btn;
       closeMatrix();
       if (same) return;
-      const row = btn.closest("tr").getBoundingClientRect(), top = main.getBoundingClientRect().top;
-      box.style.top = row.bottom - top + "px";
+      // under its row, or above it where it would pass the findings' bottom: under them, rows 22 to 57 covered the
+      // caption and "See every check", whose clicks then did nothing (AH-132). Taller than the room on either side (a
+      // narrow phone), it sits on the findings' bottom
+      const row = btn.closest("tr").getBoundingClientRect(), sheet = main.getBoundingClientRect();
       box.hidden = false;
+      const h = box.offsetHeight, under = row.bottom - sheet.top, over = row.top - sheet.top - h;
+      box.style.top = (under + h <= sheet.height ? under : over >= 0 ? over : Math.max(0, sheet.height - h)) + "px";
       btn.setAttribute("aria-expanded", "true");
       open = { btn, box };
       // the box is a dialog that sits after the whole table in the page: without this a keyboard or screen-reader user
@@ -211,6 +218,10 @@
       btn.closest("tr").addEventListener("click", () => openMatrix(btn));
     }
     for (const c of ws.querySelectorAll(".m-close")) c.addEventListener("click", () => { const b = open && open.btn; closeMatrix(); if (b) b.focus(); });
+    // Tab out of the box closes it and lets focus go where Tab took it: it stayed open, floating over the rows (AH-132). A
+    // press on the box's own text moves focus to nothing (relatedTarget null) and a press on its row's button toggles
+    // it: neither is leaving
+    ws.addEventListener("focusout", (e) => { const to = e.relatedTarget; if (open && to && open.box.contains(e.target) && !open.box.contains(to) && to !== open.btn) closeMatrix(); }, on);
     document.addEventListener("keydown", (e) => { if (e.key === "Escape" && open) { const b = open.btn; closeMatrix(); b.focus(); } }, on);
     document.addEventListener("click", (e) => { if (open && !open.box.contains(e.target) && !e.target.closest("tr[data-kind]")) closeMatrix(); }, on);
     window.addEventListener("resize", closeMatrix, on);
