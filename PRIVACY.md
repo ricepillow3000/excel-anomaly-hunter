@@ -79,6 +79,8 @@ can be charged by Google for what AI help uses; without billing, the free tier c
 - Anthropic receives what AI help sends only in the developer case above.
 - PyPI sees your IP address only if you install an invite kit, when `install.bat` downloads Python packages from it.
 - GitHub hosts the download, so it sees your IP address when you download. Anything you post in an issue is public.
+- The website's contact form and support form send nothing themselves: each opens a public GitHub issue filled in with what you typed, which you submit on GitHub yourself.
+  The links to John's LinkedIn, Handshake and GitHub profiles are plain links: nothing loads from LinkedIn, Handshake or GitHub until you click one, and then that site's own terms apply.
 - Microsoft: Excel loads Microsoft's Office script for the pane, and Windows may check the downloaded file.
   Microsoft's privacy terms apply.
 - The pane loads only its own files and Microsoft's Office script; its Content Security Policy blocks everything
