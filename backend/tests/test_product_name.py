@@ -167,9 +167,11 @@ def test_an_update_over_the_old_name_removes_the_old_exe(tmp_path, monkeypatch):
     assert not (home / "AnomalyHunter.exe").exists()
 
 
-def test_an_install_that_cannot_reach_the_admin_share_names_the_likelier_cause_an_account_that_is_not_an_administrator(tmp_path, monkeypatch):
+def test_an_install_that_cannot_reach_the_admin_share_says_in_plain_words_the_account_is_not_an_administrator(tmp_path, monkeypatch):
     # AH-129: Excel lists the add-in through \\localhost\C$, a share Windows opens to administrators only. A standard
-    # account was told "the C$ admin share is off on this PC", and the website said no administrator rights were needed
+    # account was told "the C$ admin share is off on this PC", and the website said no administrator rights were needed.
+    # AH-135: "Can't reach \\localhost\C$..." meant nothing to a person with few computer skills: the message says what
+    # happened and who can help, in the support page's words, and the share's path goes to the log for whoever helps
     home, _ = fake_pc(tmp_path, monkeypatch)
     monkeypatch.setattr(app.server, "make_cert", lambda home: False)
     panel = tmp_path / "frontend"
@@ -179,9 +181,14 @@ def test_an_install_that_cannot_reach_the_admin_share_names_the_likelier_cause_a
     said = []
     monkeypatch.setattr(app, "say", lambda text, error=False: said.append(text))
     assert app.install() == 1
-    assert "isn't an administrator on this PC" in said[-1] and "C$ admin share" in said[-1], said
+    plain = ("Arcas could not finish. Your Windows account is not an administrator on this PC. "
+             "Ask the person who looks after your computers to install it for you.")
+    assert said[-1] == plain, said
+    log = (home / "server.log").read_text(encoding="utf-8")
+    assert "\\\\localhost\\" in log and "C$ admin share" in log, log
     bat = [line for line in (ROOT / "install.bat").read_text(encoding="utf-8").splitlines() if "%UNC%\\manifest.xml" in line]
-    assert len(bat) == 1 and "isn't an administrator on this PC" in bat[0] and "C$ admin share" in bat[0], bat
+    assert len(bat) == 1 and bat[0].split("(echo ", 1)[1].split(" & ", 1)[0] == plain and "server.log" in bat[0], bat
+    assert plain in (ROOT / "site" / "support.html").read_text(encoding="utf-8")  # a question under its own words
 
 
 def test_an_old_exe_still_held_a_moment_after_its_engine_stopped_is_removed_on_a_retry(tmp_path, monkeypatch):

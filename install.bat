@@ -44,7 +44,8 @@ rem Catalogs must be a share path, so use this PC's own admin share: \\localhost
 reg delete "%DEV%" /v %ID% /f >nul 2>&1
 reg delete "%DEV%\%ID%" /f >nul 2>&1
 set "UNC=\\localhost\%P:~0,1%$%P:~2%"
-if not exist "%UNC%\manifest.xml" (echo Cannot reach %UNC%: this Windows account isn't an administrator on this PC, or the C$ admin share is off. & pause & exit /b 1)
+rem The message says it in plain words (AH-135); the share's path and the rarer cause go to the log for whoever helps
+if not exist "%UNC%\manifest.xml" (echo Arcas could not finish. Your Windows account is not an administrator on this PC. Ask the person who looks after your computers to install it for you. & >>"%AH%\server.log" echo Install stopped: cannot reach %UNC%. The account is not an administrator on this PC, or the C$ admin share is off. & pause & exit /b 1)
 reg add "%CAT%" /v Id /t REG_SZ /d "{3f9a1c2e-7b4d-4e8a-9c61-5d2e8f0b7a13}" /f >nul
 reg add "%CAT%" /v Url /t REG_SZ /d "%UNC%" /f >nul
 reg add "%CAT%" /v Flags /t REG_DWORD /d 1 /f >nul

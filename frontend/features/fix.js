@@ -107,7 +107,7 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
   const notes = [];
   if (calcCells.length) notes.push(`${calcCells.join(", ")} ${calcCells.length > 1 ? "are" : "is"} calculated by a formula. ` +
     "Fix the cells it uses rather than typing over it.");
-  if (typos.length) notes.push(`${typos.join("; ")}. Check it against the source before applying.`);
+  if (typos.length) notes.push(`${typos.join("; ")}. Check it against the original receipt, invoice or report before you click Accept.`);
   const dup = /Duplicate of row (\d+)/.exec(reason); // engine counts from a header in row 1
   // which copy is the stray one the sheet's order says, not the engine: 5 of 14 blind pairs had the copy first
   if (dup) notes.push(`This row repeats row ${+dup[1] + startRow} in every column. If one of them is a double entry, delete ` +

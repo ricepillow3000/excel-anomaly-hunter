@@ -179,7 +179,8 @@ def test_every_privacy_page_says_the_websites_forms_send_nothing_and_the_profile
     # profiles are plain links: tools/test_site.mjs holds the page to both. The three twins say so in the same words
     said = (
         "The website's contact form and support form send nothing themselves: each opens a public GitHub issue filled in "
-        "with what you typed, which you submit on GitHub yourself",
+        "with what you typed, which you submit on GitHub yourself, or, with Email John instead, a new email in your own "
+        "email app, which you send yourself",  # AH-135: the forms' second way, for a visitor with no GitHub account
         "The links to John's LinkedIn, Handshake and GitHub profiles are plain links: nothing loads from LinkedIn, "
         "Handshake or GitHub until you click one, and then that site's own terms apply",
     )

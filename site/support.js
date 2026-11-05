@@ -1,5 +1,6 @@
 // The site has no server, so its two forms send nothing: each builds a prefilled GitHub "new issue" link.
-// The person reads it on GitHub and presses Submit there (public, needs a GitHub account).
+// The person reads it on GitHub and presses its button there (public, needs a GitHub account), or, with Email John
+// instead (AH-135), sends the same words from their own email app (a mailto link).
 // The support form (support.html) shows its link; the contact form (the home page, AH-133) opens it in a new tab and
 // then shows our own thank-you page, thanks.html. Each link opens one of the repo's issue forms
 // (.github/ISSUE_TEMPLATE/support_request.yml, contact.yml), which adds its label and the public warning itself, and
@@ -22,13 +23,29 @@
     return { url, cut: keep !== all.length };
   }
 
+  // AH-135: a visitor with no GitHub account (most people) writes from their own email app instead. Some mail apps drop
+  // a mailto link past about 2,000 characters, so the link is cut the same way as GitHub's, to 1,800
+  const EMAIL = "john4000.nguyen@gmail.com", MAIL_FITS = 1800;
+  function mailto(subject, lines, long) {
+    const q = (t) => encodeURIComponent(t.replace(/\r?\n/g, "\r\n")); // a mail body breaks lines as CRLF (RFC 6068)
+    const link = (text) => `mailto:${EMAIL}?subject=${q(subject)}&body=${q([...lines, "", text].join("\n"))}`;
+    const all = [...long];
+    let keep = all.length, url = link(long);
+    while (url.length > MAIL_FITS && keep) { keep = Math.floor(keep * 0.9); url = link(all.slice(0, keep).join("")); }
+    return { url, cut: keep !== all.length };
+  }
+
   const FORMS = [
     { form: "ticket", missing: "missing", result: "result", ready: "ready", cut: "cut", open: "open", thanks: "thanks",
       needed: [["summary", "a short summary"], ["details", "what happened"], ["clean", "the box that says it contains no key or private data"]],
-      link: (v) => prefilled("support_request.yml", [["title", "[Support]: " + v("summary")], ["category", v("topic")], ["version", v("version")]], ["details", v("details")]) },
+      link: (v) => prefilled("support_request.yml", [["title", "[Support]: " + v("summary")], ["category", v("topic")], ["version", v("version")]], ["details", v("details")]),
+      email: "email", mailCut: "mail-cut",
+      mail: (v) => mailto("[Support]: " + v("summary"), [`Topic: ${v("topic")}`, `Engine version: ${v("version")}`], v("details")) },
     { form: "note", missing: "c-missing", result: "c-result", ready: "c-ready", cut: "c-cut", open: "c-open", next: "thanks.html",
       needed: [["c-name", "a name"], ["c-message", "a message"]],
-      link: (v) => prefilled("contact.yml", [["title", `[Contact]: ${v("c-topic")} from ${v("c-name")}`], ["name", v("c-name")], ["topic", v("c-topic")]], ["message", v("c-message")]) },
+      link: (v) => prefilled("contact.yml", [["title", `[Contact]: ${v("c-topic")} from ${v("c-name")}`], ["name", v("c-name")], ["topic", v("c-topic")]], ["message", v("c-message")]),
+      email: "c-email", mailCut: "c-mail-cut",
+      mail: (v) => mailto(`[Contact]: ${v("c-topic")} from ${v("c-name")}`, [`Name: ${v("c-name")}`, `Topic: ${v("c-topic")}`], v("c-message")) },
   ];
 
   function wire(root, F) {
@@ -56,21 +73,36 @@
     const thanks = F.thanks && $(F.thanks);
     const onward = () => { if (document.dispatchEvent(new CustomEvent("ah:go", { detail: F.next, cancelable: true }))) location.assign(F.next); };
     $(F.open).addEventListener("click", () => { if (thanks) thanks.hidden = false; else if (F.next) setTimeout(onward); });
-    form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      if (thanks) thanks.hidden = true;
+    // the fields both ways need: each missing one marked, the message under the first, which takes focus -> all there?
+    const complete = () => {
       const need = F.needed.filter(([id]) => empty(id));
       for (const [id] of F.needed) mark(id, need.some(([n]) => n === id));
       missing.hidden = !need.length;
+      if (!need.length) return true;
+      missing.textContent = "Please add " + need.map(([, w]) => w).join(", ") + ".";
+      const first = $(need[0][0]);
+      first.closest(".field, .confirm").after(missing);
+      first.focus();
+      missing.scrollIntoView({ block: "nearest" });
+      return false;
+    };
+    // Email John instead: a mailto link the visitor's own email app opens, filled in here as the click goes through.
+    // The page stays: no thank-you page, since nothing is sent until they press Send there
+    $(F.email).addEventListener("click", (e) => {
+      $(F.mailCut).hidden = true;
       $(F.result).hidden = true;
-      if (need.length) {
-        missing.textContent = "Please add " + need.map(([, w]) => w).join(", ") + ".";
-        const first = $(need[0][0]);
-        first.closest(".field, .confirm").after(missing);
-        first.focus();
-        missing.scrollIntoView({ block: "nearest" });
-        return;
-      }
+      if (thanks) thanks.hidden = true;
+      if (!complete()) { e.preventDefault(); return; }
+      const { url, cut } = F.mail(v);
+      $(F.email).href = url;
+      $(F.mailCut).hidden = !cut;
+    });
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (thanks) thanks.hidden = true;
+      $(F.mailCut).hidden = true;
+      $(F.result).hidden = true;
+      if (!complete()) return;
       const { url, cut } = F.link(v);
       $(F.cut).hidden = !cut;
       // the link is described by what the box says above it, the cut note too when it shows (a hidden one would be read)

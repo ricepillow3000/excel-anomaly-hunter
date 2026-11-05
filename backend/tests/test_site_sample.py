@@ -152,7 +152,7 @@ def recommend_fix(row, sheet_row, r):
             changes.append((cell, js(likely[c])))
             solved.add(c)
             typos.append(f"{c} is {js(v)}, but the row's own numbers say {js(likely[c])} ({s['total']} = {s['rule']})")
-    notes = [f"{'; '.join(typos)}. Check it against the source before applying."] if typos else []
+    notes = [f"{'; '.join(typos)}. Check it against the original receipt, invoice or report before you click Accept."] if typos else []
     notes += [f"{s['text']}, so one of these numbers is wrong. Check them against the source." for s in sums if not set(s["cols"]) & solved]
     notes = notes or ["Nothing here is clearly broken, but the values are unusual together. Check them against the source; if they're right, leave them."]
     return {"explanation": " ".join(notes), "changes": changes, "label": "Suggested fix" if changes else "What to check"}
@@ -382,12 +382,13 @@ def test_the_checks_table_says_what_the_sample_shows_or_that_it_has_none():
     what = {tr.one("th").text(): tr.all("td")[0].text() for tr in table.one("tbody").all("tr")}
     # the cycles the series check leaves alone, named as it holds them (detectors.CYCLES) and no other: the row said
     # "Repeating cycles are left alone" over a sample whose four Temporal flags are a 4-day price cycle's peaks
-    m = re.search(r"a cycle of ([\d, ]+ or \d+) rows", what["Temporal"])
-    assert m and [int(x) for x in re.findall(r"\d+", m[1])] == list(CYCLES), what["Temporal"]
-    assert "Repeating cycles" not in what["Temporal"]
-    assert list(checks) == ["Reconciliation", "Keying errors", "Consistency", "Temporal", "Completeness", "Plausibility", "Fairness", "Ask AI (optional)"]
+    m = re.search(r"a cycle of ([\d, ]+ or \d+) rows", what["Dates and jumps"])
+    assert m and [int(x) for x in re.findall(r"\d+", m[1])] == list(CYCLES), what["Dates and jumps"]
+    assert "Repeating cycles" not in what["Dates and jumps"]
+    # AH-135: the site's own names for three checks in plain words (Temporal, Completeness, Plausibility were jargon)
+    assert list(checks) == ["Reconciliation", "Keying errors", "Consistency", "Dates and jumps", "Missing values", "Numbers that can't be right", "Fairness", "Ask AI (optional)"]
     assert root.one("p", cls="fact").text() == f"{len(checks)} checks · {len(flagged)} rows flagged in the sample above"
-    kind = {"Reconciliation": "recon", "Keying errors": "keying", "Consistency": "label", "Temporal": "time"}
+    kind = {"Reconciliation": "recon", "Keying errors": "keying", "Consistency": "label", "Dates and jumps": "time"}
     for name, cell in checks.items():
         links = cell.all("a", cls="to-row")
         if name not in kind:  # none in this sample, said in so many words
@@ -406,7 +407,7 @@ def test_the_checks_table_says_what_the_sample_shows_or_that_it_has_none():
     assert "a figure far past its column's usual range" in what["Keying errors"], what["Keying errors"]
     n, row, r, eg = checks["Consistency"]
     assert eg == f'"{row[1]}" to "{r["likely"]["Region"]}"'
-    n, row, r, eg = checks["Temporal"]
+    n, row, r, eg = checks["Dates and jumps"]
     assert eg == f"a jump in Total on {row[0]}" and f"Total jumped sharply near {row[0]}" in plain_reason(r["reason"])
     # the sample has no people column: no fairness test runs and the pane shows no fairness line, so the example is the
     # engine's sentence on an illustrative people sheet, never "Region: even" (which read like this sample's result)
@@ -419,7 +420,7 @@ def test_the_checks_table_says_what_the_sample_shows_or_that_it_has_none():
     fair = checks["Fairness"].one("span", cls="other-sheet").one("span", cls="say").text()
     assert fair in said and fair.split(":")[0] not in COLUMNS, f"{fair} is not what the engine says: {said}"
     # the rest are general forms on another sheet, not claims about this one (a change here is a change to re-check by hand)
-    assert [checks[k].one("span", cls="other-sheet").text() for k in ("Completeness", "Plausibility", "Ask AI (optional)")] == [
+    assert [checks[k].one("span", cls="other-sheet").text() for k in ("Missing values", "Numbers that can't be right", "Ask AI (optional)")] == [
         "On another sheet: #N/A, a repeated row", "On another sheet: Month 13, 99999", 'A request: "Use the usual spelling"']
     # ...and those other-sheet examples are the engine's too: a small sheet with each one planted gets each one flagged
     # for it (they were only words pinned here, AH-129)

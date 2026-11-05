@@ -38,13 +38,16 @@ await page.addInitScript(() => {
 });
 // a failure this test causes on purpose: the console lines matching `expected` are its own; anything else still counts
 const failing = async (expected, fn) => { const k = errors.length; await fn(); errors.splice(k, Infinity, ...errors.slice(k).filter((e) => !expected.test(e))); };
-const DROPPED = /ERR_CONNECTION_RESET|ERR_CONNECTION_REFUSED|ERR_FAILED|checker isn't running|status of 50[23]|Ask AI hit a problem|Couldn't save that/;
+const DROPPED = /ERR_CONNECTION_RESET|ERR_CONNECTION_REFUSED|ERR_FAILED|Arcas has stopped|status of 50[23]|Ask AI hit a problem|Couldn't save that/;
 // the engine's own words for a bug and for an AI failure, where server.log is said in full (AH-124: "Engine error -
 // details in server.log" named a file nobody could find). The engine side is held to them by test_api_security.py
 const LOG_AT = "%LOCALAPPDATA%\\AnomalyHunter\\server.log";
 const BROKE = `The checker hit a problem it didn't expect. Try again, and if it happens again, the details are in ${LOG_AT}.`;
 const AI_BROKE = `Ask AI hit a problem it didn't expect. Try again, and if it happens again, the details are in ${LOG_AT}.`;
-const DOWN = "the checker isn't running. Double-click Arcas.exe again (from a source folder: install.bat), then try again.";
+// AH-135: said as a person with few computer skills can act on it, naming where the file most people have is; the pane
+// cannot tell a source folder from the app, so no install.bat aside
+const DOWN = "Arcas has stopped. Wait half a minute and try again. If that doesn't work, open your Downloads folder, double-click Arcas.exe, then try again.";
+const DOWN_AT_START = "Arcas has stopped. Wait half a minute and press Try again. If that doesn't work, open your Downloads folder, double-click Arcas.exe, then press Try again.";
 const dropMidway = async (r) => { await new Promise((go) => setTimeout(go, 300)); await r.abort("connectionreset"); }; // sent, then the engine is gone
 const scans = []; // every /scan body the pane sent: the slider's level and the Power BI switch must reach the engine
 page.on("request", (r) => r.url().endsWith("/scan") && scans.push(JSON.parse(r.postData())));
@@ -667,7 +670,7 @@ if (mode === "flow") {
   });
   const opened = await page.evaluate(() => ["app-body", "main-ui", "server-down"].map((id) => `${id} ${document.getElementById(id).hidden ? "hidden" : "shown"}`).join(", "));
   await page.unroute("**/health", down);
-  ok(refused >= 1 && (await page.isVisible("#server-down")) && (await text("#server-down")).includes("The checker isn't running.") && !(await page.isVisible("#main-ui")),
+  ok(refused >= 1 && (await page.isVisible("#server-down")) && (await text("#server-down")).replace(/\s+/g, " ").trim() === DOWN_AT_START + " Try again" && !(await page.isVisible("#main-ui")),
     `the engine down at start: said in plain words - ${refused} /health refused; ${opened}`);
   await page.click("#retry-health"); await page.waitForSelector("#main-ui", { state: "visible", timeout: 10000 }).catch(() => {});
   ok(await page.isVisible("#main-ui"), "Try again opens the pane once the engine answers");
@@ -682,7 +685,7 @@ if (mode === "flow") {
   const waited = Date.now() - t9;
   await page.unroute("**/health", hang);
   ok(hung >= 1 && said && waited >= 9000 && waited < 20000 && !(await page.isVisible("#main-ui")),
-    `an engine that never answers /health: after ${waited} ms the pane says the checker isn't running (${hung} /health held)`);
+    `an engine that never answers /health: after ${waited} ms the pane says Arcas has stopped (${hung} /health held)`);
   await page.click("#retry-health"); await page.waitForSelector("#main-ui", { state: "visible", timeout: 10000 }).catch(() => {});
   ok(await page.isVisible("#main-ui"), "and Try again opens the pane once the engine answers");
 }

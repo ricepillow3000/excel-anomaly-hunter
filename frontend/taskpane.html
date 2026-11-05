@@ -32,8 +32,8 @@
     </div>
 
     <section id="server-down" class="pad" hidden>
-      <p><b>The checker isn't running.</b></p>
-      <p>Double-click <code>Arcas.exe</code> again (from a source folder: <code>install.bat</code>), then press Try again.</p>
+      <p><b>Arcas has stopped.</b></p>
+      <p>Wait half a minute and press Try again. If that doesn't work, open your Downloads folder, double-click <code>Arcas.exe</code>, then press Try again.</p>
       <button id="retry-health" class="secondary">Try again</button>
     </section>
 
@@ -91,7 +91,7 @@
           <ul id="fairness-list" class="hint"></ul>
         </details>
         <h2 id="list-title">Rows to check</h2>
-        <p id="list-hint" class="hint">Worst first. Click a row to see what's wrong and a suggested fix.</p>
+        <p id="list-hint" class="hint">Worst first. Click a row to see what's wrong and a suggested fix. The cells to check are coloured in your sheet. This changes no values. Remove highlights takes the colour off.</p>
         <ul id="flagged-list" class="flagged-list"></ul>
         <button id="clear-highlights" class="secondary">Remove highlights</button>
         <div id="odd-box" hidden>
@@ -160,13 +160,14 @@
 
       <details id="settings" class="more">
         <summary>AI help (optional, free)</summary>
+        <p class="hint">You don't need this. Arcas finds and fixes problems without AI.</p>
         <p id="ai-state" class="hint"></p>
         <ol class="steps">
           <li>Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> and sign in with a Google account. No credit card.</li>
           <li>Click <b>Create API key</b> and copy it.</li>
           <li>Paste it here and click Save.</li>
         </ol>
-        <p class="hint">A key from a Google project with billing turned on can be charged by Google for what AI help uses. Without billing, the free tier costs nothing.</p>
+        <p class="hint">Google charges for AI help only if the key's Google project has billing turned on, which means adding a payment card. Without billing, the free tier costs nothing.</p>
         <input id="ai-key" type="password" autocomplete="off" placeholder="Paste your key" aria-label="Google AI key" />
         <div class="row-buttons">
           <button id="save-key" class="secondary">Save key</button>
