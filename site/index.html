@@ -26,6 +26,11 @@
 <link rel="preload" href="assets/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="styles.css">
 <script src="boot.js"></script>
+<!-- structured data for search (AH-133): data blocks the browser never runs, so the CSP's script-src needs no change;
+     tools/test_site.mjs checks each says what the page says, the questions word for word -->
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "Arcas", "operatingSystem": "Windows", "applicationCategory": "BusinessApplication", "description": "Arcas reads every row of an Excel sheet on your own PC, flags the figures that don't reconcile and proposes the correction.", "url": "https://ricepillow3000.github.io/excel-anomaly-hunter/", "downloadUrl": "https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest/download/Arcas.exe", "license": "https://github.com/ricepillow3000/excel-anomaly-hunter/blob/main/LICENSE", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "author": {"@id": "https://ricepillow3000.github.io/excel-anomaly-hunter/#maker"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Person", "@id": "https://ricepillow3000.github.io/excel-anomaly-hunter/#maker", "name": "John Nguyen", "image": "https://ricepillow3000.github.io/excel-anomaly-hunter/assets/john-480.webp", "sameAs": ["https://www.linkedin.com/in/johnnguyen3000/", "https://app.joinhandshake.com/profiles/74fwhv", "https://github.com/ricepillow3000"]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Is Arcas free?", "acceptedAnswer": {"@type": "Answer", "text": "Yes, for any number of people, at home or at work. There are no seats, no licence server and no account, and the code is open source under the MIT License."}}, {"@type": "Question", "name": "Does my data leave my PC?", "acceptedAnswer": {"@type": "Answer", "text": "Not for a scan: the engine runs on your PC, listens on 127.0.0.1 only and sends nothing. Part of your sheet leaves only when you click Ask AI or Check words with AI, which send it to Google, through John's relay if you use an invite code. The privacy page lists exactly what goes."}}, {"@type": "Question", "name": "What does it need?", "acceptedAnswer": {"@type": "Answer", "text": "A Windows 10 or 11 PC, 64-bit, with desktop Excel for Microsoft 365, and a Windows account that is an administrator on that PC. It does not run on a Mac or in Excel on the web, and Excel 2021 and 2024 are not tested yet."}}, {"@type": "Question", "name": "Does it change my cells without asking?", "acceptedAnswer": {"@type": "Answer", "text": "No. A suggested fix changes nothing until you click Accept, and Dismiss skips it. Auto-fix, which stays off until you turn it on, fixes by itself only slips of capitals and spaces, such as \"east \" where the column says \"East\", never a number, and Undo auto-fixes puts them back."}}, {"@type": "Question", "name": "How do I reach John?", "acceptedAnswer": {"@type": "Answer", "text": "Write to him with the form on this page, which opens your message on GitHub, or call him at (770) 265-9930. John replies within 2 business days."}}]}</script>
 </head>
 <body id="home">
 <a class="skip-link" href="#page">Skip to content</a>
@@ -43,7 +48,7 @@
       <h1 class="hero-head" id="hero-title" data-enter="left">Find the error <em>before</em> it reaches the board</h1>
       <div class="hero-copy" data-enter="left">
         <p>Arcas reads every row of an Excel sheet on your own PC, flags the figures that don't reconcile, explains each one in a sentence and proposes the correction. Nothing changes until you accept it or turn on Auto-fix.</p>
-        <div class="hero-cta"><a class="btn btn-primary" href="#download">Download for Windows</a><a class="btn btn-ghost" href="#preview" data-glide="frame">See a sample scan</a></div>
+        <div class="hero-cta"><a class="btn btn-primary" href="#download">Download for Windows</a><a class="btn btn-ghost" href="#preview" data-glide="frame">See a sample scan</a><a class="btn btn-plain" href="#contact" data-glide="top">Contact John</a></div>
         <span class="note">Free · Windows with desktop Excel · <a href="#download">download and checksum</a> further down</span>
       </div>
 
@@ -247,6 +252,65 @@
     </div>
   </section>
 
+  <!-- measured results in place of reviews (AH-133, John's choice): each figure is read by tools/test_site.mjs from the
+       stress test's own record, docs/proof/2026-11-05-stress-test.md, so it cannot drift from it -->
+  <section class="section" id="proof" aria-labelledby="proof-title">
+    <div class="wrap cols" data-reveal-group>
+      <h2 class="sec-title reveal-item" data-depth="0.03" id="proof-title">What the tests measured</h2>
+      <p class="sec-lede calm reveal-item">Mistakes were planted in test sheets and the engine was asked to find them. Each figure links to the record it comes from.</p>
+      <dl class="proof calm" data-reveal-group>
+        <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>51 of 51</dt><dd>planted mistakes found on the industry bench of 27 sheets, in the <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/blob/main/docs/proof/2026-11-05-stress-test.md">stress test of 5 November 2026</a>.</dd></div>
+        <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>199 of 201</dt><dd>found on the blind bench of 42 sheets it was never tuned on, in the same <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/blob/main/docs/proof/2026-11-05-stress-test.md">stress test</a>.</dd></div>
+        <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>0</dt><dd>clean rows called probably wrong, among the 2,724 and 6,954 clean rows of the two benches (<a href="https://github.com/ricepillow3000/excel-anomaly-hunter/blob/main/docs/proof/2026-11-05-stress-test.md">the record</a>).</dd></div>
+        <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>Free</dt><dd>for any number of people, open source under the <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/blob/main/LICENSE">MIT License</a>.</dd></div>
+        <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>On your PC</dt><dd>a scan runs there and sends nothing to the internet. The <a href="privacy.html">privacy page</a> says what AI help sends.</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <!-- three public tables (AH-133): what the pane says about an excerpt of each, every row it lists, in its own words;
+       backend/tests/test_site_cases.py scans the excerpts (backend/tests/fixtures/cases/) again and reads these back -->
+  <section class="section" id="cases" aria-labelledby="cases-title">
+    <div class="wrap cols" data-reveal-group>
+      <h2 class="sec-title reveal-item" data-depth="0.03" id="cases-title">Three public tables, scanned</h2>
+      <p class="sec-lede calm reveal-item">FiveThirtyEight publishes the data behind its stories. Arcas found these in three of its tables, and each was checked by hand against the table's own notes.</p>
+      <div class="cases calm" data-reveal-group>
+        <article class="case reveal-item" data-case="classic-rock-release-year" aria-labelledby="case-classic-rock-release-year">
+          <h3 id="case-classic-rock-release-year">Classic rock songs on the radio</h3>
+          <p class="case-scope">120 of its 2,229 rows, scanned at level 5</p>
+          <ul class="case-said">
+            <li data-rows="39">Row 39, probably wrong: <q>Release Year is 1071, below its usual limit of 1938</q></li>
+            <li data-rows="96">Row 96, probably wrong: <q>Text "SONGFACTS.COM" in number column Release Year</q></li>
+            <li data-rows="9">Row 9, worth a check: <q>Release Year is blank in 22 of 120 rows, spread through the sheet</q></li>
+          </ul>
+          <p>Levon by Elton John is dated 1071, and every other Elton John song in the table is from 1970 to 1975. Bullfrog Blues holds the website's name where its year goes; its right year is unknown. The blanks are honest: the source leaves a year empty when it found none.</p>
+          <p class="case-credit">Data: <a href="https://github.com/fivethirtyeight/data/tree/master/classic-rock">FiveThirtyEight</a>, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a></p>
+        </article>
+        <article class="case reveal-item" data-case="mad-men-div0" aria-labelledby="case-mad-men-div0">
+          <h3 id="case-mad-men-div0">“Mad Men” actors, after the show</h3>
+          <p class="case-scope">120 of its 248 rows, scanned at level 5</p>
+          <ul class="case-said">
+            <li data-rows="119 120 121">Rows 119, 120 and 121, probably wrong: <q>Excel error #DIV/0! in Score/Y</q></li>
+            <li data-rows="2">Row 2, worth a check: <q>Status? is written "End" 15 times and "END" 76 times (same word, different capitals/spaces)</q></li>
+          </ul>
+          <p>Score/Y is Score divided by Years Since, and for these three actors Years Since is 0, so the published file kept the spreadsheet's error. The right value is unknown: a score per year means nothing over 0 years. The table's notes define only END, so End is the same word written another way.</p>
+          <p class="case-credit">Data: <a href="https://github.com/fivethirtyeight/data/tree/master/mad-men">FiveThirtyEight</a>, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a></p>
+        </article>
+        <article class="case reveal-item" data-case="daily-show-media" aria-labelledby="case-daily-show-media">
+          <h3 id="case-daily-show-media">Guests of “The Daily Show”</h3>
+          <p class="case-scope">99 of its 2,693 rows, all from 2002, scanned at level 5</p>
+          <ul class="case-said">
+            <li data-rows="13 34 88">Rows 13, 34 and 88, probably wrong: <q>Group "media" looks like "Media" (same word, different capitals/spaces)</q></li>
+            <li data-rows="3 24 36 71">Rows 3, 24, 36 and 71, probably wrong: <q>GoogleKnowlege_Occupation "Journalist" looks like "journalist" (same word, different capitals/spaces)</q></li>
+            <li data-rows="90">Row 90, probably wrong: <q>GoogleKnowlege_Occupation "Singer-songwriter" looks like "singer-songwriter" (same word, different capitals/spaces)</q></li>
+          </ul>
+          <p>A count that minds capitals splits one group in two. The right value is Media, the way the column writes it everywhere else. The occupations written two ways are real slips too.</p>
+          <p class="case-credit">Data: <a href="https://github.com/fivethirtyeight/data/tree/master/daily-show-guests">FiveThirtyEight</a>, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a></p>
+        </article>
+      </div>
+    </div>
+  </section>
+
   <section class="section" id="it" aria-labelledby="it-title">
     <div class="wrap cols" data-reveal-group>
       <h2 class="sec-title reveal-item" data-depth="0.03" id="it-title">What runs, where, and who controls it</h2>
@@ -260,6 +324,89 @@
     </div>
   </section>
 
+  <!-- who makes Arcas (AH-133): his photo (head and shoulders, 240 x 300 and 480 x 600 WebP, metadata stripped, loaded only
+       near the screen with its box kept), his phone (AH-126) and his profiles, plain links that load nothing until clicked -->
+  <section class="section" id="maker" aria-labelledby="maker-title">
+    <div class="wrap cols" data-reveal-group>
+      <h2 class="sec-title reveal-item" data-depth="0.03" id="maker-title">Who makes Arcas</h2>
+      <div class="maker calm reveal-item">
+        <img src="assets/john-240.webp" srcset="assets/john-240.webp 1x, assets/john-480.webp 2x" width="240" height="300" alt="John Nguyen, who makes Arcas" loading="lazy" decoding="async">
+        <div class="maker-text">
+          <p>Made in the United States by John Nguyen. He writes Arcas, reviews every change before it is merged and answers the questions sent through this site.</p>
+          <p>Call him at <a href="tel:+17702659930">(770) 265-9930</a>, or write with the form below.</p>
+          <nav class="profiles" aria-label="John Nguyen elsewhere">
+            <a class="btn btn-plain" href="https://www.linkedin.com/in/johnnguyen3000/" aria-label="John Nguyen on LinkedIn"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M1.5 0h13A1.5 1.5 0 0 1 16 1.5v13a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 0 14.5v-13A1.5 1.5 0 0 1 1.5 0Zm1 6v7.5h2.5V6Zm1.25-3.75a1.45 1.45 0 1 0 0 2.9 1.45 1.45 0 0 0 0-2.9ZM6.5 6v7.5H9V9.6c0-1 .2-1.95 1.45-1.95 1.2 0 1.25 1.15 1.25 2V13.5h2.5V9.1C14.2 6.95 13.7 5.8 11.25 5.8c-1.15 0-1.95.65-2.25 1.25V6Z"/></svg>LinkedIn</a>
+            <a class="btn btn-plain" href="https://app.joinhandshake.com/profiles/74fwhv" aria-label="John Nguyen on Handshake"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M1.5 0h13A1.5 1.5 0 0 1 16 1.5v13a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 0 14.5v-13A1.5 1.5 0 0 1 1.5 0ZM4 3v10h2.4V9.1c0-1.1.55-1.75 1.5-1.75s1.3.6 1.3 1.6V13h2.4V8.5c0-2.1-1.05-3.2-2.85-3.2-1.05 0-1.85.45-2.35 1.15V3Z"/></svg>Handshake</a>
+            <a class="btn btn-plain" href="https://github.com/ricepillow3000" aria-label="John Nguyen on GitHub"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>GitHub</a>
+          </nav>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- five questions (AH-133) in the support page's markup: a <details> opens without a script; the FAQPage block in
+       <head> says the same words. Beside them the contact form: support.js opens a prefilled GitHub issue
+       (.github/ISSUE_TEMPLATE/contact.yml) in a new tab, then shows thanks.html -->
+  <section class="section" id="faq" aria-labelledby="faq-title">
+    <div class="wrap cols" data-reveal-group>
+      <h2 class="sec-title reveal-item" data-depth="0.03" id="faq-title">Five questions, answered</h2>
+      <p class="sec-lede calm reveal-item">The <a href="support.html">support page</a> answers more, from the install to the log.</p>
+      <div class="faq ask reveal-item">
+        <div class="faq-head"><span>Question</span><span>Answer</span></div>
+        <details>
+          <summary>Is Arcas free?</summary>
+          <div class="a"><p>Yes, for any number of people, at home or at work. There are no seats, no licence server and no account, and the code is open source under the <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/blob/main/LICENSE">MIT License</a>.</p></div>
+        </details>
+        <details>
+          <summary>Does my data leave my PC?</summary>
+          <div class="a"><p>Not for a scan: the engine runs on your PC, listens on 127.0.0.1 only and sends nothing. Part of your sheet leaves only when you click Ask AI or Check words with AI, which send it to Google, through John's relay if you use an invite code. The <a href="privacy.html">privacy page</a> lists exactly what goes.</p></div>
+        </details>
+        <details>
+          <summary>What does it need?</summary>
+          <div class="a"><p>A Windows 10 or 11 PC, 64-bit, with desktop Excel for Microsoft 365, and a Windows account that is an administrator on that PC. It does not run on a Mac or in Excel on the web, and Excel 2021 and 2024 are not tested yet.</p></div>
+        </details>
+        <details>
+          <summary>Does it change my cells without asking?</summary>
+          <div class="a"><p>No. A suggested fix changes nothing until you click Accept, and Dismiss skips it. Auto-fix, which stays off until you turn it on, fixes by itself only slips of capitals and spaces, such as "east " where the column says "East", never a number, and Undo auto-fixes puts them back.</p></div>
+        </details>
+        <details>
+          <summary>How do I reach John?</summary>
+          <div class="a"><p>Write to him with the form on this page, which opens your message on GitHub, or call him at <a href="tel:+17702659930">(770) 265-9930</a>. John replies within 2 business days.</p></div>
+        </details>
+      </div>
+      <section class="form-card ask reveal-item" id="contact" aria-labelledby="note-title">
+        <h2 id="note-title">Contact John</h2>
+        <p class="reply">John replies within 2 business days.</p>
+        <form id="note" novalidate>
+          <p class="notice">This is public: it opens your message on GitHub in a new tab, and nothing is posted until you press Submit there. You need a free GitHub account. Never paste client data, your AI key or your invite code.</p>
+          <div class="field">
+            <label for="c-name">Name</label>
+            <input id="c-name" name="name" type="text" maxlength="80" autocomplete="name" required>
+          </div>
+          <div class="field">
+            <label for="c-topic">What is it about?</label>
+            <select id="c-topic" name="topic">
+              <option>A question</option>
+              <option>A problem</option>
+              <option>An idea</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="c-message">Message</label>
+            <textarea id="c-message" name="message" maxlength="2000" required></textarea>
+          </div>
+          <button class="btn btn-primary" type="submit">Open my message on GitHub</button>
+          <div class="result" id="c-result" hidden>
+            <span id="c-ready">Ready. Open it on GitHub, check it, and press Submit there.</span>
+            <span id="c-cut" hidden>Your message is too long for one link, so the link holds only its start. Copy the rest from the box above and paste it on GitHub.</span>
+            <a class="btn btn-plain" id="c-open" href="https://github.com/ricepillow3000/excel-anomaly-hunter/issues/new?template=contact.yml" target="_blank" rel="noopener" aria-describedby="c-ready">Open on GitHub</a>
+          </div>
+          <p class="error" id="c-missing" hidden role="alert"></p>
+        </form>
+        <noscript><p class="notice">Without JavaScript, use the <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/issues/new?template=contact.yml">GitHub contact form</a>.</p></noscript>
+      </section>
+    </div>
+  </section>
   <section class="section band-panel" id="download" aria-labelledby="download-title">
     <div class="wrap cols" data-reveal-group>
       <h2 class="sec-title reveal-item" data-depth="0.03" id="download-title">Install on your Windows PC</h2>

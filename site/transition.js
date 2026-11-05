@@ -15,7 +15,7 @@
 // set themselves up on "ah:page" and let go on "ah:leave" (home.js, support.js).
 (() => {
   const html = document.documentElement;
-  const PAGES = ["index.html", "privacy.html", "support.html", "terms.html"];
+  const PAGES = ["index.html", "privacy.html", "support.html", "terms.html", "thanks.html"];
   // A crossfade drew both headlines half-opaque in one place at 300 ms, a smudge that read as a glitch (AH-73 review,
   // 1440 x 900 screenshots, 2026-10-30). A curtain keeps both pages moving at once with never a pixel of one over the
   // other: one edge, and the drift and dim on the same curve so the clips stay true to the edge in every frame. The
@@ -92,6 +92,16 @@
     const u = target(a);
     if (!u) return;
     e.preventDefault();
+    go(u, true, null, false);
+  });
+
+  // a page a script sends the reader to (the contact form's thank-you page, AH-133) changes the way a click on a link
+  // does; one this script cannot bring in is left to the sender, which then loads it the ordinary way
+  document.addEventListener("ah:go", (e) => {
+    const u = new URL(e.detail, location.href);
+    if (!pageOf(u) || pageOf(u) === current) return;
+    e.preventDefault();
+    save();
     go(u, true, null, false);
   });
 

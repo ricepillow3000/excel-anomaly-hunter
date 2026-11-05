@@ -1,0 +1,109 @@
+{
+ "title": "Mad Men cast table: three Excel #DIV/0! errors left in Score/Y",
+ "source_url": "https://raw.githubusercontent.com/fivethirtyeight/data/master/mad-men/show-data.csv",
+ "source_page": "https://github.com/fivethirtyeight/data/tree/master/mad-men",
+ "story": "'Mad Men' Is Ending. What's Next For The Cast?, http://fivethirtyeight.com/datalab/mad-men-is-ending-whats-next-for-the-cast/",
+ "licence": "CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), stated in https://github.com/fivethirtyeight/data/blob/master/README.md and its LICENSE file",
+ "attribution": "Data: FiveThirtyEight, mad-men/show-data.csv (github.com/fivethirtyeight/data/tree/master/mad-men), CC BY 4.0. Excerpt of 120 rows; three names re-encoded to UTF-8, no other cell changed.",
+ "raw_copy_matches_url": "yes: sha256 of the download on 2026-11-05 equals blind37-raw/f38_mad_men.csv (c0e1c6c97b7b2e41...)",
+ "full_rows": 248,
+ "excerpt_rows": 120,
+ "excerpt_source_sheet_rows": [
+  [
+   130,
+   249
+  ]
+ ],
+ "excerpt_note": "The last 120 rows, in order. The source file is not valid UTF-8: its accented names are Mac Roman bytes. The excerpt decodes them as Mac Roman and writes UTF-8, so Chloë Sevigny, Lauren Vélez and Alexander Skarsgård read correctly; byte for byte otherwise, plus a final line break the source lacks.",
+ "engine": "Arcas engine at origin/main 2235190, anomaly_hunter.agents.scan_agent.scan(columns, rows) at strength 5 (the default), every cell passed as text with spaces trimmed, as the pane sends it",
+ "excerpt_flags": [
+  {
+   "excerpt_sheet_row": 2,
+   "source_sheet_row": 130,
+   "severity": "Low",
+   "cells": [
+    "Status?"
+   ],
+   "reason": "Status? is written \"End\" 15 times and \"END\" 76 times (same word, different capitals/spaces)"
+  },
+  {
+   "excerpt_sheet_row": 119,
+   "source_sheet_row": 247,
+   "severity": "Medium",
+   "cells": [
+    "Score/Y"
+   ],
+   "reason": "Excel error #DIV/0! in Score/Y"
+  },
+  {
+   "excerpt_sheet_row": 120,
+   "source_sheet_row": 248,
+   "severity": "Medium",
+   "cells": [
+    "Score/Y"
+   ],
+   "reason": "Excel error #DIV/0! in Score/Y"
+  },
+  {
+   "excerpt_sheet_row": 121,
+   "source_sheet_row": 249,
+   "severity": "Medium",
+   "cells": [
+    "Score/Y"
+   ],
+   "reason": "Excel error #DIV/0! in Score/Y"
+  }
+ ],
+ "full_table_flags": [
+  {
+   "source_sheet_row": 247,
+   "severity": "Medium",
+   "reason": "Excel error #DIV/0! in Score/Y"
+  },
+  {
+   "source_sheet_row": 248,
+   "severity": "Medium",
+   "reason": "Excel error #DIV/0! in Score/Y"
+  },
+  {
+   "source_sheet_row": 249,
+   "severity": "Medium",
+   "reason": "Excel error #DIV/0! in Score/Y"
+  },
+  {
+   "source_sheet_row": 123,
+   "severity": "Low",
+   "reason": "Status? is written \"End\" 17 times and \"END\" 202 times (same word, different capitals/spaces)"
+  }
+ ],
+ "findings": [
+  {
+   "excerpt_sheet_rows": [
+    119,
+    120,
+    121
+   ],
+   "source_sheet_rows": [
+    247,
+    248,
+    249
+   ],
+   "cell": "Score/Y",
+   "value": "#DIV/0!",
+   "what_was_wrong": "Score/Y is Score divided by Years Since, and for Charles Dance, Patrick Dempsey and Ian McElhinney, whose characters left in 2015, Years Since is 0, so the published file carries the spreadsheet's #DIV/0! error instead of a number.",
+   "right_value": "unknown: a score per year is not defined for 0 years; the cell should be left empty or the rule changed. Checked: on all 245 other rows Score/Y equals Score / Years Since exactly."
+  },
+  {
+   "excerpt_sheet_row": 2,
+   "source_sheet_row": 130,
+   "cell": "Status?",
+   "value": "End",
+   "what_was_wrong": "Status? is written End 17 times and END 202 times in the full table; the readme defines only END and LEFT.",
+   "right_value": "END (the readme's own word)",
+   "severity_note": "Low, a second finding"
+  }
+ ],
+ "other_excerpt_flags": "none besides the above (one 'Noted' baseline line on #LEAD, below the pane's default list).",
+ "row_numbering": "Row numbers are sheet rows: the header is row 1, so data row k (counting from 1) is sheet row k + 1. source_sheet_row is the same row in the full published file.",
+ "excerpt_file": "mad-men-div0.csv"
+}
