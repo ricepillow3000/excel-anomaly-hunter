@@ -302,6 +302,12 @@ rec = recommendFix(ac, ad, 1, { Units: [30, 70, 0, 100] }, "Units weird limit is
 assert.deepEqual(rec.changes, [{ cell: "A3", new: "57" }]);
 assert.ok(rec.explanation.startsWith("Units is -5, but the row's own numbers say 57 (Total 170.43 = Units × UnitCost)"), rec.explanation);
 assert.equal(rec.guess, false, "arithmetic is not a guess");
+// a sign flip the engine kept over a value worked out from a rounded rate: a typo card, never "the row's own numbers say"
+rec = recommendFix(["Clicks", "Spend", "CPC"], [[3810, -3314.28, 0.87]], 0, { Spend: [100, 9000, 0, 20000] },
+  "Spend -3314.28 does not add up: Clicks × CPC = 3314.7; Spend weird limit is 0; this is -3314.28 (likely 3314.28)", 0, 0, { Spend: 3314.28 });
+assert.deepEqual(rec.changes, [{ cell: "B2", new: "3314.28" }]);
+assert.ok(rec.explanation.startsWith("Spend is -3314.28, which looks like a typo for 3314.28 (sign flipped)") &&
+  !rec.explanation.includes("own numbers") && !rec.explanation.includes("one of these numbers is wrong"), rec.explanation);
 // a total that doesn't add up, no single cell out of range: say which numbers disagree, never "nothing is broken"
 rec = recommendFix(ac, ad, 0, { Units: [30, 70, 0, 100] }, "Total 200 does not add up: Units × UnitCost = 170.43", 0, 0);
 assert.deepEqual(rec.changes, []);
@@ -400,6 +406,15 @@ assert.deepEqual(tableFromGrid([["Sq Ft"], [1900], [2100]], null, 0, 0).columns,
 assert.deepEqual(tableFromGrid([["Dept", "Dept", "Dept"], ["a", "b", "c"]], null, 0, 0).columns, ["Dept", "Dept.1", "Dept.2"]);
 rec = recommendFix(["Dept", "Dept.1"], [["sales", "ops"]], 0, {}, "x", 0, 0, { Dept: "Sales" });
 assert.deepEqual(rec.changes, [{ cell: "A2", new: "Sales" }], "fix only the column the engine named");
+
+// a repeated header is named the way the sheet names it: its own header and its column letter, never the engine's
+// "Units.1" (AH-128). Every other column, and a value in quotes, stays as written
+tg = tableFromGrid([["Item", "Units", "Units sold", "Units"], ["a", 1, 2, 3]], null, 0, 1);
+assert.deepEqual(tg.columns, ["Item", "Units", "Units sold", "Units.1"]);
+assert.equal(plainReason('Flagged by 1 of 2: Units.1 weird limit is 50; this is 900 (likely 90); Units sold 5 does not add up: Units + Units.1 = 4; Item "Units" looks like a misspelling of "Unit"', tg.names),
+  'Units (column E) is 900, above its usual limit of 50 (likely 90) · Units sold 5 does not add up: Units (column C) + Units (column E) = 4 · Item "Units" looks like a misspelling of "Unit"');
+assert.equal(plainReason("Blank cell in column Units.1, which is otherwise filled", tg.names), "Blank cell in column Units (column E), which is otherwise filled");
+assert.deepEqual(tableFromGrid([["A", "B"], [1, 2]], null, 0, 0).names, {}, "no repeated header: nothing renamed");
 
 // L2: flagged rows worst first, clean rows out, data-row index kept
 assert.deepEqual(flaggedRows([{ severity: null, magnitude: 0 }, { severity: "Low", magnitude: 2 }, { severity: "High", magnitude: 9 }]).map((r) => r.i), [2, 1]);

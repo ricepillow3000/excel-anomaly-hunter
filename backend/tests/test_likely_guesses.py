@@ -169,3 +169,61 @@ def test_a_high_or_low_column_beside_open_and_close_is_a_price_and_its_lone_minu
     rows[20][2] = -rows[20][2]
     r = scan(["Date", "Open", "High", "Low", "Close"], rows, fair=False)[1][20]
     assert (r.get("likely") or {}).get("High") == -rows[20][2], r
+
+
+def _likely_said(out):
+    """Each "(likely X)" a limit sentence names, beside the value the row's card writes for that column."""
+    import re
+    for i, r in enumerate(out):
+        for col, v in re.findall(r"(?:^|; |: )([^;:]+?) weird limit is [^;]*?; this is [^;(]+ \(likely ([-\d.e+]+)\)", r.get("reason") or ""):
+            yield i, col, float(v), (r.get("likely") or {}).get(col)
+
+
+def test_on_every_bench_sheet_the_likely_value_a_sentence_names_is_the_one_its_card_writes():
+    # AH-128: 3 of 104 sentences named another value than the card: "Spend -3314.28 (likely 3314.28)" beside a card of
+    # 3314.7, worked out from a CPC rounded to the cent
+    import os
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "bench"))
+    import datasets
+    import datasets2
+    import datasets3
+    sheets = datasets.make(7) + [d for s in (11, 12, 13) for d in datasets2.make(s)] + [d for s in (21, 22, 23) for d in datasets3.make(s)]
+    said = wrong = 0
+    for d in sheets:
+        out = scan([str(c) for c in d["grid"][d["header"]]], d["grid"][d["header"] + 1:], fair=False)[1]
+        for i, col, v, card in _likely_said(out):
+            said += 1
+            if card is None or abs(float(card) - v) > 1e-9 * max(1, abs(v)):
+                wrong += 1
+                print(d["name"], i, col, v, card)
+    assert said >= 90 and wrong == 0, (said, wrong)
+
+
+def test_a_sign_flip_the_rule_holds_within_its_rounding_is_the_card_never_a_value_from_the_rounded_rate():
+    # ad_campaigns: Spend = Clicks x CPC, the CPC written to the cent; one Spend typed with a minus sign. The flip is
+    # Clicks x CPC within half a cent per click; the value worked out from the rounded CPC (3314.7) is not what was typed
+    rng = np.random.default_rng(21)
+    rows = []
+    for i in range(60):
+        clicks = int(rng.integers(500, 9000))
+        spend = round(float(clicks * rng.uniform(0.4, 2.5)), 2)
+        rows.append([f"C{i}", clicks, spend, round(spend / clicks, 2)])
+    rows[33] = ["C33", 3810, -3314.28, 0.87]
+    out = scan(["Campaign", "Clicks", "Spend", "CPC"], rows, fair=False)[1]
+    assert out[33]["likely"].get("Spend") == 3314.28 and "(likely 3314.28)" in out[33]["reason"], out[33]
+
+
+def test_a_count_the_rows_arithmetic_solves_names_that_value_in_its_sentence_too():
+    # inventory: StockValue = OnHand x UnitCost, OnHand 15 typed 1500. The card wrote 15 from the arithmetic while the
+    # limit sentence said "(likely 150)"
+    rng = np.random.default_rng(5)
+    rows = []
+    for i in range(280):
+        q, cost = int(rng.integers(0, 300)), round(float(rng.uniform(2, 40)), 2)
+        rows.append([f"SKU-{i:05d}", q, cost, round(q * cost, 2)])
+    rows[100] = ["SKU-00100", 1500, 28.42, 426.3]
+    out = scan(["SKU", "OnHand", "UnitCost", "StockValue"], rows, fair=False)[1]
+    r = out[100]
+    assert r["likely"].get("OnHand") == 15 and "(likely 150)" not in r["reason"], r
+    assert all(card == v for _, _, v, card in _likely_said([r])), r["reason"]

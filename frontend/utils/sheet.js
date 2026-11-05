@@ -23,7 +23,27 @@ export function tableFromGrid(values, formats, rowIndex, colIndex, formulas) {
     for (let k = 1; columns.includes(name); k++) name = `${c}.${k}`;
     columns.push(name);
   });
-  return { columns, rows, startRow: rowIndex + h, startCol: colIndex, calc, dates: isDate };
+  // ...but a header two columns share is said as the sheet says it, with its column letter: "Units.1" is no name the
+  // user can find (AH-128, as Check words does since AH-35). Every column is a key, so "Units sold" stays whole
+  const twice = (c) => values[h].filter((d) => String(d) === String(c)).length > 1;
+  const names = values[h].some(twice) ? Object.fromEntries(values[h].map((c, j) => [columns[j], !twice(c) ? columns[j]
+    : `${String(c).trim() ? `${String(c).trim()} (column ${colLetter(colIndex + j)})` : `column ${colLetter(colIndex + j)}`}`])) : {};
+  return { columns, rows, startRow: rowIndex + h, startCol: colIndex, calc, dates: isDate, names };
+}
+
+// Pure: each column name in a sentence said as the sheet's names say it (names: engine name -> shown). A name counts
+// only standing whole, longest first, never inside quotes (a value "Units" is a value)
+export function shownAs(text, names) {
+  const keys = Object.keys(names || {}).filter(Boolean).sort((a, b) => b.length - a.length);
+  if (!keys.length) return text;
+  const edge = (ch) => ch === undefined || " ,;:()·".includes(ch);
+  let out = "";
+  for (let k = 0; k < text.length;) {
+    const hit = edge(text[k - 1]) && keys.find((c) => text.startsWith(c, k) && edge(text[k + c.length]));
+    if (hit) (out += names[hit]), (k += hit.length);
+    else out += text[k++];
+  }
+  return out;
 }
 
 // Pure: one row of Excel's values -> the row as a scan reads it (dates[j]: column j holds dates)

@@ -146,7 +146,7 @@ def recommend_fix(row, sheet_row, r):
         if isinstance(likely.get(c), str) and isinstance(v, str):
             changes.append((cell, likely[c]))
             typos.append(f'{c} says "{v}" where the rest of the column says "{likely[c]}": same word, different capitals/spaces')
-        elif isinstance(v, (int, float)) and likely.get(c) is not None and (s := next((s for s in sums if c in s["cols"]), None)):
+        elif isinstance(v, (int, float)) and likely.get(c) not in (None, -v) and (s := next((s for s in sums if c in s["cols"]), None)):
             changes.append((cell, js(likely[c])))
             solved.add(c)
             typos.append(f"{c} is {js(v)}, but the row's own numbers say {js(likely[c])} ({s['total']} = {s['rule']})")

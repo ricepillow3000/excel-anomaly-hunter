@@ -2,6 +2,7 @@ import { state } from "../hooks/use-state.js";
 import { $, show } from "../utils/dom.js";
 import { esc } from "../utils/text.js";
 import { readCells } from "../services/excel.js";
+import { shownAs } from "../utils/sheet.js";
 
 // Preview a fix as cell: old -> new. Nothing is written until Apply.
 export async function showFix(f, label, out) {
@@ -10,7 +11,7 @@ export async function showFix(f, label, out) {
   if (state.undos[f.i]) return void ($("fix-status").textContent = "AI answered, but a fix is already applied. Click Undo, then Ask AI again.");
   f.changes = out.changes;
   $("fix-label").textContent = label;
-  $("fix-explanation").textContent = out.explanation;
+  $("fix-explanation").textContent = shownAs(out.explanation, state.lastScan?.names); // "Units (column E)", never "Units.1"
   $("fix-changes").innerHTML = changeList(out.changes, olds);
   show("fix-apply", out.changes.length > 0);
   $("fix-dismiss").textContent = out.changes.length ? "Dismiss" : "Looks right"; // no fix offered: the only question left
