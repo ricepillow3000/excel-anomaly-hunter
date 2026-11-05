@@ -2,6 +2,7 @@ import { MEASURED, STRENGTH, STRENGTH_KEY } from "../constants/index.js";
 import { n } from "../utils/text.js";
 import { state } from "../hooks/use-state.js";
 import { $ } from "../utils/dom.js";
+import { activeSheet } from "../services/excel.js";
 
 // The 0-10 slider: how hard to look. Our own, not <input type=range>: in Excel's pane the native one was switched off
 // during every re-check, so a press on it fell through to the page and started a text drag (the "stop sign").
@@ -49,6 +50,8 @@ export function initStrength(rescan) {
       do {
         queued = false;
         while (state.working) await new Promise((ok) => setTimeout(ok, 150)); // a check the user started: wait for it
+        // two steps while a check ran gave 5, 7 and 7 (AH-127): this sheet was already checked at this level, so no more
+        if (level === state.lastStrength && state.lastScan && (await activeSheet().catch(() => null)) === state.lastScan.sheet) continue;
         await rescan();
       } while (queued);
     } finally {

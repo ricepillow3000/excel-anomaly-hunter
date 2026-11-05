@@ -125,6 +125,17 @@ const contrast = async (where) => {
   await page.$$eval("#main-ui details", (ds, was) => ds.forEach((d, k) => (d.open = was[k])), was);
   ok(bad.length === 0, `${where}: every text, box edge and placeholder clears WCAG AA - ` + JSON.stringify(bad));
 };
+// a person's double-click: two presses on one spot, 150 ms apart, the second counted as the second click (event.detail 2),
+// as the OS reports it. Clicked where the button is drawn once the card has settled, as a person aims (AH-127)
+const doubleClick = async (sel, gap = 150) => {
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running"), null, { timeout: 10000 }).catch(() => {});
+  await page.locator(sel).scrollIntoViewIfNeeded();
+  const b = await page.locator(sel).boundingBox(), x = b.x + b.width / 2, y = b.y + b.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down({ clickCount: 1 }); await page.mouse.up({ clickCount: 1 });
+  await page.waitForTimeout(gap);
+  await page.mouse.down({ clickCount: 2 }); await page.mouse.up({ clickCount: 2 });
+};
 const openRow = async (r) => { await page.click(`#flagged-list button:has-text("Row ${r} ")`); await idle(); await page.waitForFunction(() => document.getElementById("fix-changes").children.length || document.getElementById("fix-explanation").textContent); };
 
 if (mode === "flow") {
@@ -234,6 +245,13 @@ if (mode === "flow") {
   await page.click("#fix-undo"); await idle();
   ok((await cell("C11")).v === -5 && !(await page.isVisible("#fix-undo")) && (await cell("C11")).fill === "#FFEB9D" && (await cell("A11")).fill === "#00B050",
     "Undo puts it back, highlight too (on the named cells only)");
+  // AH-127: a double-click on Undo undid the fix, and its second click landed on Dismiss, drawn where Undo was: the row
+  // was dismissed too (3 of 3 tries) and the card moved on to row 51. One click does one thing
+  await page.click("#fix-apply"); await idle();
+  await doubleClick("#fix-undo"); await idle(); await page.waitForTimeout(400);
+  ok((await cell("C11")).v === -5 && (await text("#fix-title")).startsWith("Row 11") && (await page.isVisible("#fix-apply"))
+    && !(await page.evaluate(() => Object.values(__settings.anomalyHunterDecisions?.Sales || {}).length)),
+    "a double-click on Undo undoes once and dismisses nothing: the card stays on row 11 - " + (await text("#fix-title")) + " / " + (await page.evaluate(() => JSON.stringify(__settings.anomalyHunterDecisions || {}))));
   await page.evaluate(() => __edit("Sales", "B11", "North")); // the row changes after the scan (edited / sorted)
   await page.click("#fix-apply"); await idle();
   ok((await cell("C11")).v === -5 && (await text("#fix-status")).includes("changed since the scan"), "changed row: Accept refuses instead of writing into the wrong record");
@@ -344,6 +362,18 @@ if (mode === "flow") {
   { const m = await matchesEngine(); ok(m.ok, "at 5 the list is exactly what the engine answered at 5 - " + m.why); }
   ok((await page.$$("#flagged-list li")).length === listed5 && (await text("#strength-val")) === "5 of 10" && (await page.evaluate(() => __state.lastStrength)) === 5,
     "back to 5: the same rows as before");
+  // AH-127: two slider steps while a check runs gave the sheet three checks, 5, 7 and 7: the second step queued a
+  // re-check at the level the first one's re-check had already used
+  const s3 = scans.length;
+  await page.click("#scan");
+  await page.focus("#strength"); await page.keyboard.press("ArrowRight"); await page.keyboard.press("ArrowRight");
+  await page.waitForFunction(() => __state.lastStrength === 7 && !document.getElementById("scan").disabled, null, { timeout: 15000 }).catch(() => {});
+  await page.waitForTimeout(1500); await idle();
+  ok(scans.slice(s3).map((b) => b.strength).join() === "5,7", "two slider steps while a check runs: that check, then one at 7, never a second at 7 - " + scans.slice(s3).map((b) => b.strength));
+  await page.keyboard.press("ArrowLeft"); await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(() => __state.lastStrength === 5 && !document.getElementById("scan").disabled, null, { timeout: 15000 }).catch(() => {});
+  await page.waitForTimeout(800); await idle();
+  ok((await text("#strength-val")) === "5 of 10" && (await page.evaluate(() => __settings.anomalyHunterStrength)) === 5, "and back to 5");
 
   // 6c) auto-fix (step 3): off by default; on = only the capitals/spaces slip, never numbers; Undo auto-fixes puts it back
   ok(!(await page.evaluate(() => document.getElementById("auto-fix").checked)), "auto-fix is off by default");
@@ -461,10 +491,11 @@ if (mode === "flow") {
   const heldBefore = await held(), cellsBefore = await sheetNow(), wrote0 = await page.evaluate(() => __log.length);
   ok(heldBefore.includes("anomalyHunterLimits") && heldBefore.includes("anomalyHunterDecisions") && heldBefore.includes("anomalyHunterAcceptUndo"), "a limit, decisions and Accept's Undo are in the workbook first - " + heldBefore);
   await page.locator("details.more:has(#forget-book)").evaluate((d) => (d.open = true));
-  await page.click("#forget-book"); await idle();
+  // a double-click: it ran Forget twice and ended on "This workbook holds nothing Arcas saved." (AH-127)
+  await doubleClick("#forget-book"); await idle(); await page.waitForTimeout(400);
   const forgot = await text("#forget-state");
   ok((await held()).length === 0 && forgot.startsWith("Removed from this workbook: the limits you changed;") && forgot.includes("the codes of the rows you fixed or dismissed")
-    && (await page.evaluate((n) => __log.length === n, wrote0)), "Forget removes every key the pane saved, says which, and writes no cell - " + forgot);
+    && (await page.evaluate((n) => __log.length === n, wrote0)), "Forget, double-clicked, runs once: removes every key the pane saved, says which, and writes no cell - " + forgot);
   await page.reload(); await page.waitForSelector("#main-ui", { state: "visible" });
   ok((await held()).length === 0 && (await sheetNow()) === cellsBefore, "after a reload the workbook holds none of them, and every cell is as it was");
   await find();

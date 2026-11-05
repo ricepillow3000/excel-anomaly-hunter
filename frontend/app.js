@@ -3,9 +3,9 @@
 // -> Agent 3 in the engine checks AI fixes before they show, and every accepted fix after it is written.
 import { state } from "./hooks/use-state.js";
 import { $, show, only } from "./utils/dom.js";
-import { act } from "./hooks/use-action.js";
+import { act, oneClickEach } from "./hooks/use-action.js";
 import { getHealth } from "./services/api.js";
-import { saveLimits } from "./services/excel.js";
+import { activeSheet, saveLimits } from "./services/excel.js";
 import { powerBiOn, runScan, setPowerBi } from "./features/scan.js";
 import { clearHighlights } from "./features/highlight.js";
 import { applyFix, undoFix } from "./features/fix.js";
@@ -26,6 +26,7 @@ if (typeof Office !== "undefined") {
     show("sideload-msg", false);
     show("app-body");
     initMotion();
+    oneClickEach();
     $("scan").onclick = act(() => runScan(true, true)); // held: the skeleton stays long enough to be seen
     $("retry-health").onclick = checkHealth;
     $("clear-highlights").onclick = act(clearHighlights);
@@ -60,11 +61,7 @@ if (typeof Office !== "undefined") {
       notice(`Put back ${n(back)} auto-fixed cell${back === 1 ? "" : "s"}` + (left ? `; ${n(left)} that changed since (edited or sorted) ${left === 1 ? "was" : "were"} left alone.` : "."));
     });
     show("undo-auto", !!autoUndo());
-    Excel.run(async (ctx) => {
-      const sheet = ctx.workbook.worksheets.getActiveWorksheet().load("name");
-      await ctx.sync();
-      $("sheet-name").textContent = sheet.name;
-    }).catch(() => {}); // Excel refuses while a cell is being typed in: the name stays blank until the first scan (AH-58)
+    activeSheet().then((name) => { $("sheet-name").textContent = name; }).catch(() => {}); // Excel refuses while a cell is being typed in: the name stays blank until the first scan (AH-58)
     only("empty-state");
     checkHealth();
   });
