@@ -10,7 +10,7 @@ from cryptography.x509 import DNSName, IPAddress
 from cryptography.x509.verification import PolicyBuilder, Store, VerificationError
 from werkzeug.serving import make_server
 
-from anomaly_hunter.server import _already_running, create_app, make_cert, tls_context, version
+from anomaly_hunter.server import BROKE, _already_running, create_app, make_cert, tls_context, version
 
 
 def test_cert_chain_only_vouches_for_localhost(tmp_path):
@@ -187,7 +187,7 @@ def test_every_link_and_file_the_pane_pages_use_is_served():
         r = c.get(f"/{page}")
         assert r.status_code == 200 and "text/html" in r.content_type and r.headers["Content-Security-Policy"], page
         links = re.findall(r'(?:href|src)="([^"]+)"', html) + [s.split()[0] for s in re.findall(r'srcset="([^"]+)"', html)]
-        for link in {u for u in links if not re.match(r"https?://", u)}:
+        for link in {u for u in links if not re.match(r"https?://|tel:", u)}:  # tel: (the privacy page's phone, AH-125) is no file
             target, _, anchor = link.partition("#")
             if target:
                 assert c.get(f"/{target}").status_code == 200, (page, link)
@@ -274,7 +274,7 @@ def test_an_engine_bug_is_logged_not_leaked(monkeypatch):
     import anomaly_hunter.agents.scan_agent as srv  # the scan moved into Agent 1
     monkeypatch.setattr(srv, "score", lambda *a: (_ for _ in ()).throw(RuntimeError("pandas internal detail")))
     r = scan({"columns": ["Name", "Amt"], "rows": GOOD})
-    assert r.status_code == 500 and r.get_json() == {"error": "Engine error - details in server.log"}
+    assert r.status_code == 500 and r.get_json() == {"error": BROKE}
 
 
 def test_a_huge_whole_number_is_a_value_not_a_crash():
@@ -398,3 +398,39 @@ def test_a_log_that_cannot_be_moved_aside_still_lets_the_engine_start(tmp_path, 
     log.write("new run\n")
     log.close()
     assert (tmp_path / "server.log").read_text(encoding="utf-8") == "new run\n"
+
+
+def test_eight_people_scanning_the_same_sheet_at_once_all_get_the_same_whole_answer(tmp_path, caplog):
+    # AH-124 (John's 20 before going public, "simultaneous users"): the engine is one per PC, but several workbooks or
+    # a double-click can post /scan together, and pandas, the detectors and the fairness report share module state.
+    # Eight at once, through the real threaded HTTPS engine: each a 200, each the very rows one scan alone gives, and
+    # not one exception in the log
+    import json
+    import logging
+    import ssl as _ssl
+    import urllib.request
+    from concurrent.futures import ThreadPoolExecutor
+    columns, rows = make_clean_payload(200)
+    rows[50][1] = 1000.0  # one x10 slip, so the rows carry a reason to compare
+    alone = client().post("/scan", json={"columns": columns, "rows": rows}).get_json()["rows"]
+    assert any(r["severity"] for r in alone)
+    srv = live_engine(tmp_path)
+    ctx = _ssl.create_default_context(cafile=str(tmp_path / "ca.pem"))
+    caplog.set_level(logging.DEBUG)
+    start = threading.Barrier(8)
+    data = json.dumps({"columns": columns, "rows": rows}).encode()
+
+    def one(_):
+        req = urllib.request.Request(f"https://127.0.0.1:{srv.server_port}/scan", data, {"Content-Type": "application/json"})
+        start.wait(timeout=30)  # all eight leave together
+        with urllib.request.urlopen(req, context=ctx, timeout=120) as r:  # noqa: S310 - our own test engine
+            return r.status, json.load(r)["rows"]
+
+    try:
+        with ThreadPoolExecutor(8) as pool:
+            answers = list(pool.map(one, range(8)))
+    finally:
+        srv.shutdown()
+    assert [status for status, _ in answers] == [200] * 8
+    assert all(got == alone for _, got in answers)
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR or r.exc_info], caplog.text

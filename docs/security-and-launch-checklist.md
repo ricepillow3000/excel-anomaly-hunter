@@ -118,7 +118,7 @@ engine runs on each user's own PC beside their Excel, so items written for a web
 | Add accessibility alt text | Fixed in AH-87 | Every `<img>` is decorative with `alt=""` beside visible text; every inline SVG is now `aria-hidden` or labelled (9 in the pane's privacy and support pages were not), checked by a static test. |
 | Fix your color contrast ratio | Fixed in AH-87 | Input borders (1.7:1 to over 3:1), fixed and dismissed rows (2.7:1 to over 4.5:1), the site's filtered sample rows (1.8:1 to over 4.5:1) and placeholders now pass; a test measures the rendered colours. |
 | Add keyboard navigation | Fixed in AH-87 | Focus styles everywhere, buttons not clickable divs, roving tabs and Escape on the site's sample (tested); added: a "Skip to content" link on every site page (the first Tab), tested. |
-| Add your business details | Done | "Made by one person, John"; MIT licence in his name; contact through public GitHub Issues. No address or phone is needed for a free, non-commercial project, and none is invented. |
+| Add your business details | Done | "Made by one person, John"; MIT licence in his name; contact through public GitHub Issues, and since AH-125 and AH-126 his name, John Nguyen, and his phone, (770) 265-9930, on the privacy pages and both support pages. No address is needed for a free, non-commercial project, and none is invented. |
 | Get age consent for kids' data | N/A | No accounts, no sign-up, nothing collected about anyone; a business Excel tool. |
 | Add an unsubscribe link to your emails | N/A | No emails are sent and no addresses collected. |
 | License any stock images you use | Done (fixed in AH-87) | No stock images: the logo is John's own drawing (`docs/design/logo/`), the grain is generated. The font's SIL OFL text now ships beside the font in the pane and the exe, as it already did on the site. |
@@ -245,3 +245,117 @@ Left for John (not code): a Cloudflare WAF rate rule against floods of stranger 
 refused before Google, but count toward the Workers free plan's daily requests); whether to keep the developer-only
 Claude path (`ANTHROPIC_API_KEY`) in the exe; an own-key `ai_eval.py` run so the fix prompt can say rows are data (AH-109);
 a canary invite saved as the repository secret `RELAY_CANARY_INVITE` (AH-108); a second private copy of `relay/tokens.json`.
+
+## John's 20 before-going-public protections (AH-124, 2026-11-04)
+John listed 20 things an app should have before strangers use it. A Researcher checked each one against the code and
+its tests. 7 were already proven, 6 don't apply to an app with no database, no payments and no server of its own, and
+the 8 gaps were built, each with a test that failed first and passes now.
+
+| Item | Status | Where / evidence |
+|---|---|---|
+| 1. Rate limiting | Proven | The relay counts each invite's and everyone's daily calls before Google is asked (`relay/worker.js` caps and the `Counter`, burst test in `relay/test.mjs`). The engine runs one AI call at a time (`test_ai_load.py`). The engine itself listens only on 127.0.0.1 for one person. A Cloudflare WAF rule against stranger floods is John's to add. |
+| 2. API limits | Proven | Bodies up to 256 MB and 2 million cells (`MAX_CONTENT_LENGTH`, `MAX_CELLS` in `server.py`), an AI request of about 7 KB, at most 8 KB at the relay, 10 calls an invite and 20 for everyone a day (`test_api_security.py`, `relay/test.mjs`). |
+| 3. Error handling | Proven, and the words fixed | Every error is JSON in our own words (`test_every_post_route_answers_a_hostile_body_with_a_clear_4xx`, `test_an_unexpected_engine_error_answers_in_our_own_words`). The words themselves were fixed under item 5. |
+| 4. Loading states | Proven | The pane's scan skeleton (`e2e/run.mjs`, first scan), the website's download facts while GitHub answers (`tools/test_site.mjs`), "Asking AI…" on the Ask AI button. |
+| 5. Kind error wording | Built | The engine's and the relay's errors reach the pane word for word, and some were cold ("Engine error - details in server.log", "Bad request.", "The AI relay is misconfigured"). They now say what happened and what to do, and name server.log's folder in full (`%LOCALAPPDATA%\AnomalyHunter\server.log`). `test_every_error_the_engine_or_the_relay_can_show_a_user_is_plain_and_kind` reads every `error` and `message` of the engine's answers, every error ai/client.py raises and every error the relay answers, and holds them to the pane's plain-words rules. It failed on 44 places in the old code. The relay's new words go live at its next deploy. |
+| 6. Empty states | Proven | A sheet with only a header, a clean sheet (the summary alone, no empty list), and no key yet (`e2e/run.mjs`, steps 8 and 8b and the nokey run). |
+| 7. Failed requests | Proven | The engine down at start, mid-scan, mid-Accept and mid-AI call; an engine too old; a failed save; GitHub's API down or answering junk (`e2e/run.mjs`, `relay/test.mjs`, `tools/test_site.mjs`). |
+| 8. Timeouts | Proven, and the website fixed | The pane gives up on `/health` after 10 s and a request after 120 s, the engine on Google after 90 s, the relay on Google after 90 s. The website's call to GitHub for the checksum had no limit: a GitHub that never answered kept it waiting for good. It now gives up at 6 s and shows its usual defaults ("API never answers" in `tools/test_site.mjs`). |
+| 9. Duplicate submissions | Built (tests) | A double-click on Find problems sends one `/scan`, two clicks on Accept faster than the pane can redraw write one cell and send one `/check`, two on Ask AI send one `/fix` (`e2e/run.mjs` steps 8c and the ai run). Save key and Remove key were already tested. No fix was needed: every action already turns its buttons off before its first wait. |
+| 10. Duplicate payments | N/A | Nothing is sold; there is no payment code. |
+| 11. Slow database queries | N/A | No database. The relay keeps one Durable Object key, read and written once a call. |
+| 12. Database indexes | N/A | No database. |
+| 13. Pagination | Built (test) | The list shows the 50 surest rows and one "+ N more" line. A sheet with 5,208 rows flagged shows exactly 50 rows, "+ 5,158 more", and no task in the pane over 2 s (`e2e/run.mjs` step 8d). |
+| 14. Compression | N/A by choice | GitHub Pages gzips the website, its one font is a 27 KB woff2 and its PNGs are under 2 KB each. Arcas.exe is not packed with UPX, because antivirus tools flag packed files. |
+| 15. Upload limits | Proven | See item 2. A body over the limit is a 413 in JSON (`test_api_security.py`). |
+| 16. Caching | Proven where it helps | A finished AI answer is kept, so asking the same again never reaches Google (`test_ai_load.py`). A repeated scan is worked out again on purpose: the sheet may have changed (`docs/SYSTEMS-MAP.md`). |
+| 17. Uptime monitoring | Built | The daily `relay-live.yml` now also checks the website's three pages and the Arcas.exe download link (redirects followed, each a 2xx, a 20 s limit and one retry), so a broken deploy or a release without its exe fails a run John sees (`test_the_daily_probe_checks_the_public_website_and_the_download_link`). |
+| 18. Error logging | Proven, and the key kept out | Engine errors go to `server.log` with their details, the last run's kept as `server.log.1`. A Claude error that quoted the key went into server.log whole: every record is now written with each key and invite code on this PC blanked (`test_a_key_the_provider_echoes_never_reaches_server_log_or_the_answer`). |
+| 19. Simultaneous users | Built (test) | Eight scans of the same sheet at once through the real threaded HTTPS engine: all 200, each the very rows one scan alone gives, no exception in the log (`test_eight_people_scanning_the_same_sheet_at_once_all_get_the_same_whole_answer`). No fix was needed. |
+| 20. Backup restores | Built | `relay/restore-test.mjs` makes an invite list with two invites, loses it, restores it from the backup copy, loads it the way the relay loads `TOKENS`, and checks both invites work and the caps still count. It runs with `node relay/test.mjs` in the gate and in CI. The steps John runs against Cloudflare are in `docs/RUNBOOK.md`, "Restoring the invite list". |
+
+Left for John (not code): deploy the relay so its new words go live (`npx wrangler@4.151.1 deploy` from `relay/`); one
+real restore of the invite list against Cloudflare, dated in the runbook.
+
+## John's 10 so-we-don't-get-sued items (AH-125, 2026-11-04)
+Four were already built and tested. The other six were built, each with a test; the ones with code to fail failed
+first on the old code.
+
+| Item | Status | Where / test |
+|---|---|---|
+| 1. A privacy policy page | Proven | `PRIVACY.md`, the pane's `frontend/privacy.html` and the website's `site/privacy.html`, held as twins (`test_both_privacy_pages_name_every_place_data_goes_and_every_file_the_app_keeps`, `test_the_panes_privacy_sections_and_the_websites_are_word_for_word_the_same`). Every site page's footer now links it too (`tools/test_site.mjs`, "the footer does not link the privacy page"). |
+| 2. What data we collect | Proven | "What stays on your PC" lists every file the app keeps; the pane's settings keys are named and Forget clears them (`test_every_privacy_page_says_what_the_pane_keeps_how_to_clear_it_and_the_relays_terms_as_configured`, `test_privacy_promises.py`). |
+| 3. Where AI is used | Proven | "What AI help sends": Ask AI and Check words, what each sends, and where (`test_ask_ai_sends_no_more_rows_than_both_privacy_pages_say`). The pane says it beside the Ask AI box (`#fix-sends`). |
+| 4. Third parties | Proven, PyPI added to the test | "Who else sees something" names Google, Cloudflare, Anthropic, PyPI, GitHub and Microsoft; the twins' test now holds PyPI too (`test_fix.py`, `places`). |
+| 5. Our name | Built | The intro of all three pages: "Arcas is made and run by John Nguyen (GitHub: ricepillow3000)", how to reach him (the support page's GitHub form, or (770) 265-9930, a `tel:` link on the HTML pages) and never an email address (`test_every_privacy_page_names_who_runs_arcas_and_how_to_reach_him`, failed first). |
+| 6. Uploads not stored publicly | Built (test) | The relay passes a request to Google and keeps only the day's counter object `c` ({day, total, by}); a unique marker sent through /fix is in no stored value and no counter call (`relay/test.mjs`, "nothing the request said is stored"; a mutation that stored the body made it fail). On the PC, the AI cache keeps answers only (`test_ai_load.py`). |
+| 7. No public storage buckets | Built (test) | `relay/wrangler.toml` binds only the Counter Durable Object: no KV, R2, D1, queue or other store, and `[observability] enabled = false`, so Workers keeps no request logs (`test_the_relay_stores_no_upload_keeps_no_logs_and_has_no_public_bucket`). |
+| 8. Per-user protection | Proven | The engine answers only this PC and only the pane (`test_every_route_refuses_other_websites`); each invite has its own daily cap and is stored hashed (`relay/test.mjs`); the key and the invite code are sealed for the Windows account (`test_on_windows_the_saved_key_and_invite_code_are_sealed_and_never_plain_text`). |
+| 9. No fake testimonials | Built (guard) | No page had any; a test now refuses a testimonial, "trusted by", a star rating or a user count on the website, the pane's pages and README.md (`test_no_page_carries_a_testimonial_a_rating_or_a_user_count`). |
+| 10. A self-harm response in the AI chat | Built | `backend/anomaly_hunter/ai/care.py`: what someone types to Ask AI (never a cell) that reads as a person thinking of suicide or self-harm gets the engine's own message with the 988 Lifeline, findahelpline.com and the emergency number. It is decided before any key check or AI call: nothing is sent to Google or the relay, nothing is cached, and it works with no key. The prompt and the model are unchanged. The pane shows it as text in `#fix-care`, with no Accept. Spreadsheet talk ("kill the duplicates", "suicide rate by state", "die roll results") never triggers it (`test_care.py`, failed first; e2e "words of someone in crisis"; `test_the_helpline_message_is_plain_and_kind`). |
+
+Left for John (not code): nothing. The support page's "the only public ways to reach John" sentence now gives the phone
+too (AH-126, `test_both_support_pages_give_johns_phone_beside_the_question_form`).
+
+## John's website lists (AH-126, 2026-11-04)
+John's 16 website items and 20 "enterprise" items. Ten were already built and tested (a Researcher checked each one);
+the rest were built, each with a test in `tools/test_site.mjs` (static, or `--browser`) or `backend/tests/`. The tests
+for new behaviour failed first on the old code: the 404 page, the phone's menu, the hero's download in the first screen,
+the download bar, the support page's phone and thank-you, the counter, the terms page, the footers, the Open Graph card,
+the icons, the scroll regions and the checksum sentence. The cookie check passed on the old code too: no page ever set
+one, and it now holds that.
+
+| Item | Status | Where / test |
+|---|---|---|
+| 1. No sideways scroll | Proven | Every page at 320 and 390 px, text at 100% and 200% (AH-112), the 404 page and the open menu too ("other readers", AH-126 block). |
+| 2. A description on every page | Proven | `meta name="description"` on each page, the 404 page's its own (static check). |
+| 3. A title of its own on every page | Proven | "Arcas" then what the page is, no two the same (static check, four pages and the 404). |
+| 4. No broken links | Proven | Every local link, file and #anchor resolves; the 404 page's root-absolute links answer 200 from any depth. |
+| 5. Empty states | Proven | The pane's empty sheet and clean sheet (`e2e/run.mjs`); the site's sample has its "After fixes" state. |
+| 6. A mobile pass | Proven | Every page at 390 x 844 and a slow phone (4x CPU, slow 4G), targets and text sizes checked. |
+| 7. A sitemap | Proven | `site/sitemap.xml`: the four pages at their canonical addresses, never the 404 page. |
+| 8. Form error states | Proven | The first missing field takes focus, its message beside it (AH-114). |
+| 9. Loading states | Proven | The checksum's and the sample sheet's skeletons (AH-89). |
+| 10. Mobile breakpoints | Proven | 760 and 1100 px in `site/styles.css`, checked at 320, 375, 390, 1280 and 1440 px. |
+| 11. A custom 404 page | Built | `site/404.html`: the site's header and footer, no script, `noindex`, the exact CSP, the skip link first, links home, to the download, support and privacy, every path root-absolute so it works at any depth. Test server answers missing paths with it and a 404. Checked at 320 px with text at 200% and for contrast. |
+| 12. A mobile menu | Built | At 760 px and under, a Menu button before the links (`site/transition.js`, its own block; `styles.css` hides the closed links only under `data-js`, so with no script they show). Escape closes it and gives focus back; a link closes it; no motion under reduced motion. Tested at 375 px on every page, at 1280 px and with JavaScript off. |
+| 13. A sticky download bar on phones | Built | `#dock` on the home page (`site/home.js`, `dock()`): shown only on a phone, once the hero's download has scrolled away and while the download section is off screen, rising in by transform and opacity; the footer keeps room for it and the phone's home bar. CLS 0, contrast, hidden on a wide screen. |
+| 14. The main button above the fold | Built | The hero's "Download for Windows" (`.hero-cta`), fully in the first screen at 375 x 667 and 1280 x 720 (the hero starts higher on short screens). |
+| 15. Contact details | Built | The support page's contact block: John Nguyen and `tel:+17702659930`, never an email address; the pane's support sentence gives the phone too. |
+| 16. A thank-you after the form | Built | `#thanks` (`role="status"`, toggled with `hidden`) once the link to GitHub is followed: it says the question reaches John only after Submit on GitHub. The link is described by the ready text (`aria-describedby`). |
+| 17. Terms of use | Built | `site/terms.html`: free and MIT licensed, as is with no warranty, check before you rely on it, AI can be wrong, invite codes personal and capped, privacy page for data, dated, contact through support. In the sitemap and every footer. |
+| 18. Footer on every page | Built | Privacy, Terms, Support and the public repository, and "No cookies, no tracking of you.", on all five pages. |
+| 19. A sharing image | Built | `site/assets/og-card.png`, 1200 x 630, 18 KB, rendered from `docs/design/logo/mark-80.svg`; `og:image` with its size and alt, `twitter:card` `summary_large_image` and `twitter:image` on every page but the 404. |
+| 20. A full set of icons | Built | `crest2-180.png` (apple-touch-icon, on paper), `crest2-192.png` and `crest2-512.png` from `mark-80.svg`; the 180 and 192 linked on every page. Sizes checked from the files. |
+| 21. Alt text | Built (test) | Every `<img>` described or `alt=""` with `aria-hidden`, every inline svg hidden or named, on every page. |
+| 22. No placeholder text | Built (test) | No lorem, ipsum, TODO, TBD, example.com, Your Name, placeholder text or XXX in what a user reads (the checks table's "N/A and TBD placeholders" names what the app finds). |
+| 23. Outside links allowlisted | Built (test) | github.com/ricepillow3000 only on GitHub, aistudio.google.com, 988lifeline.org, findahelpline.com, signpath.io, signpath.org, the site's own address and goatcounter.com's privacy page. |
+| 24. Scrollable tables reachable by keyboard | Built | The sample's two `.scroll` boxes: `tabindex="0"`, `role="region"` and a name. |
+| 25. What to do if the checksum differs | Built | Step 1: "If they differ, delete the file and download it again." |
+| 26. Visit counting without cookies | Built, inert | `site/count.js`: one image request per page view to GoatCounter with the page's path alone, no referrer; silent with no code, on a PC's own copy, under Do Not Track and under Global Privacy Control. The CSP allows `https://*.goatcounter.com` as an image only, on the four pages that load it. Tested with the code empty (nothing sent) and with a code put in by the test (one request, only `p`). The privacy pages say so, and that the pane and the engine never contact it (`test_every_privacy_page_says_the_website_alone_may_count_page_views_and_what_the_counter_sends`). |
+| 27. A cookie banner | Not needed | No page sets a cookie: `document.cookie` is empty and no answer carries Set-Cookie on every page, the 404 too (`--browser`). GoatCounter's pixel sets none either. A banner asks consent for cookies or tracking a site does; this one does neither. |
+| 28. robots.txt | Skipped on purpose | Crawlers read robots.txt only at a domain's root, and this site lives under `/excel-anomaly-hunter/`, so one here would do nothing (a static check keeps it out). Add it when the site gets its own domain; until then the 404 page says `noindex` itself and the sitemap goes to a search console. |
+| 29. A privacy policy | Proven | `site/privacy.html` and its twins (AH-125), in every footer. |
+| 30. HTTPS and a strict CSP | Proven | GitHub Pages serves HTTPS; each page's CSP is checked word for word. |
+| 31. WCAG AA contrast | Proven | 31 page states measured in the browser, the new ones included: terms, 404, the open menu, the download bar and the thank-you. |
+| 32. A skip link | Proven | First on every page, the 404 too. |
+| 33. Speed on a slow phone | Proven | The home page's budgets at 4x CPU and slow 4G. |
+| 34. Reduced motion | Proven | Nothing moves under it, the menu and the download bar included. |
+| 35. Search and sharing tags | Proven | Canonical, `og:*` and the large Twitter card on the four pages. |
+| 36. Uptime monitoring | Proven | The daily `relay-live.yml` probe checks the site's pages and the download link (AH-124). |
+| 37. Compressed images | Proven (test) | Every picture in `site/assets` is 32 KB or less (static check, AH-126); the font is one 27 KB woff2 subset. |
+| 38. Clickable emails | Not applicable | John has no public email by choice: no page carries one (a static check refuses `mailto:` and any address); the phone is tap-to-call instead. |
+| 39. Error and success messages | Proven | The form's missing-field message (8), the ready box and the thank-you (16), the checksum's "If they differ" step (25), and the pane's own words for every engine error (AH-124). |
+
+How John's own words map to the rows: horizontal scroll 1; meta descriptions 2; favicon and favicon sets 20; page
+titles and meta title per page 3; compressed images 37; clickable emails 38; broken links 4; mobile menus 12;
+placeholder text 22; tested on mobile 6; empty state for mobile 5; mobile overflow 1; error and success messages 39;
+404 page and custom 404 11; clickable phone 15; CTA above the fold 14; meta description per page 2; Open Graph images 19;
+robots.txt 28; sitemap.xml 7; alt text 21; mobile breakpoints 10; sticky mobile CTA 13; loading states 9; form error
+states 8; thank-you page 16; privacy policy 29; terms page 17; cookie banner 27; analytics install 26; real contact
+address 15 (name, phone and GitHub, John's choice: no street address); public GitHub repo 18.
+
+GoatCounter, for John (three steps):
+1. Sign up at goatcounter.com and choose a code, the first part of your counter's address (`arcas` gives `arcas.goatcounter.com`).
+2. Put that code in `site/count.js`: `const COUNTER = "arcas";`.
+3. Push. Pages publishes the site and each visit is counted from then on; the privacy pages already say so.

@@ -11,13 +11,20 @@ import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const SITE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "site");
-const PAGES = ["index.html", "privacy.html", "support.html"];
-const SCRIPTS = ["boot.js", "motion.js", "field.js", "home.js", "support.js", "transition.js"];
+const PAGES = ["index.html", "privacy.html", "support.html", "terms.html"];
+// the page GitHub Pages shows for a missing address (AH-126): no script, kept out of search (noindex) and out of the
+// sitemap, and every link on it root-absolute, since it is served at whatever depth the missing address had
+const MISSING = "404.html";
+const SCRIPTS = ["boot.js", "motion.js", "field.js", "home.js", "support.js", "transition.js", "count.js"];
 const REPO = "https://github.com/ricepillow3000/excel-anomaly-hunter";
 const API = "https://api.github.com/repos/ricepillow3000/excel-anomaly-hunter/releases/latest";
 // where GitHub Pages publishes each page (pages.yml uploads site/ whole): the canonical, og:url and sitemap.xml say these
 const SITE_URL = "https://ricepillow3000.github.io/excel-anomaly-hunter/";
-const PUBLIC = { "index.html": SITE_URL, "privacy.html": SITE_URL + "privacy.html", "support.html": SITE_URL + "support.html" };
+const PUBLIC = { "index.html": SITE_URL, "privacy.html": SITE_URL + "privacy.html", "support.html": SITE_URL + "support.html", "terms.html": SITE_URL + "terms.html" };
+// the CSP of every page. img-src names GoatCounter for the visit counter's one pixel (count.js, AH-126), which sends
+// nothing until John sets his code there; the 404 page loads no script, so it keeps the stricter policy
+const CSP = (counter) => `default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:${counter ? " https://*.goatcounter.com" : ""}; font-src 'self'; connect-src 'self' ${new URL(API).origin}; base-uri 'none'; form-action 'none'`;
+const ROOT_PATH = new URL(SITE_URL).pathname; // "/excel-anomaly-hunter/"
 const read = (f) => fs.readFileSync(path.join(SITE, f), "utf8");
 const html = Object.fromEntries(PAGES.map((p) => [p, read(p)]));
 const TITLE = Object.fromEntries(PAGES.map((p) => [p, (/<title>([^<]*)<\/title>/.exec(html[p]) || [])[1]]));
@@ -27,7 +34,7 @@ const attr = (src, name) => [...src.matchAll(/\s([a-z-]+)="([^"]*)"/g)].filter((
 
 // every page is one a visitor can reach: an old mock left in site/ (tool-preview.html) was served to anyone who guessed it
 const linked = new Set(PAGES.flatMap((p) => attr(html[p], "href")).map((h) => h.split("#")[0]).filter((h) => h && !/^[a-z]+:/.test(h)));
-for (const f of fs.readdirSync(SITE).filter((f) => f.endsWith(".html"))) assert.ok(PAGES.includes(f) && linked.has(f), `${f} is not linked from the site`);
+for (const f of fs.readdirSync(SITE).filter((f) => f.endsWith(".html") && f !== MISSING)) assert.ok(PAGES.includes(f) && linked.has(f), `${f} is not linked from the site`);
 
 for (const p of PAGES) {
   const src = html[p];
@@ -35,13 +42,13 @@ for (const p of PAGES) {
   assert.deepEqual(own.filter((id, i) => own.indexOf(id) !== i), [], `${p}: duplicate ids`);
   // every local link and file resolves, and every #anchor exists on the page it points to
   for (const ref of [...attr(src, "href"), ...attr(src, "src"), ...attr(src, "srcset").map((s) => s.split(" ")[0])]) {
-    if (/^(https?:|mailto:)/.test(ref)) continue;
+    if (/^(https?:|mailto:|tel:)/.test(ref)) continue; // a tel: link (the privacy page's phone, AH-125) is no file
     const [file, anchor] = ref.split("#");
     const target = file || p;
     assert.ok(fs.existsSync(path.join(SITE, target)), `${p}: ${ref} points to a missing file`);
     if (anchor) assert.ok(ids(read(target)).includes(anchor), `${p}: ${ref} points to a missing anchor`);
   }
-  for (const name of ["aria-controls", "aria-labelledby", "for"]) for (const id of attr(src, name)) assert.ok(own.includes(id), `${p}: ${name}="${id}" names no element`);
+  for (const name of ["aria-controls", "aria-labelledby", "aria-describedby", "for"]) for (const id of attr(src, name).flatMap((v) => v.split(" "))) assert.ok(own.includes(id), `${p}: ${name}="${id}" names no element`);
   // nothing loads from outside: fonts, styles, scripts and images are our own files; the CSP makes the browser hold to it
   // (the one exception, <link rel="canonical">, loads nothing: it names the page's own public address, checked below)
   for (const tag of src.match(/<(script|link|img)\b[^>]*>/g)) {
@@ -50,18 +57,131 @@ for (const p of PAGES) {
     assert.ok(!/^(https?:)?\/\//.test(url), `${p}: loads ${url} from outside`);
   }
   assert.ok(!/<script>|<style|\sstyle="|\son[a-z]+="/.test(src), `${p}: inline script or style (the CSP would block it)`);
-  assert.ok(src.includes(`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' ${new URL(API).origin}; base-uri 'none'; form-action 'none'">`), `${p}: CSP missing or changed`);
+  assert.ok(src.includes(`<meta http-equiv="Content-Security-Policy" content="${CSP(true)}">`), `${p}: CSP missing or changed`);
   // axe 4.10, 2026-10-20: an empty header cell is read as nothing; the announcement line sat outside every landmark
   assert.ok(!/<th[^>]*><\/th>/.test(src), `${p}: an empty <th>`);
   assert.ok(/<aside class="notice-bar" aria-label="Announcement">/.test(src), `${p}: the announcement line is not a landmark`);
   assert.ok(/<body[^>]*>\s*(?:<!--[\s\S]*?-->\s*)?<a class="skip-link" href="#page">Skip to content<\/a>/.test(src), `${p}: "Skip to content" is not the first thing in <body>`);
   // page transitions (AH-73): one swappable container a page, and every script on every page (the document never
   // reloads, so a page reached by a transition runs only what the first page loaded)
-  assert.equal(src.match(/<main\b[^>]*>/g).join(), `<main id="page" data-page="${{ "index.html": "home", "privacy.html": "privacy", "support.html": "support" }[p]}">`, `${p}: not one <main id="page">`);
+  assert.equal(src.match(/<main\b[^>]*>/g).join(), `<main id="page" data-page="${{ "index.html": "home", "privacy.html": "privacy", "support.html": "support", "terms.html": "terms" }[p]}">`, `${p}: not one <main id="page">`);
   assert.deepEqual(attr(src, "src").filter((s) => s.endsWith(".js")), SCRIPTS, `${p}: does not load every script once`);
 }
 // a box that scrolls sideways must take keyboard focus, or a keyboard user can't read its end
 assert.ok(/<code class="line" tabindex="0">/.test(html["index.html"]), "the PowerShell line scrolls but can't be focused");
+// ... and so must the sample's tables, which scroll sideways on a phone: a named region a keyboard can reach (AH-126)
+{
+  const boxes = html["index.html"].match(/<div class="scroll"[^>]*>/g) || [];
+  assert.ok(boxes.length === 2 && boxes.every((b) => /\stabindex="0"/.test(b) && /\srole="region"/.test(b) && /\saria-label="[^"]{8,}"/.test(b)), `a sample table's scroll box is not a named region with tabindex="0": ${boxes}`);
+}
+
+// ---- John's website lists (AH-126, 2026-11-04) ----
+const missing = read(MISSING);
+const ALL = [...PAGES, MISSING];
+const allHtml = { ...html, [MISSING]: missing };
+const metaOf = (src, key, name) => [...src.matchAll(/<meta ([a-z]+)="([^"]+)" content="([^"]*)">/g)].filter((m) => m[1] === key && m[2] === name).map((m) => m[3]);
+const pngSize = (f) => { const b = fs.readFileSync(path.join(SITE, f)); assert.equal(b.toString("latin1", 1, 4), "PNG", `${f} is not a PNG`); return [b.readUInt32BE(16), b.readUInt32BE(20), b.length]; };
+// the 404 page: its own title and description, noindex, the exact CSP with no counter, the skip link first, the site's
+// look (the stylesheet and font by root-absolute paths), and links home, to the download, support and privacy
+{
+  const src = missing, own = ids(src);
+  assert.ok(/^Arcas\b.{10,}$/.test((/<title>([^<]*)<\/title>/.exec(src) || [])[1] || ""), "404.html: no title of its own");
+  assert.ok((metaOf(src, "name", "description")[0] || "").length >= 30, "404.html: no description");
+  assert.deepEqual(metaOf(src, "name", "robots"), ["noindex"], "404.html: not noindex");
+  assert.ok(src.includes(`<meta http-equiv="Content-Security-Policy" content="${CSP(false)}">`), "404.html: CSP missing or changed");
+  assert.ok(!/<script\b|<link rel="canonical"|\son[a-z]+="|\sstyle="|<style/.test(src), "404.html: a script, an inline style or a canonical");
+  assert.ok(/<body[^>]*>\s*<a class="skip-link" href="#page">Skip to content<\/a>/.test(src), "404.html: the skip link is not first in <body>");
+  assert.equal(src.match(/<main\b[^>]*>/g).join(), '<main id="page" data-page="missing">', "404.html: not one <main id=\"page\">");
+  assert.deepEqual(own.filter((id, i) => own.indexOf(id) !== i), [], "404.html: duplicate ids");
+  for (const ref of [...attr(src, "href"), ...attr(src, "src")]) {
+    if (/^(https:|tel:)/.test(ref) || ref === "#page") continue;
+    assert.ok(ref.startsWith(ROOT_PATH), `404.html: ${ref} is not root-absolute (the page is served at any depth)`);
+    const [file, anchor] = ref.slice(ROOT_PATH.length).split("#");
+    assert.ok(fs.existsSync(path.join(SITE, file || "index.html")), `404.html: ${ref} points to a missing file`);
+    if (anchor) assert.ok(ids(read(file || "index.html")).includes(anchor), `404.html: ${ref} points to a missing anchor`);
+  }
+  for (const href of ["", "index.html#download", "support.html", "privacy.html", "styles.css"]) assert.ok(attr(src, "href").includes(ROOT_PATH + href), `404.html: no link to ${ROOT_PATH + href}`);
+}
+// every page's footer: Privacy, Terms, Support and the public repository, and the note that the site tracks no one
+for (const p of ALL) {
+  const foot = (/<footer[\s\S]*<\/footer>/.exec(allHtml[p]) || [""])[0], hrefs = attr(foot, "href").map((h) => (h.startsWith(ROOT_PATH) ? h.slice(ROOT_PATH.length) : h));
+  for (const want of ["privacy.html", "terms.html", "support.html", REPO]) assert.ok(hrefs.includes(want), `${p}: the footer does not link ${want}`);
+  assert.ok(foot.includes("No cookies, no tracking of you."), `${p}: the footer lacks "No cookies, no tracking of you."`);
+}
+// the phone's menu: a Menu button right before the links it opens; styles.css hides those links only once JavaScript
+// has marked the page (boot.js's data-js), so with no script they show
+for (const p of PAGES) assert.ok(html[p].includes('<button class="menu-btn" type="button" aria-expanded="false" aria-controls="main-nav">Menu</button><nav class="links" id="main-nav" aria-label="Main">'), `${p}: no Menu button before the links`);
+// the home page: the hero's main button goes to the download, and the phone's download bar waits hidden for home.js
+assert.ok(/<div class="hero-cta"><a class="btn btn-primary" href="#download">Download for Windows<\/a>/.test(html["index.html"]), "the hero has no main download button");
+assert.ok(/<div class="dock" id="dock" hidden><a class="btn btn-primary" href="#download">Download for Windows<\/a><\/div>/.test(html["index.html"]), "the home page has no hidden download bar");
+for (const p of PAGES.filter((p) => p !== "index.html")) assert.ok(!html[p].includes('id="dock"'), `${p}: a download bar off the home page`);
+// what to do when the checksum differs
+assert.ok(html["index.html"].includes("If they differ, delete the file and download it again."), "the checksum step does not say what to do when the hashes differ");
+// the support page: John's name and phone (a tel: link, never an email address), and the thank-you once the link to
+// GitHub is followed, announced as a status; the ready text describes the link
+{
+  const src = html["support.html"];
+  assert.ok(src.includes('<a href="tel:+17702659930">(770) 265-9930</a>') && /John Nguyen/.test(src), "support.html: no contact block with John Nguyen and his phone");
+  assert.ok(!/mailto:|[\w.+-]+@[\w-]+\.[a-z]{2,}/i.test(src), "support.html: an email address");
+  assert.ok(/<span id="ready">Ready\./.test(src) && /<a [^>]*id="open"[^>]*aria-describedby="ready"/.test(src), "support.html: the link to GitHub is not described by its ready text");
+  assert.ok(/<p id="thanks" role="status" hidden>Thanks\./.test(src), "support.html: no hidden thank-you status");
+}
+// the visit counter: our own few lines, inert until John puts his GoatCounter code in COUNTER, and never GoatCounter's script
+{
+  const src = read("count.js");
+  // empty until John signs up, then his code (docs/security-and-launch-checklist.md, AH-126): the shape of a host's first part
+  assert.ok(/^\s*const COUNTER = "[a-z0-9-]{0,63}";$/m.test(src), "count.js: COUNTER is not one string constant holding an empty or a GoatCounter code");
+  assert.ok(src.includes('"https://" + COUNTER + ".goatcounter.com/count?p=" + encodeURIComponent(location.pathname)'), "count.js: the pixel is not the page's path alone");
+  for (const p of ALL) assert.ok(!/gc\.zgo\.at|goatcounter\.com\/count\.js/.test(allHtml[p]), `${p}: loads GoatCounter's own script`);
+}
+// compressed images (John's website list, AH-126): every picture the site ships stays small, so a phone on slow 4G
+// pays for none of them; the largest today is the 512 px icon at 19 KB
+for (const f of fs.readdirSync(path.join(SITE, "assets")).filter((f) => /\.(png|jpe?g|webp|gif|svg)$/.test(f))) {
+  const kb = fs.statSync(path.join(SITE, "assets", f)).size / 1024;
+  assert.ok(kb <= 32, `assets/${f} is ${Math.round(kb)} KB: compress it to 32 KB or less`);
+}
+// Open Graph: one 1200 x 630 card, named on every page with its size and words, and the large Twitter card
+{
+  const [w, h, bytes] = pngSize("assets/og-card.png");
+  assert.ok(w === 1200 && h === 630 && bytes <= 120 * 1024, `assets/og-card.png is ${w} x ${h}, ${Math.round(bytes / 1024)} KB`);
+  for (const p of PAGES) {
+    const src = html[p], img = SITE_URL + "assets/og-card.png";
+    for (const [key, name, value] of [["property", "og:image", img], ["property", "og:image:width", "1200"], ["property", "og:image:height", "630"], ["name", "twitter:card", "summary_large_image"], ["name", "twitter:image", img]])
+      assert.deepEqual(metaOf(src, key, name), [value], `${p}: ${name} is not ${value}`);
+    assert.ok((metaOf(src, "property", "og:image:alt")[0] || "").length >= 20, `${p}: no og:image:alt`);
+  }
+}
+// the icons: 32 and 64 for tabs, 180 for an iPhone's home screen, 192 for Android, 512 for an install prompt
+{
+  for (const [f, n] of [["crest2-32.png", 32], ["crest2-64.png", 64], ["crest2-180.png", 180], ["crest2-192.png", 192], ["crest2-512.png", 512]]) {
+    const [w, h] = pngSize("assets/" + f);
+    assert.ok(w === n && h === n, `assets/${f} is ${w} x ${h}, not ${n} x ${n}`);
+  }
+  for (const p of ALL) {
+    const at = p === MISSING ? ROOT_PATH : "";
+    assert.ok(allHtml[p].includes(`<link rel="apple-touch-icon" href="${at}assets/crest2-180.png">`) && allHtml[p].includes(`<link rel="icon" href="${at}assets/crest2-192.png" sizes="192x192">`), `${p}: no 180 apple-touch-icon or 192 icon`);
+  }
+}
+// every image is described or marked as decoration, every inline drawing is hidden from readers or named, no
+// placeholder is left in what a user reads, and every outside link goes to a host the site already uses
+{
+  const HOSTS = ["github.com", "aistudio.google.com", "988lifeline.org", "findahelpline.com", "signpath.io", "signpath.org", "ricepillow3000.github.io", "www.goatcounter.com"];
+  const PLACEHOLDER = /lorem|ipsum|\bTODO\b|\bTBD\b|example\.com|Your Name|placeholder text|\bXXX\b/i;
+  const SAID = ["N/A and TBD placeholders"]; // the Completeness check finds a "TBD" left in a sheet: it names it, it is not one
+  for (const p of ALL) {
+    const src = allHtml[p];
+    for (const tag of src.match(/<img\b[^>]*>/g) || []) assert.ok(/\salt="[^"]+"/.test(tag) || (/\salt=""/.test(tag) && /\saria-hidden="true"/.test(tag)), `${p}: an image with no alt: ${tag}`);
+    for (const tag of src.match(/<svg\b[^>]*>/g) || []) assert.ok(/\saria-hidden="true"/.test(tag) || /\saria-label="[^"]+"/.test(tag), `${p}: an inline svg neither hidden nor named: ${tag.slice(0, 80)}`);
+    let text = src.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<!--[\s\S]*?-->/g, " ").replace(/<(?![^>]*\s(?:alt|aria-label|placeholder|title|content)=)[^>]*>/g, " ");
+    for (const ok of SAID) text = text.split(ok).join(" ");
+    const hit = PLACEHOLDER.exec(text);
+    assert.ok(!hit, `${p}: a placeholder left in what a user reads: "${hit && hit[0]}"`);
+    for (const href of attr(src, "href").filter((h) => /^https?:/.test(h))) {
+      const u = new URL(href);
+      assert.ok(u.protocol === "https:" && HOSTS.includes(u.host) && (u.host !== "github.com" || u.pathname.startsWith("/ricepillow3000")), `${p}: links outside the allowed hosts: ${href}`);
+    }
+  }
+}
 // SignPath's free open-source signing (AH-100) asks for "Code signing policy" on the home and download pages, with the
 // sentence its releases will carry; until the exe is signed the page must say it is not, never claim a signature
 {
@@ -76,6 +196,8 @@ assert.ok(/<code class="line" tabindex="0">/.test(html["index.html"]), "the Powe
   assert.ok(/Not code-signed yet/.test(sig) && /<a href="#code-signing">Code signing policy<\/a>/.test(sig), "the download facts' Signature does not say not code-signed yet with a link to the code signing policy");
   for (const p of PAGES) assert.ok(/<footer[\s\S]*<a href="(index\.html)?#code-signing">Code signing policy<\/a>[\s\S]*<\/footer>/.test(html[p]), `${p}: the footer does not link the code signing policy`);
 }
+// AH-125: the privacy policy is one click from every page, in the footer as well as the header
+for (const p of PAGES) assert.ok(/<footer[\s\S]*<a href="privacy\.html"[^>]*>[\s\S]*<\/footer>/.test(html[p]), `${p}: the footer does not link the privacy page`);
 
 // motion (AH-83): content rises in as a .reveal-item, never scrubbed by the scroll (the old data-scrub hooks are gone), and
 // every group of them that cascades is marked data-reveal-group
@@ -97,7 +219,7 @@ const ENTERED = msOf("--enter-lead") + 4 * msOf("--enter-step") + msOf("--enter-
   for (const prop of moved) assert.ok(["transform", "translate", "opacity"].includes(prop), `styles.css animates ${prop}, which the GPU cannot composite alone`);
 }
 for (const url of css.match(/url\([^)]*\)/g)) assert.ok(/^url\("(data:|assets\/)/.test(url), `styles.css loads ${url}`);
-const used = PAGES.map((p) => html[p]).join("") + SCRIPTS.map(read).join("");
+const used = PAGES.map((p) => html[p]).join("") + read(MISSING) + SCRIPTS.map(read).join("");
 const classes = new Set(used.match(/class="[^"]*"/g).flatMap((c) => c.slice(7, -1).split(/\s+/)));
 for (const c of new Set(css.replace(/url\([^)]*\)/g, "").match(/\.[a-zA-Z_][\w-]*/g))) assert.ok(classes.has(c.slice(1)), `styles.css styles ${c}, which no page uses`);
 
@@ -107,12 +229,12 @@ for (const m of css.matchAll(/letter-spacing\s*:\s*([^;}]+)/g)) assert.ok(!/^-/.
 // AH-120: everything that acts as a button shows it is pressed; a hover alone said nothing to a finger on a phone
 {
   const selectors = [...css.matchAll(/([^{}]+)\{/g)].flatMap((m) => m[1].split(",").map((x) => x.trim().replace(/\s+/g, " ")));
-  for (const sel of [".btn", ".links .btn-trim", ".typology button", ".tabs button", ".rowbtn", ".m-close", ".faq summary"])
+  for (const sel of [".btn", ".links .btn-trim", ".typology button", ".tabs button", ".rowbtn", ".m-close", ".faq summary", ".menu-btn"])
     assert.ok(selectors.includes(sel + ":active"), `styles.css: no pressed (:active) look for ${sel}`);
 }
 // AH-119: each page names itself to search engines and to a shared link: its own title (Arcas first, then what the page
-// is), a description, a canonical at its public address, and the basic Open Graph tags (no og:image: the only images are
-// the 32 and 64 px marks, under the 200 px a card needs). sitemap.xml lists exactly the three pages at those addresses.
+// is), a description, a canonical at its public address, and the basic Open Graph tags (the 1200 x 630 card since AH-126,
+// checked above). sitemap.xml lists exactly the four pages at those addresses, never the 404 page.
 // No robots.txt: a project site lives under /excel-anomaly-hunter/ and crawlers read robots.txt only at the domain's
 // root, so one here would do nothing; the sitemap is what gets submitted to a search console
 {
@@ -127,13 +249,13 @@ for (const m of css.matchAll(/letter-spacing\s*:\s*([^;}]+)/g)) assert.ok(!/^-/.
     assert.deepEqual([...src.matchAll(/<link rel="canonical" href="([^"]*)">/g)].map((m) => m[1]), [PUBLIC[p]], `${p}: the canonical is not ${PUBLIC[p]}`);
     for (const [prop, want] of [["og:title", title], ["og:description", desc[0]], ["og:url", PUBLIC[p]], ["og:type", "website"], ["og:site_name", "Arcas"]])
       assert.deepEqual(meta(src, "property", prop), [want], `${p}: ${prop} is not "${want}"`);
-    assert.deepEqual(meta(src, "name", "twitter:card"), ["summary"], `${p}: no twitter:card`);
+    assert.deepEqual(meta(src, "name", "twitter:card"), ["summary_large_image"], `${p}: no twitter:card`);
   }
   const map = read("sitemap.xml");
   assert.ok(/^<\?xml version="1\.0" encoding="UTF-8"\?>\s*<urlset xmlns="http:\/\/www\.sitemaps\.org\/schemas\/sitemap\/0\.9">[\s\S]*<\/urlset>\s*$/.test(map), "sitemap.xml is not a sitemap");
   const body = map.replace(/<!--[\s\S]*?-->/g, "").replace(/^<\?xml[^>]*\?>\s*<urlset[^>]*>|<\/urlset>\s*$/g, "");
   assert.ok(/^(\s*<url>\s*<loc>[^<]+<\/loc>\s*<\/url>)*\s*$/.test(body), "sitemap.xml holds more than <url><loc> entries");
-  assert.deepEqual([...body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]), PAGES.map((p) => PUBLIC[p]), "sitemap.xml does not list exactly the three pages at their canonical addresses");
+  assert.deepEqual([...body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]), PAGES.map((p) => PUBLIC[p]), "sitemap.xml does not list exactly the four pages at their canonical addresses");
   assert.ok(!fs.existsSync(path.join(SITE, "robots.txt")), "robots.txt under a project site's path is never read");
 }
 
@@ -154,9 +276,15 @@ const req = createRequire(import.meta.url);
 const pw = await import(process.env.PLAYWRIGHT || "playwright").catch(() => import(pathToFileURL(req.resolve("playwright", { paths: [process.env.NODE_PATH || ""] })).href));
 const { chromium } = pw.default || pw;
 const TYPES = { ".html": "text/html", ".css": "text/css", ".js": "text/javascript", ".png": "image/png", ".woff2": "font/woff2" };
+// GitHub Pages serves the site under /excel-anomaly-hunter/ and answers any missing path there with 404.html and a 404
+// status (AH-126); this server does both, and keeps serving the pages at its root as the checks above always had them
 const server = http.createServer((q, s) => {
-  const f = path.join(SITE, decodeURIComponent(new URL(q.url, "http://x").pathname).replace(/^\/$/, "/index.html"));
-  if (!f.startsWith(SITE) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { s.writeHead(404); return s.end(); }
+  const f = path.join(SITE, decodeURIComponent(new URL(q.url, "http://x").pathname).replace(/^\/excel-anomaly-hunter(?=\/)/, "").replace(/\/$/, "/index.html"));
+  if (!f.startsWith(SITE) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) {
+    const missing = path.join(SITE, "404.html");
+    if (!fs.existsSync(missing)) { s.writeHead(404); return s.end(); }
+    s.writeHead(404, { "Content-Type": "text/html" }); return s.end(fs.readFileSync(missing));
+  }
   s.writeHead(200, { "Content-Type": TYPES[path.extname(f)] || "application/octet-stream" }); s.end(fs.readFileSync(f));
 });
 await new Promise((ok) => server.listen(0, "127.0.0.1", ok));
@@ -187,7 +315,7 @@ const json = (body, status = 200) => (r) => r.fulfill({ status, contentType: "ap
 // field's own motion (its pointer bend, its scroll-linked shape, its inversion on the band) name a GPU instead
 const GPU = () => { const get = WebGL2RenderingContext.prototype.getParameter;
   WebGL2RenderingContext.prototype.getParameter = function (k) { return k === 0x1F01 || k === 0x9246 ? "ANGLE (a test GPU)" : get.call(this, k); }; };
-async function open(file, { width = 1280, height = 900, api = json(release), motion = "no-preference", until = "networkidle", init = null, gpu = false, js = true, setup = null, colors = "none" } = {}) {
+async function open(file, { width = 1280, height = 900, api = json(release), motion = "no-preference", until = "networkidle", init = null, gpu = false, js = true, setup = null, colors = "none", url = null } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height }, reducedMotion: motion, javaScriptEnabled: js, forcedColors: colors });
   const page = await ctx.newPage();
   if (gpu) await page.addInitScript(GPU);
@@ -200,7 +328,7 @@ async function open(file, { width = 1280, height = 900, api = json(release), mot
   await page.route("https://api.github.com/**", api);
   await page.route(/^https:\/\/(?!api\.github\.com)/, (r) => r.abort()); // a page must never reach anywhere else
   if (setup) await setup(page);
-  await page.goto(BASE + file, { waitUntil: until });
+  await page.goto(url || BASE + file, { waitUntil: until });
   return { ctx, page, problems, outside };
 }
 const done = async ({ ctx, problems, outside }, label, allowed = []) => {
@@ -209,6 +337,191 @@ const done = async ({ ctx, problems, outside }, label, allowed = []) => {
   await ctx.close();
 };
 
+// ---- John's website lists (AH-126, 2026-11-04): the 404 page, the phone's menu, the home page's download bar, the hero's
+// download above the fold, the support form's thank-you, the visit counter that sends nothing until John sets it up, and
+// no cookie anywhere. Each check collects what it finds and the group fails once with all of it ----
+{
+  const miss = [];
+  const want = (ok, what) => { if (!ok) miss.push(what); };
+  const overflow = (p) => p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  const { contrastProblems } = await import(pathToFileURL(path.join(SITE, "..", "e2e", "contrast.mjs")).href);
+  // the 404 page: Pages serves it, with a 404 status, for any missing path under the site's own; every link on it is
+  // root-absolute, so it works at any depth (/excel-anomaly-hunter/a/b/c too), and it reads at 320 px with text at 200%
+  for (const at of ["excel-anomaly-hunter/no-such-page", "excel-anomaly-hunter/a/b/c.html"]) for (const [width, size] of [[320, "200%"], [1280, "100%"]]) {
+    let status = 0;
+    const t = await open("", { width, height: 800, motion: "reduce", url: BASE + at, setup: (p) => p.on("response", (r) => { if (r.url() === BASE + at) status = r.status(); }) });
+    const p = t.page;
+    t.problems.splice(0, t.problems.length, ...t.problems.filter((x) => x !== `404 ${BASE + at}`));
+    await p.evaluate((size) => { document.documentElement.style.fontSize = size; }, size);
+    const r = await p.evaluate(() => ({ title: document.title, h1: (document.querySelector("h1") || {}).textContent || "", robots: (document.querySelector('meta[name="robots"]') || {}).content || "",
+      hrefs: [...document.querySelectorAll("a[href]")].map((a) => a.getAttribute("href")), scripts: document.scripts.length, font: getComputedStyle(document.body).fontFamily }));
+    want(status === 404, `AH-126 404 at /${at}: answered ${status}, not 404`);
+    want(/^Arcas\b/.test(r.title) && r.h1.length > 5 && r.robots === "noindex" && r.scripts === 0, `AH-126 404 at /${at}: ${JSON.stringify(r)}`);
+    want(/Plus Jakarta Sans/.test(r.font), `AH-126 404 at /${at}: the site's styles did not load (${r.font})`);
+    for (const href of ["/excel-anomaly-hunter/", "/excel-anomaly-hunter/index.html#download", "/excel-anomaly-hunter/support.html", "/excel-anomaly-hunter/privacy.html"])
+      want(r.hrefs.includes(href), `AH-126 404 at /${at}: no link to ${href}`);
+    for (const href of r.hrefs.filter((h) => h.startsWith("/"))) {
+      const got = await p.request.get(BASE + href.slice(1).split("#")[0]);
+      want(got.status() === 200, `AH-126 404 at /${at}: ${href} answers ${got.status()}`);
+    }
+    const over = await overflow(p);
+    want(over <= 0, `AH-126 404 at /${at}, ${width}px text ${size}: scrolls ${over} px sideways`);
+    const bad = await p.evaluate(contrastProblems);
+    want(!bad.length, `AH-126 404 at /${at}, ${width}px: contrast ${JSON.stringify(bad)}`);
+    await done(t, `404 page at /${at}, ${width}px`);
+  }
+  // the phone's menu (375 x 667): the links wait behind a Menu button, which opens them, closes on Escape (focus back on
+  // it) and on a link; open, nothing scrolls sideways and the links are next on the keyboard. Wider, the links show and
+  // the button does not; with no JavaScript the links show
+  for (const file of PAGES) {
+    const t = await open(file, { width: 375, height: 667, motion: "reduce" });
+    const p = t.page;
+    const menu = () => p.evaluate(() => { const b = document.querySelector(".menu-btn"), n = document.getElementById("main-nav"), r = b && b.getBoundingClientRect();
+      return { btn: !!b && b.getClientRects().length > 0, size: r ? [Math.round(r.width), Math.round(r.height)] : [], expanded: b ? b.getAttribute("aria-expanded") : null,
+        links: !!n && n.getClientRects().length > 0 && n.getBoundingClientRect().height > 0, focus: document.activeElement === b ? "button" : document.activeElement.closest && document.activeElement.closest("#main-nav") ? "nav" : document.activeElement.tagName,
+        anims: document.getAnimations().length }; });
+    const m0 = await menu();
+    want(m0.btn && m0.expanded === "false" && !m0.links && m0.size[0] >= 24 && m0.size[1] >= 24, `AH-126 menu on ${file} at 375px, at load: ${JSON.stringify(m0)}`);
+    if (!m0.btn) { await done(t, `menu on ${file}`, [API]); continue; }
+    await p.click(".menu-btn");
+    const m1 = await menu();
+    want(m1.expanded === "true" && m1.links && m1.anims === 0, `AH-126 menu on ${file} at 375px, opened: ${JSON.stringify(m1)}`);
+    want((await overflow(p)) <= 0, `AH-126 menu on ${file} at 375px: scrolls sideways when open`);
+    const bad = await p.evaluate(contrastProblems);
+    want(!bad.length, `AH-126 menu on ${file} at 375px, open: contrast ${JSON.stringify(bad)}`);
+    await p.focus(".menu-btn"); await p.keyboard.press("Tab");
+    want((await menu()).focus === "nav", `AH-126 menu on ${file}: Tab from the open menu's button does not reach its links`);
+    await p.keyboard.press("Escape");
+    const m2 = await menu();
+    want(m2.expanded === "false" && !m2.links && m2.focus === "button", `AH-126 menu on ${file}: Escape ${JSON.stringify(m2)}`);
+    await p.keyboard.press("Enter");
+    want((await menu()).expanded === "true", `AH-126 menu on ${file}: Enter on the button does not open it`);
+    await p.click('#main-nav a[href$="#checks"]');
+    await p.waitForTimeout(300);
+    want((await menu()).expanded === "false", `AH-126 menu on ${file}: a link click leaves it open`);
+    await done(t, `menu on ${file} at 375px`, [API]);
+  }
+  for (const [width, js] of [[1280, true], [375, false]]) {
+    const t = await open("index.html", { width, motion: "reduce", js, until: "load" });
+    const m = await t.page.evaluate(() => ({ btn: document.querySelector(".menu-btn") ? document.querySelector(".menu-btn").getClientRects().length > 0 : null, links: document.getElementById("main-nav") ? document.getElementById("main-nav").getClientRects().length > 0 : false }));
+    want(m.btn === false && m.links, `AH-126 menu at ${width}px${js ? "" : " with no JavaScript"}: ${JSON.stringify(m)}`);
+    await done(t, `menu at ${width}px js ${js}`, js ? [API] : []);
+  }
+  // the hero's download is in the first screen, on a small phone and a small laptop
+  for (const [width, height] of [[375, 667], [1280, 720]]) {
+    const t = await open("index.html", { width, height, motion: "reduce" });
+    const r = await t.page.evaluate(() => { const a = document.querySelector(".hero-cta .btn-primary"); if (!a) return null; const b = a.getBoundingClientRect();
+      return { href: a.getAttribute("href"), text: a.textContent.trim(), top: b.top, bottom: b.bottom, left: b.left, right: b.right, w: innerWidth, h: innerHeight }; });
+    want(r && r.href === "#download" && r.top >= 0 && r.left >= 0 && r.bottom <= r.h && r.right <= r.w, `AH-126 the hero's download at ${width} x ${height} is not fully in the first screen: ${JSON.stringify(r)}`);
+    await done(t, `hero download at ${width} x ${height}`, [API]);
+  }
+  // the home page's download bar on a phone: hidden at load, shown once the hero's download has scrolled away, hidden
+  // again while the download section shows; it moves nothing (CLS 0), the footer clears it, and it never shows wider
+  for (const [width, motion] of [[375, "reduce"], [375, "no-preference"], [1280, "no-preference"]]) {
+    const t = await open("index.html", { width, height: 667, motion, init: () => {
+      window.__cls = 0; new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__cls += e.value; }).observe({ type: "layout-shift", buffered: true }); } });
+    const p = t.page;
+    if (motion !== "reduce") await p.waitForTimeout(ENTERED);
+    const dock = () => p.evaluate(() => { const d = document.getElementById("dock"); if (!d) return null; const r = d.getBoundingClientRect();
+      return { hidden: d.hidden, shown: d.getClientRects().length > 0, bottom: Math.round(r.bottom), top: Math.round(r.top), h: innerHeight, height: Math.round(r.height) }; });
+    const d0 = await dock();
+    want(d0 && d0.hidden && !d0.shown, `AH-126 download bar at ${width}px (${motion}), at load: ${JSON.stringify(d0)}`);
+    await p.evaluate(() => { const a = document.querySelector(".hero-cta .btn-primary") || document.querySelector(".hero-copy"); let top = 0; for (let e = a; e; e = e.offsetParent) top += e.offsetTop; scrollTo(0, top + a.offsetHeight + 200); });
+    await p.waitForTimeout(600);
+    const d1 = await dock();
+    if (width > 760) want(d1 && d1.hidden, `AH-126 download bar at ${width}px: shown on a wide screen ${JSON.stringify(d1)}`);
+    else {
+      want(d1 && !d1.hidden && d1.shown && d1.bottom === d1.h && d1.top < d1.h, `AH-126 download bar at ${width}px (${motion}), past the hero: ${JSON.stringify(d1)}`);
+      if (motion === "reduce") {
+        const bad = await p.evaluate(contrastProblems);
+        want(!bad.length, `AH-126 download bar: contrast ${JSON.stringify(bad)}`);
+        want(await p.evaluate(() => !!document.querySelector('#dock a[href="#download"]')), "AH-126 download bar: its link does not go to the download");
+      }
+      await p.evaluate(() => document.getElementById("download").scrollIntoView({ block: "center" }));
+      await p.waitForTimeout(600);
+      const d2 = await dock();
+      want(d2 && d2.hidden, `AH-126 download bar at ${width}px (${motion}), over the download section: ${JSON.stringify(d2)}`);
+      await p.evaluate(() => scrollTo(0, document.documentElement.scrollHeight)); await p.waitForTimeout(600);
+      const end = await p.evaluate(() => { const d = document.getElementById("dock") || { hidden: true }, f = document.querySelector(".foot");
+        return { pad: parseFloat(getComputedStyle(f).paddingBottom), dock: d.hidden ? 0 : d.getBoundingClientRect().height, text: f.querySelector("nav").getBoundingClientRect().bottom, top: d.hidden ? innerHeight : d.getBoundingClientRect().top }; });
+      want(end.text <= end.top, `AH-126 download bar at ${width}px (${motion}): it covers the footer at the end of the page ${JSON.stringify(end)}`);
+    }
+    const cls = await p.evaluate(() => window.__cls);
+    want(cls === 0, `AH-126 download bar at ${width}px (${motion}): layout shift ${cls}`);
+    await done(t, `download bar at ${width}px ${motion}`, [API]);
+  }
+  // the support page: John's name and phone beside the form; after the link to GitHub is followed, a thank-you that says
+  // what happens next, announced (role="status"); the ready text describes the link
+  {
+    const t = await open("support.html", { width: 390, height: 844, motion: "reduce" });
+    const p = t.page;
+    const tel = await p.evaluate(() => [...document.querySelectorAll('a[href^="tel:"]')].map((a) => [a.getAttribute("href"), a.textContent, a.getClientRects().length > 0]));
+    want(JSON.stringify(tel) === JSON.stringify([["tel:+17702659930", "(770) 265-9930", true]]), `AH-126 support: the phone link ${JSON.stringify(tel)}`);
+    want(await p.evaluate(() => /John Nguyen/.test(document.getElementById("page").textContent)), "AH-126 support: John Nguyen is not named");
+    await p.fill("#summary", "x"); await p.fill("#details", "y"); await p.check("#clean");
+    await p.click('button[type="submit"]');
+    const thanks = () => p.evaluate(() => { const s = document.getElementById("thanks"), a = document.getElementById("open");
+      return { exists: !!s, hidden: s ? s.hidden : null, shown: s ? s.getClientRects().length > 0 : false, role: s && s.getAttribute("role"), text: s ? s.textContent : "",
+        described: ((a && a.getAttribute("aria-describedby")) || "").split(" ").map((id) => (document.getElementById(id) || {}).textContent || "?" + id).join(" | ") }; });
+    const a = await thanks();
+    want(a.exists && a.hidden && !a.shown && a.role === "status" && /^Ready\./.test(a.described), `AH-126 support: before the link is followed ${JSON.stringify(a)}`);
+    await p.evaluate(() => document.getElementById("open").addEventListener("click", (e) => e.preventDefault())); // no tab to GitHub here
+    await p.click("#open");
+    const b = await thanks();
+    want(!b.hidden && b.shown && /^Thanks\./.test(b.text) && /GitHub/.test(b.text), `AH-126 support: after the link is followed ${JSON.stringify(b)}`);
+    const bad = await p.evaluate(contrastProblems);
+    want(!bad.length, `AH-126 support thank-you: contrast ${JSON.stringify(bad)}`);
+    await p.click('button[type="submit"]');
+    want((await thanks()).hidden, "AH-126 support: the thank-you stays after the question is prepared again");
+    await done(t, "support contact and thank-you");
+  }
+  // the visit counter (count.js): with no code set, nothing leaves for GoatCounter. With a code (put in here, never in the
+  // file), on the real address, one image request per page view to that code's host, its only field the page's path, no
+  // referrer; none on 127.0.0.1, with Do Not Track or with Global Privacy Control
+  {
+    const gif = Buffer.from("R0lGODlhAQABAAAAACw=", "base64");
+    const visit = async ({ code, url = null, init = null, file = "index.html" }) => {
+      const hits = [];
+      const t = await open(file, { motion: "reduce", init, url, setup: async (p) => {
+        await p.route(/^https:\/\/ricepillow3000\.github\.io\/excel-anomaly-hunter\//, (r) => { const f = path.join(SITE, new URL(r.request().url()).pathname.replace(/^\/excel-anomaly-hunter/, "").replace(/\/$/, "/index.html"));
+          return fs.existsSync(f) ? r.fulfill({ status: 200, contentType: TYPES[path.extname(f)] || "application/octet-stream", body: fs.readFileSync(f) }) : r.fulfill({ status: 404, body: "" }); });
+        // the code is set here, never in the file: the same checks hold before and after John puts his own code there
+        await p.route(/\/count\.js$/, (r) => { const src = read("count.js"), set = src.replace(/const COUNTER = "[a-z0-9-]*";/, `const COUNTER = "${code}";`);
+          if (!set.includes(`const COUNTER = "${code}";`)) miss.push("AH-126 counter: count.js has no COUNTER constant to set"); return r.fulfill({ status: 200, contentType: "text/javascript", body: set }); });
+        await p.route(/goatcounter\.com/, (r) => { hits.push({ url: r.request().url(), type: r.request().resourceType(), referer: r.request().headers().referer || "" }); return r.fulfill({ status: 200, contentType: "image/gif", body: gif }); });
+      } });
+      await t.page.waitForTimeout(500);
+      const cookie = await t.page.evaluate(() => document.cookie);
+      await t.ctx.close();
+      return { hits, problems: t.problems, cookie };
+    };
+    const SITE_INDEX = SITE_URL;
+    const none = await visit({ code: "", url: SITE_INDEX });
+    want(none.hits.length === 0 && !none.problems.length, `AH-126 counter with no code: ${JSON.stringify(none)}`);
+    const one = await visit({ code: "arcas-test", url: SITE_INDEX });
+    const u = one.hits[0] ? new URL(one.hits[0].url) : null;
+    want(one.hits.length === 1 && u && u.origin === "https://arcas-test.goatcounter.com" && u.pathname === "/count" && [...u.searchParams.keys()].join() === "p" && u.searchParams.get("p") === "/excel-anomaly-hunter/"
+      && one.hits[0].type === "image" && one.hits[0].referer === "" && !one.problems.length, `AH-126 counter with a code: ${JSON.stringify(one)}`);
+    const terms = await visit({ code: "arcas-test", url: SITE_URL + "terms.html" });
+    want(terms.hits.length === 1 && new URL(terms.hits[0].url).searchParams.get("p") === "/excel-anomaly-hunter/terms.html", `AH-126 counter on terms.html: ${JSON.stringify(terms)}`);
+    for (const [label, opts] of [["on 127.0.0.1", {}], ["with Do Not Track", { url: SITE_INDEX, init: () => Object.defineProperty(Navigator.prototype, "doNotTrack", { get: () => "1" }) }],
+      ["with Global Privacy Control", { url: SITE_INDEX, init: () => Object.defineProperty(Navigator.prototype, "globalPrivacyControl", { get: () => true }) }]]) {
+      const r = await visit({ code: "arcas-test", ...opts });
+      want(r.hits.length === 0, `AH-126 counter ${label}: ${JSON.stringify(r.hits)}`);
+    }
+  }
+  // no cookie banner is needed because no page sets a cookie: none in the document, no Set-Cookie on any answer
+  for (const file of [...PAGES, "excel-anomaly-hunter/no-such-page"]) {
+    const set = [];
+    const t = await open(file, { motion: "reduce", setup: (p) => p.on("response", async (r) => { const h = await r.allHeaders().catch(() => ({})); if (h["set-cookie"]) set.push(r.url()); }) });
+    t.problems.splice(0, t.problems.length, ...t.problems.filter((x) => !x.startsWith("404 " + BASE + "excel-anomaly-hunter/")));
+    const cookie = await t.page.evaluate(() => document.cookie);
+    want(cookie === "" && !set.length, `AH-126 ${file}: a cookie (${JSON.stringify(cookie)}, Set-Cookie on ${set})`);
+    await done(t, `no cookie on ${file}`, [API]);
+  }
+  assert.deepEqual(miss, [], `John's website lists (AH-126):\n${miss.join("\n")}`);
+  console.log("AH-126: the 404 page at any depth (404 status, 320 px at 200%, contrast), the phone's menu on every page, the hero's download in the first screen at 375 x 667 and 1280 x 720, the home page's download bar (CLS 0), the support page's phone and thank-you, the counter silent without a code and one bare pixel with one, no cookie on any page");
+}
 // ---- reading the pages the way people with other settings read them (AH-112 to AH-116). Each check collects what it
 // finds and the group fails once with all of it, so one run names every page that falls short ----
 {
@@ -363,6 +676,8 @@ for (const width of [1280, 390]) {
       if (/^https?:/.test(href)) continue;
       await p.goto(BASE + file);
       const a = p.locator("header a, footer a, .notice-bar a").nth(i);
+      // on a phone the header's links wait behind the Menu button (AH-126): opened first, as a visitor would
+      if (await p.locator(".menu-btn").isVisible() && await a.evaluate((el) => !!el.closest("#main-nav"))) await p.click(".menu-btn");
       assert.ok(await a.isVisible(), `${file} at ${width}px: ${href} is hidden`);
       await a.click();
       const want = new URL(href, BASE + file);
@@ -1028,6 +1343,18 @@ for (const [name, api] of Object.entries(junk)) {
   assert.equal(await t.page.textContent("#rel"), "Latest, about 81 MB, free", `API ${name}`);
   await done(t, `API ${name}`, [API]);
 }
+{ // GitHub takes the call and never answers (AH-124): the page gives the request up on its own clock (6 s, the
+  // skeleton's own limit) and shows the same defaults as when GitHub is down. It waited on the dead request for good,
+  // so the next visit in the same tab reused it and never asked again
+  const t = await open("index.html", { api: () => {}, until: "load" });
+  const gaveUp = await t.page.waitForEvent("requestfailed", { predicate: (r) => r.url() === API, timeout: 9000 }).then(() => true, () => false);
+  assert.ok(gaveUp, "API never answers: the page still waits on it after 9 s");
+  assert.equal(await t.page.$eval("#sha", (c) => c.innerHTML), fallback, "API never answers");
+  assert.equal(await t.page.textContent("#rel"), "Latest, about 81 MB, free", "API never answers");
+  const cleared = await t.page.waitForFunction(() => !document.querySelector("dl.anchor[data-loading]"), null, { timeout: 1000 }).then(() => true, () => false);
+  assert.ok(cleared, "API never answers: the skeleton stays"); // it goes on the same 6 s clock, a moment after the request
+  await done(t, "API never answers", [API]);
+}
 { // a good digest with odd neighbours: the hash shows, the rest only when it has the right shape (no "NaN MB")
   const t = await open("index.html", { api: json({ tag_name: "<img src=x onerror=alert(1)>", published_at: 5, assets: [{ name: "Arcas.exe", size: "<b>", digest: "sha256:" + "c".repeat(64) }] }) });
   assert.equal(await t.page.$eval("#sha", (c) => c.innerHTML), "c".repeat(64));
@@ -1098,13 +1425,21 @@ for (const width of [1280, 390]) {
 {
   const { contrastProblems } = await import(pathToFileURL(path.join(SITE, "..", "e2e", "contrast.mjs")).href);
   let checked = 0;
-  for (const width of [1280, 390]) for (const file of PAGES) {
+  // AH-126 added the terms page, the 404 page, the phone's open menu, the home page's download bar and the support
+  // form's thank-you
+  const LOST = "excel-anomaly-hunter/no-such-page";
+  for (const width of [1280, 390]) for (const file of [...PAGES, LOST]) {
     const t = await open(file, { width, motion: "reduce" });
-    const states = file === "index.html" ? ["all", "recon", "keying", "label", "time", "busy", "clean"] : file === "support.html" ? ["empty", "sent"] : ["page"];
+    if (file === LOST) t.problems.splice(0, t.problems.length, ...t.problems.filter((x) => x !== `404 ${BASE + LOST}`));
+    const phone = width <= 760 ? ["menu"] : [];
+    const states = file === "index.html" ? ["all", "recon", "keying", "label", "time", "busy", "clean", ...phone, ...(width <= 760 ? ["dock"] : [])] : file === "support.html" ? ["empty", "sent", "thanks", ...phone] : file === LOST ? ["page"] : ["page", ...phone];
     for (const state of states) {
-      if (file === "index.html") await t.page.click(["busy", "clean"].includes(state) ? `#t-${state}` : `.typology [data-kind="${state}"]`);
+      if (file === "index.html" && !["menu", "dock"].includes(state)) await t.page.click(["busy", "clean"].includes(state) ? `#t-${state}` : `.typology [data-kind="${state}"]`);
       if (state === "sent") { await t.page.fill("#summary", "x"); await t.page.fill("#details", "y"); await t.page.check("#clean"); }
-      if (file === "support.html") await t.page.click('button[type="submit"]');
+      if (file === "support.html" && state !== "menu") await t.page.click('button[type="submit"]');
+      if (state === "thanks") { await t.page.evaluate(() => document.getElementById("open").addEventListener("click", (e) => e.preventDefault())); await t.page.click("#open"); }
+      if (state === "menu") { await t.page.evaluate(() => scrollTo(0, 0)); await t.page.click(".menu-btn"); }
+      if (state === "dock") { await t.page.click(".menu-btn"); await t.page.evaluate(() => scrollTo(0, document.getElementById("checks").offsetTop)); await t.page.waitForFunction(() => !document.getElementById("dock").hidden); }
       const bad = await t.page.evaluate(contrastProblems);
       assert.deepEqual(bad, [], `${file} at ${width}px (${state}): text or edges under WCAG AA`);
       checked++;

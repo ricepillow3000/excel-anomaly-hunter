@@ -4,6 +4,9 @@
 # Then one real call with the canary invite (AH-108): refusals alone never showed a revoked Gemini key or a retired
 # model. It needs the secret RELAY_CANARY_INVITE (an invite named canary) and is skipped, with a note, without it. It
 # takes one of the shared daily calls each run; a fork's pull request gets no secret, so it skips there.
+# The same daily run checks the public website and the Arcas.exe download (AH-124): a broken Pages deploy or a release
+# with no exe used to wait for a user to say so. HEAD only (the exe is not downloaded), redirects followed to GitHub's
+# file host, each a 2xx or the run fails, a hung host cut off at 20 s and tried once more.
 name: Relay live probe
 
 on:
@@ -30,3 +33,21 @@ jobs:
         env:
           RELAY_CANARY_INVITE: ${{ secrets.RELAY_CANARY_INVITE }}
         run: node relay/live-probe.mjs
+
+  site:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: The public website and the Arcas.exe download each answer with a 2xx
+        run: |
+          set -euo pipefail
+          for url in \
+            https://ricepillow3000.github.io/excel-anomaly-hunter/ \
+            https://ricepillow3000.github.io/excel-anomaly-hunter/privacy.html \
+            https://ricepillow3000.github.io/excel-anomaly-hunter/support.html \
+            https://ricepillow3000.github.io/excel-anomaly-hunter/terms.html \
+            https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest/download/Arcas.exe
+          do
+            curl -fsSIL --max-time 20 --retry 1 --retry-delay 5 --retry-all-errors -o /dev/null -w "%{http_code} $url\n" "$url" \
+              || { echo "::error::$url did not answer with a 2xx"; exit 1; }
+          done

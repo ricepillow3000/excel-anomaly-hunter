@@ -4,8 +4,11 @@ Arcas is a free Excel add-in made by one person, John, in his spare time. It is 
 affiliated with Microsoft, Google, Cloudflare, Anthropic or GitHub. This file and the pane's Privacy page
 (`frontend/privacy.html`) say the same thing; both describe what the code does.
 
+Arcas is made and run by John Nguyen (GitHub: ricepillow3000). To reach him, use the pane's Support page, which
+opens a question form on GitHub, or call (770) 265-9930.
+
 A scan runs on your PC and sends nothing to the internet. Your sheet's data leaves your PC only when you click
-**Ask AI** or **Check words with AI**. There are no accounts, no analytics and no tracking, and the add-in sets no cookies.
+**Ask AI** or **Check words with AI**. There are no accounts and no cookies, and the add-in has no analytics and no tracking. Only this project's website may count its page views, with GoatCounter (see who else sees something).
 
 ## Always on this PC
 - The scan runs in the engine at `https://127.0.0.1:5055`: Excel hands it the sheet, and it answers only this PC. Websites
@@ -54,6 +57,8 @@ can be charged by Google for what AI help uses; without billing, the free tier c
   wide sheet only the columns nearest the flagged cell go. Long cells are cut to 200 characters, except the flagged cell.
 - **Check words with AI** sends the names of your text columns that have 2 to 50 different values, and those values (up to
   60 characters each). It never sends whole rows or numbers. These values can include names of people or places.
+- If what you type to Ask AI reads as someone in crisis, the pane shows helpline numbers instead and
+  sends nothing to the AI.
 - Where it goes:
   - With your own Google key: straight to Google's Gemini API.
   - With an invite code: to John's relay on Cloudflare, which passes it to Google with John's key.
@@ -76,6 +81,7 @@ can be charged by Google for what AI help uses; without billing, the free tier c
   Microsoft's privacy terms apply.
 - The pane loads only its own files and Microsoft's Office script; its Content Security Policy blocks everything
   else. The fonts are on your PC.
+- GoatCounter: this project's website, never the add-in, the pane or the engine, may count its page views with GoatCounter once John turns the counter on. Each page view then sends GoatCounter one request with the page's address on this site and nothing else: no cookie, no referrer, no title, no screen size, and nothing at all under Do Not Track or Global Privacy Control. Like any server, GoatCounter's sees your IP address and browser with that request. [GoatCounter's privacy policy](https://www.goatcounter.com/help/privacy) says what it keeps.
 - Nothing is sold, and nothing is used for ads or tracking.
 
 ## Your control

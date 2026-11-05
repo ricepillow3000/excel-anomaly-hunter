@@ -45,7 +45,19 @@ paths:
                     intent: {type: string, maxLength: 2000}
                     formulas: {type: array, nullable: true}
       responses:
-        "200": {$ref: "#/components/responses/Json"}
+        "200":
+          description: The AI's fix, or (care true) the engine's own helpline message, with nothing sent to the AI
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [explanation, changes]
+                properties:
+                  explanation: {type: string}
+                  changes:
+                    type: array
+                    items: {type: object, required: [cell, new], properties: {cell: {type: string}, new: {type: string}}}
+                  care: {type: boolean, enum: [true]}  # AH-125: the request read as someone in crisis (ai/care.py)
         "400": {$ref: "#/components/responses/Error"}
         "502": {$ref: "#/components/responses/Error"}
         "503": {$ref: "#/components/responses/Error"}

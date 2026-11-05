@@ -191,4 +191,33 @@ assert.equal(sent.length, before, "and never reaches Google");
   const down = await canary("https://relay.example", secret, async () => { throw new TypeError("fetch failed"); });
   assert.ok(!down.ok && !down.line.includes(secret), down.line);
 }
+// AH-125 ("uploads not stored"): what a /fix sends is passed to Google and never kept. The relay's only storage is the
+// counter's one object "c" ({day, total, by: {invite name: calls}}), and the only bindings it reads are its secrets, its
+// caps and that counter: no KV, R2 or D1 a request could land in (test_privacy_promises.py reads wrangler.toml)
+{
+  const puts = [], counted = [], read = new Set();
+  const store = new Map(), obj = new Counter({ storage: {
+    get: async (k) => store.get(k), put: async (k, v) => (puts.push([k, JSON.stringify(v)]), store.set(k, v)) } });
+  const ns = { idFromName: () => "caps", get: () => ({ fetch: async (u, init) => (counted.push(init.body), obj.fetch(new Request(u, init))) }) };
+  const watched = new Proxy({ ...env, COUNTER: ns }, { get: (t, k) => (read.add(String(k)), t[k]) });
+  const marker = "MARKER-7c1f-" + crypto.randomUUID();
+  const upload = { messages: [{ role: "user", content: `Fix row 7: A7='${marker}', the customer's own words` }], response_format: { type: "json_schema" } };
+  googleStatus = 200;
+  const before = sent.length;
+  const done = await worker.fetch(new Request("https://relay.example/fix", { method: "POST",
+    headers: { Authorization: "Bearer inv_ana" }, body: JSON.stringify(upload) }), watched);
+  assert.equal(done.status, 200);
+  assert.ok(JSON.stringify(sent.at(-1).body).includes(marker) && sent.length === before + 1, "the request reached Google once");
+  assert.ok(puts.length === 1 && puts.every(([k]) => k === "c"), "the counter writes its one object only - " + JSON.stringify(puts));
+  assert.deepEqual(Object.keys(JSON.parse(puts[0][1])).sort(), ["by", "day", "total"], "the stored object is the day's counts");
+  assert.deepEqual(JSON.parse(puts[0][1]).by, { Ana: 1 }, "counted under the invite's name, never its code");
+  for (const kept of [...puts.map(([, v]) => v), ...counted]) {
+    assert.ok(!kept.includes(marker) && !kept.includes("Fix row") && !kept.includes("inv_ana"), "nothing the request said is stored - " + kept);
+  }
+  assert.deepEqual([...read].filter((k) => !["TOKENS", "COUNTER", "DAILY_PER_INVITE", "DAILY_TOTAL", "GEMINI_KEY"].includes(k)), [],
+    "the relay reads no other binding - " + [...read]);
+}
 console.log("relay abuse tests passed");
+
+// the backup of the invite list, restored and loaded the way the worker loads it (AH-124)
+await import("./restore-test.mjs");

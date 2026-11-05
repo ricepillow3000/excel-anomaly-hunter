@@ -13,7 +13,7 @@
     <span class="mark"><img src="assets/crest2-32.png" srcset="assets/crest2-64.png 2x" width="32" height="32" alt=""></span>
     <h1>Privacy</h1>
     <p class="lead">What Arcas keeps on your PC, what it sends, and who can see it. Every sentence here describes what the code does.</p>
-    <p class="meta">Last updated 4 November 2026</p>
+    <p class="meta">Last updated 5 November 2026</p>
   </header>
 
   <div class="shell">
@@ -29,11 +29,12 @@
     </nav>
 
     <main class="doc">
-      <div class="tldr">A scan runs on your PC and sends nothing to the internet. Your sheet's data leaves your PC only when you click <strong>Ask AI</strong> or <strong>Check words with AI</strong>, and then only the part described below. There are no accounts, no analytics and no tracking, and the add-in sets no cookies.</div>
+      <div class="tldr">A scan runs on your PC and sends nothing to the internet. Your sheet's data leaves your PC only when you click <strong>Ask AI</strong> or <strong>Check words with AI</strong>, and then only the part described below. There are no accounts and no cookies, and the add-in has no analytics and no tracking. Only this project's website may count its page views, with GoatCounter (see who else sees something).</div>
 
       <section id="intro">
         <h2>Who makes it</h2>
         <p>Arcas is a free Excel add-in made by one person, John, in his spare time. It is not a company, and it is not affiliated with Microsoft, Google, Cloudflare, Anthropic or GitHub. On this page, "we" means John.</p>
+        <p>Arcas is made and run by John Nguyen (GitHub: ricepillow3000). To reach him, use the <a href="support.html">support page</a>, which opens a question form on GitHub, or call <a href="tel:+17702659930">(770) 265-9930</a>.</p>
         <p>The code is public, so you can check every sentence on this page: <a href="https://github.com/ricepillow3000/excel-anomaly-hunter" target="_blank" rel="noopener">github.com/ricepillow3000/excel-anomaly-hunter</a>.</p>
       </section>
 
@@ -72,6 +73,7 @@
           <li><strong>Ask AI</strong> sends the column names, the row you asked about, up to 5 rows above and 5 below it, the formulas in that row, the cell addresses, the reason it was flagged, and anything you type in the request box. On a wide sheet, only the columns nearest the flagged cell go. Long cells are cut to 200 characters, except the flagged cell.</li>
           <li><strong>Check words with AI</strong> sends the names of your text columns that have 2 to 50 different values, and those different values, up to 60 characters each. It never sends whole rows or numbers. These values can include names of people or places.</li>
         </ul>
+        <p>If what you type to Ask AI reads as someone in crisis, the pane shows helpline numbers instead and sends nothing to the AI.</p>
         <h3>Where it goes</h3>
         <ul>
           <li>With your own Google key: straight to Google's Gemini API.</li>
@@ -90,6 +92,7 @@
           <li>PyPI sees your IP address only if you install an invite kit, when install.bat downloads Python packages from it.</li>
           <li>GitHub hosts the download, so GitHub sees your IP address when you download the app. Anything you post in a GitHub issue is public.</li>
           <li>Microsoft: Excel loads Microsoft's Office script from Microsoft for the pane, and Windows may check the downloaded file. Microsoft's privacy terms apply.</li>
+          <li>GoatCounter: this project's website, never the add-in, the pane or the engine, may count its page views with GoatCounter once John turns the counter on. Each page view then sends GoatCounter one request with the page's address on this site and nothing else: no cookie, no referrer, no title, no screen size, and nothing at all under Do Not Track or Global Privacy Control. Like any server, GoatCounter's sees your IP address and browser with that request. <a href="https://www.goatcounter.com/help/privacy" target="_blank" rel="noopener">GoatCounter's privacy policy</a> says what it keeps.</li>
           <li>Nothing is sold, and nothing is used for ads or tracking.</li>
         </ul>
       </section>
