@@ -323,6 +323,12 @@ for (const f of SCRIPTS) {
     assert.ok(!/Exif|<x:xmpmeta|GPS/.test(b.toString("latin1")), `assets/${f} carries EXIF, XMP or GPS data`);
   }
   assert.ok(/Made in the United States by John Nguyen/.test(text(maker)), "the maker section does not say where Arcas is made, and by whom");
+  // John's own story leads the section, in his words and only his facts (AH-136, John 2026-11-05): his first business
+  // class, its weekly Excel exercises, cells that got worse the longer he worked; then what Arcas does about it
+  const story = (/<div class="story">([\s\S]*?)<\/div>/.exec(maker) || ["", ""])[1];
+  for (const said of ["It started on my first day of business class.", "the longer I stayed on a sheet, the lower the quality of my cells",
+    "Fatigue is part of being human", "suggests a fix you can accept or dismiss"]) assert.ok(text(story).includes(said), `John's story lacks: ${said}`);
+  assert.ok(maker.indexOf('class="story"') < maker.indexOf("Made in the United States"), "John's story is not above his byline");
   assert.ok(maker.includes('<a href="tel:+17702659930">(770) 265-9930</a>'), "the maker section has no tap-to-call phone");
   const PROFILES = [["LinkedIn", "https://www.linkedin.com/in/johnnguyen3000/"], ["Handshake", "https://app.joinhandshake.com/profiles/74fwhv"], ["GitHub", "https://github.com/ricepillow3000"]];
   const links = [...maker.matchAll(/<a class="btn btn-plain" href="(https:[^"]+)" aria-label="([^"]+)">(<svg\b[^>]*>)[\s\S]*?<\/svg>([^<]*)<\/a>/g)];
@@ -1402,7 +1408,10 @@ for (const width of [1440, 390]) { // a coloured cell steps up when hovered, and
     const cell = p.locator("#p-found td.flag, #p-found td.q").nth(i);
     // on a phone the sheet scrolls sideways in its frame: the cell is brought to the middle of it first, as a reader would
     await cell.evaluate((td) => td.scrollIntoView({ block: "center", inline: "center" })); await p.waitForTimeout(100);
-    const c = await cell.boundingBox(); await p.mouse.move(c.x + c.width / 2, c.y + c.height / 2); await p.waitForTimeout(350);
+    const c = await cell.boundingBox(); await p.mouse.move(c.x + c.width / 2, c.y + c.height / 2); await p.waitForTimeout(50);
+    // measured once the 250 ms lift and its shadow have ended, not after a fixed 350 ms: on a busy box the shadow read
+    // 0.9938 at 350 ms (AH-136's gate). subtree takes in the ::before that carries the shadow
+    await cell.evaluate((td) => Promise.all(td.getAnimations({ subtree: true }).map((a) => a.finished)));
     const r = await cell.evaluate((td) => { const a = td.getBoundingClientRect(), s = td.closest(".scroll").getBoundingClientRect(), m = new DOMMatrix(getComputedStyle(td).transform), x = (a.left + a.right) / 2, y = a.top + 3;
       return { scale: m.a, lift: m.f, inside: a.top >= s.top && a.bottom <= s.bottom && a.left >= s.left && a.right <= s.right, top: document.elementFromPoint(x, y) === td || td.contains(document.elementFromPoint(x, y)),
         shadow: getComputedStyle(td, "::before").opacity }; });
