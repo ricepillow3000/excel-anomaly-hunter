@@ -274,7 +274,7 @@ the 8 gaps were built, each with a test that failed first and passes now.
 | 19. Simultaneous users | Built (test) | Eight scans of the same sheet at once through the real threaded HTTPS engine: all 200, each the very rows one scan alone gives, no exception in the log (`test_eight_people_scanning_the_same_sheet_at_once_all_get_the_same_whole_answer`). No fix was needed. |
 | 20. Backup restores | Built | `relay/restore-test.mjs` makes an invite list with two invites, loses it, restores it from the backup copy, loads it the way the relay loads `TOKENS`, and checks both invites work and the caps still count. It runs with `node relay/test.mjs` in the gate and in CI. The steps John runs against Cloudflare are in `docs/RUNBOOK.md`, "Restoring the invite list". |
 
-Left for John (not code): deploy the relay so its new words go live (`npx wrangler@4.151.1 deploy` from `relay/`); one
+Left for John (not code): deploy the relay so its new words go live (`npx wrangler@4.151.1 deploy` from `relay/`; done by John 2026-11-05, version 0004b458, and the Relay live probe passed, run 41987135974); one
 real restore of the invite list against Cloudflare, dated in the runbook.
 
 ## John's 10 so-we-don't-get-sued items (AH-125, 2026-11-04)
@@ -359,3 +359,5 @@ GoatCounter, for John (three steps):
 1. Sign up at goatcounter.com and choose a code, the first part of your counter's address (`arcas` gives `arcas.goatcounter.com`).
 2. Put that code in `site/count.js`: `const COUNTER = "arcas";`.
 3. Push. Pages publishes the site and each visit is counted from then on; the privacy pages already say so.
+
+Done 2026-11-05: John signed up with the code `ricepillow3000` (dashboard https://ricepillow3000.goatcounter.com), and `site/count.js` holds it.
