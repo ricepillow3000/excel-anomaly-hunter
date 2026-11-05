@@ -202,12 +202,14 @@ if (mode === "flow") {
 
   // 2) open a row's card, Accept (Agent 3 checks it again, highlight goes), Undo
   { // AH-94: the card turns in like a page (finite, so nothing waits on it forever) and lies flat by 800 ms
-    const t0 = Date.now();
     await page.click('#flagged-list button:has-text("Row 11 ")');
     const turning = await page.evaluate(() => { const v = document.getElementById("fix-view"), a = v.getAnimations({ subtree: true });
       return { t: getComputedStyle(v).transform, n: a.length, end: Math.max(...a.map((x) => x.effect.getComputedTiming().endTime)) }; });
     await idle(); await page.waitForFunction(() => document.getElementById("fix-changes").children.length || document.getElementById("fix-explanation").textContent);
-    await page.waitForTimeout(Math.max(0, 800 - (Date.now() - t0)));
+    // 800 ms from the turn's own start, not from the click: on a slow Windows runner the turn began after the click's
+    // handler, so 800 ms after the click it was still 0.03 deg short of flat (Build Arcas.exe run 42088083206)
+    await page.waitForFunction(() => document.getElementById("fix-view").getAnimations({ subtree: true })
+      .every((a) => a.startTime !== null && document.timeline.currentTime >= a.startTime + 800));
     const flat = await page.evaluate(() => ({ t: getComputedStyle(document.getElementById("fix-view")).transform, n: document.getElementById("fix-view").getAnimations({ subtree: true }).length }));
     ok(turning.n >= 1 && turning.t !== "none" && turning.end > 0 && turning.end <= 700 && flat.t === "none" && flat.n === 0,
       "opening a row turns its card in like a page, in under 700 ms, then it lies flat - " + JSON.stringify({ turning, flat }));
