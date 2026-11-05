@@ -3,7 +3,7 @@ Excel add-in that flags abnormal rows and tells unusual-but-fine rows from broke
 Your sheet is checked on your own PC. Nothing leaves it unless you turn on AI help: see [What leaves your PC](PRIVACY.md).
 Website: [ricepillow3000.github.io/excel-anomaly-hunter](https://ricepillow3000.github.io/excel-anomaly-hunter/) (`site/`, published by `.github/workflows/pages.yml`).
 Free and open source under the [MIT License](LICENSE).
-Questions or problems: [open an issue](https://github.com/ricepillow3000/excel-anomaly-hunter/issues).
+Questions or problems: [open an issue](https://github.com/ricepillow3000/excel-anomaly-hunter/issues) or email john4000.nguyen@gmail.com.
 
 ## Install (Windows + desktop Excel, nothing else needed)
 1. **[Download Arcas.exe](https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest/download/Arcas.exe)**

@@ -187,7 +187,7 @@ def test_every_link_and_file_the_pane_pages_use_is_served():
         r = c.get(f"/{page}")
         assert r.status_code == 200 and "text/html" in r.content_type and r.headers["Content-Security-Policy"], page
         links = re.findall(r'(?:href|src)="([^"]+)"', html) + [s.split()[0] for s in re.findall(r'srcset="([^"]+)"', html)]
-        for link in {u for u in links if not re.match(r"https?://|tel:", u)}:  # tel: (the privacy page's phone, AH-125) is no file
+        for link in {u for u in links if not re.match(r"https?://|tel:|mailto:", u)}:  # tel: and mailto: (John's phone, AH-125, and email, AH-134) are no file
             target, _, anchor = link.partition("#")
             if target:
                 assert c.get(f"/{target}").status_code == 200, (page, link)
