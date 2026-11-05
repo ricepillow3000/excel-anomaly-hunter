@@ -684,3 +684,9 @@ html[data-moving] #field { z-index: 2; }
   .hero { padding-top: var(--s5); }
   .hero-copy { margin-top: var(--s4); }
 }
+
+/* AH-136: a phone number broke over two lines ("(770) 265–" / "9930") on the thank-you page; kept whole where there is
+   room, and left free to wrap on narrow screens, where nothing may scroll sideways at 200% text */
+@media (min-width: 600px) {
+  a[href^="tel:"] { white-space: nowrap; }
+}

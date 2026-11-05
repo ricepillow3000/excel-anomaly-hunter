@@ -16,7 +16,7 @@ Questions or problems: [open an issue](https://github.com/ricepillow3000/excel-a
 
 The **Arcas** button is now on the Home tab in every workbook (survives restarts), scanned workbooks reopen
 with the panel open, and the engine starts hidden at each logon. Double-click it again to repair;
-`Arcas.exe uninstall` removes it. (From a checkout with Python 3.14: `install.bat` does the same, `/u` uninstalls.)
+To remove it, open Settings > Apps > Installed apps, find Arcas and choose Uninstall (or run `Arcas.exe uninstall`). (From a checkout with Python 3.14: `install.bat` does the same, `/u` uninstalls.)
 Every build on `main` is installed and used on a fresh Windows PC with no Python before it becomes that download link.
 Build the file: `pip install -e ".[exe]" -c constraints.txt` then `python -m PyInstaller packaging/AnomalyHunter.spec`
 on Windows -> `dist/Arcas.exe`.

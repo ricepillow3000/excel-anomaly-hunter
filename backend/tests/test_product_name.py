@@ -223,3 +223,54 @@ def test_uninstall_removes_both_the_new_exe_and_the_old_one(tmp_path, monkeypatc
 
 def test_the_run_value_keeps_its_name_so_an_update_replaces_the_old_entry():
     assert app.RUN_VALUE == "AnomalyHunter" and app.LEGACY == "AnomalyHunter.exe"
+
+
+def test_install_lists_arcas_in_installed_apps_and_uninstall_takes_it_out(tmp_path, monkeypatch):
+    # AH-136 (John's usability review, 2026-11-05): people look for a program under Settings > Apps > Installed apps,
+    # and Arcas was not there; the only way out was a command typed into Windows+R. The per-user Uninstall key lists it
+    # (no administrator prompt) and runs the installed copy's own uninstall
+    home = tmp_path / "AnomalyHunter"
+    home.mkdir()
+    exe = home / "Arcas.exe"
+    exe.write_bytes(b"x" * 4096)
+    wrote = {}
+    monkeypatch.setattr(app, "reg_set", lambda key, name, value: wrote.setdefault(key, {}).__setitem__(name, value))
+    monkeypatch.setattr(app.server, "version", lambda: "v0.1.300 (2026-11-05)")
+    app.list_in_installed_apps(home, exe)
+    entry = wrote[app.UNINSTALL]
+    assert app.UNINSTALL == r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Arcas"
+    assert entry["DisplayName"] == "Arcas" and entry["Publisher"] == "John Nguyen"
+    assert entry["UninstallString"] == f'"{exe}" uninstall' and entry["DisplayIcon"] == f"{exe},0"
+    assert entry["InstallLocation"] == str(home) and entry["DisplayVersion"] == "v0.1.300 (2026-11-05)"
+    assert entry["NoModify"] == 1 and entry["NoRepair"] == 1 and entry["EstimatedSize"] >= 4
+    assert entry["URLInfoAbout"] == "https://ricepillow3000.github.io/excel-anomaly-hunter/"
+    # install() lists it, and uninstall() takes the whole key out again
+    import inspect
+    assert "list_in_installed_apps(home, exe)" in inspect.getsource(app.install)
+    gone = []
+    (tmp_path / "pc").mkdir()
+    fake_pc(tmp_path / "pc", monkeypatch)
+    monkeypatch.setattr(app, "reg_delete", lambda key, name=None: gone.append((key, name)))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "pc"))
+    assert app.uninstall() == 0 and (app.UNINSTALL, None) in gone
+
+
+def test_an_uninstall_from_installed_apps_removes_the_running_app_file_too(tmp_path, monkeypatch):
+    # Installed apps runs the installed copy, which cannot delete itself while it runs: it asks Windows' own cmd to
+    # delete it, and the empty folder, a few seconds after it exits (an uninstall from Downloads leaves that file be)
+    home, _ = fake_pc(tmp_path, monkeypatch)
+    me = home / "Arcas.exe"
+    me.write_bytes(b"new")
+    monkeypatch.setattr(sys, "executable", str(me))
+    monkeypatch.setattr(app, "reg_delete", lambda *a, **k: None)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    started = []
+    monkeypatch.setattr(app.subprocess, "Popen", lambda args, **k: started.append(args))
+    assert app.uninstall() == 0
+    assert len(started) == 1 and started[0][:3] == ["cmd.exe", "/d", "/c"]
+    line = started[0][3:]
+    assert line[line.index("del") + 3] == str(me.resolve()) and line[-2:] == ["rmdir", str(home)]
+    assert not (home / "AnomalyHunter.exe").exists()
+    started.clear()
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "Downloads" / "Arcas.exe"))
+    assert app.uninstall() == 0 and started == []

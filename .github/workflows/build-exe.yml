@@ -163,6 +163,7 @@ jobs:
           $cat = Get-ItemProperty 'HKCU:\Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{3f9a1c2e-7b4d-4e8a-9c61-5d2e8f0b7a13}'
           $run = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run').AnomalyHunter
           $ca = Get-ChildItem Cert:\CurrentUser\Root | Where-Object Subject -match 'Anomaly Hunter local CA'
+          $apps = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Arcas' -ErrorAction SilentlyContinue  # AH-136
           $h = Invoke-RestMethod https://127.0.0.1:5055/health   # no certificate skipping: Windows trusts the engine now
           "app copied:      $(Test-Path "$ah\Arcas.exe")"
           "start here:      $(Test-Path "$ah\Start here.xlsx") (the workbook Excel opens on: the 5 Add steps + a Practice sheet)"
@@ -172,6 +173,8 @@ jobs:
           "Excel add-in:    $($cat.Url)\manifest.xml exists = $(Test-Path (Join-Path $cat.Url 'manifest.xml'))"
           "starts at logon: $run"
           "certificate:     $($ca.Subject), trusted by Windows"
+          "installed apps:  $($apps.DisplayName) $($apps.DisplayVersion) by $($apps.Publisher), removed with $($apps.UninstallString)"
+          if (-not ($apps.DisplayName -eq 'Arcas' -and $apps.UninstallString -eq "`"$ah\Arcas.exe`" uninstall")) { throw "not listed in Settings > Apps > Installed apps" }
           "engine:          $($h | ConvertTo-Json -Compress) over trusted HTTPS"
           if (-not ($ca -and $h.status -eq 'ok' -and $run -match 'serve' -and (Test-Path (Join-Path $cat.Url 'manifest.xml')) -and (Test-Path "$ah\Start here.xlsx"))) { throw "install incomplete" }
 
@@ -252,18 +255,25 @@ jobs:
           $proof = "$env:RUNNER_TEMP\proof-uninstall"
           $hand = Start-Process powershell -PassThru -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
             "$env:GITHUB_WORKSPACE\tests\packaging\click-like-a-user.ps1", $proof, '3'
-          # typed in a terminal, as the README says (a terminal starts it directly: no internet-file warning)
-          $p = Start-Process "$env:USERPROFILE\Downloads\Arcas.exe" -ArgumentList 'uninstall' -NoNewWindow -PassThru; $done = $p.WaitForExit(120000)
+          # the way most people uninstall now (AH-136): Settings > Apps > Installed apps runs the entry's UninstallString,
+          # the installed copy itself, which must also remove its own file once it exits. (The update step above already
+          # ran an uninstall from Downloads, as the README's command does.)
+          $ah = "$env:LOCALAPPDATA\AnomalyHunter"
+          $u = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Arcas').UninstallString
+          if ($u -ne "`"$ah\Arcas.exe`" uninstall") { throw "Installed apps would run: $u" }
+          $p = Start-Process "$ah\Arcas.exe" -ArgumentList 'uninstall' -NoNewWindow -PassThru; $done = $p.WaitForExit(120000)
+          for ($i = 0; $i -lt 30 -and (Test-Path "$ah\Arcas.exe"); $i++) { Start-Sleep 1 }   # it deletes itself a few seconds after exiting
           Start-Sleep 2; Stop-Process $hand -ErrorAction SilentlyContinue
           Get-Content "$proof\clicks.log" -ErrorAction SilentlyContinue
           if (-not $done -or $p.ExitCode -ne 0) { throw "uninstall did not finish (exit $($p.ExitCode))" }
           if (Test-Path 'HKCU:\Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{3f9a1c2e-7b4d-4e8a-9c61-5d2e8f0b7a13}') { throw "still listed in Excel" }
           foreach ($f in 'Arcas.exe', 'AnomalyHunter.exe') { if (Test-Path "$env:LOCALAPPDATA\AnomalyHunter\$f") { throw "$f still installed" } }
           if ((Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run').AnomalyHunter) { throw "still starts at logon" }
+          if (Test-Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Arcas') { throw "still listed in Installed apps" }
           if (Get-ChildItem Cert:\CurrentUser\Root | Where-Object Subject -match 'Anomaly Hunter local CA') { throw "certificate still trusted" }
           $up = try { Invoke-RestMethod -SkipCertificateCheck -TimeoutSec 3 https://127.0.0.1:5055/health } catch { $null }
           if ($up) { throw "engine still running" }
-          "uninstalled: Excel listing, autostart, certificate, engine and both exe names all gone"
+          "uninstalled from Installed apps: its entry, the Excel listing, autostart, certificate, engine and both exe names (the running one too) all gone"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         if: always()

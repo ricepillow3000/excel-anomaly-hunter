@@ -24,6 +24,10 @@ CATALOG = "{3f9a1c2e-7b4d-4e8a-9c61-5d2e8f0b7a13}"  # same trusted catalog as in
 CAT = rf"Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{CATALOG}"
 DEV = r"Software\Microsoft\Office\16.0\WEF\Developer"
 RUN = r"Software\Microsoft\Windows\CurrentVersion\Run"
+# AH-136: listed under Settings > Apps > Installed apps, where people look for a program to remove; the per-user key
+# needs no administrator prompt and runs the installed copy's own uninstall
+UNINSTALL = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Arcas"
+SITE = "https://ricepillow3000.github.io/excel-anomaly-hunter/"
 QUIET = 0x08000000  # CREATE_NO_WINDOW: no black window flashing up for a tool
 # install.bat and site/support.html say the same words (test_product_name.py)
 NOT_ADMIN = ("Arcas could not finish. Your Windows account is not an administrator on this PC. "
@@ -122,6 +126,14 @@ def reg_delete(key, name=None):
         pass
 
 
+def list_in_installed_apps(home, exe):
+    for name, value in (("DisplayName", "Arcas"), ("Publisher", "John Nguyen"), ("DisplayVersion", server.version()),
+                        ("DisplayIcon", f"{exe},0"), ("UninstallString", f'"{exe}" uninstall'), ("InstallLocation", str(home)),
+                        ("URLInfoAbout", SITE), ("HelpLink", SITE + "support.html"),
+                        ("EstimatedSize", max(1, exe.stat().st_size // 1024)), ("NoModify", 1), ("NoRepair", 1)):
+        reg_set(UNINSTALL, name, value)
+
+
 def excel_exe():
     """Desktop Excel's own path, where Windows registers it (App Paths), or None. Asking Windows to "open" an .xlsx
     instead shows "Pick an app" on a PC with no Excel and can hold the installer until someone picks one."""
@@ -193,6 +205,7 @@ def install():
     powerbi.shortcuts(home, home)
 
     reg_set(RUN, RUN_VALUE, f'"{exe}" serve')  # engine at every logon
+    list_in_installed_apps(home, exe)
     subprocess.Popen([str(exe), "serve"], creationflags=QUIET | 0x00000008)  # noqa: S603 - DETACHED_PROCESS: outlives this window
     for _ in range(120):  # the one-file engine unpacks itself first (~10-30 s)
         if server._already_running(home):
@@ -219,6 +232,7 @@ def uninstall():
         reg_delete(key, name)
     reg_delete(rf"{DEV}\{ID}")
     reg_delete(CAT)
+    reg_delete(UNINSTALL)
     tool("certutil.exe", "-user", "-delstore", "Root", server.CERT_NAME)
     me = Path(sys.executable).resolve()
     for p in server.HOME.glob("*"):  # everything but this running file: Arcas.exe, and the old AnomalyHunter.exe too
@@ -232,6 +246,13 @@ def uninstall():
                 except OSError:  # still held after 5 s: left for the user to delete
                     time.sleep(0.5)
     shutil.rmtree(Path(os.environ["LOCALAPPDATA"], r"Microsoft\Office\16.0\Wef"), ignore_errors=True)
+    if me.parent == server.HOME.resolve():
+        # run from Installed apps: the installed copy can't delete itself while it runs, so Windows' own cmd deletes it,
+        # and the then empty folder, a few seconds after this exits (ping is cmd's way to wait)
+        subprocess.Popen(["cmd.exe", "/d", "/c", "ping", "-n", "4", "127.0.0.1", ">nul", "&", "del", "/f", "/q", str(me),  # noqa: S603, S607
+                          "&", "rmdir", str(server.HOME)], creationflags=QUIET | 0x00000008)
+        say("Arcas is uninstalled.")
+        return 0
     say(f"Arcas is uninstalled. You can delete {me.name} now.")
     return 0
 

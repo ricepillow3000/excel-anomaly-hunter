@@ -51,7 +51,7 @@
         <div class="faq-head reveal-item"><span>Question</span><span>Answer</span></div>
         <details class="reveal-item" open>
           <summary>The pane says "Arcas has stopped"</summary>
-          <div class="a"><p>Wait half a minute and press <b>Try again</b>. If that doesn't work, open your Downloads folder, double-click <code>Arcas.exe</code>, then press <b>Try again</b>. It asks you to close Excel, repairs the install, starts the checker and opens Excel again. With an invite kit, double-click install.bat in the kit folder instead.</p></div>
+          <div class="a"><p>Wait half a minute and press <b>Try again</b>. If that doesn't work, open your Downloads folder, double-click <code>Arcas.exe</code>, then press <b>Try again</b>. It asks you to close Excel, repairs the install, starts Arcas again and reopens Excel. With an invite kit, double-click install.bat in the kit folder instead.</p></div>
         </details>
         <details class="reveal-item">
           <summary>Windows says "Windows protected your PC"</summary>
@@ -75,7 +75,7 @@
         </details>
         <details class="reveal-item" id="uninstall">
           <summary>How do I uninstall?</summary>
-          <div class="a"><ol><li>Press the Windows key and R together.</li><li>Copy the line below and paste it into the box that opens.</li><li>Press Enter.</li></ol><p><code>"%LOCALAPPDATA%\AnomalyHunter\Arcas.exe" uninstall</code></p><p>It removes the add-in, the checker, its certificate and its files, except the app file itself, which you can then delete. It is not listed in Windows "Installed apps". The <a href="privacy.html#rights">privacy page</a> lists what it removes.</p><p>With an invite kit, close Excel, run install.bat /u in the kit folder, then delete the kit folder. Like the app's uninstall, it also clears Excel's add-in cache, so other web add-ins may need to be added again.</p></div>
+          <div class="a"><ol><li>Open Settings, then Apps, then Installed apps.</li><li>Find Arcas in the list, click the three dots beside it, then Uninstall.</li></ol><p>It removes the add-in, Arcas, its certificate and its files, the app file too. The <a href="privacy.html#rights">privacy page</a> lists what it removes.</p><p>Not in the list? An Arcas installed before November 2026 shows up there after its next update. Until then:</p><ol><li>Press the Windows key and R together.</li><li>Copy the line below and paste it into the box that opens.</li><li>Press Enter.</li></ol><p><code>"%LOCALAPPDATA%\AnomalyHunter\Arcas.exe" uninstall</code></p><p>With an invite kit, close Excel, run install.bat /u in the kit folder, then delete the kit folder. Like the app's uninstall, it also clears Excel's add-in cache, so other web add-ins may need to be added again.</p></div>
         </details>
         <details class="reveal-item">
           <summary>Where is the log?</summary>

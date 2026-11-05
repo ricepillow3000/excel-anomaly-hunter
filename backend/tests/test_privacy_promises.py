@@ -186,3 +186,12 @@ def test_every_privacy_page_says_the_websites_forms_send_nothing_and_the_profile
     )
     for page in PAGES:
         assert [s for s in said if s not in words(page)] == [], page
+
+
+def test_every_privacy_page_says_arcas_is_listed_in_installed_apps_and_removes_its_own_file():
+    # AH-136: the installer now writes a per-user Installed apps entry (app.UNINSTALL) and an uninstall from there deletes
+    # the running app file too; the twins name what is installed and what uninstall removes, so they say both
+    for page in PAGES:
+        said = words(page)
+        assert "Settings > Apps > Installed apps" in said and "its Installed apps entry" in said, page
+        assert "the app file too" in said and "except the app file itself" not in said, page
