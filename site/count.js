@@ -6,7 +6,7 @@
 // only (img-src names its hosts, nothing else does); the pane and the engine never load this file. A page reached by a page
 // transition (transition.js, "ah:page") is a page view too.
 (() => {
-  const COUNTER = "";
+  const COUNTER = "ricepillow3000";
   const n = navigator;
   // a code is letters, digits and hyphens, the shape of a host name's first part: anything else would aim elsewhere
   if (!/^[a-z0-9-]{1,63}$/.test(COUNTER) || location.protocol === "file:" || /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$/.test(location.hostname)) return;
