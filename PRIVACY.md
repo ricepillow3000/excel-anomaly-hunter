@@ -5,7 +5,7 @@ affiliated with Microsoft, Google, Cloudflare, Anthropic or GitHub. This file, t
 (`frontend/privacy.html`) and the website's (`site/privacy.html`) say the same thing; all three describe what the code does.
 
 Arcas is made and run by John Nguyen (GitHub: ricepillow3000). To reach him, use the pane's Support page, which
-opens a question form on GitHub, or call (770) 265-9930.
+opens a question form on GitHub, email john4000.nguyen@gmail.com, or call (770) 265-9930. An email to John goes to his Gmail, so Google's terms apply to it.
 
 A scan runs on your PC and sends nothing to the internet. Your sheet's data leaves your PC only when you click
 **Ask AI** or **Check words with AI**. There are no accounts and no cookies, and the add-in has no analytics and no tracking. Only this project's website may count its page views, with GoatCounter (see who else sees something).

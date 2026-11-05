@@ -123,12 +123,13 @@ assert.ok(/<div class="dock" id="dock" hidden><a class="btn btn-primary" href="#
 for (const p of PAGES.filter((p) => p !== "index.html")) assert.ok(!html[p].includes('id="dock"'), `${p}: a download bar off the home page`);
 // what to do when the checksum differs
 assert.ok(html["index.html"].includes("If they differ, delete the file and download it again."), "the checksum step does not say what to do when the hashes differ");
-// the support page: John's name and phone (a tel: link, never an email address), and the thank-you once the link to
+const EMAIL = "john4000.nguyen@gmail.com", MAILTO = `<a href="mailto:${EMAIL}">${EMAIL}</a>`;
+// the support page: John's name, phone (a tel: link) and his one email address (a mailto: link, AH-134), and the thank-you once the link to
 // GitHub is followed, announced as a status; the ready text describes the link
 {
   const src = html["support.html"];
   assert.ok(src.includes('<a href="tel:+17702659930">(770) 265-9930</a>') && /John Nguyen/.test(src), "support.html: no contact block with John Nguyen and his phone");
-  assert.ok(!/mailto:|[\w.+-]+@[\w-]+\.[a-z]{2,}/i.test(src), "support.html: an email address");
+  assert.ok(src.includes(MAILTO), "support.html: John's email is not a mailto link in the contact block");
   assert.ok(/<span id="ready">Ready\./.test(src) && /<a [^>]*id="open"[^>]*aria-describedby="ready"/.test(src), "support.html: the link to GitHub is not described by its ready text");
   assert.ok(/<p id="thanks" role="status" hidden>Thanks\./.test(src), "support.html: no hidden thank-you status");
 }
@@ -327,7 +328,9 @@ for (const f of SCRIPTS) {
   const links = [...maker.matchAll(/<a class="btn btn-plain" href="(https:[^"]+)" aria-label="([^"]+)">(<svg\b[^>]*>)[\s\S]*?<\/svg>([^<]*)<\/a>/g)];
   assert.deepEqual(links.map((m) => [m[4], m[1]]), PROFILES, "the maker's profile links are not LinkedIn, Handshake and GitHub, in that order, at John's addresses");
   for (const m of links) assert.ok(m[2] === `John Nguyen on ${m[4]}` && /\saria-hidden="true"/.test(m[3]) && !/\starget=/.test(m[0]), `a profile link is not named for its site or its drawing is not hidden: ${m[0].slice(0, 160)}`);
-  for (const p of ALL) assert.ok(!/mailto:|[\w.+-]+@[\w-]+\.[a-z]{2,}/i.test(allHtml[p].replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g, "")), `${p}: an email address`);
+  // AH-134: John's one email address beside his phone, a mailto link, and never any other address on any page
+  assert.ok(maker.includes(MAILTO), "the maker section has no mailto link to John's email");
+  for (const p of ALL) for (const a of allHtml[p].match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/gi) || []) assert.equal(a, EMAIL, `${p}: an email address that is not John's`);
   // the contact form: a button near the top glides to it; name, what it is about, a message; the reply time beside it
   // and beside the support form
   assert.ok(/<div class="hero-cta">[\s\S]*?<a class="btn [^"]+" href="#contact" data-glide="top">Contact John<\/a>[\s\S]*?<\/div>/.test(home), "the hero has no Contact John button that glides to the form");
@@ -364,7 +367,7 @@ for (const f of SCRIPTS) {
     ["Arcas", "Windows", "BusinessApplication", "0", REPO + "/releases/latest/download/Arcas.exe", REPO + "/blob/main/LICENSE"], "the SoftwareApplication block");
   assert.ok(home.includes(`href="${app.downloadUrl}"`), "the SoftwareApplication's download is not the page's download");
   const person = of("Person");
-  assert.deepEqual([person.name, person.image, person.sameAs], ["John Nguyen", SITE_URL + "assets/john-480.webp", PROFILES.map(([, u]) => u)], "the Person block");
+  assert.deepEqual([person.name, person.image, person.email, person.sameAs], ["John Nguyen", SITE_URL + "assets/john-480.webp", "mailto:" + EMAIL, PROFILES.map(([, u]) => u)], "the Person block");
   const faqLd = of("FAQPage").mainEntity.map((q) => [q.name, q.acceptedAnswer.text]);
   assert.deepEqual(faqLd, qs, "the FAQPage block does not say what the questions on the page say, word for word");
   // proof instead of reviews: each number is read from the stress test's own record, so it cannot drift from it

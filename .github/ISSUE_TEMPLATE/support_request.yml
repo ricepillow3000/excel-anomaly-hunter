@@ -2,6 +2,7 @@ name: Support request
 description: Ask a question or report a problem. Public, needs a free GitHub account.
 title: "[Support]: "
 labels: ["support"]
+assignees: ["ricepillow3000"]
 body:
   - type: markdown
     attributes:

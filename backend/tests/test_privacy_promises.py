@@ -91,16 +91,22 @@ def test_both_support_pages_answer_invite_kit_users_the_certificate_question_and
     assert "nothing is sent until" not in words("site/support.html") and "nothing is posted until you press Submit there" in words("site/support.html")
 
 
+EMAIL = "john4000.nguyen@gmail.com"
+MAILTO = f'<a href="mailto:{EMAIL}">{EMAIL}</a>'
+
 def test_every_privacy_page_names_who_runs_arcas_and_how_to_reach_him():
     # AH-125 (John, "so we don't get sued"): a privacy policy names who is responsible for it and how to reach them.
-    # A phone and the support page, never an email address (a public inbox fills with spam and phishing)
+    # A phone and the support page, and since AH-134 (John, 2026-11-05: "add my official email") his one email address,
+    # never any other (AH-125 had kept every address out: a public inbox fills with spam, a risk John chose to take)
     for page in PAGES:
-        said = words(page)
+        said, src = words(page), (ROOT / page).read_text(encoding="utf-8")
         assert "Arcas is made and run by John Nguyen (GitHub: ricepillow3000)" in said, page
-        assert "(770) 265-9930" in said and "support page" in said.lower(), page
-        assert not re.search(r"[\w.+-]+@[\w-]+\.[\w.]+|mailto:", (ROOT / page).read_text(encoding="utf-8")), page
-    for page in PAGES[1:]:  # the phone is a link a phone can call
-        assert '<a href="tel:+17702659930">(770) 265-9930</a>' in (ROOT / page).read_text(encoding="utf-8"), page
+        assert "(770) 265-9930" in said and "support page" in said.lower() and EMAIL in said, page
+        assert set(re.findall(r"[\w.+-]+@[\w-]+\.[a-z]{2,}", src, re.I)) == {EMAIL}, page
+        assert "An email to John goes to his Gmail, so Google's terms apply to it" in said, page
+    for page in PAGES[1:]:  # the phone is a link a phone can call, the email one that opens a new email
+        src = (ROOT / page).read_text(encoding="utf-8")
+        assert '<a href="tel:+17702659930">(770) 265-9930</a>' in src and MAILTO in src, page
 
 
 def test_every_privacy_page_says_a_crisis_request_goes_nowhere():
@@ -152,9 +158,18 @@ def test_both_support_pages_give_johns_phone_beside_the_question_form():
     # also gave his phone (AH-125), and the website's support page named neither him nor the phone
     for page in ("frontend/support.html", "site/support.html"):
         src = (ROOT / page).read_text(encoding="utf-8")
-        assert '<a href="tel:+17702659930">(770) 265-9930</a>' in src and "John" in src, page
-        assert not re.search(r"[\w.+-]+@[\w-]+\.[a-z]{2,}|mailto:", src, re.I), page
-    assert "The only public ways to reach John are the buttons on this page and his phone, (770) 265-9930" in words("frontend/support.html")
+        assert '<a href="tel:+17702659930">(770) 265-9930</a>' in src and "John" in src and MAILTO in src, page
+        assert set(re.findall(r"[\w.+-]+@[\w-]+\.[a-z]{2,}", src, re.I)) == {EMAIL}, page
+    assert f"The only public ways to reach John are the buttons on this page, his email, {EMAIL}, and his phone, (770) 265-9930" in words("frontend/support.html")
+
+
+def test_every_message_form_assigns_john_so_his_phone_is_pinged():
+    # AH-134 (John, 2026-11-05: "make it so that the message appears as a text for me"): a message from the website lands
+    # as a GitHub issue; each issue form assigns it to John, and the GitHub app on his phone sends a push alert for every
+    # issue assigned to him. A form set in the template applies for anyone, unlike an assignees= link parameter
+    for form in ("contact.yml", "support_request.yml"):
+        src = (ROOT / ".github" / "ISSUE_TEMPLATE" / form).read_text(encoding="utf-8")
+        assert re.search(r'^assignees: \["ricepillow3000"\]$', src, re.M), form
     assert "Arcas is made and run by John Nguyen" in words("site/support.html")
 
 

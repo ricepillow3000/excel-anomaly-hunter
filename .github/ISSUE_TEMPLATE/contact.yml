@@ -2,6 +2,7 @@ name: Contact John
 description: A question, a problem or an idea for John. Public, needs a free GitHub account.
 title: "[Contact]: "
 labels: ["question"]
+assignees: ["ricepillow3000"]
 body:
   - type: markdown
     attributes:
