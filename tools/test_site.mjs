@@ -438,6 +438,9 @@ for (const f of SCRIPTS) {
   assert.ok(/\.phone-only\s*\{\s*display:\s*none;?\s*\}/.test(css) && /@media \(max-width: 760px\)[\s\S]*\.phone-only\s*\{\s*display:\s*block;?\s*\}/.test(css), "the phone line is not shown on narrow screens only");
   // the uninstall in numbered steps, its command as it was
   const un = (/<details[^>]*id="uninstall"[\s\S]*?<\/details>/.exec(sup) || [""])[0];
+  // AH-136: first where people look, Settings' Installed apps, which now lists Arcas; the command only for an older install
+  assert.ok(/<ol>\s*<li>Open Settings, then Apps, then Installed apps\.<\/li>\s*<li>Find Arcas in the list, click the three dots beside it, then Uninstall\.<\/li>\s*<\/ol>/.test(un), "the uninstall does not start with Settings > Apps > Installed apps");
+  assert.ok(!/not listed in Windows/.test(un) && /the app file too/.test(un) && un.indexOf("Installed apps") < un.indexOf("Windows key and R"), "the uninstall still says Arcas is not in Installed apps, or puts the command first");
   assert.ok(/<ol>\s*<li>Press the Windows key and R together\.<\/li>\s*<li>Copy the line below and paste it into the box that opens\.<\/li>\s*<li>Press Enter\.<\/li>\s*<\/ol>/.test(un) && un.includes('<code>"%LOCALAPPDATA%\\AnomalyHunter\\Arcas.exe" uninstall</code>'), "the uninstall is not three numbered steps with its command");
   // the installer's message for a standard account, answered on the support page under its own words
   const ADMIN = "Arcas could not finish. Your Windows account is not an administrator on this PC. Ask the person who looks after your computers to install it for you.";

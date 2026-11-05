@@ -97,8 +97,10 @@ can be charged by Google for what AI help uses; without billing, the free tier c
   saved in the open workbook: the limits, the strength slider, the auto-fix list with its old values, the old values
   Accept keeps for Undo, the code of each row you fixed or dismissed, and the setting that opens the pane with the file. It changes no cell. Save the workbook
   afterwards to keep the change in the file.
-- To uninstall, run `"%LOCALAPPDATA%\AnomalyHunter\Arcas.exe" uninstall`. It removes the startup entry, the
-  add-in listing, the certificate and the files in that folder, except the app file itself (delete it afterwards). It
+- To uninstall, open Settings > Apps > Installed apps, find Arcas and choose Uninstall. An Arcas installed before
+  November 2026 is listed there after its next update; until then run `"%LOCALAPPDATA%\AnomalyHunter\Arcas.exe" uninstall`.
+  It removes the startup entry, its Installed apps entry, the add-in listing, the certificate and the files in that
+  folder, the app file too, a few seconds after it closes. It
   also deletes Excel's add-in cache (the Wef folder), so other web add-ins may need to be added again and may forget
   their settings. It never touches your workbooks, so settings a scan saved inside a workbook stay there until you use
   Forget what this workbook saved in each one.
