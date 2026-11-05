@@ -404,6 +404,41 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
 .error { scroll-margin-bottom: var(--s1); }
 /* who runs Arcas and his phone, under the form (AH-126) */
 .contact { display: grid; gap: var(--s1); padding: var(--s3); border-top: 1px solid var(--ink); font-size: var(--fs--1); color: var(--ink-2); }
+/* the reply time, beside each form (AH-133, John 2026-11-05: "within 2 business days") */
+.reply { padding: var(--s2) var(--s3) 0; font: 600 var(--fs--1)/1.4 var(--sans); color: var(--ink); }
+/* the home page's five questions and its contact form (AH-133): the support page's two cards, under the section's lede */
+.ask { margin-top: var(--s6); }
+/* measured results in place of reviews (AH-133): five figures in a row, each topped by a hairline, its source linked */
+.proof { grid-column: 1 / -1; margin: var(--s6) 0 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--s5) var(--gutter); }
+.proof > div { position: relative; padding-top: var(--s2); }
+.proof dt { font: 800 var(--fs-4)/1 var(--sans); color: var(--wine); font-variant-numeric: tabular-nums; margin-bottom: 12px; }
+.proof dd { margin: 0; font-size: var(--fs--1); color: var(--ink-2); }
+.proof > div:nth-child(2) .rule { --col: 1; }
+.proof > div:nth-child(3) .rule { --col: 2; }
+.proof > div:nth-child(4) .rule { --col: 3; }
+.proof > div:nth-child(5) .rule { --col: 4; }
+/* three public tables, scanned (AH-133): a card each, the pane's words quoted row by row, the source credited */
+.cases { grid-column: 1 / -1; margin-top: var(--s6); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gutter); align-items: start; }
+.case { display: grid; gap: 12px; padding: var(--s3); border: 1px solid var(--ink); background: var(--grain), var(--paper-2); font-size: var(--fs--1); color: var(--ink-2); }
+.case h3 { font-size: var(--fs-1); line-height: 1.2; }
+.case-scope { color: var(--muted); }
+.case-said { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.case-said li { padding: 10px 12px; background: var(--paper); border: 1px solid var(--rule); color: var(--ink); }
+.case-said q { font-weight: 600; }
+.case-credit { padding-top: 12px; border-top: 1px solid var(--rule); }
+/* who makes Arcas (AH-133): his photo at its own 240 x 300 (the width and height on the img keep its box before it
+   loads), his words and his profiles beside it from column 4 */
+.maker { grid-column: 1 / -1; margin-top: var(--s6); display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: var(--s3) var(--s5); align-items: start; }
+/* a fixed size, never one read from the picture: a lazy photo arriving during the checks' reveal laid the page out once
+   (the reveal must composite only, tools/test_site.mjs), and contain keeps its arrival from reaching past its own box */
+.maker img { display: block; width: 240px; height: 300px; object-fit: cover; contain: strict; border: 1px solid var(--ink); background: var(--paper-2); }
+.maker-text { display: grid; gap: var(--s2); max-width: 40rem; font-size: var(--fs-1); line-height: 1.45; color: var(--ink-2); }
+.profiles { display: flex; flex-wrap: wrap; gap: 12px; margin-top: var(--s1); }
+.profiles .btn { font-size: var(--fs--1); }
+/* the thank-you page's words and its way back, beside the headline's lede (AH-133) */
+.sent { grid-column: 7 / span 5; margin-top: var(--s4); display: grid; gap: var(--s3); }
+.sent p { grid-column: auto; margin: 0; } /* not .page-head p's columns: this grid has one */
+.sent .lost { margin-top: 0; }
 /* the 404 page's way back: a row of buttons under its headline (AH-126) */
 .lost { grid-column: 1 / -1; margin-top: var(--s5); display: flex; flex-wrap: wrap; gap: var(--s2); }
 /* the home page's download bar on a phone (AH-126): home.js takes its hidden away once the hero's download has
@@ -549,6 +584,9 @@ html[data-moving] #field { z-index: 2; }
 
 @media (max-width: 1100px) {
   .it-ledger { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .proof { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .cases { grid-template-columns: minmax(0, 1fr); }
+  .form-card.ask { margin-top: var(--s5); }
   .faq, .form-card { grid-column: 1 / -1; }
   .form-card { margin-top: var(--s5); }
   .brand { grid-column: 1 / span 3; }
@@ -580,6 +618,9 @@ html[data-moving] #field { z-index: 2; }
   .typology button:nth-of-type(even) { border-left: 1px solid var(--rule); }
   .busy { min-height: 320px; padding: var(--s3); }
   .it-ledger, .steps ol { grid-template-columns: minmax(0, 1fr); gap: var(--s4); margin-top: var(--s5); }
+  .proof { grid-template-columns: minmax(0, 1fr); gap: var(--s4); margin-top: var(--s5); }
+  .maker { grid-template-columns: minmax(0, 1fr); margin-top: var(--s5); }
+  .ask { margin-top: var(--s5); }
   .stage, .facts, .band-panel .sec-lede { grid-row: auto; }
   .stage, .facts { margin-top: var(--s5); }
   /* the checks table on a phone: each row a block, the check's name, what it catches, then the sample's row */

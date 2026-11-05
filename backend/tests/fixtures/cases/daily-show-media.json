@@ -1,0 +1,143 @@
+{
+ "title": "The Daily Show guests: one group typed as Media and as media",
+ "source_url": "https://raw.githubusercontent.com/fivethirtyeight/data/master/daily-show-guests/daily_show_guests.csv",
+ "source_page": "https://github.com/fivethirtyeight/data/tree/master/daily-show-guests",
+ "story": "Every Guest Jon Stewart Ever Had On 'The Daily Show', http://fivethirtyeight.com/datalab/every-guest-jon-stewart-ever-had-on-the-daily-show/",
+ "licence": "CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), stated in https://github.com/fivethirtyeight/data/blob/master/README.md and its LICENSE file",
+ "attribution": "Data: FiveThirtyEight, daily_show_guests.csv (github.com/fivethirtyeight/data/tree/master/daily-show-guests), CC BY 4.0. Excerpt of 99 rows; no cell changed.",
+ "raw_copy_matches_url": "yes: sha256 of the download on 2026-11-05 equals blind36-raw/f38_daily_show.csv (bceb80e7ff3facc9...)",
+ "full_rows": 2693,
+ "excerpt_rows": 99,
+ "excerpt_source_sheet_rows": [
+  [
+   501,
+   599
+  ]
+ ],
+ "excerpt_note": "99 rows in a row, all from 2002, byte for byte the source's lines. It holds 3 of the 5 'media' rows (the other two are 2001 and 2011; a window that held them crossed years and drew series notes on YEAR).",
+ "engine": "Arcas engine at origin/main 2235190, anomaly_hunter.agents.scan_agent.scan(columns, rows) at strength 5 (the default), every cell passed as text with spaces trimmed, as the pane sends it",
+ "excerpt_flags": [
+  {
+   "excerpt_sheet_row": 3,
+   "source_sheet_row": 502,
+   "severity": "Medium",
+   "cells": [
+    "GoogleKnowlege_Occupation"
+   ],
+   "reason": "GoogleKnowlege_Occupation \"Journalist\" looks like \"journalist\" (same word, different capitals/spaces)"
+  },
+  {
+   "excerpt_sheet_row": 13,
+   "source_sheet_row": 512,
+   "severity": "Medium",
+   "cells": [
+    "Group"
+   ],
+   "reason": "Group \"media\" looks like \"Media\" (same word, different capitals/spaces)"
+  },
+  {
+   "excerpt_sheet_row": 24,
+   "source_sheet_row": 523,
+   "severity": "Medium",
+   "cells": [
+    "GoogleKnowlege_Occupation"
+   ],
+   "reason": "GoogleKnowlege_Occupation \"Journalist\" looks like \"journalist\" (same word, different capitals/spaces)"
+  },
+  {
+   "excerpt_sheet_row": 34,
+   "source_sheet_row": 533,
+   "severity": "Medium",
+   "cells": [
+    "Group"
+   ],
+   "reason": "Group \"media\" looks like \"Media\" (same word, different capitals/spaces)"
+  },
+  {
+   "excerpt_sheet_row": 36,
+   "source_sheet_row": 535,
+   "severity": "Medium",
+   "cells": [
+    "GoogleKnowlege_Occupation"
+   ],
+   "reason": "GoogleKnowlege_Occupation \"Journalist\" looks like \"journalist\" (same word, different capitals/spaces)"
+  },
+  {
+   "excerpt_sheet_row": 71,
+   "source_sheet_row": 570,
+   "severity": "Medium",
+   "cells": [
+    "GoogleKnowlege_Occupation"
+   ],
+   "reason": "GoogleKnowlege_Occupation \"Journalist\" looks like \"journalist\" (same word, different capitals/spaces)"
+  },
+  {
+   "excerpt_sheet_row": 88,
+   "source_sheet_row": 587,
+   "severity": "Medium",
+   "cells": [
+    "Group"
+   ],
+   "reason": "Group \"media\" looks like \"Media\" (same word, different capitals/spaces)"
+  },
+  {
+   "excerpt_sheet_row": 90,
+   "source_sheet_row": 589,
+   "severity": "Medium",
+   "cells": [
+    "GoogleKnowlege_Occupation"
+   ],
+   "reason": "GoogleKnowlege_Occupation \"Singer-songwriter\" looks like \"singer-songwriter\" (same word, different capitals/spaces)"
+  }
+ ],
+ "full_table_flags": [
+  {
+   "source_sheet_row": 407,
+   "severity": "Medium",
+   "reason": "Group \"media\" looks like \"Media\" (same word, different capitals/spaces)"
+  },
+  {
+   "source_sheet_row": 512,
+   "severity": "Medium",
+   "reason": "Group \"media\" looks like \"Media\" (same word, different capitals/spaces)"
+  },
+  {
+   "source_sheet_row": 533,
+   "severity": "Medium",
+   "reason": "Group \"media\" looks like \"Media\" (same word, different capitals/spaces)"
+  },
+  {
+   "source_sheet_row": 587,
+   "severity": "Medium",
+   "reason": "Group \"media\" looks like \"Media\" (same word, different capitals/spaces)"
+  },
+  {
+   "source_sheet_row": 2012,
+   "severity": "Medium",
+   "reason": "Group \"media\" looks like \"Media\" (same word, different capitals/spaces)"
+  }
+ ],
+ "findings": [
+  {
+   "excerpt_sheet_rows": [
+    13,
+    34,
+    88
+   ],
+   "source_sheet_rows": [
+    407,
+    512,
+    533,
+    587,
+    2012
+   ],
+   "cell": "Group",
+   "value": "media",
+   "what_was_wrong": "The Group column writes Media 751 times and media 5 times, so a case-sensitive count or filter (pandas, R, SQL) splits one group in two; all five lowercase rows are the guests whose occupation is 'news anchor' (Jeff Varner, Judy Woodruff twice, Candy Crowley, Bret Baier).",
+   "right_value": "Media (the column's usual spelling, 751 times)"
+  }
+ ],
+ "other_excerpt_flags": "On the excerpt only, the engine also flags GoogleKnowlege_Occupation 'Journalist' (4 rows: sheet rows 3, 24, 36, 71) beside 'journalist' (8) and 'Singer-songwriter' (row 90) beside 'singer-songwriter' (5), Medium. Real too: the same occupation in two capitalisations (the full table has 61 occupations written two or more ways, e.g. journalist 180 / Journalist 72), but the full-table scan does not flag that column, so a website line about the full table should name only the Group finding.",
+ "row_numbering": "Row numbers are sheet rows: the header is row 1, so data row k (counting from 1) is sheet row k + 1. source_sheet_row is the same row in the full published file.",
+ "excerpt_file": "daily-show-media.csv"
+}

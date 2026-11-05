@@ -1,0 +1,85 @@
+{
+ "title": "Classic rock songs: a year 1071 and a website name in the Release Year column",
+ "source_url": "https://raw.githubusercontent.com/fivethirtyeight/data/master/classic-rock/classic-rock-song-list.csv",
+ "source_page": "https://github.com/fivethirtyeight/data/tree/master/classic-rock",
+ "story": "Why Classic Rock Isn't What It Used To Be, https://fivethirtyeight.com/features/why-classic-rock-isnt-what-it-used-to-be/",
+ "licence": "CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), stated in https://github.com/fivethirtyeight/data/blob/master/README.md and its LICENSE file",
+ "attribution": "Data: FiveThirtyEight, classic-rock-song-list.csv (github.com/fivethirtyeight/data/tree/master/classic-rock), CC BY 4.0. Excerpt of 120 rows; no cell changed.",
+ "raw_copy_matches_url": "yes: sha256 of the download on 2026-11-05 equals the raw copy blind37-raw/f38_classic_rock.csv (bb320ec3daadde79...)",
+ "full_rows": 2229,
+ "excerpt_rows": 120,
+ "excerpt_source_sheet_rows": [
+  [
+   512,
+   571
+  ],
+  [
+   1472,
+   1531
+  ]
+ ],
+ "excerpt_note": "Two blocks of 60 rows kept in source order, byte for byte the source's lines. The Elton John rows (sheet rows 538 to 559) are all inside the first block.",
+ "engine": "Arcas engine at origin/main 2235190, anomaly_hunter.agents.scan_agent.scan(columns, rows) at strength 5 (the default), every cell passed as text with spaces trimmed, as the pane sends it",
+ "excerpt_flags": [
+  {
+   "excerpt_sheet_row": 9,
+   "source_sheet_row": 519,
+   "severity": "Low",
+   "cells": [
+    "Release Year"
+   ],
+   "reason": "Release Year is blank in 22 of 120 rows, spread through the sheet"
+  },
+  {
+   "excerpt_sheet_row": 39,
+   "source_sheet_row": 549,
+   "severity": "Medium",
+   "cells": [
+    "Release Year"
+   ],
+   "reason": "Flagged by 1 of 2: Release Year weird limit is 1938; this is 1071"
+  },
+  {
+   "excerpt_sheet_row": 96,
+   "source_sheet_row": 1506,
+   "severity": "Medium",
+   "cells": [
+    "Release Year"
+   ],
+   "reason": "Text \"SONGFACTS.COM\" in number column Release Year"
+  }
+ ],
+ "full_table_flags": [
+  {
+   "source_sheet_row": 549,
+   "severity": "Medium",
+   "reason": "Flagged by 2 of 2: Release Year weird limit is 1923; this is 1071; Unusual combination of values, mainly Release Year"
+  },
+  {
+   "source_sheet_row": 1506,
+   "severity": "Medium",
+   "reason": "Text \"SONGFACTS.COM\" in number column Release Year"
+  }
+ ],
+ "findings": [
+  {
+   "excerpt_sheet_row": 39,
+   "source_sheet_row": 549,
+   "cell": "Release Year",
+   "value": "1071",
+   "what_was_wrong": "Levon by Elton John has the release year 1071, about 880 years before the next earliest year in the column (1955), on a list of songs played on classic rock radio.",
+   "right_value": "Most likely 1971: one digit off, and every other Elton John song with a year in this table is from 1970 to 1975 (Tiny Dancer and Madman Across The Water are 1971). The table alone cannot prove the exact year."
+  },
+  {
+   "excerpt_sheet_row": 96,
+   "source_sheet_row": 1506,
+   "cell": "Release Year",
+   "value": "SONGFACTS.COM",
+   "what_was_wrong": "Bullfrog Blues by Rory Gallagher has the website name SONGFACTS.COM in its Release Year cell instead of a year, while its own Year? cell says 1 (a year was found) and F*G holds its play count, which the readme says is filled only when a year was found.",
+   "right_value": "unknown (the table has no other Rory Gallagher song or date to read it from)"
+  }
+ ],
+ "other_excerpt_flags": "Release Year is blank in 22 of the excerpt's 120 rows (Low). Honest: the folder readme says a blank Release Year means no SongFacts entry was found; on the full table the engine does not flag these blanks.",
+ "row_numbering": "Row numbers are sheet rows: the header is row 1, so data row k (counting from 1) is sheet row k + 1. source_sheet_row is the same row in the full published file.",
+ "excerpt_file": "classic-rock-release-year.csv"
+}

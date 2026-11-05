@@ -156,3 +156,17 @@ def test_both_support_pages_give_johns_phone_beside_the_question_form():
         assert not re.search(r"[\w.+-]+@[\w-]+\.[a-z]{2,}|mailto:", src, re.I), page
     assert "The only public ways to reach John are the buttons on this page and his phone, (770) 265-9930" in words("frontend/support.html")
     assert "Arcas is made and run by John Nguyen" in words("site/support.html")
+
+
+def test_every_privacy_page_says_the_websites_forms_send_nothing_and_the_profile_links_load_nothing():
+    # AH-133 (John, 2026-11-05): the home page gained a contact form and links to John's LinkedIn, Handshake and GitHub.
+    # The form sends nothing itself (support.js opens a prefilled public GitHub issue the visitor submits there), and the
+    # profiles are plain links: tools/test_site.mjs holds the page to both. The three twins say so in the same words
+    said = (
+        "The website's contact form and support form send nothing themselves: each opens a public GitHub issue filled in "
+        "with what you typed, which you submit on GitHub yourself",
+        "The links to John's LinkedIn, Handshake and GitHub profiles are plain links: nothing loads from LinkedIn, "
+        "Handshake or GitHub until you click one, and then that site's own terms apply",
+    )
+    for page in PAGES:
+        assert [s for s in said if s not in words(page)] == [], page

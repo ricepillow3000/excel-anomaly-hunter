@@ -1,0 +1,34 @@
+name: Contact John
+description: A question, a problem or an idea for John. Public, needs a free GitHub account.
+title: "[Contact]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Everything you post here is public.** GitHub keeps edit history, so deleting text later does not remove it.
+        - Never paste your AI key, your invite code, real customer data or account numbers.
+        - John will never ask for your key, invite code, password or file.
+        - John replies within 2 business days, here on this page.
+  - type: input
+    id: name
+    attributes:
+      label: Name
+    validations:
+      required: true
+  - type: dropdown
+    id: topic
+    attributes:
+      label: What is it about?
+      options:
+        - A question
+        - A problem
+        - An idea
+    validations:
+      required: true
+  - type: textarea
+    id: message
+    attributes:
+      label: Message
+    validations:
+      required: true
