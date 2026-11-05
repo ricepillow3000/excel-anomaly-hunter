@@ -59,3 +59,25 @@ higher `<Version>` than the bad one, and new icon file names if the icons change
 - The local certificate authority's key is never kept, by design: nothing can sign another certificate with it. A
   user whose chain breaks runs the installer again and it makes a new one.
 - Users' own cells: every change the pane writes has Undo. Their files stay theirs to back up.
+
+## Restoring the invite list
+
+Restore rehearsed (automated), 2026-11-04 (AH-124): `relay/restore-test.mjs` runs with `node relay/test.mjs` on
+every push, in `tools/check.py` and in CI's security job. It writes a `tokens.json` with two invites the way
+`relay/new-invite.mjs` does, copies it to a second folder, deletes the original, restores it from the copy, loads it
+the way the relay loads the `TOKENS` secret, and checks that both invites still work and the daily caps still count.
+It also checks the danger the backup guards against: a fresh list made without it switches every old invite off.
+
+What the rehearsal can't do is talk to Cloudflare. When John restores for real:
+
+1. Copy `tokens.json` from the second private place back to `relay/tokens.json` on the PC that makes invites.
+2. Open it and check that every person who should have AI help has a line (a hash and their name).
+3. From `relay/`, upload the whole list: `type tokens.json | npx wrangler@4.151.1 secret put TOKENS`. The upload
+   replaces the old list at once, with no deploy.
+4. Run the Relay live probe workflow on the Actions tab. With the canary invite in the list, its real call proves the
+   restored list is live.
+5. Ask one invited person to try Ask AI. If an invite still says it isn't valid, that person's line is missing:
+   make them a new kit with `node relay/new-invite.mjs "Name"` and upload the list again.
+
+Do the real restore once a year, or after any change to how invites are made, on a day the shared AI is quiet. Write
+the date here: Restore rehearsed against Cloudflare: not yet.

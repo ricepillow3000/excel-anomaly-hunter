@@ -31,8 +31,13 @@
     };
     form.addEventListener("input", recheck);
     form.addEventListener("change", recheck);
+    // AH-126: once the link to GitHub is followed, say what happens next (nothing reaches John until Submit is pressed on
+    // GitHub), as a status a screen reader announces; preparing the question again takes it back
+    const thanks = $("thanks");
+    if (thanks) $("open").addEventListener("click", () => { thanks.hidden = false; });
     form.addEventListener("submit", (e) => {
       e.preventDefault();
+      if (thanks) thanks.hidden = true;
       const need = NEEDED.filter(([id]) => empty(id));
       for (const [id] of NEEDED) mark(id, need.some(([n]) => n === id));
       missing.hidden = !need.length;
@@ -51,6 +56,8 @@
       let keep = all.length, url = link(v("details"));
       while (q(url).length > FITS && keep) { keep = Math.floor(keep * 0.9); url = link(all.slice(0, keep).join("")); }
       $("cut").hidden = keep === all.length;
+      // the link is described by what the box says above it, the cut note too when it shows (a hidden one would be read)
+      $("open").setAttribute("aria-describedby", $("cut").hidden ? "ready" : "ready cut");
       $("open").href = url;
       $("open").focus();
     });

@@ -47,6 +47,11 @@ def provider():
             "claude" if os.environ.get("ANTHROPIC_API_KEY") else None)
 
 
+def secrets():
+    """Every key and invite code this PC may send, so server.log can blank them out of a provider's error (AH-124)."""
+    return [s for s in (gemini_key(), invite_code(), os.environ.get("ANTHROPIC_API_KEY")) if s and len(s) >= 8]
+
+
 def api_key_configured():
     return provider() is not None
 
@@ -61,12 +66,12 @@ def check_key(key):
             ids = {str(m.get("id", "")).removeprefix("models/") for m in json.load(r).get("data", [])}
     except urllib.error.HTTPError as e:
         if e.code in (400, 401, 403):
-            return False, "Google did not accept this key - copy the whole key again from aistudio.google.com."
-        return None, f"Saved. Google answered with error {e.code} while testing it - Ask AI will tell you if it works."
+            return False, "Google did not accept this key. Copy the whole key again from aistudio.google.com."
+        return None, f"Saved. Google answered with error {e.code} while testing it, so Ask AI will tell you if it works."
     except (OSError, http.client.HTTPException, ValueError, AttributeError):  # offline, timeout, cut off, or not the list
-        return None, "Saved. Couldn't reach Google to test the key - check the internet connection."
+        return None, "Saved. Couldn't reach Google to test the key: check the internet connection."
     if GEMINI_MODEL not in ids:
-        return True, f"Saved - the key works, but it can't use {GEMINI_MODEL}, so Ask AI won't work yet. Tell the developer."
+        return True, f"Saved. The key works, but it can't use {GEMINI_MODEL}, so Ask AI won't work yet. Tell the developer."
     return True, "Key works. AI help is on."
 
 
@@ -254,7 +259,7 @@ def _ask(prompt, out=Fix, schema=FIX_SCHEMA, name="fix", deadline=None):
     except (OSError, ValueError):  # not there yet, or unreadable: ask
         pass
     if not _LOCK.acquire(blocking=False):
-        raise ValueError("AI is still working on your other request - try again when it finishes.")
+        raise ValueError("AI is still working on your other request. Try again when it finishes.")
     try:
         answer = _call(prompt, out, schema, name, deadline or time.monotonic() + DEADLINE)
     finally:
@@ -273,7 +278,7 @@ class _Said(ValueError):
     """Our own words for an answer that came back but can't be used: passed on as they are."""
 
 
-TOO_LONG = "The AI's answer was too long to come back whole - ask for fewer cells at a time."
+TOO_LONG = "The AI's answer was too long to come back whole. Ask for fewer cells at a time."
 
 
 def _call(prompt, out, schema, name, deadline):
@@ -284,15 +289,15 @@ def _call(prompt, out, schema, name, deadline):
             resp = sdk.messages.parse(model=MODEL, max_tokens=16000, output_format=out,
                                       messages=[{"role": "user", "content": prompt}])
         except ValidationError:  # answer cut off mid-JSON
-            raise ValueError("Claude's answer came back incomplete - try again or shorten the request.") from None
+            raise ValueError("Claude's answer came back incomplete. Try again, or shorten the request.") from None
         if resp.parsed_output is None:  # refusal
             raise ValueError("Claude gave no usable answer: " + (
-                "it declined this request - try different words, or fix it by hand." if resp.stop_reason == "refusal"
+                "it declined this request. Try different words, or fix it by hand." if resp.stop_reason == "refusal"
                 else TOO_LONG[4:].replace("AI's answer was", "it was", 1) if resp.stop_reason == "max_tokens" else "try again."))
         return resp.parsed_output
     data = _wire(prompt, schema, name)
     if len(data) > BUDGET:  # the callers trim to fit; this is the last guard (the relay refuses over 8 KB)
-        raise ValueError("That request was too large for the AI - try a smaller selection.")
+        raise ValueError("That request was too large for the AI. Try a smaller selection.")
     relay = provider() == "relay"  # same prompt; the relay rebuilds the body (John's key, its model, max_tokens 4096) and counts the caps
     tries, slow = 0, False  # slow: a try timed out - the next may wait until the deadline (a 100 s answer never came back)
     while True:  # Google's busy spells come and go within minutes: wait and try again, up to the deadline
@@ -311,7 +316,7 @@ def _call(prompt, out, schema, name, deadline):
             if why == "length":
                 raise _Said(TOO_LONG)
             if not text:
-                raise _Said("Google AI declined to answer this request - try different words, or fix it by hand.")
+                raise _Said("Google AI declined to answer this request. Try different words, or fix it by hand.")
             return out.model_validate_json(text)
         except _Said:
             raise
@@ -321,7 +326,7 @@ def _call(prompt, out, schema, name, deadline):
                 try:  # every relay call counts against the invite's daily fixes, so the relay retries Google itself
                     words = json.loads(said)["error"]
                 except (ValueError, KeyError, TypeError):
-                    words = f"The AI relay answered with error {e.code} - try again later."
+                    words = f"The AI relay answered with error {e.code}. Try again later."
                 raise ValueError(words + (" Ask John for a new invite code." if e.code == 401 else "")) from None
             daily = e.code == 429 and "perday" in said.replace(" ", "").lower()  # waiting minutes won't bring today's quota back
             wait = _wait(tries, e.headers, deadline) if e.code in RETRY and not daily else None
@@ -330,13 +335,13 @@ def _call(prompt, out, schema, name, deadline):
                 _sleep(wait)
                 continue
             bad_key = e.code in (401, 403) or (e.code == 400 and "API key" in said)  # Google: 400 "API key not valid"
-            raise ValueError("Today's free Google AI limit is used up - it resets at midnight Pacific time." if daily
-                             else "The free Google AI limit is used up for now - try again in a minute. The suggested fix above still works."
-                             if e.code == 429 else "Google did not accept the AI key - paste it again under AI help."
-                             if bad_key else f"Google doesn't offer the AI model {GEMINI_MODEL} to this key - tell the developer."
-                             if e.code == 404 else "That request was too large for the AI - try a smaller selection."
-                             if e.code == 413 else "Google AI is busy right now - try again in a few minutes."
-                             if e.code in RETRY else f"Google AI answered with error {e.code} - try again shortly.") from None
+            raise ValueError("Today's free Google AI limit is used up. It resets at midnight Pacific time." if daily
+                             else "The free Google AI limit is used up for now. Try again in a minute; the suggested fix above still works."
+                             if e.code == 429 else "Google did not accept the AI key: paste it again under AI help."
+                             if bad_key else f"Google doesn't offer the AI model {GEMINI_MODEL} to this key. Tell the developer."
+                             if e.code == 404 else "That request was too large for the AI. Try a smaller selection."
+                             if e.code == 413 else "Google AI is busy right now. Try again in a few minutes."
+                             if e.code in RETRY else f"Google AI answered with error {e.code}. Try again in a few minutes.") from None
         except (OSError, http.client.HTTPException) as e:  # no connection, timeout, reset or cut off mid-answer
             # Gemini's speed swings (3.8 s to 90 s+ for the same request, 2026-10-11): a timeout is not a broken connection.
             # IncompleteRead/BadStatusLine aren't OSErrors: they escaped as an HTTP 500 in Werkzeug's words (2026-10-16)
@@ -350,12 +355,12 @@ def _call(prompt, out, schema, name, deadline):
                 _sleep(wait)
                 continue
             if cut:
-                raise ValueError("Google AI's answer came back incomplete - try again.") from None
+                raise ValueError("Google AI's answer came back incomplete. Try again.") from None
             if timed_out:
-                raise ValueError("Google AI is slow right now - try again in a minute.") from None
-            raise ValueError("Could not reach Google AI - check the internet connection.") from None
+                raise ValueError("Google AI is slow right now. Try again in a minute.") from None
+            raise ValueError("Could not reach Google AI: check the internet connection.") from None
         except (KeyError, IndexError, TypeError, AttributeError, ValueError):  # no answer, or not the JSON asked for
-            raise ValueError("Google AI's answer came back incomplete - try again.") from None
+            raise ValueError("Google AI's answer came back incomplete. Try again.") from None
 
 
 class Odd(BaseModel):
@@ -446,8 +451,8 @@ def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent, 
             break
     else:
         if _fits(_fix_prompt(columns, rows, row_index, start_row, start_col, reason, "", formulas, ctx=0, keep=[flagged], cut=set(), flagged=flagged)):
-            raise ValueError("Your request is too long to send to the free AI - shorten it (a sentence or two is enough).")
-        raise ValueError("This row is too big to send to the free AI in one piece - shorten its longest cell, or fix it by hand.")
+            raise ValueError("Your request is too long to send to the free AI. Shorten it (a sentence or two is enough).")
+        raise ValueError("This row is too big to send to the free AI in one piece. Shorten its longest cell, or fix it by hand.")
     fix = _ask(prompt)
     # AH-34: a change the card can't show was dropped without a word under an explanation that claimed it
     # ("I set B4 to Sales" over an empty card for "Sheet1!B4"): each one is shown, or named in the explanation

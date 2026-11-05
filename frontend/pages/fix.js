@@ -1,6 +1,6 @@
 import { SEV } from "../constants/index.js";
 import { state } from "../hooks/use-state.js";
-import { $, only } from "../utils/dom.js";
+import { $, only, show } from "../utils/dom.js";
 import { rowFromAddress } from "../utils/sheet.js";
 import { act } from "../hooks/use-action.js";
 import { busy, notice } from "../components/progress.js";
@@ -32,6 +32,8 @@ export async function openFix(i, selectInSheet) {
   $("fix-reason").textContent = plainReason(r.reason) || (u ? "Checked again after your fix: it looks right." : "Flagged by the checker.");
   $("fix-intent").value = "";
   $("fix-status").textContent = "";
+  $("fix-care").textContent = "";
+  show("fix-care", false);
   $("fix-ask").textContent = "Ask AI";
   $("fix-changes").innerHTML = "";
   $("fix-explanation").textContent = "";

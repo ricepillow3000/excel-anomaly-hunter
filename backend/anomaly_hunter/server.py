@@ -10,6 +10,7 @@ import ssl
 import subprocess
 import sys
 import threading
+import traceback
 import urllib.request
 from collections import Counter
 from pathlib import Path
@@ -26,7 +27,7 @@ from werkzeug.serving import WSGIRequestHandler
 
 from anomaly_hunter import powerbi, sealed
 from anomaly_hunter.agents import checker, scan_agent
-from anomaly_hunter.ai import client
+from anomaly_hunter.ai import care, client
 from anomaly_hunter.engine.load import load_from_records
 from anomaly_hunter.engine.pipeline import knobs
 from anomaly_hunter.sealed import write_private as _write_private
@@ -34,6 +35,10 @@ from anomaly_hunter.sealed import write_private as _write_private
 # the pane, served as-is: beside the code in a checkout, inside the bundle in the one-file app (unpacked to _MEIPASS)
 PANEL = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2])) / "frontend"
 HOME = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local") / "AnomalyHunter"  # cert, key, log
+# where server.log is, in the words a user can paste into File Explorer: "details in server.log" sent people looking
+# for a file they had never seen (AH-124)
+LOG_AT = "%LOCALAPPDATA%\\AnomalyHunter\\server.log"
+BROKE = f"The checker hit a problem it didn't expect. Try again, and if it happens again, the details are in {LOG_AT}."
 CERT_NAME = "Anomaly Hunter local CA"  # install.bat finds the trusted CA by this name
 PORT = 5055
 LOCAL = {"127.0.0.1", "localhost"}
@@ -66,7 +71,7 @@ def _bad(body):
     if not isinstance(rows, list) or any(not isinstance(r, list) or len(r) != len(body["columns"]) for r in rows):
         return "'rows' must be a list of lists, each as long as 'columns'"
     if len(rows) * len(body["columns"]) > MAX_CELLS:
-        return f"too many cells - scan at most {MAX_CELLS:,} at once"
+        return f"That's too many cells for one scan. Select at most {MAX_CELLS:,} cells and try again."
     if not all(isinstance(c, (str, int, float)) and not isinstance(c, bool) for c in body["columns"]):
         return "column names must be text or numbers"
     # NaN/Infinity parse as JSON in Python, not in Excel; a 400-digit whole number is just a (flagged) value
@@ -79,7 +84,7 @@ def _bad(body):
         return "'limits' must give each column [base low, base high, weird low, weird high] as numbers or blanks"
     for col, b in (limits or {}).items():
         if any(lo is not None and hi is not None and lo > hi for lo, hi in (b[:2], b[2:])):
-            return f"Limits for {col}: the low value is above the high value - fix it in Edit limits"
+            return f"Limits for {col}: the low value is above the high value. Fix it in Edit limits."
     if body.get("order_by") is not None and str(body["order_by"]) not in map(str, body["columns"]):
         return "'order_by' must be one of the columns"
     if body.get("strength") is not None and not (type(body["strength"]) is int and 0 <= body["strength"] <= 10):
@@ -87,6 +92,28 @@ def _bad(body):
     if body.get("power_bi") is not None and type(body["power_bi"]) is not bool:
         return "'power_bi' must be true or false"
     return None
+
+
+class _NoKeys(logging.Filter):
+    """server.log never holds a key or an invite code: a provider's error can quote the key it was sent ("upstream said
+    AIza..."), and the log went in whole, traceback and all, to a plain file a user may attach to a support message
+    (AH-124). The message and its traceback are written out here, with every secret this PC may send blanked."""
+
+    def filter(self, record):
+        try:
+            hide = client.secrets()
+        except OSError:  # a key file this account can't read: nothing of it can be in the record either
+            hide = []
+        text = record.getMessage()
+        if record.exc_info:
+            text += "\n" + "".join(traceback.format_exception(*record.exc_info)).rstrip()
+        for secret in hide:
+            text = text.replace(secret, "[the AI key]")
+        record.msg, record.args, record.exc_info, record.exc_text = text, None, None, None
+        return True
+
+
+_NO_KEYS = _NoKeys()
 
 
 class _JSON(DefaultJSONProvider):
@@ -112,6 +139,7 @@ def create_app(scan_csv=None):
     # and HTML tracebacks in place of our JSON errors (AH-87 audit). No debug switch, the environment's included (G1)
     app.debug = False
     app.json = _JSON(app)
+    app.logger.addFilter(_NO_KEYS)  # one instance: every app shares this logger (its name), and addFilter skips a repeat
     # Werkzeug reads a body into memory only safely with a cap; 256 MB is far above a 2M-cell sheet (~20 MB measured)
     app.config["MAX_CONTENT_LENGTH"] = 256 * 1024 * 1024
 
@@ -119,7 +147,7 @@ def create_app(scan_csv=None):
     def own_panel_only():
         # other websites in the user's browser can't drive the engine (cross-site POST, DNS rebinding)
         if request.host.split(":")[0] not in LOCAL or request.headers.get("Origin") not in ORIGINS:
-            return {"error": "forbidden"}, 403
+            return {"error": "Only the Arcas pane on this PC can use the checker."}, 403
 
     @app.after_request
     def no_cache(resp):
@@ -136,7 +164,7 @@ def create_app(scan_csv=None):
     @app.errorhandler(HTTPException)
     def json_error(e):  # 404, 405, 413...: JSON like every other answer, not Werkzeug's HTML page (ZAP active scan)
         if e.code == 500:  # a bug anywhere: our words, not Werkzeug's (Flask has already logged it to server.log)
-            return {"error": "Engine error - details in server.log"}, 500
+            return {"error": BROKE}, 500
         return {"error": e.description}, e.code
 
     built = version()
@@ -167,7 +195,7 @@ def create_app(scan_csv=None):
             df, out, suggested, used, status, fair = scan_agent.scan(cols, rows, limits, order_by, _strength(body))
         except Exception:  # a bug in the engine: full detail to the log, not pandas internals to the user
             app.logger.exception("scan failed")
-            return {"error": "Engine error - details in server.log"}, 500
+            return {"error": BROKE}, 500
         saved = None  # Power BI copy: None = off, True = written, False = it failed (the pane says so)
         if scan_csv and body.get("power_bi") is not True:  # opt-in (2026-10-16): no plain-text copy of the sheet unasked
             with _CSV_LOCK:
@@ -192,19 +220,20 @@ def create_app(scan_csv=None):
         try:
             return call()
         except anthropic.AuthenticationError:
-            return {"error": "Invalid ANTHROPIC_API_KEY."}, 503
+            return {"error": "Claude did not accept the ANTHROPIC_API_KEY on this PC. Check the key, then start Arcas again."}, 503
         # Our own words only, never the provider's text (2026-10-15 audit): details go to server.log
         except (anthropic.RateLimitError, anthropic.APIConnectionError):
             app.logger.exception("Claude busy or unreachable")
-            return {"error": "Claude API busy or unreachable - try again shortly."}, 503
+            return {"error": "Claude is busy or can't be reached right now. Try again in a minute."}, 503
         except anthropic.APIError as e:
             app.logger.exception("Claude API error")
-            return {"error": f"Claude API error{f' (HTTP {e.status_code})' if getattr(e, 'status_code', None) else ''} - details in server.log"}, 502
+            code = f" (HTTP {e.status_code})" if getattr(e, "status_code", None) else ""
+            return {"error": f"Claude answered with a problem{code}. Try again in a minute, and if it happens again, the details are in {LOG_AT}."}, 502
         except ValueError as e:
             return {"error": str(e)}, 502
         except Exception:  # anything new still answers in our words, never Werkzeug's or the provider's (2026-10-16)
             app.logger.exception("AI call failed")
-            return {"error": "AI error - details in server.log"}, 502
+            return {"error": f"Ask AI hit a problem it didn't expect. Try again, and if it happens again, the details are in {LOG_AT}."}, 502
 
     @app.post("/key")
     def key_route():
@@ -213,12 +242,12 @@ def create_app(scan_csv=None):
         key = body.get("key") if isinstance(body, dict) else None
         # classic keys "AIza..."; newer service-account-bound keys "AQ.Ab8..." contain dots
         if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_.\-]{0,200}", key.strip()):
-            return {"error": "That doesn't look like an API key - copy it again from Google Cloud (APIs & Services > Credentials)."}, 400
+            return {"error": "That doesn't look like an API key. Copy it again from Google Cloud (APIs & Services > Credentials)."}, 400
         try:
             return save_key(key.strip())
         except OSError:  # a full disk, a locked file (AH-13 sweep): our words, and the details go to server.log
             app.logger.exception("could not save or remove the AI key")
-            return {"error": "Couldn't save that on this PC - the disk may be full or the file in use. Details in server.log."}, 503
+            return {"error": f"Couldn't save that on this PC. The disk may be full or the file in use: close other programs and try again. The details are in {LOG_AT}."}, 503
 
     def save_key(key):
         client.KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -228,11 +257,11 @@ def create_app(scan_csv=None):
             return {"ai_available": client.api_key_configured(), "ai_provider": client.provider()}
         if key.startswith("inv_"):  # an invite code to John's relay: kept here, checked by the relay on use
             if not re.fullmatch(r"inv_[A-Za-z0-9_\-]{20,64}", key):
-                return {"error": "That doesn't look like a whole invite code - copy it again."}, 400
+                return {"error": "That doesn't look like a whole invite code. Copy it again."}, 400
             sealed.save(client.INVITE_FILE, key)
             on = client.provider() == "relay"
             return {"ai_available": client.api_key_configured(), "ai_provider": client.provider(),
-                    "message": "Invite code saved. AI help is on." if on else "Invite code saved - the shared AI isn't switched on yet."}
+                    "message": "Invite code saved. AI help is on." if on else "Invite code saved, but the shared AI isn't switched on yet."}
         ok, words = client.check_key(key)  # tested now, not at the first Ask AI
         if ok is False:
             return {"error": words}, 400  # a rejected key is not kept
@@ -254,6 +283,8 @@ def create_app(scan_csv=None):
         formulas = body.get("formulas")  # the flagged row's formulas, so Claude fixes inputs instead of overwriting them
         if formulas is not None and not (isinstance(formulas, list) and len(formulas) == len(body["columns"])):
             return {"error": "'formulas' must be a list as long as 'columns'"}, 400
+        if care.distress(intent):  # AH-125: helpline numbers from the engine itself, before any key check or AI call
+            return {"explanation": care.MESSAGE, "changes": [], "care": True}
         return ai(lambda: client.suggest_fix(body["columns"], body["rows"], body["row_index"], body["start_row"],
                                              body["start_col"], str(body.get("reason") or ""), intent, formulas))
 
@@ -293,7 +324,7 @@ def create_app(scan_csv=None):
             return checker.check([str(c) for c in body["columns"]], body["rows"], body.get("limits"), i, changes, _strength(body))
         except Exception:
             app.logger.exception("check failed")
-            return {"error": "Engine error - details in server.log"}, 500
+            return {"error": BROKE}, 500
 
     @app.post("/suggest")
     def suggest_route():
@@ -308,7 +339,7 @@ def create_app(scan_csv=None):
             return checker.suggest(cols, body["rows"], body.get("limits"), i, body["column"], _strength(body))
         except Exception:
             app.logger.exception("suggest failed")
-            return {"error": "Engine error - details in server.log"}, 500
+            return {"error": BROKE}, 500
 
     return app
 

@@ -96,6 +96,31 @@
     return end;
   }
 
+  // The phone's download bar (AH-126): on a phone only, once the hero's download has scrolled off the top and while the
+  // download section is not on screen, its hidden goes and it rises in from the bottom edge (transform and opacity, by
+  // the clock, nothing under reduced motion); it hides at once. Two IntersectionObservers, never a scroll listener, so
+  // nothing runs while the page is still. Returns what lets it go.
+  function dock(root) {
+    const bar = root.querySelector("#dock"), cta = root.querySelector(".hero-cta .btn-primary"), dl = root.querySelector("#download");
+    if (!bar || !cta || !dl || !window.IntersectionObserver) return () => {};
+    const phone = matchMedia("(max-width: 760px)");
+    let past = false, near = false, rise = null;
+    const set = () => {
+      const on = phone.matches && past && !near;
+      if (on === !bar.hidden) return;
+      bar.hidden = !on;
+      if (rise) { rise.cancel(); rise = null; }
+      if (on && !still && bar.animate) rise = bar.animate([{ transform: "translate3d(0, 100%, 0)", opacity: 0 }, { transform: "translate3d(0, 0, 0)", opacity: 1 }], { duration: ms("--fill-dur", 350), easing: tokens.getPropertyValue("--ease-out").trim() || "ease-out" });
+    };
+    const io = new IntersectionObserver((seen) => {
+      for (const e of seen) if (e.target === cta) past = !e.isIntersecting && e.boundingClientRect.top < 0; else near = e.isIntersecting;
+      set();
+    });
+    io.observe(cta); io.observe(dl);
+    phone.addEventListener("change", set);
+    return () => { io.disconnect(); phone.removeEventListener("change", set); if (rise) rise.cancel(); bar.hidden = true; };
+  }
+
   function mount(root) {
     const ws = root.querySelector("#preview");
     if (!ws) return;
@@ -226,8 +251,16 @@
     document.addEventListener("click", (e) => { if (open && !open.box.contains(e.target) && !e.target.closest("tr[data-kind]")) closeMatrix(); }, on);
     window.addEventListener("resize", closeMatrix, on);
 
-    const unask = checksum(root);
-    mounted = { root, off: () => { clearInterval(tick); bye.abort(); unload(); unask(); if (turning) turning(); mounted = null; } };
+    const unask = checksum(root), undock = dock(root);
+    mounted = { root, off: () => { clearInterval(tick); bye.abort(); unload(); unask(); undock(); if (turning) turning(); mounted = null; } };
+  }
+
+  // AbortSignal.timeout is missing from Safari before 16 and Chrome before 103; a timer does the same there
+  function deadline(ms) {
+    if (typeof AbortSignal.timeout === "function") return AbortSignal.timeout(ms);
+    const stop = new AbortController();
+    setTimeout(() => stop.abort(), ms);
+    return stop.signal;
   }
 
   // GitHub publishes each release file's SHA-256; showing it here keeps the number from going stale between releases.
@@ -236,7 +269,9 @@
   // at least 700 ms so they never flash, and at most 6 s, then the page's own defaults stay
   function checksum(root) {
     const dl = root.querySelector("dl.anchor"), sha = root.querySelector("#sha"), rel = root.querySelector("#rel");
-    const asked = release || (release = fetch(API, { headers: { Accept: "application/vnd.github+json" } })
+    // a GitHub that takes the call and never answers is given up at the skeleton's own limit (AH-124): the request was
+    // kept waiting for good, and the next visit in the same tab reused it instead of asking again
+    const asked = release || (release = fetch(API, { headers: { Accept: "application/vnd.github+json" }, signal: deadline(GIVE_UP) })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status))));
     let timers = [];
     const off = () => { timers.forEach(clearTimeout); timers = []; if (dl) dl.removeAttribute("data-loading"); };

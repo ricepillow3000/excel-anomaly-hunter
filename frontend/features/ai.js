@@ -40,12 +40,20 @@ export async function askFix() { // talks to the engine only; the sheet is touch
   f.asking = btn.disabled = true;
   btn.textContent = "Asking AI… (usually a few seconds; slower when Google is busy)";
   $("fix-status").textContent = "";
+  $("fix-care").textContent = "";
+  show("fix-care", false);
   try {
     const { columns, rows, startRow, startCol } = state.lastScan;
     const out = await post("/fix", {
       columns, rows, row_index: f.i, start_row: startRow, start_col: startCol,
       reason: state.lastRows[f.i].reason, intent: $("fix-intent").value, formulas: f.calc,
     }, 300);
+    // AH-125: the engine read the request as someone in crisis and sent nothing to the AI. Its helpline message goes
+    // on the card as text, with no fix to check and no Accept beside it
+    if (out.care) {
+      if (state.fix === f) careSaid(f, out.explanation);
+      return;
+    }
     const v = await checkFix(f, out.changes).catch(() => null); // Agent 3 looks first; null = a formula, judged after Accept
     if (v) out.explanation += v.clean ? " Checked: with this fix the row looks right."
       : ` Checked: with this fix the row would still look unusual: ${plainReason(v.reason)}.`;
@@ -56,6 +64,12 @@ export async function askFix() { // talks to the engine only; the sheet is touch
     f.asking = false;
     if (state.fix === f) (btn.disabled = !state.aiAvailable), (btn.textContent = "Ask AI");
   }
+}
+
+function careSaid(f, words) {
+  $("fix-care").textContent = words;
+  show("fix-care");
+  if (!state.undos[f.i]) show("fix-apply", false); // an accepted fix keeps its Undo
 }
 
 // The AI word check: a value that is a different KIND of thing from the rest of its column ("London" among products).

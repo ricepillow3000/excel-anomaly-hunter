@@ -38,7 +38,12 @@ await page.addInitScript(() => {
 });
 // a failure this test causes on purpose: the console lines matching `expected` are its own; anything else still counts
 const failing = async (expected, fn) => { const k = errors.length; await fn(); errors.splice(k, Infinity, ...errors.slice(k).filter((e) => !expected.test(e))); };
-const DROPPED = /ERR_CONNECTION_RESET|ERR_CONNECTION_REFUSED|ERR_FAILED|checker isn't running|status of 50[23]|AI error|Couldn't save that/;
+const DROPPED = /ERR_CONNECTION_RESET|ERR_CONNECTION_REFUSED|ERR_FAILED|checker isn't running|status of 50[23]|Ask AI hit a problem|Couldn't save that/;
+// the engine's own words for a bug and for an AI failure, where server.log is said in full (AH-124: "Engine error -
+// details in server.log" named a file nobody could find). The engine side is held to them by test_api_security.py
+const LOG_AT = "%LOCALAPPDATA%\\AnomalyHunter\\server.log";
+const BROKE = `The checker hit a problem it didn't expect. Try again, and if it happens again, the details are in ${LOG_AT}.`;
+const AI_BROKE = `Ask AI hit a problem it didn't expect. Try again, and if it happens again, the details are in ${LOG_AT}.`;
 const DOWN = "the checker isn't running. Double-click Arcas.exe again (from a source folder: install.bat), then try again.";
 const dropMidway = async (r) => { await new Promise((go) => setTimeout(go, 300)); await r.abort("connectionreset"); }; // sent, then the engine is gone
 const scans = []; // every /scan body the pane sent: the slider's level and the Power BI switch must reach the engine
@@ -559,12 +564,12 @@ if (mode === "flow") {
   ok(await page.evaluate(() => __handlers("Sales") === 0 && __handlers("Other") === 1), "watcher moved to the newly checked sheet");
 
   // 7b) an engine error reaches the user in the engine's own plain words, and the buttons come back
-  await page.route("**/scan", (r) => r.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "Engine error - details in server.log" }) }), { times: 1 });
+  await page.route("**/scan", (r) => r.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: BROKE }) }), { times: 1 });
   const seen = errors.length;
   await page.click("#scan"); await idle();
-  const planned = (e) => /status of 500|Engine error - details in server\.log/.test(e); // this step's own 500, logged on purpose
+  const planned = (e) => /status of 500|hit a problem it didn't expect/.test(e); // this step's own 500, logged on purpose
   errors.splice(seen, Infinity, ...errors.slice(seen).filter((e) => !planned(e)));
-  ok((await text("#notice")) === "Something went wrong: Engine error - details in server.log" && !(await page.evaluate(() => document.getElementById("clear-highlights").disabled)),
+  ok((await text("#notice")) === "Something went wrong: " + BROKE && !(await page.evaluate(() => document.getElementById("clear-highlights").disabled)),
     "an engine error is said in plain words, and the pane is usable again - " + (await text("#notice")));
 
   // 7c) the engine goes down mid-scan (the request is sent, then the connection drops): plain words that name the file
@@ -613,6 +618,39 @@ if (mode === "flow") {
   ok((await text("#summary")) === "No problems found in 60 rows." && (await listBits()) === "", "a clean sheet: the summary alone, no hint, no empty list, no Remove highlights - " + (await listBits()));
   await page.evaluate(() => __activate("Sales")); await find();
   ok((await listBits()) === "list-hint,flagged-list,clear-highlights,list-title", "the next scan that flags rows shows the list again - " + (await listBits()));
+
+  // 8c) AH-124: a double-click on Find problems, and two clicks on Accept faster than the pane can redraw, each do the
+  // work once: one /scan, one cell written and one /check. A sheet of its own, so no decision from above is in the way
+  await page.evaluate((rows) => __load("Twice", rows, [0]), rows);
+  { const k = calls.length;
+    await page.dblclick("#scan"); await idle(); await page.waitForTimeout(800); // room for a second /scan to show up
+    ok(since(k) === "/scan", "a double-click on Find problems sends one /scan - " + since(k));
+    await openRow(11);
+    const w = await page.evaluate(() => __log.length), k2 = calls.length;
+    await page.evaluate(() => { const b = document.getElementById("fix-apply"); b.click(); b.click(); }); // both before any redraw
+    await idle(); await page.waitForTimeout(500);
+    const wrote = await page.evaluate((n) => __log.slice(n).map((x) => `${x[1]}!${x[2]}`).join(), w);
+    ok(wrote === "Twice!C11" && since(k2) === "/check", `two fast clicks on Accept write one cell and check it once - wrote ${wrote}, sent ${since(k2)}`);
+    await page.click("#fix-undo"); await idle(); await page.click("#fix-back"); }
+
+  // 8d) AH-124: a sheet with over 5,000 rows flagged (a block of 5,200 orders pasted twice) lists the 50 surest and one
+  // "+ N more" line, N the rest of what the engine flagged, and the pane never freezes: no task on the page over 2 s
+  { const big = [rows[0]];
+    for (let i = 0; i < 5200; i++) { const u = 40 + ((i * 7) % 23), c = +(1.99 + (i % 4) + (i % 97) / 100).toFixed(2); big.push([46028 + i, ["East", "West", "Central"][i % 3], u, c, +(u * c).toFixed(2)]); }
+    big.push(...big.slice(1).map((r) => [...r]));
+    await page.evaluate((big) => __load("Big", big, [0]), big);
+    await page.evaluate(() => { window.__longest = 0; new PerformanceObserver((l) => { for (const e of l.getEntries()) __longest = Math.max(__longest, e.duration); }).observe({ type: "longtask" }); });
+    const r0 = replies.length;
+    await page.click("#scan"); await idle(); await page.waitForSelector("#results", { state: "visible" });
+    for (let t = 0; replies.length === r0 && t < 100; t++) await page.waitForTimeout(50);
+    const flagged = replies.at(-1).rows.filter((r) => SEV_WORDS[r.severity]).length;
+    const list = await page.evaluate(() => ({ buttons: document.querySelectorAll("#flagged-list button").length, more: [...document.querySelectorAll("#flagged-list .more-rows")].map((li) => li.textContent) }));
+    const longest = await page.evaluate(() => __longest);
+    ok(flagged >= 5000 && list.buttons === 50 && list.more.length === 1 && list.more[0].startsWith(`+ ${(flagged - 50).toLocaleString("en-US")} more,`),
+      `${flagged} rows flagged: 50 listed and one "+ N more" line with the rest - ${JSON.stringify(list)}`);
+    ok(longest < 2000, `the pane stays responsive on ${flagged} flags: its longest task ${Math.round(longest)} ms`);
+    await page.click("#clear-highlights"); await idle();
+    await page.evaluate(() => __activate("Sales")); await find(); }
 
   // 9) the engine down when the pane opens: the pane says so, and Try again brings it back once it answers.
   // Every /health is refused until the pane has said so, not only the first: with { times: 1 } any other request for
@@ -700,10 +738,41 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
   await page.click("#fix-ask");
   await page.waitForFunction(() => document.getElementById("fix-ask").textContent === "Ask AI" && !document.getElementById("fix-ask").disabled, null, { timeout: 30000 });
   ok(posts.includes("/fix") && posts.every((p) => p === "/fix" || p === "/check"), "clicking Ask AI sends only /fix and /check, never /scan - " + posts);
+  // AH-124: two clicks on Ask AI faster than the pane can redraw send one /fix (each would be a call to Google, and
+  // through the relay one of the invite's daily fixes)
+  posts.length = 0;
+  await page.evaluate(() => { const b = document.getElementById("fix-ask"); b.click(); b.click(); });
+  await page.waitForFunction(() => document.getElementById("fix-ask").textContent === "Ask AI" && !document.getElementById("fix-ask").disabled, null, { timeout: 30000 });
+  await page.waitForTimeout(500); // room for a second /fix to show up
+  ok(posts.filter((p) => p === "/fix").length === 1, "two fast clicks on Ask AI send one /fix - " + posts);
+  // AH-125: words of someone in crisis get helpline numbers from the engine itself. Typed with the real keyboard, like
+  // the request above; nothing reaches the AI stand-in, no fix and no Accept are offered beside it
+  const asks = () => fs.readFileSync(DIR + "claude.log", "utf8").trim().split("\n").length;
+  const asked0 = asks();
+  posts.length = 0;
+  await page.fill("#fix-intent", ""); await page.click("#fix-intent");
+  await page.keyboard.type("I don’t want to live anymore");
+  await page.click("#fix-ask");
+  await page.waitForSelector("#fix-care", { state: "visible", timeout: 30000 }).catch(() => {});
+  await page.waitForFunction(() => document.getElementById("fix-ask").textContent === "Ask AI" && !document.getElementById("fix-ask").disabled, null, { timeout: 30000 });
+  await page.waitForTimeout(500); // room for a /check or a late AI call to show up
+  const careSaid = await page.isVisible("#fix-care") ? await text("#fix-care") : "";
+  ok(careSaid.includes("988") && careSaid.includes("findahelpline.com") && careSaid.includes("was not sent to the AI"),
+    "words of someone in crisis: the pane shows helpline numbers - " + JSON.stringify(careSaid));
+  ok(posts.join() === "/fix" && asks() === asked0, `and nothing reaches the AI: ${posts}; ${asks() - asked0} new AI calls`);
+  ok(!(await page.isVisible("#fix-apply")) && (await page.$eval("#fix-care", (p) => p.children.length)) === 0,
+    "no Accept beside it, and the message is plain text");
+  await contrast("a row's card with the helpline message");
+  // the next ask clears it, and a real fix brings Accept back
+  await page.fill("#fix-intent", ""); await page.click("#fix-intent");
+  await page.keyboard.type("use the average Units"); await page.keyboard.press("Enter"); await page.keyboard.type("for East");
+  await page.click("#fix-ask");
+  await page.waitForFunction(() => document.getElementById("fix-ask").textContent === "Ask AI" && !document.getElementById("fix-ask").disabled, null, { timeout: 30000 });
+  ok(!(await page.isVisible("#fix-care")) && (await page.isVisible("#fix-apply")), "the next ask clears the helpline message and offers Accept again");
   // the AI call fails: the engine's own words for a provider error, or the engine gone mid-call. Said on the card, the
   // button comes back, the typed request stays
   for (const [how, fail, words] of [
-    ["the provider fails", (r) => r.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ error: "AI error - details in server.log" }) }), "AI error - details in server.log"],
+    ["the provider fails", (r) => r.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ error: AI_BROKE }) }), AI_BROKE],
     ["the engine goes down mid-call", dropMidway, DOWN]]) {
     await failing(DROPPED, async () => {
       await page.route("**/fix", fail, { times: 1 }); await page.click("#fix-ask");
@@ -737,7 +806,7 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
   const sent = fs.readFileSync(DIR + "claude.log", "utf8").trim().split("\n").map(JSON.parse).find((l) => l.prompt.includes("distinct values"));
   ok(sent && sent.prompt.includes('"Region"') && !/7777|170\.43|Units|2026-/.test(sent.prompt), "Check words sends the text column's words only, no numbers, dates or rows");
   for (const [how, fail, words] of [
-    ["the provider fails", (r) => r.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ error: "AI error - details in server.log" }) }), "AI error - details in server.log"],
+    ["the provider fails", (r) => r.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ error: AI_BROKE }) }), AI_BROKE],
     ["the engine goes down mid-call", dropMidway, DOWN]]) {
     await failing(DROPPED, async () => { await page.route("**/odd-text", fail, { times: 1 }); await page.click("#odd-check"); await idle(); });
     ok((await text("#odd-list")) === "AI could not check: " + words && !(await page.isDisabled("#odd-check")), `Check words when ${how}: said in plain words - ` + (await text("#odd-list")));
@@ -781,7 +850,7 @@ if (mode === "nokey") {
     "Remove key: AI help off, the code deleted from this PC");
   // saving fails: the PC can't keep the file (the engine's 503, AH-13), or the engine is gone. Said where the key goes,
   // and the key stays in its box to try again (cleared after a save, or when the engine refuses the key itself)
-  const disk = "Couldn't save that on this PC - the disk may be full or the file in use. Details in server.log.";
+  const disk = `Couldn't save that on this PC. The disk may be full or the file in use: close other programs and try again. The details are in ${LOG_AT}.`;
   for (const [how, fail, words] of [
     ["the PC can't keep it", (r) => r.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: disk }) }), disk],
     ["the engine goes down mid-save", dropMidway, DOWN]]) {

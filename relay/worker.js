@@ -28,27 +28,27 @@ const cap = (v, fallback) => (v !== undefined && v !== "" && Number.isFinite(+v)
 
 export default {
   async fetch(req, env) {
-    if (new URL(req.url).pathname !== "/fix" || req.method !== "POST") return json(404, { error: "not found" });
+    if (new URL(req.url).pathname !== "/fix" || req.method !== "POST") return json(404, { error: "This address only takes Ask AI requests from Arcas." });
     const code = (req.headers.get("Authorization") || "").replace(/^Bearer /, "");
     let tokens;
     try {
       tokens = JSON.parse(env.TOKENS || "{}");
     } catch { // a mistyped TOKENS upload: our own JSON, not Cloudflare's HTML error page
-      return json(500, { error: "The AI relay is misconfigured - tell John." });
+      return json(500, { error: "The shared AI has a setup problem on John's side. Let John know, and try again later." });
     }
     const who = code && tokens[await sha256(code)];
     if (!who) return json(401, { error: "This invite code isn't valid (or was switched off)." });
 
     const raw = await req.text();
-    if (raw.length > MAX_BODY) return json(413, { error: "That request is too large." });
+    if (raw.length > MAX_BODY) return json(413, { error: "That request is too large for the shared AI. Try a smaller selection." });
     let body;
     try {
       body = JSON.parse(raw);
     } catch {
-      return json(400, { error: "Bad request." });
+      return json(400, { error: "The shared AI couldn't read that request. Update Arcas to the newest version, then try again." });
     }
     const prompt = body?.messages?.[0]?.content;
-    if (typeof prompt !== "string" || !prompt || body.messages.length !== 1 || !body.response_format) return json(400, { error: "Bad request." });
+    if (typeof prompt !== "string" || !prompt || body.messages.length !== 1 || !body.response_format) return json(400, { error: "The shared AI couldn't read that request. Update Arcas to the newest version, then try again." });
 
     // count first: a request that would go over a cap never reaches Google
     let ok;
@@ -59,7 +59,7 @@ export default {
         method: "POST", body: JSON.stringify({ who, perUser: cap(env.DAILY_PER_INVITE, 10), total: cap(env.DAILY_TOTAL, 20) }),
       })).json();
     } catch {
-      return json(503, { error: "The AI relay can't count today's fixes right now - try again in a minute." });
+      return json(503, { error: "The shared AI can't count today's fixes right now. Try again in a minute." });
     }
     if (!ok.allowed) return json(429, { error: ok.why });
 
@@ -78,15 +78,15 @@ export default {
       }
       // Google's answer goes back as is; on its errors only our own words (its body could echo the key's project)
       if (out.ok) return new Response(out.body, { status: 200, headers: { "Content-Type": "application/json" } });
-      if (out.status !== 429) return json(502, { error: `Google AI answered with error ${out.status}.` });
+      if (out.status !== 429) return json(502, { error: `Google AI answered with error ${out.status}. Try again in a few minutes.` });
       // a 429 is either "too many this minute" or "today's free quota is gone" - Google's text says which (read, never sent on)
       const daily = /perday/i.test(await out.text());
-      return json(429, { error: daily ? "The shared free AI is used up for today - it resets at midnight US Pacific time."
-        : "The shared AI is busy right now - try again in a minute." });
+      return json(429, { error: daily ? "The shared free AI is used up for today. It resets at midnight US Pacific time."
+        : "The shared AI is busy right now. Try again in a minute." });
     } catch (e) { // Google unreachable (network, DNS) or silent: our own JSON, never an uncaught throw
       // a timeout is not tried again: 3 x 90 s would outlast the engine's 240 s for the whole request
-      if (e?.name === "TimeoutError") return json(504, { error: "Google AI did not answer in time - try again in a minute." });
-      return json(502, { error: "Couldn't reach Google AI - try again in a minute." });
+      if (e?.name === "TimeoutError") return json(504, { error: "Google AI did not answer in time. Try again in a minute." });
+      return json(502, { error: "Couldn't reach Google AI. Try again in a minute." });
     }
   },
 };
@@ -104,8 +104,8 @@ export class Counter {
     const day = dayKey();
     const c = (await this.state.storage.get("c")) || {};
     const today = c.day === day ? c : { day, total: 0, by: {} };
-    if (today.total >= total) return json(200, { allowed: false, why: "Today's shared AI limit is used up - it resets at midnight US Pacific time." });
-    if ((today.by[who] || 0) >= perUser) return json(200, { allowed: false, why: "You've used today's AI fixes for this invite - they reset at midnight US Pacific time." });
+    if (today.total >= total) return json(200, { allowed: false, why: "Today's shared AI limit is used up. It resets at midnight US Pacific time." });
+    if ((today.by[who] || 0) >= perUser) return json(200, { allowed: false, why: "You've used today's AI fixes for this invite. They reset at midnight US Pacific time." });
     today.total += 1;
     today.by[who] = (today.by[who] || 0) + 1;
     await this.state.storage.put("c", today);

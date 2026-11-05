@@ -15,7 +15,7 @@
 // set themselves up on "ah:page" and let go on "ah:leave" (home.js, support.js).
 (() => {
   const html = document.documentElement;
-  const PAGES = ["index.html", "privacy.html", "support.html"];
+  const PAGES = ["index.html", "privacy.html", "support.html", "terms.html"];
   // A crossfade drew both headlines half-opaque in one place at 300 ms, a smudge that read as a glitch (AH-73 review,
   // 1440 x 900 screenshots, 2026-10-30). A curtain keeps both pages moving at once with never a pixel of one over the
   // other: one edge, and the drift and dim on the same curve so the clips stay true to the edge in every frame. The
@@ -229,4 +229,25 @@
     me.timer = setTimeout(me.end, DUR + 300);
     Promise.all(anims.map((a) => a.finished)).then(me.end, () => {});
   }
+})();
+
+// The phone's menu (AH-126): the Menu button opens and closes the header's links (styles.css shows the button, and hides
+// the closed links, only on a phone with this script running). Escape closes it and gives focus back to the button; a
+// link closes it as it is followed. Listeners on the document, so the header kept across page changes needs no new
+// ones, and its own block, apart from the transitions above, so either can change alone.
+(() => {
+  const btn = () => document.querySelector(".menu-btn");
+  const set = (b, open) => b.setAttribute("aria-expanded", open ? "true" : "false");
+  document.addEventListener("click", (e) => {
+    const b = btn(), t = e.target.closest ? e.target : null;
+    if (!b || !t) return;
+    if (t.closest(".menu-btn")) set(b, b.getAttribute("aria-expanded") !== "true");
+    else if (t.closest("#main-nav a")) set(b, false);
+  });
+  document.addEventListener("keydown", (e) => {
+    const b = btn();
+    if (e.key !== "Escape" || !b || b.getAttribute("aria-expanded") !== "true") return;
+    set(b, false);
+    b.focus();
+  });
 })();

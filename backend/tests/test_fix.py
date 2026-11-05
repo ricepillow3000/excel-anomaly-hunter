@@ -6,6 +6,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import pytest
 
 from anomaly_hunter.ai import client
+from anomaly_hunter import server
 from anomaly_hunter.server import create_app
 
 COLS = ["OrderDate", "Region", "Units"]
@@ -411,7 +412,8 @@ def test_any_unexpected_ai_failure_is_our_own_json_502(monkeypatch):
         monkeypatch.setattr(client, "suggest_fix", boom)
         r = post(BODY)
         assert r.status_code == 502 and r.is_json and "CANARY" not in r.get_data(as_text=True), r.get_data(as_text=True)
-        assert r.get_json()["error"] == "AI error - details in server.log"
+        # our words, and where the details are (AH-124: "details in server.log" named a file nobody could find)
+        assert r.get_json()["error"].startswith("Ask AI hit a problem") and server.LOG_AT in r.get_json()["error"]
 
 
 def test_both_privacy_pages_name_every_place_data_goes_and_every_file_the_app_keeps():
@@ -419,7 +421,8 @@ def test_both_privacy_pages_name_every_place_data_goes_and_every_file_the_app_ke
     # an ANTHROPIC_API_KEY sends to Anthropic) and left out files the installer writes. Both pages must stay twins.
     from pathlib import Path
     root = Path(__file__).resolve().parents[2]
-    places = ("Google", "Cloudflare", "Anthropic", "GitHub", "Microsoft")
+    # PyPI: an invite kit's install.bat; GoatCounter: the website's page view counter (AH-126), never the pane's
+    places = ("Google", "Cloudflare", "Anthropic", "GitHub", "Microsoft", "PyPI", "GoatCounter")
     files = ("Arcas.exe", "server.log", "server.log.1", "ai-cache", "gemini-key.txt", "invite-code.txt", "cert.pem",
              "manifest.xml", "Start here.xlsx", "anomaly-hunter.pbids", "latest-scan.csv", "anomaly-hunter-flags.pbids",
              "latest-flags.csv")
