@@ -22,3 +22,13 @@ export const act = (fn) => async (...args) => {
     if (state.fix) setApplied(!!state.undos[state.fix.i]);
   }
 };
+
+// One click does one thing (AH-127): the second click of a double-click lands on whatever the first one drew there. After
+// Undo, Dismiss stands where Undo was, so a double-click on Undo dismissed the row too; Forget ran twice and ended on
+// "holds nothing"; Dismiss's second click accepted the next card's fix. So a click the browser counts as the 2nd or 3rd
+// of a run (event.detail > 1) never reaches a button. Enter and Space press a button with detail 0, so keys still work.
+export function oneClickEach() {
+  document.addEventListener("click", (e) => {
+    if (e.detail > 1 && e.target.closest?.("button")) e.stopImmediatePropagation();
+  }, true);
+}

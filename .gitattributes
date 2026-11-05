@@ -1,1 +1,4 @@
 *.bat text eol=crlf
+# an invite kit (relay/new-invite.mjs) is git archive HEAD: install.bat and the engine read nothing in these
+/.claude export-ignore
+/docs export-ignore

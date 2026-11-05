@@ -85,7 +85,7 @@ def test_the_slider_reaches_the_engine_through_the_scan_route_and_each_end_looks
         got[s] = sum(len(flagged(b["rows"])) for b in bodies)
         dets = [b["summary"]["detectors"] for b in bodies]
         if s == 0:
-            assert all(d["sequence"] == "sat out: strength below 3" and d["isolation"] == "sat out: strength below 5" for d in dets)
+            assert all(d["sequence"] == "sat out: strength below 3" and d["ecod"] == "sat out: strength below 5" for d in dets)
             reasons = " ".join(r["reason"] for b in bodies for r in b["rows"])
             assert "Unusual combination" not in reasons and "local trend" not in reasons, "0 = basics, no statistics"
         if s == 10:

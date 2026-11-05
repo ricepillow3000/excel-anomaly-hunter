@@ -7,7 +7,7 @@ Questions or problems: [open an issue](https://github.com/ricepillow3000/excel-a
 
 ## Install (Windows + desktop Excel, nothing else needed)
 1. **[Download Arcas.exe](https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest/download/Arcas.exe)**
-   (one file, about 81 MB, everything inside). If your browser says it "isn't commonly downloaded": click **...** > **Keep** > **Keep anyway**.
+   (one file, everything inside). If your browser says it "isn't commonly downloaded": click **...** > **Keep** > **Keep anyway**.
 2. **Double-click it.** A blue "Windows protected your PC" box appears: click **More info**, then **Run anyway**. (The file
    isn't code-signed yet, so Windows doesn't know it: [Code signing policy](https://ricepillow3000.github.io/excel-anomaly-hunter/#code-signing). Some PCs ask "Open File - Security Warning" instead: click **Run**.)
 3. Click **Yes** when Windows asks to trust the certificate (it covers only 127.0.0.1, this PC).

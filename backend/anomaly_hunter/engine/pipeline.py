@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from anomaly_hunter.engine import fairness
-from anomaly_hunter.engine.detectors import Why, _result, far_off, isolation_detector, limits_detector, say, sequence_detector
+from anomaly_hunter.engine.detectors import Why, _result, ecod_detector, far_off, limits_detector, say, sequence_detector
 from anomaly_hunter.engine.load import EXCEL_ERROR, NO_VALUE_WORD, PLACEHOLDER, _blank, _dates, _orders, numbers
 
 def summary_rows(df):
@@ -757,16 +757,17 @@ def pairs(df, column_types, skip, limits=None, held=None):
     add up. Tried pair by pair, so a x10 typo elsewhere can't bend it the way it
     bends sums' least squares, and small sheets (48 months) are checked too. To the cent, like sums; both columns must
     vary (x 1, or x a 0/1 flag, is no rule). Pairs are tried on a 64-row sample first, so a 50-column sheet stays fast.
-    -> (reasons, fixes). A broken row with exactly ONE cell outside its usual range gets that cell solved from the
+    -> (reasons, fixes, fits). A broken row with exactly ONE cell outside its usual range gets that cell solved from the
     other two (Units -5 with Total 170.43 = Units x 2.99 -> 57) when the answer is a usual value written like its
     column: exact, where the pane would otherwise offer the median. Two odd cells: the arithmetic can't say which.
+    fits[i][col](v): the rule holds on row i, to the cent or within its columns' rounding, with that cell set to v.
     held: filled with the rows each rule holds on (see confirm)."""
-    out, fix = [[] for _ in range(len(df))], [{} for _ in range(len(df))]
+    out, fix, fits = [[] for _ in range(len(df))], [{} for _ in range(len(df))], [{} for _ in range(len(df))]
     cols = numbers(column_types)
     a = df[cols][~skip].to_numpy(dtype=float)
     index = df.index[~skip]
     if len(cols) < 3 or len(a) < 20:
-        return out, fix
+        return out, fix, fits
     bounds = lambda j: (limits or {}).get(cols[j]) or (None, None, None, None)
     usual = lambda j, v: (bounds(j)[0] is None or v >= bounds(j)[0]) and (bounds(j)[1] is None or v <= bounds(j)[1])
     # the first 64 varying columns: pairs x fractions grows with the cube of the width (160 columns took 20 s, 2026-10-16)
@@ -852,7 +853,20 @@ def pairs(df, column_types, skip, limits=None, held=None):
                 d = _decimals(a[:, j])
                 if np.isfinite(v) and abs(v - np.round(v, d)) < 0.01 * 10.0 ** -d + 1e-9 * abs(v) and usual(j, np.round(v, d)):
                     fix[index[i]][cols[j]] = float(f"{np.round(v, d):.10g}")
-    return out, fix
+
+                    def fit(w, i=i, j=j, t=t, cs=cs, op=op):
+                        row = a[i].copy()
+                        row[j] = w
+                        y1, got1 = row[t], op(*(row[c] for c in cs))
+                        if near(y1, got1, cent[t]):
+                            return True
+                        if len(cs) != 2:
+                            return False
+                        p, q = row[cs[0]], row[cs[1]]
+                        slack = half[cs[0]] * abs(q) + half[cs[1]] * abs(p) if op is np.multiply else half[cs[0]] + half[cs[1]]
+                        return bool(abs(y1 - got1) <= slack + own[t] + 1e-9 * abs(y1))
+                    fits[index[i]][cols[j]] = fit
+    return out, fix, fits
 
 
 def _one_edit(a, b):
@@ -1163,7 +1177,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
     # the row's own arithmetic first: a value in a cell of a rule that holds on its row is confirmed by it, never a slip
     # the limits vote on or offer a typo for (AH-74, see confirm)
     held = {}
-    paired, solved = pairs(df, column_types, skip, limits, held)
+    paired, solved, fits = pairs(df, column_types, skip, limits, held)
     add = [list(dict.fromkeys(s + m)) for s, m in zip(sums(df, column_types, skip, held), paired, strict=True)]
     # saved: the columns whose limits the user set - their limits win, so nothing is listed past the data's own band
     lim = limits_detector(df, column_types, limits, typos_only=s < 1, listing=s >= ALONE,
@@ -1171,9 +1185,24 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
     # protected columns (Age, Gender, Location...) are checked for slips like any column (limits, blanks, spellings), but
     # never used to judge whether a person is unusual: a 74-year-old is not an anomaly for being 74 (fairness blueprint)
     judged = {c: t for c, t in column_types.items() if c not in fairness.protected(column_types)}
+    # the sentence and the card name one value. Where the row's arithmetic and a typo pattern disagree, the typo wins only
+    # when the rule holds with it within its own rounding: "Spend -3314.28 (likely 3314.28)" had a card of 3314.7, worked
+    # out from a CPC rounded to the cent; else the arithmetic, said in the sentence too: "OnHand 1500 (likely 150)" had a
+    # card of 15, StockValue 426.3 = 15 x 28.42 (AH-128)
+    for i in range(n):
+        for col, v in list(solved[i].items()):
+            for kind in ("likely", "maybe"):
+                if (old := lim[kind][i].get(col)) is None or old == v:
+                    continue
+                if fits[i][col](old):
+                    del solved[i][col]
+                    break
+                del lim[kind][i][col]
+                lim["reasons"][i] = [Why(r.replace(f" ({kind} {say(old)})", f" (likely {say(v)})"), *r.cols)
+                                     if r.startswith(f"{col} weird limit is") else r for r in lim["reasons"][i]]
     dets = {"limits": lim,
             "sequence": sequence_detector(df, judged, order_by, k) if s >= 3 else _result(n, "strength below 3"),
-            "isolation": isolation_detector(df, judged, k) if s >= 5 else _result(n, "strength below 5")}
+            "ecod": ecod_detector(df, judged, k) if s >= 5 else _result(n, "strength below 5")}
     # DBSCAN cut 2026-10-07: 90s/100k rows, 81% false alarms, bench same without it
     ran = [d for d in dets.values() if d["ran"]]
     (dup, repeats), (typ, typ_coded), (blank, spread) = duplicates(df, errors_log, column_types), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)

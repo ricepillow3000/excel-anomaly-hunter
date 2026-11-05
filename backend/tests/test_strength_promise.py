@@ -78,3 +78,8 @@ def test_what_each_level_says_in_words_is_true(bench):
     # "many more rows to check, most of them fine": the fine rows listed outnumber the mistakes listed as Low, and 5's
     for level in fine:
         assert bench[level]["numbers"][2] > max(bench[level]["low_planted"], bench[5]["numbers"][2]), level
+    # ...and the strictest levels say a fine row may be called probably wrong: an honest humidity reading was, at 9 and
+    # 10 on a fresh sensor sheet (series check plus the cross-column score). 9 says it in words, as the bench shows none
+    # there; 10's measured numbers say it ("3 as probably wrong", strengthHint) (AH-128)
+    warn = [lv for lv, w in said.items() if "probably wrong" in w]
+    assert warn == [9] and bench[9]["numbers"][3] == 0 and bench[10]["numbers"][3] > 0, warn

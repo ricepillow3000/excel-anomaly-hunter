@@ -547,7 +547,7 @@ def _ecod(x):
     return np.maximum(np.maximum(left, right), left * -np.sign(sk - 1) + right * np.sign(sk + 1)).sum(axis=1)
 
 
-def isolation_detector(df, column_types, k=K):
+def ecod_detector(df, column_types, k=K):
     """ECOD outlier score on scaled numbers."""
     n, cols = len(df), numbers(column_types)
     if why := _skip(n, cols):

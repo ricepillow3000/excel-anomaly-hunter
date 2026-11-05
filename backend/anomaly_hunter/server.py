@@ -1,4 +1,4 @@
-"""Local HTTPS server, 127.0.0.1 only. Engine API + serves panel/ at same origin (no CORS, no build)."""
+"""Local HTTPS server, 127.0.0.1 only. Engine API + serves frontend/ at same origin (no CORS, no build)."""
 import datetime
 import ipaddress
 import json
@@ -214,7 +214,7 @@ def create_app(scan_csv=None):
             "detectors": status, "k": knobs(_strength(body))[1]}}
 
     def ai(call):
-        """Run a Claude call; map its failures to HTTP errors the panel shows as-is."""
+        """Run an AI call (Gemini, the relay or Claude); map its failures to HTTP errors the panel shows as-is."""
         if not client.api_key_configured():
             return {"error": "No AI key yet. Paste a free Google AI key under Options > AI help."}, 503
         try:

@@ -252,7 +252,8 @@ fights the reveal's `transform` on the same headline). In browsers with scroll t
   }
 }
 @keyframes draw { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-/* depth: zero where the element sits mid-screen, linear in the scroll (a parallax) */
+/* depth: zero where the element sits mid-screen, linear in the scroll (a parallax); --depth is .03, since at .05 a
+   two-line headline near the top of the screen came 26 px down onto the lede under it (AH-132) */
 @keyframes drift { from { translate: 0 calc(var(--depth) * (-50vh - 50%)); } to { translate: 0 calc(var(--depth) * (50vh + 50%)); } }
 ```
 

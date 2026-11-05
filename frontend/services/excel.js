@@ -12,6 +12,15 @@ export function saveLimits(limits) {
   Office.context.document.settings.saveAsync();
 }
 
+// The name of the sheet a scan would read now
+export async function activeSheet() {
+  return Excel.run(async (ctx) => {
+    const sheet = ctx.workbook.worksheets.getActiveWorksheet().load("name");
+    await ctx.sync();
+    return sheet.name;
+  });
+}
+
 // Values only, in slices (formulas are read per row when a fix opens; number formats only for the top rows,
 // where the header and first data row are). This was 3x the data in one call - the freeze on big sheets.
 export async function readSheet(onSlice) {

@@ -1,5 +1,5 @@
 @echo off
-rem Arcas installer. Per user, no admin. Double-click = install or repair. "install.bat /u" = uninstall.
+rem Arcas installer. Per user, no elevation, but the account must be an administrator (the C$ share below). Double-click = install or repair. "install.bat /u" = uninstall.
 rem Result: Arcas listed in Excel's Add-ins (Shared Folder); engine starts hidden at every logon.
 setlocal
 cd /d "%~dp0"
@@ -34,7 +34,8 @@ if %RC%==3 (
     certutil -user -addstore Root "%AH%\ca.pem" >nul || (del "%AH%\cert.pem" & echo Certificate not trusted - click Yes on the Windows prompt. Run this again. & pause & exit /b 1)
 )
 rem AI help with no key: a kit from John (relay\new-invite.mjs) has this person's invite code next to this file.
-if exist "%~dp0invite-code.txt" copy /y "%~dp0invite-code.txt" "%AH%\invite-code.txt" >nul && echo       AI help: invite code installed - nothing to paste.
+rem Saved sealed for this Windows account by the exe's own rule (app.keep_invite): a copy was plain text (AH-130).
+if exist "%~dp0invite-code.txt" "%PY%" -c "import pathlib, sys; from anomaly_hunter import app; app.keep_invite(*map(pathlib.Path, sys.argv[1:]))" "%~f0" "%AH%" && echo       AI help: invite code installed - nothing to paste.
 
 echo [3/5] Listing Arcas in Excel (Add-ins, Shared Folder)...
 rem A trusted catalog is a real install: survives restarts, reopens with saved workbooks.
@@ -43,7 +44,7 @@ rem Catalogs must be a share path, so use this PC's own admin share: \\localhost
 reg delete "%DEV%" /v %ID% /f >nul 2>&1
 reg delete "%DEV%\%ID%" /f >nul 2>&1
 set "UNC=\\localhost\%P:~0,1%$%P:~2%"
-if not exist "%UNC%\manifest.xml" (echo Cannot reach %UNC% - the C$ admin share is off on this PC. & pause & exit /b 1)
+if not exist "%UNC%\manifest.xml" (echo Cannot reach %UNC%: this Windows account isn't an administrator on this PC, or the C$ admin share is off. & pause & exit /b 1)
 reg add "%CAT%" /v Id /t REG_SZ /d "{3f9a1c2e-7b4d-4e8a-9c61-5d2e8f0b7a13}" /f >nul
 reg add "%CAT%" /v Url /t REG_SZ /d "%UNC%" /f >nul
 reg add "%CAT%" /v Flags /t REG_DWORD /d 1 /f >nul

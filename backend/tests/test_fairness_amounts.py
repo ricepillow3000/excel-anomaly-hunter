@@ -123,3 +123,28 @@ def test_an_amount_is_never_compared_across_numbered_groups_cut_from_it_whatever
     rows = [[f"V{i}", ["Female", "Male"][i % 2], int(np.searchsorted(edges, inc[i])) + 1, round(float(inc[i]), 0)] for i in range(600)]
     said = [(t["column"], t["test"]) for t in fair(["Victim", "gender", "income_group", "income"], rows)["tests"] if t["measure"] == "amount"]
     assert not any(c == "income_group" for c, _ in said), said
+
+
+def _one_low_group(seed, low_income=True):
+    import random
+    rng, rows = random.Random(500 + seed), []
+    for i in range(400):
+        race = rng.choice(["White", "Black", "Asian", "Hispanic"])
+        approved = rng.random() < (0.25 if race == "Hispanic" and not low_income else 0.55)
+        income = int(rng.lognormvariate(10.4 if race == "Hispanic" and low_income else 10.8, 0.35))
+        rows.append([f"C{i:04d}", rng.choice(["Female", "Male"]), race, "Approved" if approved else "Denied", income])
+    return fair(["CustomerID", "Sex", "Race", "LoanStatus", "Income"], rows)
+
+
+def test_one_low_group_among_four_is_named_as_the_gap_and_never_a_high_one_it_drags_the_rest_from():
+    # AH-128: a tie in how many groups stand out went to the high side, which stands out only because the low group pulls
+    # the rest down; its ratio was then under 1.25 and a raw p of 3e-22 read "not enough rows to tell" in 5 of 10 seeds
+    for seed in range(10):
+        t = [t for t in amounts(_one_low_group(seed), "Race") if t["test"] == "median Income"]
+        assert len(t) == 1 and t[0]["verdict"] == "gap" and t[0]["text"].startswith("Race Hispanic: median Income "), (seed, t)
+
+
+def test_one_low_approval_rate_among_four_groups_is_named_as_the_gap():
+    for seed in range(10):
+        t = [t for t in _one_low_group(seed, low_income=False)["tests"] if t["column"] == "Race" and t["measure"] == "outcome"]
+        assert len(t) == 1 and t[0]["verdict"] == "gap" and t[0]["text"].startswith("Race Hispanic: "), (seed, t)

@@ -10,7 +10,8 @@
 // never unloads, so there is no white frame between pages. Back and Forward run the same transition the other way and
 // return to the scroll position kept in history.state. Anything that is not a plain click on one of the three pages (a
 // modifier key, a new tab, a download, another site, a #hash on this page) is left to the browser; a page that does
-// not come back whole is opened the ordinary way. With reduced motion the page is swapped in one step. Page scripts
+// not come back whole is opened the ordinary way, and a link to the page already shown takes the reader to its top
+// (AH-132). With reduced motion the page is swapped in one step. Page scripts
 // set themselves up on "ah:page" and let go on "ah:leave" (home.js, support.js).
 (() => {
   const html = document.documentElement;
@@ -65,6 +66,14 @@
     const u = new URL(a.getAttribute("href"), location.href), p = pageOf(u);
     return p && p !== current ? u : null; // this page's own #hash links and reloads behave as always
   }
+  // a link to the page already shown, with no #hash ("Privacy & security" on privacy.html): the browser reloaded the
+  // document for it, a white frame, the entrance again and the scroll and the page's state gone, about four times in ten
+  // quick clicks (AH-132). It goes back to the page's top instead
+  function here(a) {
+    if (a.hasAttribute("download") || (a.target && a.target !== "_self")) return false;
+    const u = new URL(a.getAttribute("href"), location.href);
+    return !u.hash && u.search === location.search && pageOf(u) === current;
+  }
   const warm = (e) => { const u = target(linkOf(e.target)); if (u) load(u); };
   document.addEventListener("pointerover", warm, { passive: true });
   document.addEventListener("focusin", warm);
@@ -75,6 +84,11 @@
     const a = linkOf(e.target);
     if (!a) return;
     save(); // the place to come back to, for a #hash link on this page too
+    if (here(a)) {
+      e.preventDefault();
+      scrollTo({ top: 0, behavior: (window.AH ? window.AH.still : matchMedia("(prefers-reduced-motion: reduce)").matches) ? "auto" : "smooth" });
+      return;
+    }
     const u = target(a);
     if (!u) return;
     e.preventDefault();

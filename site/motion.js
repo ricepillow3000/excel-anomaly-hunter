@@ -126,7 +126,7 @@
   // while anything is still rising (tools/test_site.mjs traces it)
   const landing = new WeakMap();
   document.addEventListener("transitionend", (e) => { const f = landing.get(e.target); if (f && e.propertyName === "opacity") { landing.delete(e.target); f(); } });
-  function reveal(list) { // [[element, delay in ms], ...]
+  function reveal(list, now = false) { // [[element, delay in ms], ...]; now: shown in place at once, no rise
     const batch = list.filter(([el]) => !el.hasAttribute("data-revealed"));
     if (!batch.length) return;
     let left = batch.length, timer = 0;
@@ -134,10 +134,11 @@
     for (const [el, delay] of batch) {
       for (const o of [io, tail]) if (o) o.unobserve(el); // once: scrolling away and back never hides it again
       el.style.setProperty("--d", delay + "ms");
+      if (now) el.style.transition = "none"; // before the attribute, so no transition ever starts
       el.setAttribute("data-revealed", "");
       landing.set(el, () => { if (--left === 0) settle(); });
     }
-    if (still) settle(); // nothing moves: styles.css never hid it
+    if (still || now) settle(); // nothing moves: styles.css never hid it, or it is shown at once
     else timer = setTimeout(settle, Math.max(...batch.map(([, d]) => d)) + REVEAL + 150); // when a transitionend never comes (a hidden tab)
   }
   // items that come into view together start STAGGER apart, in page order, per group
@@ -168,14 +169,19 @@
   // a jump past blocks (an #anchor, a restored scroll, the End key) crosses no threshold, so the observer never reports
   // them: once a scroll ends, the ones left above the screen are simply there
   function sweep() { reveal(waiting.filter((el) => !el.hasAttribute("data-revealed") && el.getBoundingClientRect().bottom <= 0).map((el) => [el, 0])); }
-  // an #anchor reveals its target at once, and what comes before it: a jump must land on something visible
+  // an #anchor reveals its target at once, and what comes before it: a jump must land on something visible, and at rest.
+  // The browser scrolls to the target as drawn, still waiting 24 px low and see-through, so privacy.html's contents links
+  // landed on a section that then rose 24 px under the sticky bar (AH-132): shown in place at once, a target that was
+  // waiting is scrolled to again. One already shown keeps the scroll the browser or Back gave it
   function anchor() {
     let el = null;
     try { const id = decodeURIComponent(location.hash.slice(1)); el = id ? document.getElementById(id) : null; } catch { el = null; }
     if (!el || !scope.contains(el)) return;
     const own = el.closest(".reveal-item");
     const before = waiting.filter((x) => x !== own && !el.contains(x) && x.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
-    reveal([...before.map((x) => [x, 0]), ...cascade([...(own ? [own] : []), ...el.querySelectorAll(".reveal-item:not([data-revealed])")])]);
+    const waited = !!own && !own.hasAttribute("data-revealed");
+    reveal([...before, ...(own ? [own] : []), ...el.querySelectorAll(".reveal-item:not([data-revealed])")].map((x) => [x, 0]), true);
+    if (waited) el.scrollIntoView();
   }
   function reveals(root, lead) {
     // the footer stays mounted across page changes (transition.js): a page reached by one still watches its items

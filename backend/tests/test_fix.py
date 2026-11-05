@@ -211,7 +211,7 @@ def test_an_ai_formula_using_a_function_not_on_the_safe_list_is_left_out(monkeyp
 
 
 def test_engine_reason_wording_the_panel_reads():
-    """panel/taskpane.js recommendFix parses these engine phrases - keep them in step."""
+    """frontend/features/fix.js recommendFix parses these engine phrases - keep them in step."""
     c = create_app().test_client()
     cols = ["id", "Units"]
     rows = [[k, 10 + k % 3] for k in range(60)] + [[99, ""], [7, "12O"], [5, 12]]
@@ -220,7 +220,7 @@ def test_engine_reason_wording_the_panel_reads():
     assert "Blank cell in column Units, which" in reasons
     assert 'Text "12O" in number column Units' in reasons
     assert "Duplicate of row 7" in reasons
-    # the Route Monitor glues "<col> weird limit is X; this is Y" back together (panel/taskpane.js issuesOf)
+    # the pane glues "<col> weird limit is X; this is Y" back together (frontend/features/fix.js issuesOf)
     rows = [[k, 10 + k % 3] for k in range(40)] + [[99, 500]]
     res = c.post("/scan", json={"columns": cols, "rows": rows, "limits": {"Units": [9, 13, 0, 20]}}).get_json()["rows"]
     assert "Units weird limit is 20; this is 500" in res[-1]["reason"]

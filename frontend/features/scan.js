@@ -5,6 +5,7 @@ import { n } from "../utils/text.js";
 import { busy, notice } from "../components/progress.js";
 import { post } from "../services/api.js";
 import { getLimits, readSheet, watchSelection } from "../services/excel.js";
+import { shownAs } from "../utils/sheet.js";
 import { paint } from "./highlight.js";
 import { renderResults } from "../pages/results.js";
 import { onSelect } from "../pages/fix.js";
@@ -170,13 +171,13 @@ export function fairnessTests(fair) {
   return [...(fair?.tests || [])].sort((a, b) => (b.verdict === "gap") - (a.verdict === "gap") || width(b) - width(a));
 }
 
-// Pure: the engine's reason in plain words, for the list and the fix view
-export function plainReason(reason) {
-  return String(reason || "")
+// Pure: the engine's reason in plain words, for the list and the fix view (names: tableFromGrid's, a repeated header)
+export function plainReason(reason, names = state.lastScan?.names) {
+  return shownAs(String(reason || "")
     .replace(/^Flagged by \d+ of \d+: /, "")
     .replace(/(\S[^;]*?) weird limit is ([^;\s]+); this is ([^;\s]+)/g, (_, c, lim, v) => `${c} is ${v}, ${+v < +lim ? "below" : "above"} its usual limit of ${lim}`)
     .replace(/Unusual combination of values, mainly (.+?)(?=;|$)/g, "Unusual mix of values, mostly in $1")
     .replace(/ is unusual relative to its local trend near/g, " breaks its usual pattern near")
     .replace(/ 00:00:00/g, "")
-    .split("; ").join(" · ");
+    .split("; ").join(" · "), names);
 }

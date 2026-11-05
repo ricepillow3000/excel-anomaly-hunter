@@ -817,13 +817,17 @@ def report(df, types, rows):
             sides = {+1: [k for k in pairs if rates[k] > pairs[k][1] and pairs[k][0] * n * K < ALPHA],
                      -1: [k for k in pairs if rates[k] < pairs[k][1] and pairs[k][0] * n * K < ALPHA]}
             best = min(pairs, key=lambda x: (pairs[x][0], -abs(rates[x] - pairs[x][1])))
-            # 2 high and 2 low regions: the smaller set is named, the high one on a tie ("N: 40% vs 26%" read as if N
-            # alone stood out, AH-18 review)
-            side = min((s for s in sides if sides[s]), key=lambda s: (len(sides[s]), -s), default=None)
+
+            def split(names):
+                mine = table.loc[[k for k in table.index if str(k) in names]].sum()
+                rest = table.loc[[k for k in table.index if str(k) not in names]].sum()
+                return mine, rest, float(chi2_contingency(pd.DataFrame([mine, rest]))[1])
+            # 2 high and 2 low regions: the smaller set is named ("N: 40% vs 26%" read as if N alone stood out, AH-18
+            # review), and on a tie the one with the stronger evidence: one low group drags the rest down, so a high
+            # group passes its own test too, and naming it said "Asian: 62% vs 41%" of a Hispanic gap (AH-128)
+            side = min((s for s in sides if sides[s]), key=lambda s: (len(sides[s]), split(sides[s])[2], -s), default=None)
             names = [k for k in map(str, table.index) if k in sides[side]] if side else [best]
-            mine = table.loc[[k for k in table.index if str(k) in names]].sum()
-            rest = table.loc[[k for k in table.index if str(k) not in names]].sum()
-            p_k = float(chi2_contingency(pd.DataFrame([mine, rest]))[1])
+            mine, rest, p_k = split(names)
             t["p_group"] = p_k
             a, b = float(mine[True] / mine.sum()), float(rest[True] / rest.sum())
             real = t["p"] * n < ALPHA and p_k * n * K < ALPHA
@@ -871,11 +875,16 @@ def _amount_words(t, n):
         sides = {+1: [k for k in pairs if meds[k] > pairs[k][1] and pairs[k][0] * n * K < ALPHA],
                  -1: [k for k in pairs if meds[k] < pairs[k][1] and pairs[k][0] * n * K < ALPHA]}
         best = min(pairs, key=lambda k: (pairs[k][0], -abs(meds[k] - pairs[k][1])))
-        side = min((s for s in sides if sides[s]), key=lambda s: (len(sides[s]), -s), default=None)
+
+        def split(names):
+            mine = np.concatenate([vals[k] for k in names])
+            others = np.concatenate([v for k, v in vals.items() if k not in names])
+            return mine, others, float(mannwhitneyu(mine, others).pvalue)
+        # on a tie, the side with the stronger evidence: a group earning 0.67x the rest pulls them down, so a high group
+        # passed its own test too, was named, fell under 1.25x and a raw p of 3e-22 read "not enough rows to tell" (AH-128)
+        side = min((s for s in sides if sides[s]), key=lambda s: (len(sides[s]), split(sides[s])[2], -s), default=None)
         names = [k for k in vals if k in sides[side]] if side else [best]
-        mine = np.concatenate([vals[k] for k in names])
-        others = np.concatenate([v for k, v in vals.items() if k not in names])
-        p_k = float(mannwhitneyu(mine, others).pvalue)
+        mine, others, p_k = split(names)
         t["p_group"] = p_k
         a, b = float(np.median(mine)), float(np.median(others))
         real = t["p"] * n < ALPHA and p_k * n * K < ALPHA

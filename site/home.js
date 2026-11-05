@@ -7,8 +7,9 @@
 // or a tab turns the old view away like a page, and the timings are the tokens in styles.css :root.
 (() => {
   const API = "https://api.github.com/repos/ricepillow3000/excel-anomaly-hunter/releases/latest";
-  // the pane's own progress line for this 60-row sheet (frontend/features/scan.js; test_site_sample.py holds them to it)
-  const STAGES = ["Step 1 of 3: reading your sheet… 0%", "Step 1 of 3: reading your sheet… 40%", "Step 1 of 3: reading your sheet… 100%", "Step 2 of 3: checking 60 rows…"];
+  // the pane's own progress line for this 60-row sheet (frontend/features/scan.js; test_site_sample.py holds them to it):
+  // its 305 cells are one slice of READ_CELLS, so the pane goes from the first words straight to 100% (it never says 40%)
+  const STAGES = ["Step 1 of 3: reading your sheet…", "Step 1 of 3: reading your sheet… 100%", "Step 2 of 3: checking 60 rows…"];
   const html = document.documentElement;
   const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const tokens = getComputedStyle(html);
@@ -187,22 +188,27 @@
     }
     const pick = (tab) => { if (tab.getAttribute("aria-selected") === "true") show(tab); else turn(() => show(tab)); };
     for (const t of tabs) t.addEventListener("click", () => pick(t));
-    ws.querySelector(".tabs").addEventListener("keydown", (e) => {  // arrow keys move between tabs, as in any tab list
-      const i = tabs.indexOf(document.activeElement);
-      if (i < 0 || !["ArrowLeft", "ArrowRight"].includes(e.key)) return;
-      const next = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+    // the arrows, Home and End move between tabs, as in any tab list (WAI-ARIA tabs; Home and End since AH-132, and End
+    // no longer scrolls the page to its bottom)
+    ws.querySelector(".tabs").addEventListener("keydown", (e) => {
+      const i = tabs.indexOf(document.activeElement), to = { ArrowLeft: i - 1, ArrowRight: i + 1, Home: 0, End: tabs.length - 1 };
+      if (i < 0 || !Object.hasOwn(to, e.key)) return;
+      e.preventDefault();
+      const next = tabs[(to[e.key] + tabs.length) % tabs.length];
       next.focus(); pick(next);
     });
 
     for (const b of ws.querySelectorAll(".typology button")) {
       b.addEventListener("click", () => {
+        // on After fixes a filter filters the corrected sheet's rows, by the counts shown there: it jumped back to the
+        // findings, so "Temporal outliers 4" lit 5 rows (AH-129); only Scanning, which has no rows, goes to the findings
         const change = () => {
-          if (ws.dataset.state !== "found") show(tabs[0]);
+          if (ws.dataset.state === "busy") show(tabs[0]);
           for (const o of ws.querySelectorAll(".typology button")) o.setAttribute("aria-pressed", o === b);
           ws.dataset.filter = b.dataset.kind;
           closeMatrix();
         };
-        if (ws.dataset.state === "found" && ws.dataset.filter === b.dataset.kind) change(); else turn(change);
+        if (ws.dataset.state !== "busy" && ws.dataset.filter === b.dataset.kind) change(); else turn(change);
       });
     }
 
@@ -219,9 +225,13 @@
       const same = open && open.btn === btn;
       closeMatrix();
       if (same) return;
-      const row = btn.closest("tr").getBoundingClientRect(), top = main.getBoundingClientRect().top;
-      box.style.top = row.bottom - top + "px";
+      // under its row, or above it where it would pass the findings' bottom: under them, rows 22 to 57 covered the
+      // caption and "See every check", whose clicks then did nothing (AH-132). Taller than the room on either side (a
+      // narrow phone), it sits on the findings' bottom
+      const row = btn.closest("tr").getBoundingClientRect(), sheet = main.getBoundingClientRect();
       box.hidden = false;
+      const h = box.offsetHeight, under = row.bottom - sheet.top, over = row.top - sheet.top - h;
+      box.style.top = (under + h <= sheet.height ? under : over >= 0 ? over : Math.max(0, sheet.height - h)) + "px";
       btn.setAttribute("aria-expanded", "true");
       open = { btn, box };
       // the box is a dialog that sits after the whole table in the page: without this a keyboard or screen-reader user
@@ -233,6 +243,10 @@
       btn.closest("tr").addEventListener("click", () => openMatrix(btn));
     }
     for (const c of ws.querySelectorAll(".m-close")) c.addEventListener("click", () => { const b = open && open.btn; closeMatrix(); if (b) b.focus(); });
+    // Tab out of the box closes it and lets focus go where Tab took it: it stayed open, floating over the rows (AH-132). A
+    // press on the box's own text moves focus to nothing (relatedTarget null) and a press on its row's button toggles
+    // it: neither is leaving
+    ws.addEventListener("focusout", (e) => { const to = e.relatedTarget; if (open && to && open.box.contains(e.target) && !open.box.contains(to) && to !== open.btn) closeMatrix(); }, on);
     document.addEventListener("keydown", (e) => { if (e.key === "Escape" && open) { const b = open.btn; closeMatrix(); b.focus(); } }, on);
     document.addEventListener("click", (e) => { if (open && !open.box.contains(e.target) && !e.target.closest("tr[data-kind]")) closeMatrix(); }, on);
     window.addEventListener("resize", closeMatrix, on);

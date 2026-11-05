@@ -27,7 +27,7 @@ export function typoKind(v, fix) {
 }
 
 // Pure: the reason's "Total 170.43 does not add up: Units × UnitCost = -14.95" parts -> [{text, total, rule, cols}]
-export const addUps = (reason) => String(reason || "").replace(/^Flagged by \d+ of \d+: /, "").split("; ")
+const addUps = (reason) => String(reason || "").replace(/^Flagged by \d+ of \d+: /, "").split("; ")
   .map((s) => /^(.+) (\S+) does not add up: ((.+?) [×+] (.+)) = \S+$/.exec(s)).filter(Boolean)
   .map((m) => ({ text: m[0], total: `${m[1]} ${m[2]}`, rule: m[3], cols: [m[1], m[4], m[5]] }));
 
@@ -57,8 +57,10 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
     // only a value the engine flagged: it never votes on a regular repeated value (a 5.76 toll), so neither do we
     // or past the usual limit with the engine's exact typo behind it: a lone x10 in a skewed column (wide weird limit)
     const outside = !!lim && reason.includes(`${c} weird limit is`) && (past(lo, hi) || (likely && likely[c] != null && past(lim[0], lim[1])));
-    // the engine solved this cell from a total that doesn't add up (Total ÷ UnitCost): exact, not a median
-    const sum = typeof v === "number" && likely && likely[c] != null ? sums.find((s) => s.cols.includes(c)) : null;
+    // the engine solved this cell from a total that doesn't add up (Total ÷ UnitCost): exact, not a median. A sign flip
+    // is the engine's typo, kept over the arithmetic where the rule holds with it within its rounding: "the row's own
+    // numbers say 3314.28" was untrue beside Clicks × CPC = 3314.7 (AH-128)
+    const sum = typeof v === "number" && likely && likely[c] != null && likely[c] !== -v ? sums.find((s) => s.cols.includes(c)) : null;
     if (!(variant || miss || weak || blank || outside || sum)) return;
     seen.add(c);
     if (calc && String(calc[j]).startsWith("=")) return void calcCells.push(cell); // never type over a formula
@@ -87,6 +89,7 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
     }
     if (typo != null && outside) { // engine spotted an obvious typo: extra/missing zeros or a flipped sign
       changes.push({ cell, new: String(typo) });
+      if (sums.some((s) => s.cols.includes(c))) solved.add(c); // the flip is what makes the row add up
       slips.push({ c, kind: typoKind(v, typo), change: changes[changes.length - 1], text: `${c} is ${v}, which looks like a typo for ${typo} (${typoKind(v, typo)})` });
       return void typos.push(slips[slips.length - 1].text);
     }

@@ -51,11 +51,15 @@
         <div class="faq-head reveal-item"><span>Question</span><span>Answer</span></div>
         <details class="reveal-item" open>
           <summary>The pane says "The checker isn't running"</summary>
-          <div class="a"><p>Wait 30 seconds, then press <b>Try again</b>. If that doesn't help, double-click <code>Arcas.exe</code> again. It asks you to close Excel, repairs the install, starts the checker and opens Excel again.</p></div>
+          <div class="a"><p>Wait 30 seconds, then press <b>Try again</b>. If that doesn't help, double-click <code>Arcas.exe</code> again. It asks you to close Excel, repairs the install, starts the checker and opens Excel again. With an invite kit, double-click install.bat in the kit folder instead.</p></div>
         </details>
         <details class="reveal-item">
           <summary>Windows says "Windows protected your PC"</summary>
-          <div class="a"><p>The app is not code-signed yet, so Windows warns about it. Click <b>More info</b>, then <b>Run anyway</b>. To check the file first, compare its SHA-256 with the one on the <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest">release page</a>.</p></div>
+          <div class="a"><p>The app is not code-signed yet, so Windows warns about it. Click <b>More info</b>, then <b>Run anyway</b>. Some PCs show "Open File - Security Warning" instead: click Run. To check the file first, compare its SHA-256 with the one on the <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest">release page</a>.</p></div>
+        </details>
+        <details class="reveal-item">
+          <summary>Windows asks to install a certificate</summary>
+          <div class="a"><p>During the install, Windows asks whether to install a certificate from "Anomaly Hunter local CA". Click Yes. It works only for localhost and 127.0.0.1 on this PC, the key that made it is never saved, and uninstall removes it. If you click No, the install stops: run it again and click Yes.</p></div>
         </details>
         <details class="reveal-item">
           <summary>How do I add it to Excel?</summary>
@@ -63,11 +67,15 @@
         </details>
         <details class="reveal-item">
           <summary>How do I update?</summary>
-          <div class="a"><p>Download the latest <a href="index.html#download">Arcas.exe</a> and double-click it. If Excel is open, it asks you to close it first. Your AI key stays. The version you have is the <b>Engine</b> line at the bottom of the pane.</p></div>
+          <div class="a"><p>Download the latest <a href="index.html#download">Arcas.exe</a> and double-click it. If Excel is open, it asks you to close it first. Your AI key stays. The version you have is the <b>Engine</b> line at the bottom of the pane. With an invite kit, double-click install.bat in a newer kit from John.</p></div>
         </details>
         <details class="reveal-item" id="uninstall">
           <summary>How do I uninstall?</summary>
-          <div class="a"><p>Press Windows+R, paste <code>"%LOCALAPPDATA%\AnomalyHunter\Arcas.exe" uninstall</code> and press Enter. It removes the add-in, the checker, its certificate and its files, except the app file itself, which you can then delete. It is not listed in Windows "Installed apps". The <a href="privacy.html#rights">privacy page</a> lists what it removes.</p></div>
+          <div class="a"><p>Press Windows+R, paste <code>"%LOCALAPPDATA%\AnomalyHunter\Arcas.exe" uninstall</code> and press Enter. It removes the add-in, the checker, its certificate and its files, except the app file itself, which you can then delete. It is not listed in Windows "Installed apps". The <a href="privacy.html#rights">privacy page</a> lists what it removes.</p><p>With an invite kit, close Excel, run install.bat /u in the kit folder, then delete the kit folder. Like the app's uninstall, it also clears Excel's add-in cache, so other web add-ins may need to be added again.</p></div>
+        </details>
+        <details class="reveal-item">
+          <summary>Where is the log?</summary>
+          <div class="a"><p>In <code>%LOCALAPPDATA%\AnomalyHunter</code>: server.log is this run's, server.log.1 the run before. It can quote values from your sheet, so read it before you paste any of it.</p></div>
         </details>
         <details class="reveal-item">
           <summary>Where is AI help, and what does Remove key do?</summary>
@@ -86,7 +94,7 @@
       <section class="form-card" data-enter="bottom" aria-labelledby="contact-title">
         <h2 id="contact-title">Ask a question</h2>
         <form id="ticket" data-reveal-group novalidate>
-          <p class="notice reveal-item">This is public: it fills in a question on GitHub for you; nothing is sent until you press Submit there. You need a free GitHub account. Never paste client data, account numbers, your AI key or your invite code. John will never ask for them.</p>
+          <p class="notice reveal-item">This is public: it fills in a question on GitHub for you; nothing is posted until you press Submit there. You need a free GitHub account. Never paste client data, account numbers, your AI key or your invite code. John will never ask for them.</p>
           <div class="field reveal-item">
             <label for="topic">What is this about?</label>
             <select id="topic" name="topic">
@@ -102,7 +110,7 @@
           </div>
           <div class="field reveal-item">
             <label for="version">Engine version</label>
-            <input id="version" name="version" type="text" maxlength="60" placeholder="v0.1.79 (2026-10-20)">
+            <input id="version" name="version" type="text" maxlength="60" placeholder="As the Engine line shows it">
             <span class="hint">The Engine line at the bottom of the pane.</span>
           </div>
           <div class="field reveal-item">

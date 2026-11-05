@@ -29,7 +29,7 @@ export async function paint(rows, s, skip = {}) { // skip: rows fixed or dismiss
 
 // Put back the remembered fills - only on cells still wearing one of OUR colors (a cell the user recolored since is
 // left alone).
-export async function unpaint() {
+async function unpaint() {
   const p = state.painted;
   if (!p) return;
   await Excel.run(async (ctx) => {
@@ -73,7 +73,7 @@ export async function fillRow(i, on) {
 // No record of what was painted (the pane was reopened): clear every cell wearing one of our colors, which are one step
 // off Excel's own Bad / Neutral / Note fills so the user's styled cells are never taken for ours. Before AH-40 we
 // painted whole table rows in Excel's very colors: a row that starts with one, across its full width, was ours too
-export async function clearOurColors() {
+async function clearOurColors() {
   await Excel.run(async (ctx) => {
     const sheet = ctx.workbook.worksheets.getActiveWorksheet();
     const used = sheet.getUsedRangeOrNullObject().load("rowIndex, columnIndex, rowCount, columnCount");

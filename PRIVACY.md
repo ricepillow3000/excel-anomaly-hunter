@@ -1,8 +1,8 @@
 # What leaves your PC
 
 Arcas is a free Excel add-in made by one person, John, in his spare time. It is not a company, and it is not
-affiliated with Microsoft, Google, Cloudflare, Anthropic or GitHub. This file and the pane's Privacy page
-(`frontend/privacy.html`) say the same thing; both describe what the code does.
+affiliated with Microsoft, Google, Cloudflare, Anthropic or GitHub. This file, the pane's Privacy page
+(`frontend/privacy.html`) and the website's (`site/privacy.html`) say the same thing; all three describe what the code does.
 
 Arcas is made and run by John Nguyen (GitHub: ricepillow3000). To reach him, use the pane's Support page, which
 opens a question form on GitHub, or call (770) 265-9930.
@@ -17,7 +17,7 @@ A scan runs on your PC and sends nothing to the internet. Your sheet's data leav
 
   | File | What it holds |
   |---|---|
-  | `Arcas.exe` | a copy of the app, so the engine can start when you log on |
+  | `Arcas.exe` | a copy of the app, so the engine can start when you log on. An update over an install made before the app was renamed Arcas deletes the old app file; if Windows still holds it, it stays until the next update or uninstall |
   | `server.log`, `server.log.1` | the engine's messages and errors; server.log starts empty each time the engine starts, and server.log.1 keeps the run before (each start replaces it); an error can quote a value from your sheet |
   | `ai-cache` | up to 500 AI answers, so the same question isn't asked twice; an answer can quote your cells |
   | `gemini-key.txt`, `invite-code.txt` | your Google AI key or invite code, if you added one; each is sealed with Windows' own encryption (DPAPI) for your Windows account, so a copy of the file is no use on another account, though a program running as you could still open it |
@@ -32,11 +32,12 @@ A scan runs on your PC and sends nothing to the internet. Your sheet's data leav
   own copy of the app, so Windows doesn't warn at every logon.
 - An invite kit (shared by John by a Google Drive or OneDrive link) runs from its own folder: `install.bat`
   downloads the Python packages it needs from PyPI, the Python package site (PyPI sees your IP address), and keeps
-  them in a `.venv` folder there, with the Power BI shortcuts in its `powerbi` folder. It copies the kit's invite code
-  into the folder above. A kit has no Arcas.exe, `addin\manifest.xml` or Start here.xlsx: Excel lists the
+  them in a `.venv` folder there, with the Power BI shortcuts in its `powerbi` folder. It saves the kit's invite code
+  in the folder above, sealed like a code you paste. The kit folder keeps its own invite-code.txt as plain text, as John made it. A kit has no Arcas.exe, `addin\manifest.xml` or Start here.xlsx: Excel lists the
   add-in from the kit's `frontend` folder. Uninstall a kit with `install.bat /u`, then delete the kit folder.
+  Like the app's uninstall, it also deletes Excel's add-in cache (the Wef folder), so other web add-ins may need to be added again.
 - Your workbook keeps the limits you changed, the strength slider, a list of the last auto-fixes with their old
-  values and a copy of each fixed row (so Undo works), the old values of the cells you changed with **Accept** (so
+  values and a copy of each fixed row (so Undo works), the old values and number formats of the cells you changed with **Accept**, and what Accept wrote in them (so
   Undo still works after the pane is closed and opened again), a short code for each row you fixed or dismissed (worked out
   from the row's values, never the values themselves, so the row is still Fixed or Dismissed when the pane opens
   again), and a setting that opens the pane with that file. Highlights are fill colours in your cells.
@@ -61,7 +62,8 @@ can be charged by Google for what AI help uses; without billing, the free tier c
   sends nothing to the AI.
 - Where it goes:
   - With your own Google key: straight to Google's Gemini API.
-  - With an invite code: to John's relay on Cloudflare, which passes it to Google with John's key.
+  - With an invite code: to John's relay on Cloudflare, which passes it to Google with John's key. A developer setting
+    on the PC, `ANOMALY_HUNTER_RELAY`, sends invite calls to another relay's https address instead.
     - The relay keeps one counter: for the last day anyone used it, how many AI calls each invite made, under the
       name John gave that invite, plus the total. The first call of a new day replaces it. It saves no request and no
       answer; its saved logs are switched off.

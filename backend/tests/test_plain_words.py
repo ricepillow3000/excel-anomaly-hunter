@@ -124,7 +124,7 @@ def js_strings(src):
                 depth, j = 1, k + 2
                 while j < n and depth:
                     if src[j] in "'\"`":
-                        j = skip_string(j, nested=True)
+                        j = skip_string(j)
                         continue
                     depth += {"{": 1, "}": -1}.get(src[j], 0)
                     j += 1
@@ -135,7 +135,7 @@ def js_strings(src):
                 k += 1
         raise AssertionError(f"unclosed template at line {line_at(start)}")
 
-    def skip_string(k, nested=False):
+    def skip_string(k):
         q = src[k]
         if q == "`":
             text, end = template(k)
