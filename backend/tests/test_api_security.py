@@ -73,6 +73,34 @@ def test_a_claude_error_never_echoes_the_providers_text(monkeypatch):
         assert CANARY not in r.get_data(as_text=True)
 
 
+def test_a_key_the_provider_echoes_never_reaches_server_log_or_the_answer(monkeypatch, tmp_path, caplog, capsys):
+    # AH-124: the answers were held to it, the log was not. server.log is this PC's plain text file the user may attach
+    # to a support message, and a Claude error went in whole (logger.exception): "upstream said <the key>"
+    import logging
+    import httpx2
+    caplog.set_level(logging.DEBUG)
+    gemini_stub(monkeypatch, tmp_path, status=401, error=f"API key not valid: {CANARY}")
+    client.KEY_FILE.write_text(CANARY, encoding="utf-8")  # the key in use, which Google quotes back
+    c = create_app().test_client()
+    answers = [c.post("/fix", json=BODY), c.post("/key", json={"key": CANARY})]
+    client.KEY_FILE.unlink()
+    monkeypatch.setenv("ANTHROPIC_API_KEY", CANARY)  # and Claude's: its SDK errors carry the provider's text
+    req = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+    for err in (anthropic.APIConnectionError(message=f"proxy said {CANARY}", request=req),
+                anthropic.APIError(f"upstream said {CANARY}", req, body={"detail": CANARY}),
+                RuntimeError(f"a bug that quotes {CANARY}")):
+        def boom(*a, err=err, **k):
+            raise err
+        monkeypatch.setattr(client, "suggest_fix", boom)
+        answers.append(c.post("/fix", json=BODY))
+    assert all(400 <= r.status_code < 600 for r in answers[2:])
+    for r in answers:
+        assert CANARY not in r.get_data(as_text=True), r.get_data(as_text=True)
+    logged = caplog.text + "".join(capsys.readouterr())
+    assert "upstream said" in logged and "a bug that quotes" in logged, logged  # the details are still kept
+    assert CANARY not in logged, logged
+
+
 def test_invite_code_is_only_ever_sent_over_https(monkeypatch):
     client.INVITE_FILE.write_text("inv_" + "a" * 24, encoding="utf-8")
     for url, ok in [("https://anomaly-hunter-relay.example.workers.dev", True), ("http://relay.example", False),
@@ -184,6 +212,27 @@ def test_every_workflow_action_is_pinned_to_a_commit():
     assert not loose, loose
 
 
+def test_the_daily_probe_checks_the_public_website_and_the_download_link():
+    # AH-124 (John's 20 before going public, "uptime"): the relay was probed every day, the website and Arcas.exe
+    # never, so a broken Pages deploy or a release without its exe would have waited for a user to say so. Every
+    # page the support link and the install steps point to, and the download (its redirect to GitHub's file host
+    # followed), each a 2xx or the run fails; a hung host is cut off and tried once more
+    import pathlib
+    import re
+    import yaml
+    root = pathlib.Path(__file__).resolve().parents[2]
+    flow = yaml.safe_load((root / ".github" / "workflows" / "relay-live.yml").read_text(encoding="utf-8"))
+    assert "schedule" in flow[True]  # PyYAML reads the key `on` as True
+    site = "https://ricepillow3000.github.io/excel-anomaly-hunter/"
+    urls = [site, site + "privacy.html", site + "support.html",
+            "https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest/download/Arcas.exe"]
+    runs = [" ".join(str(step.get("run", "")).split()) for job in flow["jobs"].values() for step in job["steps"]]
+    for url in urls:
+        probe = [r for r in runs if "curl -fsSIL" in r and url in r.split()]
+        assert probe, f"no daily curl -fsSIL for {url}"
+        assert all(re.search(r"--max-time \d+", r) and "--retry 1" in r for r in probe), probe
+
+
 def test_every_gate_tools_check_runs_also_runs_in_ci():
     # council review 2026-10-16: main's ruleset needs 0 approvals and the accuracy benches (no harmful fix, no new
     # Medium+ false alarm) ran only in tools/check.py on a PC - an agent's PR could merge fixes that overwrite good cells
@@ -238,7 +287,7 @@ def test_an_unexpected_engine_error_answers_in_our_own_words(monkeypatch):
     # a bug anywhere still answers like the rest of the engine, never Werkzeug's "The server encountered an internal error"
     monkeypatch.setattr(client, "provider", lambda: 1 / 0)
     r = create_app().test_client().get("/health")
-    assert r.status_code == 500 and r.get_json() == {"error": "Engine error - details in server.log"}
+    assert r.status_code == 500 and r.get_json() == {"error": server.BROKE}
 
 
 def test_the_workbook_repointer_never_writes_over_its_source_even_with_asserts_off(tmp_path):
@@ -293,7 +342,7 @@ def test_an_environment_variable_can_never_turn_on_the_debugger(monkeypatch, tmp
     assert app.debug is False
     monkeypatch.setattr(client, "provider", lambda: 1 / 0)  # a bug: our JSON words, never the debugger's page
     r = app.test_client().get("/health")
-    assert r.status_code == 500 and r.get_json() == {"error": "Engine error - details in server.log"}
+    assert r.status_code == 500 and r.get_json() == {"error": server.BROKE}
     server.make_cert(tmp_path)
     monkeypatch.setattr(server, "HOME", tmp_path)
     monkeypatch.setattr(server, "_already_running", lambda: False)

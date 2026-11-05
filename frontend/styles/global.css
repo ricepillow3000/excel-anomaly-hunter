@@ -138,6 +138,9 @@ button:disabled { cursor: default; opacity: 0.45; }
 #server-down p:first-child::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: var(--s2); background: var(--wine); }
 #server-down p { margin: 0 0 var(--s2); }
 #server-down b { font-weight: 800; font-size: var(--fs-1); line-height: 1.2; color: var(--navy); }
+/* AH-125: the helpline message for someone in crisis is the same hairline box, in body size, never a warning colour */
+#fix-care { border: 1px solid var(--navy); background: var(--field); margin: var(--s3) 0; padding: var(--s3) var(--s4); color: var(--ink); font-size: var(--fs-0); }
+#fix-care::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: var(--s2); background: var(--navy); }
 
 /* ---- the options: a paper panel under a navy hairline ---- */
 .settings-band { margin: var(--s6) calc(-1 * var(--margin)) 0; padding: var(--s5) var(--margin) var(--s5); border-top: 1px solid var(--navy);
@@ -165,5 +168,5 @@ button:disabled { cursor: default; opacity: 0.45; }
    the text colour */
 @media (forced-colors: active) {
   .primary { border: 2px solid ButtonText; }
-  #scan::after, #notice::before, #server-down p:first-child::before, h2::before { forced-color-adjust: none; background: CanvasText; }
+  #scan::after, #notice::before, #server-down p:first-child::before, #fix-care::before, h2::before { forced-color-adjust: none; background: CanvasText; }
 }

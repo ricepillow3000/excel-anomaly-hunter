@@ -42,3 +42,70 @@ def test_the_panes_privacy_sections_and_the_websites_are_word_for_word_the_same(
     pane, site = sections("frontend/privacy.html"), sections("site/privacy.html")
     assert set(pane) == {"intro", "collect", "use", "share", "rights", "security", "changes"}
     assert {k: v for k, v in site.items() if k != "site"} == pane
+
+
+def test_every_privacy_page_names_who_runs_arcas_and_how_to_reach_him():
+    # AH-125 (John, "so we don't get sued"): a privacy policy names who is responsible for it and how to reach them.
+    # A phone and the support page, never an email address (a public inbox fills with spam and phishing)
+    for page in PAGES:
+        said = words(page)
+        assert "Arcas is made and run by John Nguyen (GitHub: ricepillow3000)" in said, page
+        assert "(770) 265-9930" in said and "support page" in said.lower(), page
+        assert not re.search(r"[\w.+-]+@[\w-]+\.[\w.]+|mailto:", (ROOT / page).read_text(encoding="utf-8")), page
+    for page in PAGES[1:]:  # the phone is a link a phone can call
+        assert '<a href="tel:+17702659930">(770) 265-9930</a>' in (ROOT / page).read_text(encoding="utf-8"), page
+
+
+def test_every_privacy_page_says_a_crisis_request_goes_nowhere():
+    # AH-125: ai/care.py answers words of someone in crisis itself; the pages say so, under what AI help sends
+    for page in PAGES:
+        assert "If what you type to Ask AI reads as someone in crisis, the pane shows helpline numbers instead and sends nothing to the AI" in words(page), page
+
+
+def test_the_relay_stores_no_upload_keeps_no_logs_and_has_no_public_bucket():
+    # AH-125 ("uploads not stored publicly, no public storage buckets"): the relay's only storage is the Durable Object
+    # that holds the day's counter (relay/worker.js Counter); no KV, R2 or D1 binding exists for a request to land in,
+    # and Workers' saved logs (on by default) are off. relay/test.mjs checks the counter never holds a request's words
+    conf = tomllib.loads((ROOT / "relay" / "wrangler.toml").read_text(encoding="utf-8"))
+    assert conf["observability"]["enabled"] is False
+    assert [b["class_name"] for b in conf["durable_objects"]["bindings"]] == ["Counter"]
+    stores = ("kv_namespaces", "r2_buckets", "d1_databases", "queues", "vectorize", "analytics_engine_datasets",
+              "hyperdrive", "logpush", "tail_consumers", "services")
+    assert [s for s in stores if s in conf] == []
+    assert "logs" not in conf.get("observability", {}) or conf["observability"]["logs"].get("enabled") is False
+
+
+def test_every_privacy_page_says_the_website_alone_may_count_page_views_and_what_the_counter_sends():
+    # AH-126 (John, 2026-11-04): the website may count page views with GoatCounter (site/count.js, silent until John sets
+    # his code there). The pages said "no analytics and no tracking" of everything and named no counter among the third
+    # parties, which the counter would make false for the website; the add-in itself still has neither
+    for page in PAGES:
+        said, src = words(page), (ROOT / page).read_text(encoding="utf-8")
+        assert "There are no accounts and no cookies, and the add-in has no analytics and no tracking" in said, page
+        assert "no accounts, no analytics and no tracking" not in said, page
+        assert "never the add-in, the pane or the engine" in said and "the page's address" in said, page
+        assert "no cookie, no referrer, no title, no screen size" in said and "Do Not Track or Global Privacy Control" in said, page
+        assert "https://www.goatcounter.com/help/privacy" in src, page
+    site = words("site/privacy.html")
+    assert "runs no analytics" not in site and "no cookies or analytics" not in site
+    # what the pages promise is what the code does: the path alone, no referrer, silent with no code, under DNT and GPC
+    js = (ROOT / "site" / "count.js").read_text(encoding="utf-8")
+    assert re.search(r'^\s*const COUNTER = "[a-z0-9-]{0,63}";$', js, re.M)  # empty until John sets his code
+    assert '".goatcounter.com/count?p=" + encodeURIComponent(location.pathname)' in js and 'referrerPolicy = "no-referrer"' in js
+    assert 'doNotTrack === "1"' in js and "globalPrivacyControl" in js
+    # ... and the pane and the engine never reach it: only the privacy page's link names it outside the website
+    named = [p.relative_to(ROOT).as_posix() for d in ("frontend", "backend/anomaly_hunter") for p in (ROOT / d).rglob("*")
+             if p.is_file() and p.suffix in (".html", ".js", ".py", ".css", ".xml") and "node_modules" not in p.parts
+             and "goatcounter" in p.read_text(encoding="utf-8", errors="ignore").lower()]
+    assert named == ["frontend/privacy.html"], named
+
+
+def test_both_support_pages_give_johns_phone_beside_the_question_form():
+    # AH-126: the pane's support page said its buttons were "the only public ways to reach John" once the privacy pages
+    # also gave his phone (AH-125), and the website's support page named neither him nor the phone
+    for page in ("frontend/support.html", "site/support.html"):
+        src = (ROOT / page).read_text(encoding="utf-8")
+        assert '<a href="tel:+17702659930">(770) 265-9930</a>' in src and "John" in src, page
+        assert not re.search(r"[\w.+-]+@[\w-]+\.[a-z]{2,}|mailto:", src, re.I), page
+    assert "The only public ways to reach John are the buttons on this page and his phone, (770) 265-9930" in words("frontend/support.html")
+    assert "Arcas is made and run by John Nguyen" in words("site/support.html")

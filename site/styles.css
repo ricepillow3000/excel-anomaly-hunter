@@ -122,6 +122,9 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .links .btn-trim { padding: 12px 16px; background: var(--ink); color: var(--paper); border: 0; }
 .links .btn-trim:hover { background: var(--wine); color: var(--on-wine); }
 .logo { display: block; color: inherit; }
+/* the phone's menu (AH-126): a Menu button that opens the links, shown only on a phone and only once boot.js has marked
+   the page (data-js), so with no script the links show as before; transition.js opens and closes it */
+.menu-btn { display: none; }
 
 /* buttons: rectangles */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 48px; padding: 0 var(--s3); border: 2px solid transparent; border-radius: 0;
@@ -156,6 +159,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .hero-copy { grid-column: 7 / -1; margin-top: var(--s5); display: grid; gap: var(--s3); justify-items: start; }
 .hero-copy p { font-size: var(--fs-1); line-height: 1.45; color: var(--ink-2); }
 .hero .note { font-size: var(--fs--1); color: var(--muted); }
+/* the hero's two buttons: the download first, in the first screen at 375 x 667 and 1280 x 720 (AH-126) */
+.hero-cta { display: flex; flex-wrap: wrap; gap: var(--s2); }
 
 /* the sample workspace: an ink frame, an ink title bar, the filters over three columns, the sheet beside them */
 .ws { grid-column: 1 / -1; position: relative; margin: var(--s7) 0 0; background: var(--grain), var(--paper-2); border: 1px solid var(--ink); text-align: left; color: var(--ink-2); }
@@ -387,6 +392,19 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
 .confirm input { width: 24px; height: 24px; margin: 0; accent-color: var(--ink); } /* 24 px, a target a thumb can hit (AH-115) */
 .result { border: 1px solid var(--ink); background: var(--paper); padding: 14px; display: grid; gap: 10px; font-size: var(--fs--1); color: var(--ink); justify-items: start; }
 .error { font-size: var(--fs--1); color: var(--ink); font-weight: 700; padding: 10px 12px; border: 1px solid var(--ink); background: var(--paper); }
+/* a missing field's message is scrolled to just above a phone's keyboard: flush to the edge, a fraction of a pixel of it
+   fell off the screen once the bar above changed height (AH-126; the 390 x 420 check of AH-114) */
+.error { scroll-margin-bottom: var(--s1); }
+/* who runs Arcas and his phone, under the form (AH-126) */
+.contact { display: grid; gap: var(--s1); padding: var(--s3); border-top: 1px solid var(--ink); font-size: var(--fs--1); color: var(--ink-2); }
+/* the 404 page's way back: a row of buttons under its headline (AH-126) */
+.lost { grid-column: 1 / -1; margin-top: var(--s5); display: flex; flex-wrap: wrap; gap: var(--s2); }
+/* the home page's download bar on a phone (AH-126): home.js takes its hidden away once the hero's download has
+   scrolled off and the download section is not on screen. It sets no display of its own, so hidden always wins, and
+   the footer keeps room for it at the end of the page (its 73 px and the phone's home bar), so it never covers words */
+.dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 8; background: var(--paper); border-top: 1px solid var(--ink);
+  padding: 12px max(var(--margin), env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(var(--margin), env(safe-area-inset-left, 0px)); }
+.dock .btn { width: 100%; }
 
 /* footer, on the dark band */
 .foot { background: var(--grain-dark), var(--dark); color: var(--on-dark-2); font-size: var(--fs--1); padding-block: var(--s5); }
@@ -398,7 +416,7 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
 /* pressed (AH-120): a hover said nothing to a finger on a phone, so everything that acts as a button draws a dark gold
    line just inside its edge while it is held down (3.6:1 on paper, 4.4:1 on navy, so it shows on either fill). A colour,
    never a movement: nothing shifts, with or without reduced motion, and nothing is animated */
-.btn:active, .links .btn-trim:active, .typology button:active, .tabs button:active, .rowbtn:active, .m-close:active, .faq summary:active {
+.btn:active, .links .btn-trim:active, .typology button:active, .tabs button:active, .rowbtn:active, .m-close:active, .faq summary:active, .menu-btn:active {
   outline: 2px solid var(--gold); outline-offset: -5px; }
 
 /* motion (AH-72, AH-83, AH-84, AH-89 to AH-93; docs/design/motion.md). boot.js marks the page before it paints: data-ah
@@ -446,7 +464,10 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
     animation: sweep var(--skeleton-dur) var(--ease-in-out) both; }
   html[data-js] dl.anchor[data-loading]::after { animation-iteration-count: infinite; }
   html[data-js] dl.anchor[data-loading] :is(#sha, #sha *, #rel) { color: transparent; text-decoration-color: transparent; }
+  /* the phone's menu opens with its links settling down into place (AH-126) */
+  html[data-js] .menu-btn[aria-expanded="true"] + .links { animation: menu-in var(--fill-dur) var(--ease-out) both; }
 }
+@keyframes menu-in { from { opacity: 0; transform: translate3d(0, -8px, 0); } to { opacity: 1; transform: translate3d(0, 0, 0); } }
 @keyframes sweep { from { transform: translate3d(-100%, 0, 0); } to { transform: translate3d(100%, 0, 0); } }
 @keyframes land { from { transform: translate3d(0, 5px, 0); } to { transform: translate3d(0, 0, 0); } }
 @media print { .reveal-item, [data-enter] { opacity: 1 !important; transform: none !important; } }
@@ -534,6 +555,7 @@ html[data-moving] #field { z-index: 2; }
   .cols > *, .steps > *, .steps .aside, .facts, table.card, .foot span, .foot nav, .page-head h1, .page-head p { grid-column: 1 / -1; }
   .links { justify-content: flex-start; gap: 4px var(--s2); }
   .section, .hero, .page-head, .doc { padding-block: var(--s6); }
+  .hero { padding-top: var(--s5); } /* the hero's download inside a 375 x 667 first screen with room to spare (AH-126) */
   .hero-copy, .sec-lede, .page-head p { margin-top: var(--s3); }
   .fact { grid-row: auto; }
   .ws { margin-top: var(--s6); }
@@ -566,4 +588,19 @@ html[data-moving] #field { z-index: 2; }
   .card th, .card td { border-bottom: 0; padding: 12px var(--s2); }
   .card td.eg { border-left: 0; padding-top: 0; }
   .foot nav { justify-content: flex-start; }
+  /* the phone's menu (AH-126): the brand and the Menu button share the bar's first row, the links open in full width
+     below them */
+  html[data-js] .bar .cols { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; column-gap: var(--s2); }
+  html[data-js] .bar .links { flex: 1 0 100%; }
+  html[data-js] .menu-btn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 var(--s2); font: 700 var(--fs--1)/1 var(--sans); color: var(--ink);
+    background: var(--paper); border: 1px solid var(--ink); border-radius: 0; cursor: pointer; }
+  html[data-js] .menu-btn[aria-expanded="true"] { background: var(--ink); color: var(--paper); }
+  html[data-js] .menu-btn[aria-expanded="false"] + .links { display: none; }
+  html[data-js] #home .foot { padding-bottom: calc(var(--s5) + 73px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (min-width: 761px) { .dock { display: none; } }
+/* a short laptop screen (1280 x 720): the hero's download was 27 px below the first screen, so the hero starts higher */
+@media (min-width: 761px) and (max-height: 820px) {
+  .hero { padding-top: var(--s5); }
+  .hero-copy { margin-top: var(--s4); }
 }
