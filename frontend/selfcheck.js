@@ -523,8 +523,8 @@ assert.ok(/turnIn\(el\) \{\s*if \(!el \|\| still\(\)/.test(motion) && /fadeIn\(e
   const quiet = console.error;
   console.error = () => {}; // plainError logs the detail for a person debugging: not this check's output
   try {
-    assert.equal(plainError(ours("the checker isn't running.")), "Something went wrong: the checker isn't running.");
-    assert.equal(plainError(ours("the checker isn't running."), "Accept failed"), "Accept failed: the checker isn't running.");
+    assert.equal(plainError(ours("Arcas has stopped.")), "Something went wrong: Arcas has stopped.");
+    assert.equal(plainError(ours("Arcas has stopped."), "Accept failed"), "Accept failed: Arcas has stopped.");
     assert.equal(plainError(Object.assign(new Error("InvalidOperationInCellEditMode"), { code: "InvalidOperationInCellEditMode" })),
       "Excel is busy editing a cell. Press Enter or Esc, then try again.");
     assert.match(plainError(Object.assign(new Error("ItemNotFound"), { code: "ItemNotFound" })), /^The sheet or cells this was about are gone\b.*Find problems/);
@@ -598,6 +598,20 @@ for (const f of readdirSync(new URL(".", import.meta.url)).filter((f) => f.endsW
     assert.ok(pressed.some((s) => s.includes(c)), `no :active rule for ${c}: a press shows nothing`);
   for (const [f, src] of sheetsCss) if (/summary\s*\{/.test(src))
     assert.ok([...src.matchAll(/[^{}]*:active[^{}]*\{/g)].some((m) => m[0].includes("summary")), `${f}: no :active rule for summary`);
+}
+
+// AH-135, a usability review for a person with few computer skills: the pane's words say what to do in plain steps. The
+// engine down names where the file most people have is; the list says its colours change no value and how they go;
+// AI help says first that no one needs it; a fix card says what "the source" is
+{
+  const flat = (s) => s.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+  const down = flat(/<section id="server-down"[^>]*>([\s\S]*?)<\/section>/.exec(html)?.[1] || "");
+  assert.equal(down, "Arcas has stopped. Wait half a minute and press Try again. If that doesn't work, open your Downloads folder, double-click Arcas.exe, then press Try again. Try again", "the engine down at start");
+  assert.ok(readFileSync(new URL("services/api.js", import.meta.url), "utf8").includes('throw ours("Arcas has stopped. Wait half a minute and try again. If that doesn\'t work, open your Downloads folder, double-click Arcas.exe, then try again.")'), "the engine down mid-call");
+  assert.ok(/<p id="list-hint" class="hint">[^<]*The cells to check are coloured in your sheet\. This changes no values\. Remove highlights takes the colour off\.<\/p>/.test(html), "the list's hint does not say what the colours are");
+  assert.ok(html.includes('<button id="clear-highlights" class="secondary">Remove highlights</button>'), "the hint names a button that is not there");
+  assert.ok(/<summary>AI help \(optional, free\)<\/summary>\s*<p class="hint">You don't need this\. Arcas finds and fixes problems without AI\.<\/p>/.test(html), "AI help does not open by saying no one needs it");
+  assert.ok(readFileSync(new URL("features/fix.js", import.meta.url), "utf8").includes("Check it against the original receipt, invoice or report before you click Accept."), "a fix card's check against the source");
 }
 
 console.log("panel self-check passed");

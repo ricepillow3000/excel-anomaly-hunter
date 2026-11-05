@@ -291,11 +291,11 @@ for (const f of SCRIPTS) {
 // live one; the hero promised that nothing changes until you accept it, but Auto-fix (off at first) writes by itself
 {
   const home = html["index.html"], said = (re) => ((re.exec(home) || [])[1] || "").replace(/<[^>]+>/g, "");
-  const scope = said(/<dt>Install scope<\/dt><dd>([\s\S]*?)<\/dd>/);
+  const scope = said(/<dt>Who can install it<\/dt><dd>([\s\S]*?)<\/dd>/);
   assert.ok(!/no administrator rights/i.test(home) && /must be an administrator on this PC/.test(scope), `the install scope says "${scope}"`);
   assert.ok(!/\d\s*MB/.test(said(/<dd id="rel">([\s\S]*?)<\/dd>/)), "the release line's fallback names a size that goes stale (home.js writes the live one)");
   const hero = said(/<section class="hero"[\s\S]*?<p>([\s\S]*?)<\/p>/);
-  assert.ok(/until you accept it/.test(hero) && /Auto-fix/.test(hero), `the hero leaves out Auto-fix: "${hero}"`);
+  assert.ok(/until you click Accept/.test(hero) && /Auto-fix/.test(hero), `the hero leaves out Auto-fix: "${hero}"`);
   assert.ok(/further down/.test(said(/<span class="note">([\s\S]*?)<\/span>/)) && !/at the end of the page/.test(home), "the hero note says the download is at the end of the page");
   const version = (/<input id="version"[^>]*placeholder="([^"]*)"/.exec(html["support.html"]) || [])[1];
   assert.ok(version !== undefined && !/\d/.test(version), `the support form's version placeholder names a version that goes stale: "${version}"`);
@@ -303,7 +303,7 @@ for (const f of SCRIPTS) {
 // ---- John's website list of 2026-11-05 (AH-133): who makes Arcas with his photo and profiles, a contact form with our
 // own thank-you page, five questions, measured proof instead of reviews, structured data for search, and alt text ----
 {
-  const home = html["index.html"], text = (s) => s.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+  const home = html["index.html"], text = (s) => s.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
   // one fixed pattern for every section, picked by id: semgrep blocks a RegExp built from a variable
   const sections = Object.fromEntries([...home.matchAll(/<section\b[^>]*\sid="([\w-]+)"[\s\S]*?<\/section>/g)].map((m) => [m[1], m[0]]));
   const section = (id) => sections[id] || "";
@@ -348,7 +348,8 @@ for (const f of SCRIPTS) {
   assert.ok(sjs.includes(`"${REPO}/issues/new?template="`) && sjs.includes('prefilled("contact.yml", [["title", ') && sjs.includes('["name", v("c-name")], ["topic", v("c-topic")]], ["message", v("c-message")])'), "support.js does not build the contact issue's link from its name, topic and message");
   // the thank-you page: says where the message is, that it is public there, the reply time, and leads back
   const thanks = text((/<main[\s\S]*<\/main>/.exec(html["thanks.html"]) || [""])[0]);
-  for (const want of ["GitHub", "public", "John replies within 2 business days", "Submit"]) assert.ok(thanks.includes(want), `thanks.html does not say "${want}"`);
+  // AH-135: GitHub names its button Create, not Submit, and may first ask to sign in: the page says what a person meets
+  for (const want of ["GitHub", "public", "John replies within 2 business days", "the green button at the bottom", "sign in", "Nothing reaches John until you do"]) assert.ok(thanks.includes(want), `thanks.html does not say "${want}"`);
   assert.ok(/<a class="btn btn-primary" href="index\.html">/.test(html["thanks.html"]), "thanks.html does not lead back home");
   // five questions on the home page, in the support page's markup (no script: <details> opens itself), none of them a
   // copy of a support answer
@@ -382,6 +383,79 @@ for (const f of SCRIPTS) {
   assert.ok(items[2][1].includes(`${iClean} and ${bClean} clean rows`), "the proof strip's clean rows");
   const PROOF = REPO + "/blob/main/docs/proof/2026-11-05-stress-test.md";
   for (const [i, href] of [[0, PROOF], [1, PROOF], [2, PROOF], [3, REPO + "/blob/main/LICENSE"], [4, "privacy.html"]]) assert.ok(items[i][2].includes(`href="${href}"`), `proof item ${i + 1} does not link ${href}`);
+}
+// ---- AH-135, a usability review for a person with few computer skills: a way to reach John with no GitHub account,
+// the install in the order a person meets it, the IT section named for who reads it, and plain names for the checks ----
+{
+  const home = html["index.html"], sup = html["support.html"], text = (s) => s.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+  const TEL = '<a href="tel:+17702659930">(770) 265-9930</a>';
+  const sections = Object.fromEntries([...home.matchAll(/<section\b[^>]*\sid="([\w-]+)"[\s\S]*?<\/section>/g)].map((m) => [m[1], m[0]]));
+  // the thank-you page: one more step, said as a person meets it, and a way round GitHub
+  const th = (/<main[\s\S]*<\/main>/.exec(html["thanks.html"]) || [""])[0];
+  assert.equal(text((/<h1\b[^>]*>([\s\S]*?)<\/h1>/.exec(th) || [])[1] || ""), "One more step to send your message", "thanks.html's heading");
+  assert.ok(text(th).includes("A new tab opened on GitHub. If it asks you to sign in, make a free account or sign in, and your message will be waiting. Then press the green button at the bottom to send it. Nothing reaches John until you do."), "thanks.html does not say what to do in the new tab");
+  assert.ok(th.includes(`Rather not make an account? Email John at ${MAILTO} or call ${TEL}.`), "thanks.html has no way to reach John without an account");
+  // both forms: Email John instead beside the GitHub button (a mailto link support.js fills from the form), and one
+  // line that says what GitHub is
+  const HELP = "GitHub is a free website where John keeps Arcas and answers questions. No account? Use Email John instead.";
+  for (const [p, form, id] of [["index.html", "note", "c-email"], ["support.html", "ticket", "email"]]) {
+    const f = (/<form id="(\w+)"[\s\S]*?<\/form>/.exec(html[p].slice(html[p].indexOf(`<form id="${form}"`))) || [""])[0];
+    assert.ok(f, `${p}: no form #${form}`);
+    // a fixed pattern, the id compared after (a RegExp built from a name is what Semgrep refuses, CLAUDE.md)
+    const pair = /<button class="btn btn-primary[^"]*" type="submit">[^<]+<\/button>\s*<a class="btn btn-plain" id="([\w-]+)" href="mailto:([^"]+)">Email John instead<\/a>/.exec(f);
+    assert.ok(pair && pair[1] === id && pair[2] === EMAIL, `${p}: no Email John instead beside the GitHub button`);
+    assert.ok(text(f).includes(HELP), `${p}: the form does not say what GitHub is`);
+    assert.ok(/This is public/.test(f), `${p}: the public-data warning is gone`);
+  }
+  const sjs = read("support.js");
+  assert.ok(sjs.includes(`EMAIL = "${EMAIL}"`) && sjs.includes("`mailto:${EMAIL}?subject=${q(subject)}&body=") && /MAIL_FITS = 1800\b/.test(sjs), "support.js does not build a mailto link that fits a mail app's limit");
+  // the support form: a phone call near the top, the version optional, the box said in plain words
+  const card = (/<section class="form-card"[\s\S]*?<\/section>/.exec(sup) || [""])[0];
+  assert.ok(card.indexOf(`Rather talk? Call John at ${TEL} or email ${MAILTO}.`) > -1 && card.indexOf("Rather talk?") < card.indexOf('<form id="ticket"'), "support.html: no call or email line above the form");
+  assert.ok(/<label for="version">Engine version \(optional\)<\/label>/.test(card) && /<input id="version"[^>]*>\s*<span class="hint">[^<]*John can help you find it[^<]*<\/span>/.test(card), "support.html: the engine version is not marked optional with help");
+  assert.ok(/<label class="confirm[^"]*"><input id="clean" type="checkbox" required><span>I did not paste real numbers from work, or any key or code John gave me\.<\/span><\/label>/.test(card), "support.html: the required box's words");
+  // the install: who may install it first, the browser's warning under the download, the steps in the order a person
+  // meets them, and the checksum and Unblock in a closed box under them (the published hash stays in the facts list:
+  // home.js fills it from GitHub's answer under that list's skeleton)
+  const dl = sections["download"] || "";
+  assert.ok(text((/<p class="sec-lede[^"]*">([\s\S]*?)<\/p>/.exec(dl) || [])[1] || "").startsWith("On a work computer, ask your IT team first. Arcas installs only on a Windows account that is an administrator on that PC."), "the install's first line");
+  const stage = (/<div class="stage[\s\S]*?<\/div>/.exec(dl) || [""])[0];
+  assert.ok(/Download for Windows<\/a>\s*<p class="[^"]+">Your browser may say Arcas\.exe isn't commonly downloaded\. Click the three dots beside it, then Keep, then Keep anyway\. It says this because the file is new and not signed yet\.<\/p>/.test(stage), "no browser warning under the download button");
+  const steps = [...((/<div class="steps[\s\S]*?<\/ol>/.exec(dl) || [""])[0]).matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((m) => text(m[1]));
+  assert.equal(steps.length, 4, `the install has ${steps.length} steps, not 4`);
+  assert.ok(/Downloads/.test(steps[0]) && /Windows protected your PC/.test(steps[1]) && /More info/.test(steps[1]) && /Run anyway/.test(steps[1]), `the first steps: ${steps.slice(0, 2)}`);
+  assert.ok(steps[2].includes("Windows names it Anomaly Hunter local CA, Arcas's old name. It only lets Excel talk to Arcas on this computer. Click Yes. If you click No, the install stops, and you can run it again."), `the certificate step: ${steps[2]}`);
+  assert.ok(/Start here/.test(steps[3]) && /Find problems/.test(steps[3]) && /Practice/.test(steps[3]), `the last step: ${steps[3]}`);
+  assert.ok(!/past Windows' checks/.test(dl), "the steps' heading still says past Windows' checks");
+  const check = (/<details class="[^"]*">\s*<summary>Want to check the file first\? \(optional\)<\/summary>[\s\S]*?<\/details>/.exec(dl) || [""])[0];
+  assert.ok(check && dl.indexOf(check) > dl.indexOf("</ol>") && check.includes("Get-FileHash .\\Arcas.exe -Algorithm SHA256") && check.includes("If they differ, delete the file and download it again.") && /SHA-256/.test(check) && /Unblock/.test(check), "the checksum and Unblock are not in a closed box under the steps");
+  // the home page's questions: how to tell which Excel you have, and what leaves the PC, in plain words
+  const faq = sections["faq"] || "";
+  assert.ok(text(faq).includes("To check, open Excel and click File > Account. If it says Microsoft 365 under Product information, you have the right Excel. Click About Excel: the first line ends with 64-bit or 32-bit."), "the FAQ does not say how to check which Excel you have");
+  assert.ok(text(faq).includes("No, not when it checks your sheet. Arcas does all its checking on your own computer and sends nothing. Part of your sheet leaves your computer only if you set up AI help and click Ask AI or Check words with AI. Then it goes to Google, through John's own server first if John gave you an invite code. The privacy page lists exactly what goes."), "the FAQ's data answer");
+  // a phone can't install it: said under the hero's download, on narrow screens only
+  assert.ok(/<div class="hero-cta">[\s\S]*?<\/div>\s*<p class="phone-only">Arcas runs on a Windows computer\. Open this page on that computer to download it\.<\/p>/.test(home), "no phone line under the hero's download");
+  assert.ok(/\.phone-only\s*\{\s*display:\s*none;?\s*\}/.test(css) && /@media \(max-width: 760px\)[\s\S]*\.phone-only\s*\{\s*display:\s*block;?\s*\}/.test(css), "the phone line is not shown on narrow screens only");
+  // the uninstall in numbered steps, its command as it was
+  const un = (/<details[^>]*id="uninstall"[\s\S]*?<\/details>/.exec(sup) || [""])[0];
+  assert.ok(/<ol>\s*<li>Press the Windows key and R together\.<\/li>\s*<li>Copy the line below and paste it into the box that opens\.<\/li>\s*<li>Press Enter\.<\/li>\s*<\/ol>/.test(un) && un.includes('<code>"%LOCALAPPDATA%\\AnomalyHunter\\Arcas.exe" uninstall</code>'), "the uninstall is not three numbered steps with its command");
+  // the installer's message for a standard account, answered on the support page under its own words
+  const ADMIN = "Arcas could not finish. Your Windows account is not an administrator on this PC. Ask the person who looks after your computers to install it for you.";
+  assert.ok([...sup.matchAll(/<summary>([\s\S]*?)<\/summary>/g)].some((m) => text(m[1]).includes(ADMIN)), "support.html has no question for the installer's administrator message");
+  // the hero says what changes and what is further down
+  assert.ok(text((/<span class="note">([\s\S]*?)<\/span>/.exec(home) || [])[1] || "") === "Free · for Windows with desktop Excel · download and install steps further down", "the hero's note");
+  assert.ok(text((/<section class="hero"[\s\S]*?<p>([\s\S]*?)<\/p>/.exec(home) || [])[1] || "").endsWith("Nothing in your sheet changes until you click Accept. An optional Auto-fix can tidy stray capitals and spaces for you."), "the hero's promise");
+  // the IT section is named for who reads it, and says a person can skip it
+  const it = sections["it"] || "";
+  assert.equal(text((/<h2\b[^>]*>([\s\S]*?)<\/h2>/.exec(it) || [])[1] || ""), "For your IT team", "the IT section's heading");
+  assert.ok(text(it).includes("You don't need this part to use Arcas. Share it with whoever looks after your computers."), "the IT section does not say a person can skip it");
+  assert.deepEqual([...it.matchAll(/<dt>([^<]+)<\/dt>/g)].map((m) => m[1]), ["Price", "Who can install it", "Internet use", "What leaves this PC"], "the IT section's items");
+  // the sample's filters and the checks table in plain names
+  assert.deepEqual([...home.matchAll(/<button type="button" data-kind="(\w+)"[^>]*>([^<]+)</g)].map((m) => [m[1], m[2]]),
+    [["all", "All findings"], ["recon", "Totals that don't add up"], ["keying", "Typing slips"], ["label", "Same word, typed two ways"], ["time", "Odd jumps over time"]], "the sample's filters");
+  for (const old of ["Reconciliation breaks", "Keying errors<span", "Label mismatches", "Temporal outliers"]) assert.ok(!home.includes(old), `the home page still says ${old}`);
+  // the maker's phone and email come before his photo on a phone, or the photo stays small: here it stays a third wide
+  assert.ok(/@media \(max-width: 760px\)[\s\S]*\.maker img\s*\{[^}]*width:\s*min\(33%, 240px\)/.test(css), "the maker's photo fills a phone's width");
 }
 console.log(`website static check passed (${PAGES.length} pages, ${SCRIPTS.length} scripts)`);
 if (!process.argv.includes("--browser")) process.exit(0);
@@ -571,7 +645,8 @@ const done = async ({ ctx, problems, outside }, label, allowed = []) => {
     const t = await open("support.html", { width: 390, height: 844, motion: "reduce" });
     const p = t.page;
     const tel = await p.evaluate(() => [...document.querySelectorAll('a[href^="tel:"]')].map((a) => [a.getAttribute("href"), a.textContent, a.getClientRects().length > 0]));
-    want(JSON.stringify(tel) === JSON.stringify([["tel:+17702659930", "(770) 265-9930", true]]), `AH-126 support: the phone link ${JSON.stringify(tel)}`);
+    // AH-135: twice, the line above the form and the contact block under it, both John's number and both shown
+    want(JSON.stringify(tel) === JSON.stringify([["tel:+17702659930", "(770) 265-9930", true], ["tel:+17702659930", "(770) 265-9930", true]]), `AH-126 support: the phone links ${JSON.stringify(tel)}`);
     want(await p.evaluate(() => /John Nguyen/.test(document.getElementById("page").textContent)), "AH-126 support: John Nguyen is not named");
     await p.fill("#summary", "x"); await p.fill("#details", "y"); await p.check("#clean");
     await p.click('button[type="submit"]');
@@ -701,7 +776,7 @@ const done = async ({ ctx, problems, outside }, label, allowed = []) => {
     await p.waitForFunction(() => document.querySelectorAll("main").length === 1, null, { timeout: 3000 }).catch(() => {});
     const th = await p.evaluate(() => ({ kept: window.__kept, page: document.getElementById("page").dataset.page, h1: document.querySelector("h1").textContent, robots: (document.querySelector('meta[name="robots"]') || {}).content || "",
       canonical: document.querySelector('link[rel="canonical"]').href, xss: document.querySelectorAll("img[src=x]").length }));
-    want(th.kept === "same document" && th.page === "thanks" && /^Thanks/.test(th.h1) && th.canonical === SITE_URL + "thanks.html" && th.xss === 0, `${label}: the thank-you page ${JSON.stringify(th)}`);
+    want(th.kept === "same document" && th.page === "thanks" && th.h1 === "One more step to send your message" && th.canonical === SITE_URL + "thanks.html" && th.xss === 0, `${label}: the thank-you page ${JSON.stringify(th)}`);
     await done(t, label, [API]);
   };
   await contact({ width: 390, motion: "reduce" });
@@ -750,6 +825,48 @@ const done = async ({ ctx, problems, outside }, label, allowed = []) => {
   }
   assert.deepEqual(miss, [], `John's website list of 2026-11-05 (AH-133):\n${miss.join("\n")}`);
   console.log("AH-133: the contact form (glide, errors, new tab with no way back, our thank-you page in the same document, a blocked tab and a long message given the link), the photo loaded near the screen at 1x and 2x with CLS 0, the structured data parsed with no CSP report and the questions word for word, the profile links");
+}
+// ---- AH-135: Email John instead, on both forms. It checks the same fields first, then hands the visitor's own email app
+// a message filled from the form (a mailto link, cut to fit what mail apps take, and said so), and never leaves the page
+// for the thank-you page; the GitHub route is untouched ----
+{
+  const miss = [];
+  const want = (ok, what) => { if (!ok) miss.push(what); };
+  const { contrastProblems } = await import(pathToFileURL(path.join(SITE, "..", "e2e", "contrast.mjs")).href);
+  // the click is let through to the link's own handler, then stopped before the browser hands it to a mail app
+  const catcher = () => { window.__mail = []; document.addEventListener("click", (e) => { const a = e.target.closest && e.target.closest('a[href^="mailto:"]');
+    if (a) { window.__mail.push(e.defaultPrevented ? "stopped" : a.href); e.preventDefault(); } }); };
+  for (const [file, width, fill, id, missing, subject, body, cutId] of [
+    ["index.html", 390, async (p, long) => { await p.fill("#c-name", "Ana & Bo"); await p.selectOption("#c-topic", "A problem"); await p.fill("#c-message", long ? "😀🧾".repeat(1500) : "It stops at row 3000.\nWhat now? & = + % # ?"); },
+      "c-email", "Please add a name, a message.", "[Contact]: A problem from Ana & Bo", "Name: Ana & Bo\r\nTopic: A problem\r\n\r\nIt stops at row 3000.\r\nWhat now? & = + % # ?", "c-mail-cut"],
+    ["support.html", 1280, async (p, long) => { await p.fill("#summary", "Scan stops"); await p.fill("#version", "v0.1.102"); await p.fill("#details", long ? "😀🧾".repeat(1500) : "Line 1\nline 2 & ?"); await p.check("#clean"); },
+      "email", "Please add a short summary, what happened, the box that says it contains no key or private data.", "[Support]: Scan stops", "Topic: Something isn't working\r\nEngine version: v0.1.102\r\n\r\nLine 1\r\nline 2 & ?", "mail-cut"]]) {
+    const t = await open(file, { width, motion: "reduce", init: catcher });
+    const p = t.page, label = `AH-135 Email John instead on ${file} at ${width}px`;
+    const look = () => p.evaluate(([m, c]) => ({ mail: window.__mail.slice(), at: location.pathname, focus: document.activeElement.id, missing: document.getElementById(m).hidden ? "" : document.getElementById(m).textContent,
+      cut: !document.getElementById(c).hidden, result: !document.getElementById(m === "missing" ? "result" : "c-result").hidden }), [file === "index.html" ? "c-missing" : "missing", cutId]);
+    await p.click("#" + id);
+    let r = await look();
+    want(JSON.stringify(r.mail) === '["stopped"]' && r.missing === missing && r.focus !== id && !r.result, `${label}: an empty form ${JSON.stringify(r)}`);
+    await fill(p, false);
+    await p.click("#" + id);
+    r = await look();
+    const u = r.mail[1] ? new URL(r.mail[1]) : null;
+    want(u && u.protocol === "mailto:" && u.pathname === EMAIL && u.searchParams.get("subject") === subject && u.searchParams.get("body") === body && r.at === "/" + file && !r.cut && !r.result && r.missing === "",
+      `${label}: the email ${JSON.stringify(r)} subject ${u && u.searchParams.get("subject")} body ${JSON.stringify(u && u.searchParams.get("body"))}`);
+    await fill(p, true);
+    await p.click("#" + id);
+    r = await look();
+    const v = r.mail[2] ? new URL(r.mail[2]) : null;
+    want(v && r.mail[2].length <= 1800 && r.cut && v.searchParams.get("body").length > 100 && !/[\uD800-\uDBFF]$/.test(v.searchParams.get("body")) && r.at === "/" + file, `${label}: a long message ${JSON.stringify({ ...r, mail: r.mail.map((m) => m.length) })}`);
+    const bad = await p.evaluate(contrastProblems);
+    want(!bad.length, `${label}: contrast with the cut note shown ${JSON.stringify(bad)}`);
+    await p.waitForTimeout(300);
+    want((await p.evaluate(() => location.pathname)) === "/" + file, `${label}: the page left for ${await p.evaluate(() => location.pathname)}`);
+    await done(t, label, [API]);
+  }
+  assert.deepEqual(miss, [], `Email John instead (AH-135):\n${miss.join("\n")}`);
+  console.log("AH-135: Email John instead on both forms (the same fields checked first, a mailto filled from the form, cut to 1,800 characters and said so, the page kept)");
 }
 // ---- reading the pages the way people with other settings read them (AH-112 to AH-116). Each check collects what it
 // finds and the group fails once with all of it, so one run names every page that falls short ----

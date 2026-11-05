@@ -25,6 +25,9 @@ CAT = rf"Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{CATALOG}"
 DEV = r"Software\Microsoft\Office\16.0\WEF\Developer"
 RUN = r"Software\Microsoft\Windows\CurrentVersion\Run"
 QUIET = 0x08000000  # CREATE_NO_WINDOW: no black window flashing up for a tool
+# install.bat and site/support.html say the same words (test_product_name.py)
+NOT_ADMIN = ("Arcas could not finish. Your Windows account is not an administrator on this PC. "
+             "Ask the person who looks after your computers to install it for you.")
 
 
 def _system32():
@@ -171,8 +174,15 @@ def install():
     shutil.copy2(server.PANEL / "manifest.xml", addin / "manifest.xml")
     unc = rf"\\localhost\{str(addin)[0]}$" + str(addin)[2:]
     if not Path(unc, "manifest.xml").exists():
-        # Windows opens the admin share to administrators only: a standard account was told the share was off (AH-129)
-        return fail(f"Can't reach {unc}: this Windows account isn't an administrator on this PC, or the C$ admin share is off.")
+        # Windows opens the admin share to administrators only: a standard account was told the share was off (AH-129).
+        # The message says it in plain words (AH-135: "Can't reach \\localhost\C$" meant nothing to most people); the
+        # path, and the rarer cause, go to the log for whoever helps them
+        try:
+            with open(home / "server.log", "a", encoding="utf-8") as log:
+                log.write(f"Install stopped: can't reach {unc}. The account isn't an administrator on this PC, or the C$ admin share is off.\n")
+        except OSError:
+            pass  # the message below still says what to do
+        return fail(NOT_ADMIN)
     reg_delete(DEV, ID)
     reg_delete(rf"{DEV}\{ID}")
     reg_set(CAT, "Id", CATALOG)
