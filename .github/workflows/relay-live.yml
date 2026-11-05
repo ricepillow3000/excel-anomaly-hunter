@@ -45,6 +45,7 @@ jobs:
             https://ricepillow3000.github.io/excel-anomaly-hunter/ \
             https://ricepillow3000.github.io/excel-anomaly-hunter/privacy.html \
             https://ricepillow3000.github.io/excel-anomaly-hunter/support.html \
+            https://ricepillow3000.github.io/excel-anomaly-hunter/terms.html \
             https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest/download/Arcas.exe
           do
             curl -fsSIL --max-time 20 --retry 1 --retry-delay 5 --retry-all-errors -o /dev/null -w "%{http_code} $url\n" "$url" \
