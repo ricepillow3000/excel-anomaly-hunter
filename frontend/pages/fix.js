@@ -34,6 +34,7 @@ export async function openFix(i, selectInSheet) {
   $("fix-status").textContent = "";
   $("fix-care").textContent = "";
   show("fix-care", false);
+  show("fix-label");
   $("fix-ask").textContent = "Ask AI";
   $("fix-changes").innerHTML = "";
   $("fix-explanation").textContent = "";
