@@ -42,6 +42,7 @@ export async function askFix() { // talks to the engine only; the sheet is touch
   $("fix-status").textContent = "";
   $("fix-care").textContent = "";
   show("fix-care", false);
+  show("fix-label");
   try {
     const { columns, rows, startRow, startCol } = state.lastScan;
     const out = await post("/fix", {
@@ -69,7 +70,14 @@ export async function askFix() { // talks to the engine only; the sheet is touch
 function careSaid(f, words) {
   $("fix-care").textContent = words;
   show("fix-care");
-  if (!state.undos[f.i]) show("fix-apply", false); // an accepted fix keeps its Undo
+  if (state.undos[f.i]) return; // an accepted fix keeps its Undo and what it changed
+  // no earlier suggestion beside the helpline message: a formula card next to it read as if the pane had not listened
+  // (AH-125 live check, 2026-11-05)
+  f.changes = [];
+  show("fix-label", false);
+  $("fix-changes").innerHTML = "";
+  $("fix-explanation").textContent = "";
+  show("fix-apply", false);
 }
 
 // The AI word check: a value that is a different KIND of thing from the rest of its column ("London" among products).
