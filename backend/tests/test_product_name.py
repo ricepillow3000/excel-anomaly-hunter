@@ -25,6 +25,7 @@ KEPT = [
     (r"Anomaly Hunter (?:Severity|Excel Row|Bucket|Reason|Status|Suggested fix|Columns)\b", "a Power BI clash column"),
     (r"\banomalyHunter[A-Z]\w*", "the pane's settings keys, saved in workbooks and on the PC"),
     (r"\banomaly_hunter\b", "the Python package"),
+    (r"\bANOMALY_HUNTER_RELAY\b", "the developer setting's name, as ai/client.py reads it from the environment"),
 ]
 # the exe's old name, only where an update looks for it: a release made before the rename
 LEGACY = {"site/home.js": "AnomalyHunter.exe"}

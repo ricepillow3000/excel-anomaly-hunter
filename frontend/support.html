@@ -20,19 +20,27 @@
       <h2>Common questions</h2>
       <details open>
         <summary>The pane says "The checker isn't running" <span class="pm"></span></summary>
-        <div class="a">Wait 30 seconds, then press <strong>Try again</strong>. If that doesn't help, double-click <code>Arcas.exe</code> again. It asks you to close Excel, repairs the install, starts the checker and opens Excel again.</div>
+        <div class="a">Wait 30 seconds, then press <strong>Try again</strong>. If that doesn't help, double-click <code>Arcas.exe</code> again. It asks you to close Excel, repairs the install, starts the checker and opens Excel again. With an invite kit, double-click install.bat in the kit folder instead.</div>
       </details>
       <details>
         <summary>Windows says "Windows protected your PC" <span class="pm"></span></summary>
-        <div class="a">The app is not code-signed yet, so Windows warns about it. Click <strong>More info</strong>, then <strong>Run anyway</strong>.</div>
+        <div class="a">The app is not code-signed yet, so Windows warns about it. Click <strong>More info</strong>, then <strong>Run anyway</strong>. Some PCs show "Open File - Security Warning" instead: click Run.</div>
+      </details>
+      <details>
+        <summary>Windows asks to install a certificate <span class="pm"></span></summary>
+        <div class="a">During the install, Windows asks whether to install a certificate from "Anomaly Hunter local CA". Click Yes. It works only for localhost and 127.0.0.1 on this PC, the key that made it is never saved, and uninstall removes it. If you click No, the install stops: run it again and click Yes.</div>
       </details>
       <details>
         <summary>How do I update? <span class="pm"></span></summary>
-        <div class="a">Download the latest <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest/download/Arcas.exe" target="_blank" rel="noopener">Arcas.exe</a> and double-click it. If Excel is open, it asks you to close it first. Your AI key stays. The version you have is the <strong>Engine</strong> line at the bottom of the pane.</div>
+        <div class="a">Download the latest <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/releases/latest/download/Arcas.exe" target="_blank" rel="noopener">Arcas.exe</a> and double-click it. If Excel is open, it asks you to close it first. Your AI key stays. The version you have is the <strong>Engine</strong> line at the bottom of the pane. With an invite kit, double-click install.bat in a newer kit from John.</div>
       </details>
       <details>
         <summary>How do I uninstall? <span class="pm"></span></summary>
-        <div class="a">Press Windows+R, paste <code>"%LOCALAPPDATA%\AnomalyHunter\Arcas.exe" uninstall</code> and press Enter. It removes the add-in, the checker, its certificate and its files, except the app file itself, which you can then delete. It is not listed in Windows "Installed apps". The <a href="privacy.html#rights">Privacy page</a> lists what it removes.</div>
+        <div class="a">Press Windows+R, paste <code>"%LOCALAPPDATA%\AnomalyHunter\Arcas.exe" uninstall</code> and press Enter. It removes the add-in, the checker, its certificate and its files, except the app file itself, which you can then delete. It is not listed in Windows "Installed apps". The <a href="privacy.html#rights">Privacy page</a> lists what it removes. With an invite kit, close Excel, run install.bat /u in the kit folder, then delete the kit folder. Like the app's uninstall, it also clears Excel's add-in cache, so other web add-ins may need to be added again.</div>
+      </details>
+      <details>
+        <summary>Where is the log? <span class="pm"></span></summary>
+        <div class="a">In <code>%LOCALAPPDATA%\AnomalyHunter</code>: server.log is this run's, server.log.1 the run before. It can quote values from your sheet, so read it before you paste any of it.</div>
       </details>
       <details>
         <summary>Where is AI help, and what does Remove key do? <span class="pm"></span></summary>

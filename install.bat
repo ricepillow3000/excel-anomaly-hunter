@@ -34,7 +34,8 @@ if %RC%==3 (
     certutil -user -addstore Root "%AH%\ca.pem" >nul || (del "%AH%\cert.pem" & echo Certificate not trusted - click Yes on the Windows prompt. Run this again. & pause & exit /b 1)
 )
 rem AI help with no key: a kit from John (relay\new-invite.mjs) has this person's invite code next to this file.
-if exist "%~dp0invite-code.txt" copy /y "%~dp0invite-code.txt" "%AH%\invite-code.txt" >nul && echo       AI help: invite code installed - nothing to paste.
+rem Saved sealed for this Windows account by the exe's own rule (app.keep_invite): a copy was plain text (AH-130).
+if exist "%~dp0invite-code.txt" "%PY%" -c "import pathlib, sys; from anomaly_hunter import app; app.keep_invite(*map(pathlib.Path, sys.argv[1:]))" "%~f0" "%AH%" && echo       AI help: invite code installed - nothing to paste.
 
 echo [3/5] Listing Arcas in Excel (Add-ins, Shared Folder)...
 rem A trusted catalog is a real install: survives restarts, reopens with saved workbooks.

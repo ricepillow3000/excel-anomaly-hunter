@@ -43,7 +43,7 @@
         <p>Excel hands your sheet to a small engine on your own PC, at <code>https://127.0.0.1:5055</code>. It checks the sheet in memory and answers the pane. A scan never sends anything to the internet.</p>
         <h3>Files in <code>%LOCALAPPDATA%\AnomalyHunter</code></h3>
         <ul>
-          <li><strong>Arcas.exe</strong>: a copy of the app, so the engine can start when you log on.</li>
+          <li><strong>Arcas.exe</strong>: a copy of the app, so the engine can start when you log on. An update over an install made before the app was renamed Arcas deletes the old app file; if Windows still holds it, it stays until the next update or uninstall.</li>
           <li><strong>server.log</strong> and <strong>server.log.1</strong>: the engine's messages and errors. server.log starts empty each time the engine starts, and server.log.1 keeps the run before (each start replaces it). An error message can quote a value from your sheet.</li>
           <li><strong>ai-cache</strong>: up to 500 AI answers, so the same question isn't asked twice. An answer can quote your cells.</li>
           <li><strong>gemini-key.txt</strong> or <strong>invite-code.txt</strong>: your Google AI key or invite code, if you added one. Each is sealed with Windows' own encryption (DPAPI) for your Windows account, so a copy of the file is no use on another account, though a program running as you could still open it.</li>
@@ -55,11 +55,11 @@
           <li><strong>latest-flags.csv</strong>: only with the same option on. It holds the sheet's name, the time of the scan, and the number, result, suggested fix and status (Open, Fixed or Dismissed) of each flagged row and each row you fixed or dismissed (results and fixes can quote your cells). It is kept and deleted together with latest-scan.csv.</li>
         </ul>
         <h3>If you installed an invite kit with install.bat</h3>
-        <p>John shares kits by a Google Drive or OneDrive link. A kit runs from its own folder: <code>install.bat</code> downloads the Python packages it needs from PyPI, the Python package site (PyPI sees your IP address), and keeps them in a <code>.venv</code> folder there, with the Power BI shortcuts in its <code>powerbi</code> folder. It copies the kit's invite code into the folder above. A kit has no Arcas.exe, addin\manifest.xml or Start here.xlsx: Excel lists the add-in from the kit's <code>frontend</code> folder. To uninstall a kit, run <code>install.bat /u</code>, then delete the kit folder.</p>
+        <p>John shares kits by a Google Drive or OneDrive link. A kit runs from its own folder: <code>install.bat</code> downloads the Python packages it needs from PyPI, the Python package site (PyPI sees your IP address), and keeps them in a <code>.venv</code> folder there, with the Power BI shortcuts in its <code>powerbi</code> folder. It saves the kit's invite code in the folder above, sealed like a code you paste. The kit folder keeps its own invite-code.txt as plain text, as John made it. A kit has no Arcas.exe, addin\manifest.xml or Start here.xlsx: Excel lists the add-in from the kit's <code>frontend</code> folder. To uninstall a kit, run <code>install.bat /u</code>, then delete the kit folder. Like the app's uninstall, it also deletes Excel's add-in cache (the Wef folder), so other web add-ins may need to be added again.</p>
         <h3>Elsewhere on your PC</h3>
         <p>If you installed Arcas.exe, it unpacks itself into a temporary folder in <code>%TEMP%</code> each time it starts. If the engine is stopped by force, that folder can be left behind. Install removes the "downloaded from the internet" mark from its own copy of the app, so Windows doesn't warn at every logon.</p>
         <h3>In your workbook</h3>
-        <p>The workbook you scan keeps the limits you changed, the strength slider, a list of the last auto-fixes with their old values and a copy of each fixed row (so Undo works), the old values of the cells you changed with <strong>Accept</strong> (so Undo still works after the pane is closed and opened again), a short code for each row you fixed or dismissed (worked out from the row's values, never the values themselves, so the row is still Fixed or Dismissed when the pane opens again), and a setting that opens the pane with that file. Highlights are fill colours written into your cells. A fix changes your cells only when you click <strong>Accept</strong>, or when auto-fix runs, if you turned auto-fix on.</p>
+        <p>The workbook you scan keeps the limits you changed, the strength slider, a list of the last auto-fixes with their old values and a copy of each fixed row (so Undo works), the old values and number formats of the cells you changed with <strong>Accept</strong>, and what Accept wrote in them (so Undo still works after the pane is closed and opened again), a short code for each row you fixed or dismissed (worked out from the row's values, never the values themselves, so the row is still Fixed or Dismissed when the pane opens again), and a setting that opens the pane with that file. Highlights are fill colours written into your cells. A fix changes your cells only when you click <strong>Accept</strong>, or when auto-fix runs, if you turned auto-fix on.</p>
         <h3>In the pane</h3>
         <p>The auto-fix switch (<code>anomalyHunterAutoFix</code>) and the Power BI switch (<code>anomalyHunterPowerBi</code>) are saved in Excel's storage for the pane (its localStorage), on this PC.</p>
       </section>
@@ -75,7 +75,7 @@
         <h3>Where it goes</h3>
         <ul>
           <li>With your own Google key: straight to Google's Gemini API.</li>
-          <li>With an invite code: to John's relay on Cloudflare, which passes it to Google with John's key.</li>
+          <li>With an invite code: to John's relay on Cloudflare, which passes it to Google with John's key. A developer setting on the PC, <code>ANOMALY_HUNTER_RELAY</code>, sends invite calls to another relay's https address instead.</li>
           <li>With neither, but with <code>ANTHROPIC_API_KEY</code> set on your PC (a developer setting): to Anthropic's Claude.</li>
         </ul>
         <p><strong>Google's free tier may use what you send to improve its products.</strong> Invite codes always use John's free key. With your own key, it depends on your Google plan. Don't ask AI about private or personal data.</p>
