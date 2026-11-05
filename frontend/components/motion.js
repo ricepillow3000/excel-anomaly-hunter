@@ -43,11 +43,17 @@ const TURN = "cubic-bezier(.25, .8, .25, 1)";
 // The fix card turns in like a page (AH-94, the website's tabs): hinged on its left edge, it swings from 80deg to flat
 // while a shade on it lifts. Finite (600 ms) and transform/opacity only, so Playwright's "stable element" wait ends and
 // nothing is laid out again; a turn already running is cancelled first (Next row clicked quickly). Reduced motion: none.
+// While it turns the card takes no click: its buttons move under the pointer, and a click aimed at one 50 ms into the
+// turn landed on Accept and wrote a fix (AH-127). Keys still reach them, so no `inert`.
+let turning = null;
 export function turnIn(el) {
   if (!el || still() || !el.animate) return;
   for (const a of el.getAnimations({ subtree: true })) a.cancel();
-  el.animate([{ transform: "perspective(1200px) rotateY(80deg)", opacity: 0 }, { offset: 0.35, opacity: 1 },
-    { transform: "perspective(1200px) rotateY(0deg)", opacity: 1 }], { duration: 600, easing: TURN });
+  const turn = (turning = el.animate([{ transform: "perspective(1200px) rotateY(80deg)", opacity: 0 }, { offset: 0.35, opacity: 1 },
+    { transform: "perspective(1200px) rotateY(0deg)", opacity: 1 }], { duration: 600, easing: TURN }));
+  el.style.pointerEvents = "none";
+  // finished or cancelled; a turn cancelled by a newer one leaves the lock to that one
+  turn.finished.catch(() => {}).then(() => turning === turn && (el.style.pointerEvents = ""));
   // the shade lives on ::after: without pseudo-element animation it would fade the card itself, so it is left out
   if ("pseudoElement" in KeyframeEffect.prototype) el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 600, easing: TURN, pseudoElement: "::after" });
 }

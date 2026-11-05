@@ -257,6 +257,30 @@ if (mode === "flow") {
   ok((await cell("C11")).v === -5 && (await text("#fix-status")).includes("changed since the scan"), "changed row: Accept refuses instead of writing into the wrong record");
   await page.evaluate(() => __edit("Sales", "B11", "East"));
 
+  // AH-127: a card turns in for 600 ms, and a click aimed at its Accept while it turned wrote a fix the user never chose.
+  // Row 22 accepted, then Next row (row 11, listed next); its Accept clicked where it is drawn 50 ms into the turn
+  await page.click("#fix-back"); await openRow(22); await page.click("#fix-apply"); await idle();
+  const n5 = await page.evaluate(() => __log.length), c5 = calls.length;
+  { const b = await page.locator("#fix-next").boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); }
+  const turning = await page.waitForFunction(() => !document.getElementById("fix-apply").disabled && !document.getElementById("fix-apply").hidden
+    && document.getElementById("fix-view").getAnimations().some((a) => a.playState === "running"), null, { polling: "raf", timeout: 3000 }).then(() => true, () => false);
+  await page.waitForTimeout(50);
+  { const b = await page.locator("#fix-apply").boundingBox(); if (b) await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); }
+  await idle(); await page.waitForTimeout(300);
+  ok(turning && (await text("#fix-title")).startsWith("Row 11") && (await page.evaluate(() => __log.length)) === n5 && !since(c5).includes("/check"),
+    `a click on Accept while the next card turns in writes nothing and asks no /check - ${await text("#fix-title")}, turning ${turning}, posts "${since(c5)}", writes ${(await page.evaluate(() => __log.length)) - n5}`);
+  await page.waitForFunction(() => document.getElementById("fix-view").getAnimations().every((a) => a.playState !== "running"), null, { timeout: 5000 }).catch(() => {});
+  const n6 = await page.evaluate(() => __log.length), c6 = calls.length;
+  { const b = await page.locator("#fix-apply").boundingBox(); if (b) await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); }
+  await idle();
+  ok((await page.evaluate((n) => __log.length - n, n6)) === 1 && since(c6) === "/check", `once it has turned in, a click on Accept writes once - "${since(c6)}"`);
+  // both back as they were, for step 3 on
+  if (await page.isVisible("#fix-undo")) { await page.click("#fix-undo"); await idle(); }
+  await page.click("#fix-back"); await openRow(22); await page.click("#fix-undo"); await idle(); await page.click("#fix-back");
+  await openRow(11);
+  ok((await cell("C11")).v === -5 && (await cell("C22")).v === 7777 && !(await page.evaluate(() => Object.values(__settings.anomalyHunterDecisions?.Sales || {}).length)),
+    "both undone: row 11 and row 22 hold their values again, no decision left");
+
   // 3) clicking a highlighted row in the sheet opens it too; Dismiss leaves it, unhighlighted, and opens the next
   await page.click("#fix-back");
   await page.evaluate(() => __userSelect("Sales", "B22"));
