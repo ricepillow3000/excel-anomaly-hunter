@@ -192,7 +192,9 @@ def _code(num):
         if hit.sum() < 5 or len(rest) < 5:
             continue
         small = code > -99 and (rest.min() < 0 or set(rest.unique()) <= {0, 1} or rest.nunique() > 20 or (rest != rest.round()).any())
-        if small or code <= -99 and rest.min() <= code / 2:
+        # ...counted, not the deepest: -99 written 1,990 times beside 4 deeper values in 4,579 (one a real -6496) was no
+        # code, 1,995 Medium rows on a model export (AH-142); 150 real depths of 392 below -499.5 still make -999 a value
+        if small or code <= -99 and (rest <= code / 2).sum() > max(2, 0.001 * len(rest)):
             continue
         return code, hit.index[hit]
     return None
