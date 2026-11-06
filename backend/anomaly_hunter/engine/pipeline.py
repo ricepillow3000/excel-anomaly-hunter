@@ -1051,12 +1051,15 @@ def spellings(df, column_types, skip):
         cnt = keys.value_counts()
         if _person_name(col, column_types, labels):  # capitals/spaces of the very same name above, never a guess at another name (AH-24)
             continue
+        # 3 letters only in a closed set: 16% of the 664 three-letter words among the 10,000 commonest have a swap twin
+        # (own/won), so "Yse" once beside "Yes" 20+ times in a column of 6 labels or fewer, never an open list (AH-139)
+        three = lambda r, u, c, m: len(cnt) <= 6 and c == 1 and m >= 20 and len(r) == len(u) == 3 and r.isalpha() and _swapped(r, u)
         # over 60 characters is a note, not a label: crafted 32,000-character labels took 58 s here (council, 2026-10-16)
         for rare, c in cnt[cnt <= 2].items():
             if NO_VALUE_WORD.fullmatch(rare):  # "Blank" is no race, never a misspelling of "Black" (AH-50)
                 continue
             usual = next((u for u, m in cnt.items() if m >= max(5, 5 * c) and len(u) <= 60 and len(rare) <= 60
-                          and _misspelt(rare, u)), None)
+                          and (_misspelt(rare, u) or three(rare, u, c, m))), None)
             if usual is None:
                 continue
             word = s[keys == usual].value_counts().index[0]  # how the usual one is usually written
