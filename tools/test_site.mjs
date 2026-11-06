@@ -2708,19 +2708,22 @@ for (const file of PAGES.filter((f) => /<header[\s\S]*aria-current="page"[\s\S]*
     const t = await open("privacy.html", { width: 1440, height: 900 });
     const p = t.page;
     await p.waitForTimeout(ENTERED);
+    // a real pointer press where the link is: Playwright's locator click first scrolls a sticky header's link "into
+    // view", to the page's top, which no visitor's click does (it read as a 36 px drop on main too)
+    const press = async (sel) => { const bb = await p.locator(sel).boundingBox(); await p.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2); };
     const bar = () => p.evaluate(() => Math.round(document.querySelector(".bar").getBoundingClientRect().top * 10) / 10);
     const keep = async (label, before) => { await p.waitForFunction(() => !document.documentElement.hasAttribute("data-moving"), null, { timeout: 3000 }).catch(() => {}); await p.waitForTimeout(300);
       const after = await bar();
       want(Math.abs(after - before) <= 0.5, `S4 ${label}: the bar's top went from ${before} to ${after}`); };
     await p.evaluate(() => scrollTo(0, document.documentElement.scrollHeight)); await p.waitForTimeout(400);
     let before = await bar();
-    await p.click('footer a[href="terms.html"]'); await p.waitForURL(/terms\.html$/); await keep("the footer's Terms from the bottom of privacy.html", before);
+    await press('footer a[href="terms.html"]'); await p.waitForURL(/terms\.html$/); await keep("the footer's Terms from the bottom of privacy.html", before);
     await p.evaluate(() => scrollTo(0, 400)); await p.waitForTimeout(400);
     before = await bar();
-    await p.click('header a[href="support.html"]'); await p.waitForURL(/support\.html$/); await keep("the header's Support from 400 px down terms.html", before);
+    await press('header a[href="support.html"]'); await p.waitForURL(/support\.html$/); await keep("the header's Support from 400 px down terms.html", before);
     await p.evaluate(() => scrollTo(0, 10)); await p.waitForTimeout(400);
     before = await bar();
-    await p.click('header a[href="privacy.html"]'); await p.waitForURL(/privacy\.html$/); await keep("the header's Privacy from 10 px down support.html", before);
+    await press('header a[href="privacy.html"]'); await p.waitForURL(/privacy\.html$/); await keep("the header's Privacy from 10 px down support.html", before);
     await done(t, "S4 a page change keeps the header where it was", [API]);
   }
   // 5. on a 1280 x 720 laptop the hero's buttons and the note under them fit, 8 px to spare
