@@ -18,7 +18,7 @@ Add a piece only when its "add it when" signal shows up in a measurement, and sa
 | Piece | Here | Where | Add more when |
 |---|---|---|---|
 | Timeouts | pane: 300 s for a scan, an Accept re-check, AI; 120 s otherwise. Engine: an idle socket is dropped at 60 s; an AI request has 240 s in all | `services/api.js`, `server.py`, `ai/client.py` | a measured call takes over half its timeout on a slow PC |
-| Retries + exponential backoff + jitter | own-key Google calls: 2, 4, 8, 16, 30 s plus up to 1 s; `Retry-After` honoured; a "per day" 429 stops at once. After a timeout, the next try may wait until the deadline | `client._wait`, `client._call` | never for the relay (each call counts toward the invite's day) |
+| Retries + exponential backoff + jitter | own-key Google calls: 2, 4, 8, 16, 30 s plus up to 1 s; `Retry-After` honoured; a "per day" 429 stops at once. With backups listed (`client.GEMINI_FALLBACKS`, the relay's `MODELS`; none by default), a "per day" 429 or a 502/503 goes once to the next model instead (AH-145). After a timeout, the next try may wait until the deadline | `client._wait`, `client._call` | never for the relay (each call counts toward the invite's day) |
 | Idempotency | a scan has no side effects except replacing `latest-scan.csv` and `latest-flags.csv` (only when "Save each scan for Power BI" is on). A repeated AI question is answered from the cache, never asked again | `client._ask` | an action that charges or writes twice |
 | Circuit breaker | not needed: one AI call at a time, each with a deadline | | many calls per second to a dependency that's down |
 | Health check | `/health` (status, version, AI); the installer waits for it; the pane checks it at start; CI smoke-tests it | `server.py`, `app.py`, `build-exe.yml` | |

@@ -58,14 +58,17 @@ can be charged by Google for what AI help uses; without billing, the free tier c
 - **Ask AI** (fix a row) sends the column names, the row you asked about, up to 5 rows above and 5 below it, the
   formulas in that row, the cell addresses, the reason it was flagged, and anything you type in the request box. On a
   wide sheet only the columns nearest the flagged cell go. Long cells are cut to 200 characters, except the flagged cell.
-  It also sends up to 5 fixes you accepted before in a column with the same name as the flagged one, from Ask AI's
-  memory: each one's column name, the kind of fix, and the old and new values.
+  Up to 5 fixes you accepted before in a column with the same name as the flagged one, from Ask AI's memory (each
+  one's column name, the kind of fix, and the old and new values), are sent with Ask AI only once the AI memory is
+  switched on in a later update. Until then they stay on this PC.
 - **Check words with AI** sends the names of your text columns that have 2 to 50 different values, and those values (up to
   60 characters each). It never sends whole rows or numbers. These values can include names of people or places.
 - If what you type to Ask AI reads as someone in crisis, the pane shows helpline numbers instead and
   sends nothing to the AI.
 - Where it goes:
   - With your own Google key: straight to Google's Gemini API.
+  - Either way, Google's main Gemini model answers. A backup Gemini model, also Google's, gets the same request only
+    if Google's main model is busy, once backups are switched on in a later update.
   - With an invite code: to John's relay on Cloudflare, which passes it to Google with John's key. A developer setting
     on the PC, `ANOMALY_HUNTER_RELAY`, sends invite calls to another relay's https address instead.
     - The relay keeps one counter: for the last day anyone used it, how many AI calls each invite made, under the

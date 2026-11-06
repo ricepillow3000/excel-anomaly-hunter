@@ -1,6 +1,8 @@
 """AI eval: is a prompt change better, on answers with known labels? "No eval set, no change" (docs/ai-engineering).
 Usage: python backend/bench/ai_eval.py . [--dry-run] [--yes] [--split dev|held|both] [--arms base,...] [--runs 3]
-       [--max-requests 200] [--out ai-eval-results.jsonl]
+       [--max-requests 200] [--out ai-eval-results.jsonl] [--model gemini-...]
+--model asks another Gemini model than client.GEMINI_MODEL, a candidate backup (AH-145): its lines are "<arm>@<model>",
+paired against base, and every line names the model it asked. No backup is ever asked during an eval.
 Cases: Ask AI on flagged rows from the bench generators, read the way score.py reads them (the pane's table, then
 /scan with the suggested limits), so each prompt carries the engine's real reason; dev = seeds 7/11/21 (+ hand-made
 cases), held = 8/12/22, both + people sheets where a group's average is the wrong answer (bias_cases) - once a prompt
@@ -342,6 +344,9 @@ def main(argv):
     splits = list(SPLITS) if arg("--split", "dev") == "both" else [arg("--split", "dev")]
     arms, runs, cap, out = arg("--arms", "base").split(","), int(arg("--runs", 3)), int(arg("--max-requests", 200)), arg("--out", "ai-eval-results.jsonl")
     dry = "--dry-run" in argv
+    tag = (lambda a: f"{a}@{model}") if (model := arg("--model", None)) else (lambda a: a)
+    client.GEMINI_MODEL, client.GEMINI_FALLBACKS = model or client.GEMINI_MODEL, ()  # one model's numbers only
+    print(f"Model: {client.GEMINI_MODEL}")
     client.RELAY_URL = ""  # never the relay or an invite code
     tmp = Path(tempfile.mkdtemp(prefix="ai-eval-"))
     client.KEY_FILE, client.INVITE_FILE = tmp / "gemini-key.txt", tmp / "invite-code.txt"  # no saved key, no invite code
@@ -401,7 +406,7 @@ def main(argv):
                 ph = hashlib.sha256(json.dumps(_prompts(j)).encode()).hexdigest()[:16]
             except ValueError:
                 continue  # listed above as unsendable
-            if (a, s, r, c["id"], ph) in done:
+            if (tag(a), s, r, c["id"], ph) in done:
                 continue
             client.KEY_FILE = tmp / f"{a}-{s}-{r}" / "gemini-key.txt"  # a fresh answer cache: every run asks Google
             wire.clear()
@@ -413,7 +418,7 @@ def main(argv):
                 ans, err = None, str(e)
                 if err.startswith("Today's free Google AI limit"):
                     print("Today's quota is used up: run again tomorrow, it goes on from here."); break
-            f.write(json.dumps({"arm": a, "split": s, "run": r, "case": c["id"], "prompt": ph, "answer": ans, "error": err,
+            f.write(json.dumps({"arm": tag(a), "model": client.GEMINI_MODEL, "split": s, "run": r, "case": c["id"], "prompt": ph, "answer": ans, "error": err,
                                 "wire": list(wire)}, ensure_ascii=False, default=str) + "\n")
             f.flush()
     print(summary(out, {c["id"]: c for s in splits for c, _ in cases[s]}))

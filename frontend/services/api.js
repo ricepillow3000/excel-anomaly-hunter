@@ -29,6 +29,7 @@ export async function post(path, body, seconds = 120) { // a stuck engine never 
   if (!r.ok) { // the status rides along: a refused key (400) is cleared from its box, a save that failed (503) is not
     const err = ours(typeof j.error === "string" && j.error ? j.error : "the checker returned an error.");
     err.status = r.status;
+    err.limit = j.limit; // AH-145: Ask AI's every model used up for today ("day") or busy ("busy"), said in its notice box
     throw err;
   }
   return j;

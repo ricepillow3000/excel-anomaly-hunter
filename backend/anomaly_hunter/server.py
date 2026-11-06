@@ -231,8 +231,8 @@ def create_app(scan_csv=None):
             app.logger.exception("Claude API error")
             code = f" (HTTP {e.status_code})" if getattr(e, "status_code", None) else ""
             return {"error": f"Claude answered with a problem{code}. Try again in a minute, and if it happens again, the details are in {LOG_AT}."}, 502
-        except ValueError as e:
-            return {"error": str(e)}, 502
+        except ValueError as e:  # AH-145: limit "day" or "busy" = the pane's notice says it in its own words
+            return {"error": str(e), **({"limit": e.limit} if isinstance(e, client.Limit) else {})}, 502
         except Exception:  # anything new still answers in our words, never Werkzeug's or the provider's (2026-10-16)
             app.logger.exception("AI call failed")
             return {"error": f"Ask AI hit a problem it didn't expect. Try again, and if it happens again, the details are in {LOG_AT}."}, 502

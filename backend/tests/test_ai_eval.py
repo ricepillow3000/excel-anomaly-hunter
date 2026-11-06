@@ -25,7 +25,7 @@ ODD1 = [({"Item": ["Pen", "Desk", "London"]}, {"London"}, set(), {"Desk"})]
 @pytest.fixture
 def run(monkeypatch, tmp_path):
     """ai_eval.main on one fix case (and optionally one word check) against a fake Google -> (exit code, urls, out)."""
-    for name in ("_body", "_fix_prompt", "_odd_prompt", "provider", "gemini_key"):
+    for name in ("_body", "_fix_prompt", "_odd_prompt", "provider", "gemini_key", "GEMINI_MODEL", "GEMINI_FALLBACKS"):
         monkeypatch.setattr(client, name, getattr(client, name))  # main swaps these in its own process: put them back
     monkeypatch.setattr(client.urllib.request, "urlopen", client.urllib.request.urlopen)
     urls, todo, hooks, jobs, bodies, answer = [], [], [], ai_eval.jobs, [], [None]
@@ -202,3 +202,19 @@ def test_the_temperature_arm_counts_a_case_only_it_gets_right_as_a_win(run, monk
 def test_the_app_itself_sends_no_temperature():
     assert set(client._body("x")) == {"model", "messages", "response_format"}
     assert "temperature" not in ai_eval.ORIG["_body"]("x")
+
+
+def test_a_backup_model_is_measured_with_model_and_every_result_names_its_model(run, monkeypatch, capsys):
+    # AH-145: a backup Gemini model joins client.GEMINI_FALLBACKS only with its numbers: --model swaps the model for the
+    # run, never a backup within it, and its lines are their own arm, paired against base
+    monkeypatch.setattr(client, "GEMINI_FALLBACKS", ("gemini-should-not-be-asked",))
+    monkeypatch.setenv("GEMINI_API_KEY", KEY)
+    default = client.GEMINI_MODEL
+    run("--yes", "--runs", "1")
+    code, _, results = run("--yes", "--runs", "1", "--model", "gemini-3.5-flash-lite",
+                              fail=[urllib.error.HTTPError(client.GEMINI_URL, 503, "x", {}, io.BytesIO(b"{}"))])
+    lines = [json.loads(x) for x in results.splitlines()]
+    assert [(x["arm"], x["model"]) for x in lines] == [("base", default), ("base@gemini-3.5-flash-lite", "gemini-3.5-flash-lite")]
+    assert code == 0 and [b["model"] for b in run.bodies] == [default] + ["gemini-3.5-flash-lite"] * 2  # the 503 tried again, same model
+    out = capsys.readouterr().out
+    assert "Model: gemini-3.5-flash-lite" in out and "base@gemini-3.5-flash-lite vs base on dev: wins 0, losses 0" in out

@@ -25,6 +25,9 @@ from anomaly_hunter.ai.memory import with_memory
 MODEL = "claude-opus-5"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"  # OpenAI-compatible
 GEMINI_MODEL = "gemini-3.8-flash"  # free tier, no credit card (aistudio.google.com)
+# AH-145: tried in order when GEMINI_MODEL's day is used up or it is overloaded (each model has its own free quota).
+# Empty until backend/bench/ai_eval.py --model numbers admit one: a model changes only with eval numbers (CLAUDE.md)
+GEMINI_FALLBACKS = ()
 KEY_FILE = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local") / "AnomalyHunter" / "gemini-key.txt"
 # John's relay (relay/worker.js): invited users send an invite code there and never hold his Gemini key.
 # Not a secret: without a valid invite code the relay refuses everything (401). Deployed 2026-10-12.
@@ -217,6 +220,7 @@ RETRY = {429, 500, 502, 503, 504}  # busy or briefly broken: worth another try
 CACHE_MAX = 500  # finished answers kept on this PC
 _LOCK = threading.Lock()  # one AI call at a time: we never make our own bursts
 _sleep = time.sleep  # tests replace it
+_served = threading.local()  # .model: the Gemini model of this thread's last answer (AH-145: a backup is named on the card)
 
 
 def _body(prompt, schema=FIX_SCHEMA, name="fix"):
@@ -224,11 +228,12 @@ def _body(prompt, schema=FIX_SCHEMA, name="fix"):
             "response_format": {"type": "json_schema", "json_schema": {"name": name, "schema": schema}}}
 
 
-def _wire(prompt, schema=FIX_SCHEMA, name="fix"):
-    """The request's bytes as sent. UTF-8, not \\uXXXX escapes: each Japanese letter cost 6 bytes instead of 3, and a
-    12-column Japanese word check took 4 requests instead of 3 (2026-10-16). "replace": a lone surrogate (valid JSON
-    from the pane) goes as "?" instead of failing the encode."""
-    return json.dumps(_body(prompt, schema, name), ensure_ascii=False).encode("utf-8", "replace")
+def _wire(prompt, schema=FIX_SCHEMA, name="fix", model=None):
+    """The request's bytes as sent (to `model` instead of GEMINI_MODEL: a backup, AH-145). UTF-8, not \\uXXXX escapes:
+    each Japanese letter cost 6 bytes instead of 3, and a 12-column Japanese word check took 4 requests instead of 3
+    (2026-10-16). "replace": a lone surrogate (valid JSON from the pane) goes as "?" instead of failing the encode."""
+    body = _body(prompt, schema, name)
+    return json.dumps({**body, "model": model} if model else body, ensure_ascii=False).encode("utf-8", "replace")
 
 
 def _fits(prompt, schema=FIX_SCHEMA, name="fix"):
@@ -258,18 +263,22 @@ def _ask(prompt, out=Fix, schema=FIX_SCHEMA, name="fix", deadline=None):
     """The prompt -> an `out` answer (Fix unless told otherwise), from Gemini (free) or Claude. A finished answer is
     kept (the answer, never the prompt), so asking the same again never reaches Google.
     Failures -> ValueError with words a user can act on."""
-    key = hashlib.sha256(json.dumps([provider(), MODEL, GEMINI_MODEL, name, prompt]).encode()).hexdigest()
-    kept = _cache_dir() / f"{key}.json"
-    try:
-        return out.model_validate_json(kept.read_text(encoding="utf-8"))
-    except (OSError, ValueError):  # not there yet, or unreadable: ask
-        pass
+    # kept under the model that answered (AH-145): GEMINI_MODEL's file first, then each backup's
+    kept = lambda model: _cache_dir() / f"{hashlib.sha256(json.dumps([provider(), MODEL, model, name, prompt]).encode()).hexdigest()}.json"
+    for model in (GEMINI_MODEL, *GEMINI_FALLBACKS):
+        try:
+            answer = out.model_validate_json(kept(model).read_text(encoding="utf-8"))
+            _served.model = model
+            return answer
+        except (OSError, ValueError):  # not there yet, or unreadable: ask
+            pass
     if not _LOCK.acquire(blocking=False):
         raise ValueError("AI is still working on your other request. Try again when it finishes.")
     try:
-        answer = _call(prompt, out, schema, name, deadline or time.monotonic() + DEADLINE)
+        answer, served = _call(prompt, out, schema, name, deadline or time.monotonic() + DEADLINE)
     finally:
         _LOCK.release()
+    kept, _served.model = kept(served), served
     try:
         kept.parent.mkdir(parents=True, exist_ok=True)
         kept.write_text(answer.model_dump_json(), encoding="utf-8")
@@ -284,10 +293,19 @@ class _Said(ValueError):
     """Our own words for an answer that came back but can't be used: passed on as they are."""
 
 
+class Limit(ValueError):
+    """Every model used up for today (limit "day") or busy ("busy"): the pane says so in its notice box (AH-145)."""
+
+    def __init__(self, words, limit):
+        super().__init__(words)
+        self.limit = limit
+
+
 TOO_LONG = "The AI's answer was too long to come back whole. Ask for fewer cells at a time."
 
 
 def _call(prompt, out, schema, name, deadline):
+    """-> (the answer, the Gemini model it is kept under: GEMINI_MODEL unless a backup answered)."""
     if provider() not in ("gemini", "relay"):
         try:
             # SDK defaults (10 min timeout, 2 retries) would hold the one-call lock long after the pane gave up
@@ -300,11 +318,12 @@ def _call(prompt, out, schema, name, deadline):
             raise ValueError("Claude gave no usable answer: " + (
                 "it declined this request. Try different words, or fix it by hand." if resp.stop_reason == "refusal"
                 else TOO_LONG[4:].replace("AI's answer was", "it was", 1) if resp.stop_reason == "max_tokens" else "try again."))
-        return resp.parsed_output
+        return resp.parsed_output, GEMINI_MODEL
     data = _wire(prompt, schema, name)
     if len(data) > BUDGET:  # the callers trim to fit; this is the last guard (the relay refuses over 8 KB)
         raise ValueError("That request was too large for the AI. Try a smaller selection.")
     relay = provider() == "relay"  # same prompt; the relay rebuilds the body (John's key, its model, max_tokens 4096) and counts the caps
+    models, m = (GEMINI_MODEL, *GEMINI_FALLBACKS), 0  # the relay picks its own models (relay/worker.js MODELS)
     tries, slow = 0, False  # slow: a try timed out - the next may wait until the deadline (a 100 s answer never came back)
     while True:  # Google's busy spells come and go within minutes: wait and try again, up to the deadline
         req = urllib.request.Request(RELAY_URL.rstrip("/") + "/fix" if relay else GEMINI_URL, data,  # noqa: S310 - https only, see provider()
@@ -315,6 +334,8 @@ def _call(prompt, out, schema, name, deadline):
             # nosemgrep: dynamic-urllib-use-detected - GEMINI_URL constant, or RELAY_URL that provider() only allows over https
             with urllib.request.urlopen(req, timeout=left if relay or slow else min(90, left)) as r:  # noqa: S310 - same request
                 choices = json.load(r)["choices"]
+                # the relay names a backup that answered (relay/worker.js MODELS): kept under it, and said on the card
+                served = (getattr(r, "headers", None) or {}).get("X-Model") if relay else None
             # AH-34: a refusal (safety filter, or a prompt blocked with no choices) and an answer cut at its length were
             # "came back incomplete - try again", and trying again gets the same answer
             choice = choices[0] if choices else {}
@@ -323,7 +344,7 @@ def _call(prompt, out, schema, name, deadline):
                 raise _Said(TOO_LONG)
             if not text:
                 raise _Said("Google AI declined to answer this request. Try different words, or fix it by hand.")
-            return out.model_validate_json(text)
+            return out.model_validate_json(text), served or models[m]
         except _Said:
             raise
         except urllib.error.HTTPError as e:
@@ -333,21 +354,31 @@ def _call(prompt, out, schema, name, deadline):
                     words = json.loads(said)["error"]
                 except (ValueError, KeyError, TypeError):
                     words = f"The AI relay answered with error {e.code}. Try again later."
-                raise ValueError(words + (" Ask John for a new invite code." if e.code == 401 else "")) from None
+                words += " Ask John for a new invite code." if e.code == 401 else ""
+                # the relay's 429 is its caps or Google's quota; its 502 names Google's own error (relay/worker.js)
+                limit = ("day" if "today" in words else "busy") if e.code == 429 else "busy" if e.code == 502 and re.search(
+                    r"error 50[234]\b", words) else None
+                raise (Limit(words, limit) if limit else ValueError(words)) from None
             daily = e.code == 429 and "perday" in said.replace(" ", "").lower()  # waiting minutes won't bring today's quota back
+            # AH-145: another model has its own day's quota and its own crowd: ask it now, never back to one that failed
+            if (daily or e.code in (502, 503)) and m + 1 < len(models) and time.monotonic() < deadline:
+                m += 1
+                data = _wire(prompt, schema, name, models[m])
+                continue
             wait = _wait(tries, e.headers, deadline) if e.code in RETRY and not daily else None
             if wait is not None:
                 tries += 1
                 _sleep(wait)
                 continue
             bad_key = e.code in (401, 403) or (e.code == 400 and "API key" in said)  # Google: 400 "API key not valid"
-            raise ValueError("Today's free Google AI limit is used up. It resets at midnight Pacific time." if daily
-                             else "The free Google AI limit is used up for now. Try again in a minute; the suggested fix above still works."
-                             if e.code == 429 else "Google did not accept the AI key: paste it again under AI help."
-                             if bad_key else f"Google doesn't offer the AI model {GEMINI_MODEL} to this key. Tell the developer."
-                             if e.code == 404 else "That request was too large for the AI. Try a smaller selection."
-                             if e.code == 413 else "Google AI is busy right now. Try again in a few minutes."
-                             if e.code in RETRY else f"Google AI answered with error {e.code}. Try again in a few minutes.") from None
+            words = ("Today's free Google AI limit is used up. It resets at midnight Pacific time." if daily
+                     else "The free Google AI limit is used up for now. Try again in a minute; the suggested fix above still works."
+                     if e.code == 429 else "Google did not accept the AI key: paste it again under AI help."
+                     if bad_key else f"Google doesn't offer the AI model {models[m]} to this key. Tell the developer."
+                     if e.code == 404 else "That request was too large for the AI. Try a smaller selection."
+                     if e.code == 413 else "Google AI is busy right now. Try again in a few minutes."
+                     if e.code in RETRY else f"Google AI answered with error {e.code}. Try again in a few minutes.")
+            raise (Limit(words, "day" if daily else "busy") if e.code in RETRY else ValueError(words)) from None
         except (OSError, http.client.HTTPException) as e:  # no connection, timeout, reset or cut off mid-answer
             # Gemini's speed swings (3.8 s to 90 s+ for the same request, 2026-10-11): a timeout is not a broken connection.
             # IncompleteRead/BadStatusLine aren't OSErrors: they escaped as an HTTP 500 in Werkzeug's words (2026-10-16)
@@ -468,6 +499,7 @@ def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent, 
         if _fits(_fix_prompt(columns, rows, row_index, start_row, start_col, reason, "", formulas, ctx=0, keep=[flagged], cut=set(), flagged=flagged)):
             raise ValueError("Your request is too long to send to the free AI. Shorten it (a sentence or two is enough).")
         raise ValueError("This row is too big to send to the free AI in one piece. Shorten its longest cell, or fix it by hand.")
+    _served.model = GEMINI_MODEL
     fix = _ask(prompt)
     # AH-34: a change the card can't show was dropped without a word under an explanation that claimed it
     # ("I set B4 to Sales" over an empty card for "Sheet1!B4"): each one is shown, or named in the explanation
@@ -508,4 +540,5 @@ def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent, 
         (odd, "not a single cell of this table"), (twice, f"the AI gave {'each' if len(twice) > 1 else 'it'} two different values")) if cells) + (
         f" (Left out {more} more changes: one fix writes at most {MAX_CHANGES} cells.)" if more > 0 else "")
     drop = seen | set(others)
-    return {"explanation": fix.explanation + note, "changes": [c for c in changes if c["cell"] not in drop]}
+    return {"explanation": fix.explanation + note, "changes": [c for c in changes if c["cell"] not in drop],
+            **({"model": _served.model} if _served.model != GEMINI_MODEL else {})}

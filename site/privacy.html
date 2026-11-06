@@ -112,13 +112,14 @@
         <p>AI help works only after you paste a Google AI key or an invite code, or install an invite kit from John (or a developer sets <code>GEMINI_API_KEY</code> or <code>ANTHROPIC_API_KEY</code> on the PC). Even then, nothing from your sheet is sent until you click <strong>Ask AI</strong> or <strong>Check words with AI</strong>.</p>
         <p>When you save a Google key, the engine asks Google once whether the key works. That call carries the key and no sheet data. A key from a Google project with billing turned on can be charged by Google for what AI help uses. Without billing, the free tier costs nothing.</p>
         <ul>
-          <li><strong>Ask AI</strong> sends the column names, the row you asked about, up to 5 rows above and 5 below it, the formulas in that row, the cell addresses, the reason it was flagged, and anything you type in the request box. On a wide sheet, only the columns nearest the flagged cell go. Long cells are cut to 200 characters, except the flagged cell. It also sends up to 5 fixes you accepted before in a column with the same name as the flagged one, from Ask AI's memory: each one's column name, the kind of fix, and the old and new values.</li>
+          <li><strong>Ask AI</strong> sends the column names, the row you asked about, up to 5 rows above and 5 below it, the formulas in that row, the cell addresses, the reason it was flagged, and anything you type in the request box. On a wide sheet, only the columns nearest the flagged cell go. Long cells are cut to 200 characters, except the flagged cell. Up to 5 fixes you accepted before in a column with the same name as the flagged one, from Ask AI's memory (each one's column name, the kind of fix, and the old and new values), are sent with Ask AI only once the AI memory is switched on in a later update. Until then they stay on this PC.</li>
           <li><strong>Check words with AI</strong> sends the names of your text columns that have 2 to 50 different values, and those different values, up to 60 characters each. It never sends whole rows or numbers. These values can include names of people or places.</li>
         </ul>
         <p>If what you type to Ask AI reads as someone in crisis, the pane shows helpline numbers instead and sends nothing to the AI.</p>
         <h3>Where it goes</h3>
         <ul>
           <li>With your own Google key: straight to Google's Gemini API.</li>
+          <li>Either way, Google's main Gemini model answers. A backup Gemini model, also Google's, gets the same request only if Google's main model is busy, once backups are switched on in a later update.</li>
           <li>With an invite code: to John's relay on Cloudflare, which passes it to Google with John's key. A developer setting on the PC, <code>ANOMALY_HUNTER_RELAY</code>, sends invite calls to another relay's https address instead.</li>
           <li>With neither, but with <code>ANTHROPIC_API_KEY</code> set on your PC (a developer setting): to Anthropic's Claude.</li>
         </ul>
