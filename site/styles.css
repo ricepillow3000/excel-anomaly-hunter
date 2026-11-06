@@ -70,10 +70,16 @@
 [hidden] { display: none !important; }
 html { scroll-padding-top: 88px; } /* the sticky bar would cover an anchor's heading */
 body { margin: 0; background: var(--grain), var(--grid), var(--paper); color: var(--ink-2); font: 400 var(--fs-0)/1.55 var(--sans); }
+/* a short page (the 404, the thank-you) fills the screen to its footer (AH-138 review: the 404 ended at 740 px of 900 over
+   bare grid). The page itself grows; while transition.js swaps pages the leaving one is fixed, out of the flow */
+body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+main { flex: 1 0 auto; }
 a { color: var(--ink); text-decoration-color: var(--gold); text-underline-offset: 3px; text-decoration-thickness: 1px; }
 a:hover { text-decoration-thickness: 2px; }
 /* Chromium's own placeholder grey is 4.2:1 on paper: the notes' colour, at full strength (AH-87) */
 ::placeholder { color: var(--muted); opacity: 1; }
+/* a tap shows our own pressed look (the gold line), never the browser's cyan box over it (AH-138 review) */
+a, button, summary, [role="tab"] { -webkit-tap-highlight-color: transparent; }
 :focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 h1, h2, h3 { margin: 0; color: var(--ink); font-weight: 800; }
 h1, h2 { line-height: .95; letter-spacing: normal; text-wrap: balance; }
@@ -95,12 +101,16 @@ code { font-family: var(--mono); font-size: .88em; background: var(--paper-2); b
    out on a soft edge of plain paper in the section's own colour, so no contour line crosses the text (AH-98, John
    2026-11-02). One still layer under the block: nothing about it moves or redraws. Before any rule that positions a
    block otherwise (the contents' sticky list).
-   The paper reaches 32 px past the block and fades over those 32 px (two masks, intersected, so the corners round off).
+   The paper reaches 96 px past the block above and below and fades over those 96 px (two masks, intersected, so the
+   corners round off): 32 px read as pale rectangles with straight edges where the contour lines stopped (AH-138 review).
+   Sideways it reaches as far as the screen allows, up to 96 px (--feather-x: the wrap's margin, or more past 1280 px),
+   so it never makes the page scroll sideways.
    It sits at z-index -1 in its wrap, under every text there; a headline is lifted over it (z-index 1), since a block
    still rising is a layer of its own and would otherwise lay its paper over the headline above it */
 .calm { position: relative; }
-.calm::before { content: ""; position: absolute; inset: -32px; z-index: -1; background: var(--calm, var(--paper)); pointer-events: none;
-  mask-image: linear-gradient(90deg, transparent, #000 32px, #000 calc(100% - 32px), transparent), linear-gradient(transparent, #000 32px, #000 calc(100% - 32px), transparent);
+.calm::before { --feather-x: min(96px, max(var(--margin), (100vw - var(--wrap)) / 2 - 8px));
+  content: ""; position: absolute; inset: -96px calc(-1 * var(--feather-x)); z-index: -1; background: var(--calm, var(--paper)); pointer-events: none;
+  mask-image: linear-gradient(90deg, transparent, #000 var(--feather-x), #000 calc(100% - var(--feather-x)), transparent), linear-gradient(transparent, #000 96px, #000 calc(100% - 96px), transparent);
   mask-composite: intersect; }
 .band-panel { --calm: var(--paper-2); }
 .sec-title, .page-head h1 { position: relative; z-index: 1; }
@@ -157,7 +167,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   .btn::before { content: ""; position: absolute; inset: 0; transform: scaleX(0); transform-origin: 0 50%; pointer-events: none;
     transition: transform calc(var(--fill-dur) * .8) var(--ease-out); }
   .btn:hover::before { transform: scaleX(1); transition-duration: var(--fill-dur); }
-  .btn-primary::before { z-index: -1; background: var(--ink); }
+  .btn-primary::before { inset: -2px; z-index: -1; background: var(--ink); } /* over the 2 px transparent border too: the wine showed through it as a rim */
   .btn-primary:hover { background: var(--wine); }
   .btn-ghost, .btn-plain { background: var(--grain), var(--paper); }
   .btn-ghost::before, .btn-plain::before { z-index: 1; background: #EBDCB8; mix-blend-mode: difference; }
@@ -263,14 +273,26 @@ table.grid { width: 100%; border-collapse: collapse; font: 500 var(--fs--1)/1.3 
 .ws:not([data-filter="all"]) .grid tbody tr:not(.skip) { opacity: .7; }
 .ws[data-filter="recon"] .grid tbody tr[data-kind~="recon"], .ws[data-filter="keying"] .grid tbody tr[data-kind~="keying"],
 .ws[data-filter="label"] .grid tbody tr[data-kind~="label"], .ws[data-filter="time"] .grid tbody tr[data-kind~="time"] { opacity: 1; }
+/* ... and loses its marks: its coloured cells read as plain ones and its key square goes, so only the chosen check's rows
+   still look flagged (AH-138 review: under "Totals that don't add up" all 7 rows still looked flagged). Its values stay */
+:is(.ws[data-filter="recon"] .grid tbody tr:not([data-kind~="recon"]), .ws[data-filter="keying"] .grid tbody tr:not([data-kind~="keying"]),
+  .ws[data-filter="label"] .grid tbody tr:not([data-kind~="label"]), .ws[data-filter="time"] .grid tbody tr:not([data-kind~="time"])) :is(td.flag, td.q, td.mended) {
+  background: transparent; color: var(--ink); font-weight: 500; box-shadow: none; outline: none; border-bottom-color: var(--rule); }
+:is(.ws[data-filter="recon"] .grid tbody tr:not([data-kind~="recon"]), .ws[data-filter="keying"] .grid tbody tr:not([data-kind~="keying"]),
+  .ws[data-filter="label"] .grid tbody tr:not([data-kind~="label"]), .ws[data-filter="time"] .grid tbody tr:not([data-kind~="time"])) td.why i { visibility: hidden; }
 /* the detail box under its row */
 /* the page turn (AH-92, home.js): a copy of the panel as it was, over the real one, turning away from its left edge while
    the real panel already shows the new state underneath. The copy is clipped to the sheet */
 .ws-main:has(> [data-turn]) { overflow: clip; }
 [data-turn] { position: absolute; z-index: 3; margin: 0; background: var(--grain), var(--paper-2); transform-origin: 0 50%; backface-visibility: hidden; pointer-events: none; }
+/* the copy is a still picture of the panel: a CSS animation in it (the scan meter's fill) restarted from its first frame
+   (AH-138 review: the bar refilled from 20% under "100%"); turn() writes each meter's pose onto the copy */
+[data-turn] * { animation: none !important; }
 [data-turn-shade] { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(12, 25, 56, .08), rgba(12, 25, 56, .45)); opacity: 0; }
 /* a box's closing copy (home.js, AH-138) wears the box's looks without its class, so nothing that counts the open boxes
    ever counts it */
+/* raised off the sheet: a still shadow under it, never animated (AH-138 review: flat on the table it did not read as a popover) */
+.matrix, [data-pop-copy] { box-shadow: 0 18px 40px -16px rgba(12, 25, 56, .35); }
 .matrix, [data-pop-copy] { position: absolute; left: var(--s2); z-index: 2; width: min(440px, calc(100% - 32px)); background: var(--paper); border: 1px solid var(--ink); font-size: var(--fs--1); color: var(--ink); }
 .m-head { display: flex; justify-content: space-between; align-items: center; gap: var(--s2); padding: 8px 12px; background: var(--ink); color: var(--paper); }
 .m-head b { font: 700 var(--fs--1)/1.3 var(--sans); }
@@ -301,6 +323,7 @@ table.grid { width: 100%; border-collapse: collapse; font: 500 var(--fs--1)/1.3 
 .grid td.mended { font-weight: 800; box-shadow: inset 0 -3px 0 var(--gold); }
 td.why i.ok { display: inline-block; width: 10px; height: 10px; margin-right: 8px; vertical-align: -1px; background: var(--gold); }
 .after-note { padding: 12px var(--s3); border-top: 1px solid var(--rule); font-size: var(--fs--1); color: var(--ink-2); }
+.swipe { display: none; } /* a phone only (below): the sample scrolls sideways there */
 .ws-foot { padding: 12px var(--s3); border-top: 1px solid var(--ink); font-size: var(--fs--1); color: var(--ink-2); }
 /* the way on to the checks, right under the sheet (AH-91) */
 .next-up { grid-column: 1 / -1; margin-top: var(--s3); display: flex; justify-content: center; }
@@ -356,6 +379,8 @@ dl.anchor { position: relative; margin: 0; display: grid; grid-template-columns:
    link to the release page took 1 or 2, so the facts grew when GitHub answered. An invisible hash of zeros, floated
    under the text with no width of its own, keeps the box that tall at every width */
 #sha { display: flow-root; }
+/* the hash may break anywhere, the release page link's words never ("pag / e" on a phone, AH-138 review) */
+#sha a { word-break: normal; overflow-wrap: normal; }
 #sha::before { content: "0000000000000000000000000000000000000000000000000000000000000000"; float: left; width: 100%; margin-right: -100%; visibility: hidden; }
 #rel { font-variant-numeric: tabular-nums; }
 .steps { grid-column: 1 / -1; margin-top: var(--s8); display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); column-gap: var(--gutter); row-gap: var(--s4); }
@@ -373,6 +398,11 @@ dl.anchor { position: relative; margin: 0; display: grid; grid-template-columns:
 .copy-btn .icons { position: relative; width: 16px; height: 16px; flex: none; }
 .copy-btn .ico { position: absolute; inset: 0; }
 .copy-btn .ico svg { display: block; width: 16px; height: 16px; }
+/* the label is as wide as "Copied" from the start (an invisible copy of the word in the same cell), so the button never
+   grows under the pointer when it says so (AH-138 review: 172 to 198 px); "Press Ctrl+C" may widen it */
+.copy-label { display: inline-grid; justify-items: center; }
+.copy-label > *, .copy-label::after { grid-area: 1 / 1; }
+.copy-label::after { content: "Copied"; visibility: hidden; }
 .copy-btn .ico + .ico, .copy-btn[data-done] .ico:first-child { opacity: 0; transform: scale(.6); filter: blur(4px); }
 .copy-btn[data-done] .ico + .ico { opacity: 1; transform: none; filter: none; }
 /* a success pulses once (AH-138): a hairline ring, opacity and scale only. The Copy button's reaches a third past it; the
@@ -701,6 +731,7 @@ html[data-moving] #field { z-index: 2; }
   .tabs button { padding-inline: 12px; }
   .tabs button:first-child { padding-left: 0; }
   .ws-body { grid-template-columns: minmax(0, 1fr); }
+  .swipe { display: block; padding: 10px var(--s2) 0; font-size: var(--fs--1); color: var(--ink-2); }
   /* two columns of filters, or one when the text is so large (200%, AH-112) that two 8rem columns don't fit */
   .typology { grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr)); border-right: 0; border-bottom: 1px solid var(--ink); }
   .typology .label, .typology .key { grid-column: 1 / -1; }
@@ -737,7 +768,10 @@ html[data-moving] #field { z-index: 2; }
   /* the phone's menu (AH-126): the brand and the Menu button share the bar's first row, the links open in full width
      below them */
   html[data-js] .bar .cols { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; column-gap: var(--s2); }
-  html[data-js] .bar .links { flex: 1 0 100%; }
+  /* open, the links lie over the page under the bar (AH-138 review: in the flow they pushed the page down 85 px, and
+     "Checks" landed 85 px off when the menu closed and the page moved back up) */
+  html[data-js] .bar .links { position: absolute; top: calc(100% + 1px); left: 0; right: 0; z-index: 2; flex: none; background: var(--grain), var(--paper);
+    border-bottom: 1px solid var(--ink); padding: 8px max(var(--margin), env(safe-area-inset-right, 0px)) 12px max(var(--margin), env(safe-area-inset-left, 0px)); }
   html[data-js] .menu-btn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 var(--s2); font: 700 var(--fs--1)/1 var(--sans); color: var(--ink);
     background: var(--paper); border: 1px solid var(--ink); border-radius: 0; cursor: pointer; }
   html[data-js] .menu-btn[aria-expanded="true"] { background: var(--ink); color: var(--paper); }

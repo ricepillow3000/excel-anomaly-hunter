@@ -246,6 +246,15 @@ const ENTERED = msOf("--enter-lead") + 4 * msOf("--enter-step") + msOf("--enter-
   // the exception is used where it is meant, and filter moves nowhere else (a transition elsewhere or a keyframe fails above)
   assert.ok(blurred.length >= 1 && !frames.includes("filter"), `styles.css: the Copy button's icon blur is not the one filter that moves (${blurred})`);
 }
+// AH-138 fix round 1: a tap never flashes the browser's own box over our pressed look, and the paper under the text
+// feathers out over 96 px on a wide screen (32 px left straight edges where the contour lines stopped)
+{
+  const rules = [...css.matchAll(/([^{}]*)\{([^{}]*)\}/g)].map((m) => [m[1].split(",").map((x) => x.trim()), m[2]]);
+  const tap = rules.find(([sel, body]) => ["a", "button", "summary", '[role="tab"]'].every((x) => sel.includes(x)) && /-webkit-tap-highlight-color\s*:\s*transparent/.test(body));
+  assert.ok(tap, "styles.css: no -webkit-tap-highlight-color: transparent on a, button, summary and [role=\"tab\"]");
+  const calm = rules.filter(([sel]) => sel.includes(".calm::before")).map(([, body]) => body)[0] || "";
+  assert.ok(/inset:\s*-96px/.test(calm) && /#000 96px/.test(calm) && /calc\(100% - 96px\)/.test(calm), `styles.css: .calm::before does not feather over 96 px (${calm.trim()})`);
+}
 // AH-138 (John, 2026-11-06): no spring and no bounce: every curve keeps both control points' y within [0, 1], so nothing
 // overshoots its place; the new tokens are there, a popover's exit is 20% shorter than its entrance, and the entrance is
 // a dropdown's 150 to 250 ms
@@ -2478,6 +2487,151 @@ for (const file of PAGES.filter((f) => /<header[\s\S]*aria-current="page"[\s\S]*
   }
   assert.deepEqual(miss, [], `John's motion list (AH-138):\n${miss.join("\n")}`);
   console.log("AH-138: the heavy wheel (on its way at 50 ms, steady, never past its target, there within 1.5 s, then idle; a key ends it; none under reduced motion or for a finger; a full text box keeps its wheel), the press to 0.97 and the main button's mask fill (none under reduced motion), the menu and a row's detail box as popovers from their trigger (exits 0.8 of their entrances), one tab mark that slides and stretches, the Copy button's crossfade, pulse and Ctrl+C fallback, blocks still 90 ms apart");
+}
+// ---- AH-138 fix round 1 (a blind design review, 2026-11-06): the turning page's scan meter frozen where it was, the
+// phone's menu over the page (never pushing it down, so "Checks" lands on the checks), no tap flash, the release link's
+// words whole, a filter that clears the other rows' marks, the main button's fill to its edge, a Copy button that keeps
+// its size, a wider feather under the text, a phone's hint that the sample scrolls sideways, short pages that fill the
+// screen, answers that settle in turn, and a detail box raised off the sheet ----
+{
+  const miss = [];
+  const want = (ok, what) => { if (!ok) miss.push(what); };
+  const settle = (p, sel) => p.$eval(sel, (el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => {}))));
+  const still = async (p) => { let y = await p.evaluate(() => scrollY), t = Date.now(), since = Date.now();
+    while (Date.now() - t < 4000) { await p.waitForTimeout(50); const z = await p.evaluate(() => scrollY); if (z !== y) { y = z; since = Date.now(); } else if (Date.now() - since >= 300) break; } };
+  // 1. Scanning, then After fixes: the turning copy's meter holds the pose the real meter had at the click
+  {
+    const t = await open("index.html", { width: 1440, height: 900 });
+    const p = t.page;
+    await p.waitForTimeout(ENTERED);
+    await p.evaluate((y) => scrollTo(0, y), await frameAt(p));
+    await p.waitForFunction(() => !document.getElementById("preview").hasAttribute("data-loading"), null, { timeout: 4000 }).catch(() => {});
+    await p.click("#t-busy"); await p.waitForTimeout(1200);
+    await p.evaluate(() => document.getElementById("t-clean").addEventListener("click", () => { window.__meter = new DOMMatrix(getComputedStyle(document.querySelector("#p-busy .meter span")).transform).a; }, { capture: true, once: true }));
+    await p.click("#t-clean");
+    const look = () => p.evaluate(() => { const s = document.querySelector("[data-turn] .meter span");
+      return s ? { at: window.__meter, a: new DOMMatrix(getComputedStyle(s).transform).a, running: s.getAnimations().filter((x) => x.playState === "running").length } : null; });
+    const r0 = await look(); await p.waitForTimeout(150); const r1 = await look();
+    want(r0 && r1 && !r0.running && !r1.running && Math.abs(r0.a - r0.at) <= 0.01 && Math.abs(r1.a - r0.at) <= 0.01, `R1 the turning page's meter: ${JSON.stringify([r0, r1])}`);
+    await done(t, "R1 turning meter", [API]);
+  }
+  // 2. the phone's menu lies over the page: opening it moves nothing below, and its "Checks" lands on the checks
+  {
+    const t = await open("index.html", { width: 390, height: 844 });
+    const p = t.page;
+    await p.waitForTimeout(ENTERED);
+    const top = () => p.evaluate(() => document.getElementById("page").getBoundingClientRect().top);
+    const y0 = await top();
+    await p.click(".menu-btn"); await settle(p, "#main-nav");
+    const y1 = await top();
+    want(Math.abs(y1 - y0) <= 0.5, `R2 opening the phone's menu moves the page ${y1 - y0} px`);
+    await p.click('#main-nav a[href$="#checks"]');
+    await p.waitForFunction(() => !window.AH.gliding(), null, { timeout: 4000 }).catch(() => {});
+    await still(p);
+    const r = await p.evaluate(() => ({ checks: document.getElementById("checks").getBoundingClientRect().top, bar: document.querySelector(".bar").getBoundingClientRect().bottom, y: scrollY }));
+    want(Math.abs(r.checks - Math.max(0, r.bar)) <= 2, `R2 "Checks" from the phone's menu lands off the checks: ${JSON.stringify(r)}`);
+    await done(t, "R2 phone menu over the page", [API]);
+  }
+  // 4. the release page link's words are never split, on a phone and at 320 px with text at 200%
+  for (const [width, size] of [[390, "100%"], [320, "200%"]]) {
+    const t = await open("index.html", { width, height: 800, motion: "reduce", api: json({ message: "API rate limit exceeded" }, 403) });
+    const p = t.page;
+    const r = await p.evaluate((size) => { document.documentElement.style.fontSize = size;
+      const a = document.querySelector("#sha a"), text = a.firstChild, split = [];
+      for (const m of text.textContent.matchAll(/\S+/g)) { const q = document.createRange(); q.setStart(text, m.index); q.setEnd(text, m.index + m[0].length);
+        const lines = new Set([...q.getClientRects()].filter((x) => x.width > 0).map((x) => Math.round(x.top))); if (lines.size > 1) split.push(m[0]); }
+      return { text: text.textContent, split, over: document.documentElement.scrollWidth - document.documentElement.clientWidth }; }, size);
+    want(r.text === "shown on the release page" && !r.split.length && r.over <= 0, `R4 the release link at ${width} px, text ${size}: ${JSON.stringify(r)}`);
+    await done(t, `R4 release link at ${width}px`, [API]);
+  }
+  // 5. a filter clears the other rows' marks (their values stay, at the same .7): row 5's jump is a plain cell under
+  // "Totals that don't add up", row 11 keeps its fill
+  {
+    const t = await open("index.html", { width: 1440, height: 900, motion: "reduce" });
+    const p = t.page;
+    await p.click('.typology button[data-kind="recon"]');
+    const r = await p.evaluate(() => { const c = (sel) => { const s = getComputedStyle(document.querySelector(sel)); return { bg: s.backgroundColor, shadow: s.boxShadow, outline: s.outlineStyle, color: s.color, weight: s.fontWeight }; };
+      return { plain: c("#p-found tbody tr:first-child td:nth-child(6)"), r5: c("#r5 td.q"), r11: c("#r11 td.flag"), sq: getComputedStyle(document.querySelector("#r5 td.why i")).visibility, sq11: getComputedStyle(document.querySelector("#r11 td.why i")).visibility,
+        text: document.querySelector("#r5 td.q").textContent, op: getComputedStyle(document.getElementById("r5")).opacity }; });
+    want(JSON.stringify(r.r5) === JSON.stringify(r.plain) && r.sq === "hidden" && r.text === "304.39" && r.op === "0.7", `R5 row 5 under "Totals that don't add up": ${JSON.stringify(r)}`);
+    want(r.r11.bg === "rgb(107, 30, 46)" && r.sq11 === "visible", `R5 row 11 under "Totals that don't add up" lost its marks: ${JSON.stringify(r.r11)}`);
+    await done(t, "R5 filters clear the other rows' marks", [API]);
+  }
+  // 6. hovered and at rest, a button's fill reaches its very edge: no wine rim on the main button
+  {
+    const t = await open("index.html", { width: 1440, height: 900 });
+    const p = t.page;
+    await p.waitForTimeout(ENTERED);
+    for (const sel of [".hero-cta .btn-primary", ".hero-cta .btn-ghost"]) {
+      const b = await p.locator(sel).boundingBox();
+      await p.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await settle(p, sel); await p.waitForTimeout(50);
+      const { px } = png(await p.screenshot({ clip: { x: Math.round(b.x) + 1, y: Math.round(b.y) + 1, width: 1, height: 1 } }));
+      want(Math.abs(px[0] - 12) <= 6 && Math.abs(px[1] - 25) <= 6 && Math.abs(px[2] - 56) <= 6, `R6 ${sel} hovered: the pixel inside its corner is rgb(${[...px.slice(0, 3)].join(", ")}), not navy`);
+    }
+    await done(t, "R6 button fill to the edge", [API]);
+  }
+  // 7. the Copy button keeps its width when it says Copied
+  {
+    const t = await open("index.html", { width: 1280 });
+    const p = t.page;
+    await t.ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: BASE.slice(0, -1) });
+    await p.waitForTimeout(ENTERED);
+    await p.click(".check-file summary"); await settle(p, ".check-file");
+    const w0 = await p.$eval(".copy-btn", (b) => b.getBoundingClientRect().width);
+    await p.click(".copy-btn");
+    await p.waitForFunction(() => document.querySelector(".copy-btn").textContent.trim() === "Copied", null, { timeout: 2000 }).catch(() => {});
+    await settle(p, ".copy-btn");
+    const w1 = await p.$eval(".copy-btn", (b) => [b.getBoundingClientRect().width, b.textContent.trim()]);
+    want(w1[1] === "Copied" && Math.abs(w1[0] - w0) <= 0.5, `R7 the Copy button goes from ${w0} to ${w1[0]} px wide when it says ${w1[1]}`);
+    await done(t, "R7 Copy button width", [API]);
+  }
+  // 9. a phone says the sample scrolls sideways; a wide screen does not need to
+  for (const width of [390, 1440]) {
+    const t = await open("index.html", { width, height: 844, motion: "reduce" });
+    const r = await t.page.evaluate(() => { const e = document.querySelector(".swipe"); return e ? { text: e.textContent.trim(), shown: e.getClientRects().length > 0, display: getComputedStyle(e).display } : null; });
+    want(r && r.text === "Swipe the table sideways to see each finding." && (width <= 760 ? r.shown : r.display === "none"), `R9 the swipe hint at ${width} px: ${JSON.stringify(r)}`);
+    await done(t, `R9 swipe hint at ${width}px`, [API]);
+  }
+  // 10. a short page fills the screen to its footer; the home page keeps its height. thanks.html is 1,136 px tall at
+  // 1440 px wide, so it is read on a screen taller than that
+  for (const [file, height] of [["404.html", 900], ["thanks.html", 1300]]) {
+    const t = await open(file, { width: 1440, height, motion: "reduce" });
+    const r = await t.page.evaluate(() => ({ foot: document.querySelector("footer").getBoundingClientRect().bottom, h: innerHeight, scroll: document.documentElement.scrollHeight - innerHeight }));
+    want(Math.abs(r.foot - r.h) <= 1 && r.scroll <= 0, `R10 ${file} at 1440 x ${height} does not end at the screen's bottom: ${JSON.stringify(r)}`);
+    await done(t, `R10 ${file} fills the screen`, file === "404.html" ? [] : [API]);
+  }
+  {
+    const t = await open("index.html", { width: 1440, height: 900, motion: "reduce" });
+    const r = await t.page.evaluate(() => { const a = document.documentElement.scrollHeight; document.body.style.display = "block"; const b = document.documentElement.scrollHeight; document.body.style.display = ""; return { flex: getComputedStyle(document.body).display, a, b }; });
+    want(r.flex === "flex" && Math.abs(r.a - r.b) <= 1, `R10 the home page's height changes with the filled screen: ${JSON.stringify(r)}`);
+    await done(t, "R10 home page height", [API]);
+  }
+  // 11. an answer that opens settles in turn, its blocks --stagger-row apart; with reduced motion it shows at once
+  for (const motion of ["no-preference", "reduce"]) {
+    for (const [file, sel] of [["index.html", "#faq details:first-of-type"], ["index.html", ".check-file"], ["support.html", ".faq details:nth-of-type(7)"]]) {
+      const t = await open(file, { width: 1440, height: 900, motion });
+      const p = t.page, k = await p.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--stagger-row")));
+      if (motion !== "reduce") await p.waitForTimeout(ENTERED);
+      await p.$eval(sel, (d) => d.scrollIntoView({ block: "center" })); await p.waitForTimeout(motion === "reduce" ? 100 : 1500);
+      await p.click(`${sel} > summary`);
+      await p.waitForTimeout(30);
+      const r = await p.$eval(sel, (d) => { const box = d.querySelector(":scope > summary + *");
+        return { open: d.open, kids: [...box.children].map((c) => { const a = c.getAnimations()[0]; return a ? a.effect.getTiming().delay : null; }), from: (() => { const a = box.firstElementChild.getAnimations()[0]; const f = a && a.effect.getKeyframes()[0]; return f ? [f.opacity, f.transform] : null; })() }; });
+      if (motion === "reduce") want(r.open && r.kids.every((x) => x === null), `R11 ${file} ${sel} with reduced motion: ${JSON.stringify(r)}`);
+      else want(r.open && JSON.stringify(r.kids) === JSON.stringify(r.kids.map((_, i) => i * k)) && r.from && r.from[0] === "0" && /translate/.test(r.from[1]), `R11 ${file} ${sel} opening: ${JSON.stringify(r)}`);
+      await done(t, `R11 ${file} ${sel} (${motion})`, [API]);
+    }
+  }
+  // 12. the row detail box is raised off the sheet: a still shadow under it
+  {
+    const t = await open("index.html", { width: 1440, height: 900, motion: "reduce" });
+    await t.page.click('.rowbtn[aria-controls="m22"]');
+    const sh = await t.page.$eval("#m22", (b) => getComputedStyle(b).boxShadow);
+    want(sh && sh !== "none", `R12 the detail box has no shadow (${sh})`);
+    await done(t, "R12 detail box shadow", [API]);
+  }
+  assert.deepEqual(miss, [], `AH-138 fix round 1:\n${miss.join("\n")}`);
+  console.log("AH-138 fix round 1: the turning page's meter frozen, the phone's menu over the page and its Checks landing on the checks, the release link's words whole at 390 and 320 px (200%), a filter clearing the other rows' marks, the button fills to their edge, the Copy button's width kept, the phone's swipe hint, short pages to the screen's bottom, answers settling 30 ms apart, the detail box's shadow");
 }
 console.log(`page transitions: ${measured.moving} ms of motion on screen (${measured.swap} ms in the page, ${measured.duration} ms from the click), both pages in ${measured.both} of ${measured.ofFrames} frames, ` +
   `the whitest of ${measured.frames} screencast frames ${(measured.white * 100).toFixed(2)}% white; seeked to its middle (${measured.mid.t} ms, the seek took ${measured.mid.spent} ms) the old page shows ${measured.mid.old.toFixed(1)} px and the new ${measured.mid.new.toFixed(1)} px of ${measured.mid.width}, ` +

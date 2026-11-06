@@ -288,7 +288,8 @@ cubic-bezier, so its poses match the CSS ones (worst measured difference 0.003 i
 is requested once the scrolling stops. Content is never scroll-linked. The WebGL field behind the page also follows
 the scroll, through the same frame. It moves at full strength in the hero and on the navy band; under the prose, lists
 and tables of the other sections it fades out on a still layer of plain paper (`.calm::before`, z-index -1 in its wrap,
-32 px past the block and masked to nothing over those 32 px), so no contour line crosses body text (AH-98). That layer
+96 px past the block above and below, and sideways as far as the screen allows up to 96 px, masked to nothing over that
+reach; 32 px left pale rectangles with straight edges, AH-138 review), so no contour line crosses body text (AH-98). That layer
 never moves or redraws, and works the same on a software renderer, where the field is one still picture.
 
 ## The sample sheet (AH-89, AH-92)
@@ -429,3 +430,16 @@ box (from .95 at their trigger, out in 0.8 of the time, drawn while leaving, the
 350 ms, its widest at the average times 1.12, at rest under the chosen tab; none moving under reduced motion), the
 Copy button (hidden without a script; it copies the line, crossfades with a blur, pulses once and says Copy again 2 s
 later; refused, it selects the line and says to press Ctrl+C) and a group of blocks still 90 ms apart.
+
+### Fix round 1 (a blind design review, 2026-11-06)
+
+- The page turn's copy is a still picture: `[data-turn] * { animation: none !important }`, and `turn()` writes each scan
+  meter's pose and each cell's marks onto the copy, so the bar no longer refills under "100%" while the page turns.
+- The phone's menu lies over the page under the bar (`position: absolute` in the bar's wrap, the bar's own paper and a
+  hairline under it): opening it moves nothing below, and "Checks" lands on the checks.
+- A detail box carries a still shadow (`box-shadow`, never animated), so it reads as lying over the sheet.
+- An answer that opens (`<details>`: the questions, "Want to check the file first?") settles its blocks 6 px up and in,
+  `--stagger-row` apart, over `--pop-in` (`motion.js`, on `toggle`); closing is at once; none under reduced motion.
+- The main button's navy covers its 2 px border too; a filter clears the other rows' marks; the Copy label keeps the
+  width of "Copied"; a tap shows no browser highlight over the gold pressed line.
+

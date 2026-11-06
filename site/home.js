@@ -151,6 +151,11 @@
       if (!moving() || !panel || !panel.animate) return apply();
       const copy = panel.cloneNode(true), real = [...panel.querySelectorAll("tr")], fake = [...copy.querySelectorAll("tr")];
       real.forEach((tr, i) => { fake[i].style.opacity = getComputedStyle(tr).opacity; });
+      // a still picture: each mark as the old filter drew it (the new one applies to the real rows at once) and each scan
+      // meter where it was (styles.css stops every animation inside the copy, AH-138 review)
+      const sel = "td.flag, td.q, td.mended, td.why i, .meter span", marked = [...panel.querySelectorAll(sel)], faked = [...copy.querySelectorAll(sel)];
+      marked.forEach((el, i) => { const c = getComputedStyle(el), f = faked[i].style;
+        for (const k of ["backgroundColor", "color", "fontWeight", "boxShadow", "visibility", "transform"]) f[k] = c[k]; });
       for (const el of [copy, ...copy.querySelectorAll("[id]")]) el.removeAttribute("id");
       for (const el of [copy, ...copy.querySelectorAll("[data-in]")]) el.removeAttribute("data-in");
       copy.removeAttribute("role"); copy.removeAttribute("aria-labelledby");
@@ -336,7 +341,7 @@
   // ring pulses once (styles.css), and 2 s later it is Copy again. With no clipboard, or a refused one, the line's text is
   // selected and the label says to press Ctrl+C
   function copier(root, on) {
-    const b = root.querySelector(".copy-btn"), code = b && b.previousElementSibling, label = b && b.querySelector(".copy-label");
+    const b = root.querySelector(".copy-btn"), code = b && b.previousElementSibling, label = b && b.querySelector(".copy-said");
     if (!b || !label || !code || !code.matches("code.line")) return;
     let timer = 0;
     const say = (t) => { label.textContent = t; };

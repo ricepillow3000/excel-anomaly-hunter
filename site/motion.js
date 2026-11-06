@@ -363,6 +363,22 @@
   addEventListener("scroll", () => { if (catching && Math.abs(scrollY - wrote) > 2) halt(); }, { passive: true });
   addEventListener("resize", () => { if (catching) wt = Math.min(room(), wt); });
 
+  // ---- an answer that opens settles in turn (AH-138 review, John 2026-11-06: "stagger when details settle") ----
+  // A <details> opened by the reader (a question, "Want to check the file first?") brings its answer's blocks up 6 px and
+  // in, --stagger-row apart, over --pop-in: opacity and transform only, never its height. Closing is at once. One listener
+  // for every page (toggle does not bubble, so it is caught on the way down); none before the page has loaded, so an
+  // answer open in the markup never plays, and none under reduced motion
+  const POP = ms("--pop-in") || 200;
+  let loaded = document.readyState === "complete";
+  addEventListener("load", () => { loaded = true; });
+  document.addEventListener("toggle", (e) => {
+    const d = e.target;
+    if (still || !loaded || !(d instanceof HTMLDetailsElement) || !d.open || !d.animate) return;
+    const box = d.querySelector(":scope > summary + *");
+    if (box) [...box.children].forEach((el, i) => el.animate([{ opacity: 0, transform: "translate3d(0, 6px, 0)" }, { opacity: 1, transform: "none" }],
+      { duration: POP, delay: Math.min(i, CAP) * ROW, easing: EASE, fill: "backwards" }));
+  }, true);
+
   window.AH = { start, stop, request, still, ease, inout, INOUT, gliding: () => !!glider, smoothing: () => catching, onFrame: (f) => { subs.push(f); request(); } };
   document.addEventListener("ah:page", (e) => start((e.detail && e.detail.root) || document, e.detail && e.detail.wait));
   start();
