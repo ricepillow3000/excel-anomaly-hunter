@@ -21,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from functools import cache
 from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -31,6 +32,7 @@ import datasets3
 
 from anomaly_hunter.agents import checker
 from anomaly_hunter.ai import bias_context, client
+from anomaly_hunter.ai.memory import with_memory
 from anomaly_hunter.server import create_app
 
 SPLITS = {"dev": (7, 11, 21), "held": (8, 12, 22)}
@@ -52,25 +54,38 @@ def _scan(app, cols, rows):
     return app.post("/scan", json={"columns": cols, "rows": rows, "limits": limits, "order_by": None}).get_json()["rows"], limits
 
 
-def bench_cases(split, repo):
-    """2 flagged plants per kind, each with its label and the pane card's own answer (the free baseline to beat)."""
+def _node(repo, jobs):
+    return json.loads(subprocess.run(["node", os.path.join(HERE, "bridge.js"), os.path.join(repo, "frontend")],
+                                     input=json.dumps(jobs), capture_output=True, text=True, check=True).stdout)
+
+
+@cache
+def _plants(split, repo):
+    """Every plant of a split's bench sheets whose row the engine flags, as an Ask AI case (the pane's table, then /scan)."""
     sheets = [d for mk, sd in zip((datasets.make, datasets2.make, datasets3.make), SPLITS[split]) for d in mk(sd)]
-    node = lambda jobs: json.loads(subprocess.run(["node", os.path.join(HERE, "bridge.js"), os.path.join(repo, "frontend")],
-                                                  input=json.dumps(jobs), capture_output=True, text=True, check=True).stdout)
-    tables, app, out, per = node([{"op": "table", "grid": d["grid"]} for d in sheets]), create_app().test_client(), [], {}
+    tables, app, out = _node(repo, [{"op": "table", "grid": d["grid"]} for d in sheets]), create_app().test_client(), []
     for d, t in zip(sheets, tables):
         rows, limits = _scan(app, t["columns"], t["rows"])
         for p in d["planted"]:
             i = p["row"] - t["startRow"] - 1
-            if not (0 <= i < len(rows)) or rows[i]["severity"] in (None, "Noted") or per.get(p["kind"], 0) >= 2:
+            if not (0 <= i < len(rows)) or rows[i]["severity"] in (None, "Noted"):
                 continue
-            per[p["kind"]] = per.get(p["kind"], 0) + 1
             col = t["startCol"] + [str(c) for c in t["columns"]].index(p["col"])
             out.append({"id": f"{split}:{d['name']}:{p['row']}:{p['col']}", "kind": p["kind"], "columns": t["columns"], "rows": t["rows"],
                         "i": i, "start_row": t["startRow"], "start_col": t["startCol"], "reason": rows[i]["reason"], "intent": "",
                         "limits": limits, "cell": f"{_letter(col)}{p['row'] + 1}", "true": p["true"], "likely": rows[i].get("likely"),
-                        "raw": t["rows"][i][col - t["startCol"]]})
-    recs = node([{"op": "rec", "columns": c["columns"], "rows": c["rows"], "i": c["i"], "limits": c["limits"], "reason": c["reason"],
+                        "raw": t["rows"][i][col - t["startCol"]], "sheet": d["name"], "col": p["col"]})
+    return out
+
+
+def bench_cases(split, repo):
+    """2 flagged plants per kind, each with its label and the pane card's own answer (the free baseline to beat)."""
+    out, per = [], {}
+    for c in _plants(split, repo):
+        if per.get(c["kind"], 0) < 2:
+            per[c["kind"]] = per.get(c["kind"], 0) + 1
+            out.append(dict(c))
+    recs = _node(repo, [{"op": "rec", "columns": c["columns"], "rows": c["rows"], "i": c["i"], "limits": c["limits"], "reason": c["reason"],
                   "startRow": c["start_row"], "startCol": c["start_col"], "extra": {"likely": c["likely"]}} for c in out])
     for c, rec in zip(out, recs):
         c["card"] = right(c, rec["changes"])
@@ -174,6 +189,45 @@ def bias_cases(split):
     return out
 
 
+def _remembered(c, old, new):
+    """A past fix as the pane keeps it (frontend/features/memory.js lineOf): header, the reason's part naming it, old -> new."""
+    cut = lambda v, n: (lambda t: t if len(t) <= n else t[:n - 1] + "…")(" ".join(str(v).split()))
+    parts = []
+    for p in re.sub(r"^Flagged by \d+ of \d+: ", "", c["reason"]).split("; "):  # fix.js issuesOf: "this is" stays with its part
+        if p.startswith("this is ") and parts:
+            parts[-1] += "; " + p
+        else:
+            parts.append(p)
+    kind = next((p for p in parts if c["col"] in p), "fix")
+    return f"{cut(c['col'], 30)}: {cut(kind, 60)}: {cut(old, 30)} -> {cut(new, 30)}"
+
+
+def memory_cases(split, repo):
+    """The arm "memory" (ai/memory.py): a plant whose column has another flagged, fixable plant on the same sheet, with
+    that one's true fix as the user's past fix ("same"); and, once per column, the same plant with a past fix of another
+    column ("other") and with a wrong past fix of this one ("wrong": the opposite step, or another of the column's labels).
+    Built inside the split only: held never carries dev's history. Base runs them too, memory ignored, so they pair."""
+    plants, out = _plants(split, repo), []
+    cols = {}
+    for c in plants:
+        cols.setdefault((c["sheet"], c["col"]), []).append(c)
+    groups = [g for g in cols.values() if len(g) > 1 and any(c["kind"] not in NO_CHANGE | {"blank"} for c in g)]
+    for k, g in enumerate(groups):
+        for n, c in enumerate(sorted(g, key=lambda c: c["i"])):
+            src = next((s for s in sorted(g, key=lambda c: c["i"]) if s is not c and s["kind"] not in NO_CHANGE | {"blank"}), None)
+            if src is None:
+                continue
+            raw = src["raw"]
+            j, said = [str(x) for x in c["columns"]].index(c["col"]), {" ".join(str(raw).split()).casefold(), str(src["true"]).casefold()}
+            wrong = raw * 10 if isinstance(raw, (int, float)) else next(r[j] for r in c["rows"] if str(r[j]).strip().casefold() not in said)
+            other = next(s for s in groups[(k + 1) % len(groups)] if s["kind"] not in NO_CHANGE | {"blank"})
+            for name, line in (("same", _remembered(src, raw, src["true"])), ("other", _remembered(other, other["raw"], other["true"])),
+                               ("wrong", _remembered(src, raw, wrong)))[:1 if n else 3]:
+                kind = "blank_unknown" if c["kind"] == "blank" else c["kind"]  # nothing in the sheet says what a blank was
+                out.append({**c, "id": f"{c['id']}:memory_{name}", "kind": kind, "memory": [line]})
+    return out
+
+
 def right(case, changes):
     """score.py's per-kind rules, plus labels for hand-made cases."""
     at = {c["cell"]: c["new"] for c in changes}
@@ -252,6 +306,8 @@ ARMS["bias_context"] = {"fix": bias_context.with_rules(ORIG["_fix_prompt"], lamb
 # base run: --arms base,temperature_0.1. Note the relay builds its own request body (relay/worker.js): if this arm
 # wins, the relay needs the same field, or invited users keep the default.
 ARMS["temperature_0.1"] = {"body": {"temperature": 0.1}}
+# the user's past fixes of the flagged column (ai/memory.py, AH-143), in the request after the reason; cases: memory_cases
+ARMS["memory"] = {"fix": with_memory(ORIG["_fix_prompt"], lambda p: client._fits(p))}
 
 
 def _prompts(job):
@@ -268,8 +324,10 @@ def _prompts(job):
 
 def jobs(split, repo, fix=None, odd=ODD):
     """(case, the call that answers it) for one split."""
-    fix = bench_cases(split, repo) + bias_cases(split) + (hand_cases() if split == "dev" else []) if fix is None else fix
-    run_fix = lambda c: lambda: client.suggest_fix(c["columns"], c["rows"], c["i"], c["start_row"], c["start_col"], c["reason"], c["intent"], c.get("formulas"))
+    fix = (bench_cases(split, repo) + bias_cases(split) + memory_cases(split, repo) + (hand_cases() if split == "dev" else [])
+           if fix is None else fix)
+    run_fix = lambda c: lambda: client.suggest_fix(c["columns"], c["rows"], c["i"], c["start_row"], c["start_col"], c["reason"], c["intent"],
+                                                   c.get("formulas"), memory=c.get("memory"))
     run_odd = lambda v: lambda: dict(zip(("odd", "partial"), client.odd_text(v)))
     return [(c, run_fix(c)) for c in fix] + [({"id": f"{split}:odd:{k}", "odd": o}, run_odd(o[0])) for k, o in enumerate(odd)]
 

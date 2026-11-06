@@ -44,6 +44,7 @@ paths:
                     start_col: {type: integer, minimum: 0}
                     intent: {type: string, maxLength: 2000}
                     formulas: {type: array, nullable: true}
+                    memory: {type: array, nullable: true, maxItems: 5, items: {type: string, maxLength: 200}}
       responses:
         "200":
           description: The AI's fix, or (care true) the engine's own helpline message, with nothing sent to the AI

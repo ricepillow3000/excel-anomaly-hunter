@@ -285,10 +285,14 @@ def create_app(scan_csv=None):
         formulas = body.get("formulas")  # the flagged row's formulas, so Claude fixes inputs instead of overwriting them
         if formulas is not None and not (isinstance(formulas, list) and len(formulas) == len(body["columns"])):
             return {"error": "'formulas' must be a list as long as 'columns'"}, 400
+        memory = body.get("memory")  # AH-143: fixes the user accepted before in this column, kept by the pane on this PC
+        if memory is not None and not (isinstance(memory, list) and len(memory) <= 5
+                                       and all(isinstance(m, str) and len(m) <= 200 for m in memory)):
+            return {"error": "'memory' must be a list of at most 5 texts, each at most 200 characters"}, 400
         if care.distress(intent):  # AH-125: helpline numbers from the engine itself, before any key check or AI call
             return {"explanation": care.MESSAGE, "changes": [], "care": True}
         return ai(lambda: client.suggest_fix(body["columns"], body["rows"], body["row_index"], body["start_row"],
-                                             body["start_col"], str(body.get("reason") or ""), intent, formulas))
+                                             body["start_col"], str(body.get("reason") or ""), intent, formulas, memory=memory))
 
     @app.post("/odd-text")
     def odd_text_route():

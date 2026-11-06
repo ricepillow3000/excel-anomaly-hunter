@@ -11,6 +11,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { hash, rowHash, codes, codeAt, asBook, decide, PER_SHEET, SHEETS } from "./features/decisions.js";
 import { WORKBOOK_KEYS } from "./features/forget.js";
 import * as K from "./constants/index.js";
+import { remember, forget, recall, clearAll, MAX_KEPT, SENT } from "./features/memory.js";
 
 // Fixed / Dismissed are kept in the workbook under a code per row, so they outlive the pane (2026-10-20: a dismissed
 // row came back flagged after a reload, an accepted fix vanished). Same values = same code, on any PC, every time.
@@ -52,6 +53,31 @@ assert.ok(!("S" in many), "the sheet decided on longest ago goes first");
 // the list: flagged worst first, then rows fixed or dismissed before that are no longer flagged, in sheet order
 assert.deepEqual(listOrder([{ severity: null }, { severity: "Low", magnitude: 1 }, { severity: null }, { severity: "High", magnitude: 0 }, { severity: "Noted" }],
   { 4: "fixed", 0: "dismissed", 1: "dismissed" }), [3, 1, 0, 4]);
+
+// Ask AI's memory (AH-143): kept on this PC, newest first, only the flagged column's, Undo and Forget take it back out
+{
+  const box = new Map();
+  globalThis.localStorage = { getItem: (k) => box.get(k) ?? null, setItem: (k, v) => box.set(k, String(v)), removeItem: (k) => box.delete(k) };
+  for (let k = 0; k < 7; k++) remember("Units", "Units weird limit is 90; this is 500 (likely 50)", 500 + k, 50);
+  remember("Region", 'Region "east " looks like "East"', "east ", "East");
+  assert.equal(recall(" units ").length, SENT, "a header matches case and space blind, and only 5 go");
+  assert.equal(recall("Units")[0], "Units: Units weird limit is 90; this is 500 (likely 50): 506 -> 50", "newest first");
+  assert.deepEqual(recall("Region"), ['Region: Region "east " looks like "East": east -> East']);
+  assert.deepEqual(recall("Price"), [], "no fix of this column: nothing");
+  forget("Units", 506, 50);
+  assert.equal(recall("Units")[0].endsWith("505 -> 50"), true, "Undo takes its own fix back out");
+  remember("x".repeat(99), "y".repeat(999), "z".repeat(999), "\n".repeat(9) + "w".repeat(999));
+  assert.ok(recall("x".repeat(99))[0].length <= 160, "a long value is cut");
+  for (let k = 0; k < MAX_KEPT + 5; k++) remember("Units", "fix", k, k);
+  assert.equal(JSON.parse(box.get(K.MEMORY_KEY)).length, MAX_KEPT, "at most 200 kept, the oldest go first");
+  box.set(K.MEMORY_KEY, '[{"h": "Units", "k": "<img>", "o": 1}, "x", null, {"h":"Units","k":"fix","o":"1","n":"2"}]');
+  assert.deepEqual(recall("Units"), ["Units: fix: 1 -> 2"], "only whole entries survive what another page wrote");
+  clearAll();
+  assert.ok(!box.has(K.MEMORY_KEY) && recall("Units").length === 0, "Forget what the AI learned forgets all of it");
+  globalThis.localStorage = { getItem() { throw new Error("off"); }, setItem() { throw new Error("off"); }, removeItem() { throw new Error("off"); } };
+  remember("Units", "fix", 1, 2); clearAll(); assert.deepEqual(recall("Units"), [], "no storage: nothing kept, nothing thrown");
+  delete globalThis.localStorage;
+}
 
 // A DOM0 handler that returns false cancels its event: `$("fix-intent").onkeydown = (e) => e.key === "Enter" && e.ctrlKey
 // && askFix()` returned false for every key but Ctrl+Enter, so no character ever reached the Ask AI box (2026-10-20).

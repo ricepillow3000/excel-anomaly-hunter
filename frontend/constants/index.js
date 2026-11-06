@@ -9,6 +9,7 @@ export const UNDO_KEY = "anomalyHunterAutoUndo"; // what auto-fix changed, saved
 export const POWER_BI_KEY = "anomalyHunterPowerBi"; // keep each scan for Power BI: this PC (localStorage), off unless turned on
 export const DECISIONS_KEY = "anomalyHunterDecisions"; // rows fixed or dismissed, as codes, saved inside the workbook
 export const ACCEPT_UNDO_KEY = "anomalyHunterAcceptUndo"; // what Accept changed (the old values), saved inside the workbook for Undo
+export const MEMORY_KEY = "anomalyHunterAiMemory"; // fixes the user accepted, for Ask AI: this PC (localStorage), across workbooks
 
 // What each slider level does, in its own words (2, 4, 6, 8 and 10 once showed the level below's, so 6 opened
 // "Recommended.", AH-20), then what that very level did on the industry bench's 27 sheets (backend/bench: 51 planted

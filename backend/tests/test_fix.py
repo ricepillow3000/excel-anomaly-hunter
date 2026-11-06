@@ -86,10 +86,25 @@ def test_fix_route_passes_request_through(monkeypatch):
     monkeypatch.setattr(client, "api_key_configured", lambda: True)
     seen = {}
     fake = {"explanation": "Median of Units.", "changes": [{"cell": "C3", "new": "=MEDIAN(C2,C4)"}]}
-    monkeypatch.setattr(client, "suggest_fix", lambda *a: seen.setdefault("args", a) and fake)
+    monkeypatch.setattr(client, "suggest_fix", lambda *a, **k: seen.update(args=a, kw=k) or fake)
     r = post({**BODY, "intent": None})
     assert r.status_code == 200 and r.get_json() == fake
     assert seen["args"] == (COLS, ROWS, 1, 0, 0, "Units below weird low 0", "", None)
+    assert seen["kw"] == {"memory": None}
+
+
+def test_the_fix_route_takes_up_to_5_past_fixes_of_200_characters_and_refuses_anything_else(monkeypatch):
+    # AH-143: the pane sends the user's past fixes of the flagged column; they come from sheets, so their shape is
+    # checked before any work, like every other field
+    monkeypatch.setattr(client, "api_key_configured", lambda: True)
+    seen = {}
+    monkeypatch.setattr(client, "suggest_fix", lambda *a, **k: seen.update(kw=k) or {"explanation": "ok", "changes": []})
+    for bad in ("Units: x -> y", ["a"] * 6, ["x" * 201], [5], [None], [["a"]], {"0": "a"}, True):
+        r = post({**BODY, "memory": bad})
+        assert r.status_code == 400 and "'memory'" in r.get_json()["error"] and not seen, bad
+    past = ["Units: Units weird limit is 90; this is 500 (likely 50): 500 -> 50", "x" * 200]
+    assert post({**BODY, "memory": past}).status_code == 200 and seen["kw"] == {"memory": past}
+    assert post({**BODY, "memory": []}).status_code == 200 and seen["kw"] == {"memory": []}
 
 
 def stub_api(monkeypatch, content, stop="end_turn"):

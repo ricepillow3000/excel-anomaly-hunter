@@ -17,7 +17,7 @@ def words(page):
 def test_every_privacy_page_says_what_the_pane_keeps_how_to_clear_it_and_the_relays_terms_as_configured():
     caps = tomllib.loads((ROOT / "relay" / "wrangler.toml").read_text(encoding="utf-8"))["vars"]
     promises = (
-        "anomalyHunterAutoFix", "anomalyHunterPowerBi", "localStorage",  # both of the pane's own keys, by name
+        "anomalyHunterAutoFix", "anomalyHunterPowerBi", "anomalyHunterAiMemory", "localStorage",  # the pane's own keys, by name
         "Forget what this workbook saved", "Options > Saved in this workbook", "It changes no cell",
         # the relay's counter is the last day's until the next day's first call replaces it (relay/worker.js Counter)
         "for the last day anyone used it", "The first call of a new day replaces it",
@@ -195,3 +195,27 @@ def test_every_privacy_page_says_arcas_is_listed_in_installed_apps_and_removes_i
         said = words(page)
         assert "Settings > Apps > Installed apps" in said and "its Installed apps entry" in said, page
         assert "the app file too" in said and "except the app file itself" not in said, page
+
+
+def test_every_privacy_page_says_what_ask_ai_remembers_how_much_of_it_goes_and_how_to_forget_it():
+    # AH-143 (John, 2026-11-06): Ask AI remembers the fixes the user accepted, on this PC, and sends up to 5 of the
+    # flagged column's with each request. The numbers are the pane's (features/memory.js) and the engine's (/fix)
+    from anomaly_hunter.server import create_app
+    src = (ROOT / "frontend/features/memory.js").read_text(encoding="utf-8")
+    kept, sent = map(int, re.search(r"MAX_KEPT = (\d+), SENT = (\d+)", src).groups())
+    body = {"columns": ["Units"], "rows": [[1], [500]], "row_index": 1, "start_row": 0, "start_col": 0}
+    assert create_app().test_client().post("/fix", json={**body, "memory": ["x"] * (sent + 1)}).status_code == 400
+    assert '"anomalyHunterAiMemory"' in (ROOT / "frontend/constants/index.js").read_text(encoding="utf-8")
+    promises = (
+        f"Ask AI's memory (anomalyHunterAiMemory) is saved there too: up to {kept} fixes you accepted",
+        "each with its column name, the kind of fix, and the old and new values. Undo takes a fix back out",
+        f"It also sends up to {sent} fixes you accepted before in a column with the same name as the flagged one",
+        "Forget what the AI learned", "It removes every fix Ask AI remembers on this PC, for every workbook",
+        "Uninstalling also removes them with Excel's add-in cache",
+    )
+    for page in PAGES:
+        said = words(page)
+        assert [p for p in promises if p not in said] == [], page
+    hint = words("frontend/taskpane.html")
+    assert f"It also sends up to {sent} fixes you accepted before in a column with this name" in hint
+    assert f"Ask AI remembers up to {kept} fixes you accepted, on this PC and for every workbook" in hint

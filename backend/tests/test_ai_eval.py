@@ -152,6 +152,28 @@ def test_the_bias_context_arm_adds_only_our_notes_and_its_people_cases_are_flagg
     assert ai_eval.bias_cases("dev")[0]["rows"] != ai_eval.bias_cases("held")[0]["rows"]  # held-out is a fresh draw
 
 
+def test_the_memory_arm_adds_only_the_cases_past_fixes_each_from_its_own_split_and_base_leaves_them_out():
+    # AH-143: memory (ai/memory.py) is off in the app until this arm wins; held never carries dev's history
+    from anomaly_hunter.ai import memory
+    for split in ai_eval.SPLITS:
+        cases, plants = ai_eval.memory_cases(split, REPO), ai_eval._plants(split, REPO)
+        names = {c["id"].rsplit(":", 1)[1] for c in cases}
+        assert len(cases) >= 20 and names == {"memory_same", "memory_other", "memory_wrong"}
+        for c in cases:
+            assert c["id"].startswith(f"{split}:") and len(c["memory"]) == 1 and len(c["memory"][0]) <= 160, c["id"]
+            old = c["memory"][0].rsplit(": ", 1)[1].split(" -> ")[0]
+            assert any(" ".join(str(p["raw"]).split()) == old for p in plants), c["id"]  # a plant of this split
+            run = ai_eval.jobs(split, REPO, fix=[c], odd=[])[0][1]
+            ai_eval._arm("memory")
+            try:
+                arm = ai_eval._prompts(run)
+            finally:
+                ai_eval._arm("base")
+            base = ai_eval._prompts(run)
+            assert memory.HEAD not in base[0] and repr(c["memory"][0]) in arm[0], c["id"]
+            assert arm[0].replace(memory.block(c["memory"]), "") == base[0] and len(client._wire(arm[0])) <= client.BUDGET
+
+
 def test_the_temperature_arm_sets_0_1_in_the_eval_only_and_the_app_sends_no_temperature(run, monkeypatch, capsys):
     # John's brief asked for temperature 0.1. It is a model setting, so CLAUDE.md wants eval numbers first: this arm
     # sends it in the eval's own process, on Gemini's OpenAI-compatible endpoint, as the top-level "temperature".

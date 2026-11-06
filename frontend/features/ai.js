@@ -6,6 +6,7 @@ import { checkFix } from "./fix.js";
 import { plainReason } from "./scan.js";
 import { colLetter } from "../utils/sheet.js";
 import { isOurs, plainError } from "../utils/errors.js";
+import { recall } from "./memory.js";
 
 // Ask AI: the API client in the workflow (the engine forwards to Gemini). Optional; fixes work without it.
 export function setAi(on) {
@@ -44,10 +45,14 @@ export async function askFix() { // talks to the engine only; the sheet is touch
   show("fix-care", false);
   show("fix-label");
   try {
-    const { columns, rows, startRow, startCol } = state.lastScan;
+    const { columns, rows, startRow, startCol } = state.lastScan, reason = state.lastRows[f.i].reason;
+    // AH-143: the fixes the user accepted before in the flagged column, the one the engine reads from the reason (the
+    // longest header it names: "Column 31" over "Column 3")
+    const flagged = columns.map(String).filter((c) => c.trim() && String(reason ?? "").includes(c)).sort((a, b) => b.length - a.length)[0];
+    const memory = flagged ? recall(flagged) : [];
     const out = await post("/fix", {
       columns, rows, row_index: f.i, start_row: startRow, start_col: startCol,
-      reason: state.lastRows[f.i].reason, intent: $("fix-intent").value, formulas: f.calc,
+      reason, intent: $("fix-intent").value, formulas: f.calc, ...(memory.length ? { memory } : {}),
     }, 300);
     // AH-125: the engine read the request as someone in crisis and sent nothing to the AI. Its helpline message goes
     // on the card as text, with no fix to check and no Accept beside it

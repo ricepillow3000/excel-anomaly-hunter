@@ -139,7 +139,7 @@
           <label for="fix-intent">For a different fix, describe it and AI will draft one.</label>
           <textarea id="fix-intent" rows="3" maxlength="2000" aria-describedby="fix-sends" placeholder="e.g. Use the average Units for the East region"></textarea>
           <button id="fix-ask" class="secondary">Ask AI</button>
-          <p id="fix-sends" class="hint">Ask AI sends the column names, this row and up to 5 rows above and below it, the row's formulas, why it was flagged and what you type here, to Google (through John's relay if you use an invite code). Long cells are cut to 200 characters.</p>
+          <p id="fix-sends" class="hint">Ask AI sends the column names, this row and up to 5 rows above and below it, the row's formulas, why it was flagged and what you type here, to Google (through John's relay if you use an invite code). Long cells are cut to 200 characters. It also sends up to 5 fixes you accepted before in a column with this name: the name, the kind of fix, and the old and new values.</p>
         </div>
         <p id="ai-off" class="hint">AI help with fixes is off. Turn it on for free under <b>AI help</b> at the bottom.</p>
       </section>
@@ -175,6 +175,9 @@
         </div>
         <p class="hint">If John gave you an invite code (it starts with inv_), paste it in the same box. It uses his shared AI with a daily limit, and his key never reaches this PC.</p>
         <p class="hint">Google's free tier may use what AI help sends to improve its products, so don't ask AI about private data. The key is stored only on this computer.</p>
+        <p class="hint">Ask AI remembers up to 200 fixes you accepted, on this PC and for every workbook: each one's column name, the kind of fix, and the old and new values. Undo takes a fix back out.</p>
+        <button id="forget-ai" class="secondary">Forget what the AI learned</button>
+        <p id="forget-ai-state" class="hint" role="status" aria-live="polite"></p>
         <p class="hint"><a href="privacy.html" target="_blank" rel="noopener">What leaves your PC</a> · <a href="support.html" target="_blank" rel="noopener">Questions or problems</a></p>
       </details>
 

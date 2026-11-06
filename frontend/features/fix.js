@@ -11,6 +11,7 @@ import { plainReason } from "./scan.js";
 import { codeAt, rowHash, saveDecisions } from "./decisions.js";
 import { isOurs, plainError } from "../utils/errors.js";
 import { forgetUndo, saveUndo } from "./undo-store.js";
+import { forget, remember } from "./memory.js";
 
 // Fix one row: the instant suggested fix (no AI), and Apply / Undo.
 // Pure: a reason -> its parts ("Units weird limit is 0; this is -5" stays ONE part)
@@ -241,6 +242,10 @@ export async function checkFix(f, changes) {
     changes: at.map((a) => ({ col: a.col - startCol, value: a.value })) }, 300); // a full re-scan: as long as /scan gets
 }
 
+// Pure: each cell an accepted fix wrote, as Ask AI's memory keeps it (AH-143): [header, old value, new value]
+const remembered = (u, columns, startCol) => u.changes.map((c, k) => [columns[cellAt(c.cell).col - startCol], u.writes[k].value, c.new])
+  .filter(([h]) => String(h ?? "").trim());
+
 export async function applyFix(f, changes, sheet) { // the fix, its changes and sheet as they were when Accept was clicked
   if (state.undos[f.i]) return;
   $("fix-apply").disabled = true;
@@ -264,6 +269,9 @@ export async function applyFix(f, changes, sheet) { // the fix, its changes and 
     state.undos[f.i] = { sheet, changes, after, writes: cells.map((cell, k) => ({ cell, value: olds[k], format: formats[k] })),
       row: state.lastScan.rows[f.i], verdict: state.lastRows[f.i], was: state.decided[f.i], code, before: state.codes[f.i] }; // dismissed: stays so
     saveUndo(state.undos[f.i]); // kept in the workbook too: a reload no longer loses the old values (AH-118)
+    const parts = issuesOf(state.lastRows[f.i]?.reason).map((p) => p.text);
+    for (const [h, old, nw] of remembered(state.undos[f.i], columns, startCol))
+      remember(h, parts.find((t) => t.includes(String(h))) || "fix", old, nw);
     state.decided[f.i] = "fixed";
     saveDecisions(sheet, [[state.codes[f.i], null], [code, "fixed"]]); // an Accept after a Dismiss replaces it
     if (state.fix === f) setApplied(true);
@@ -309,6 +317,7 @@ export async function undoFix(f) {
     await writeCells(u.sheet, u.writes); // back on the sheet it was applied to
     delete state.undos[f.i];
     forgetUndo(u.sheet, u.code);
+    for (const [h, old, nw] of remembered(u, columns, startCol)) forget(h, old, nw);
     // an Undo kept in the workbook (AH-118) carries no verdict (the engine's sentence about the old values stays out of
     // the file): the row as it is again is checked once more, the way an Accept is
     const v = u.verdict ? null : await checkFix(f, u.writes.map((w) => ({ cell: w.cell, new: w.value }))).catch(() => null);

@@ -20,6 +20,7 @@ from pydantic import BaseModel, ValidationError
 
 from anomaly_hunter import sealed
 from anomaly_hunter.ai import bias_context
+from anomaly_hunter.ai.memory import with_memory
 
 MODEL = "claude-opus-5"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"  # OpenAI-compatible
@@ -154,10 +155,12 @@ def _one_line(text):
     return " ".join(str(text).splitlines())
 
 
-def _fix_prompt(columns, rows, i, start_row, start_col, reason, intent, formulas=None, ctx=5, keep=None, cut=None, flagged=None, notes=""):
+def _fix_prompt(columns, rows, i, start_row, start_col, reason, intent, formulas=None, ctx=5, keep=None, cut=None, flagged=None, notes="",
+                memory=None):
     """keep = column indexes to show (default all), ctx = rows shown above/below. Cells longer than CELL_CAP are cut
     (their addresses go into `cut`: the AI may not rewrite a cell it only saw part of) - never the flagged cell.
-    notes = our own lines after the reason (bias_context.block), never sheet text; "" = none."""
+    notes = lines after the reason (bias_context.block, memory.block); "" = none. memory = the user's past fixes, which
+    only memory.with_memory puts into notes: this builder leaves them out."""
     keep = range(len(columns)) if keep is None else keep
     letters = {j: get_column_letter(1 + start_col + j) for j in keep}
     top = start_row + 1  # 1-based sheet row of the header
@@ -234,7 +237,8 @@ def _fits(prompt, schema=FIX_SCHEMA, name="fix"):
 
 # Real-world notes in Ask AI's prompt (bias_context): off until backend/bench/ai_eval.py arm "bias_context" wins on
 # dev and held-out (CLAUDE.md: an AI prompt or its context changes only with eval numbers). Switching on = on=True.
-_fix_prompt = bias_context.with_rules(_fix_prompt, _fits, on=False)
+# The user's past fixes (memory, AH-143): the same, until arm "memory" wins. Both on = both in the one notes slot.
+_fix_prompt = bias_context.with_rules(with_memory(_fix_prompt, _fits, on=False), _fits, on=False)
 
 
 def _cache_dir():
@@ -439,8 +443,9 @@ def odd_text(values):
     return [{"column": c, "value": v, "why": w} for (c, v), w in keep.items()], False
 
 
-def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent, formulas=None):
-    """-> {explanation, changes: [{cell, new}]}. Invalid cell addresses are dropped. Raises ValueError / anthropic errors."""
+def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent, formulas=None, memory=None):
+    """-> {explanation, changes: [{cell, new}]}. Invalid cell addresses are dropped. Raises ValueError / anthropic errors.
+    memory = up to 5 fixes the user accepted before in this column, newest first (AH-143)."""
     hits = [j for j, c in enumerate(columns) if str(c) and str(c) in (reason or "")]
     flagged = max(hits, key=lambda j: len(str(columns[j])), default=0)  # "Column 31" over "Column 3"
     nearest = sorted(range(len(columns)), key=lambda j: abs(j - flagged))
@@ -451,12 +456,12 @@ def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent, 
         while lo < hi:
             mid = (lo + hi + 1) // 2
             lo, hi = (mid, hi) if _fits(_fix_prompt(columns, rows, row_index, start_row, start_col, reason, intent, formulas,
-                                                    ctx=0, keep=sorted(nearest[:mid]), flagged=flagged)) else (lo, mid - 1)
+                                                    ctx=0, keep=sorted(nearest[:mid]), flagged=flagged, memory=memory)) else (lo, mid - 1)
         yield from [(0, lo)] if lo else []
     for ctx, n in tries():
         cut = set()
         prompt = _fix_prompt(columns, rows, row_index, start_row, start_col, reason, intent, formulas,
-                             ctx=ctx, keep=sorted(nearest[:n]), cut=cut, flagged=flagged)
+                             ctx=ctx, keep=sorted(nearest[:n]), cut=cut, flagged=flagged, memory=memory)
         if _fits(prompt):
             break
     else:
