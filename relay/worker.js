@@ -51,36 +51,48 @@ export default {
     if (typeof prompt !== "string" || !prompt || body.messages.length !== 1 || !body.response_format) return json(400, { error: "The shared AI couldn't read that request. Update Arcas to the newest version, then try again." });
 
     // count first: a request that would go over a cap never reaches Google
+    // fallbacks = the real quota (if the [vars] are ever lost, never looser); switch the relay off by emptying TOKENS
+    // again: a backup model's call (AH-145), counted against the day's total only: the invite's fix is already counted
+    const take = async (again) => (await (await env.COUNTER.get(env.COUNTER.idFromName("caps")).fetch("https://caps/take", {
+      method: "POST", body: JSON.stringify({ who, perUser: cap(env.DAILY_PER_INVITE, 10), total: cap(env.DAILY_TOTAL, 20), again }),
+    })).json());
     let ok;
     try { // the counter down (a Durable Object outage): our own JSON, and Google is never called (AH-13 sweep)
-      const counter = env.COUNTER.get(env.COUNTER.idFromName("caps"));
-      ok = await (await counter.fetch("https://caps/take", {
-        // fallbacks = the real quota (if the [vars] are ever lost, never looser); switch the relay off by emptying TOKENS
-        method: "POST", body: JSON.stringify({ who, perUser: cap(env.DAILY_PER_INVITE, 10), total: cap(env.DAILY_TOTAL, 20) }),
-      })).json();
+      ok = await take(false);
     } catch {
       return json(503, { error: "The shared AI can't count today's fixes right now. Try again in a minute." });
     }
     if (!ok.allowed) return json(429, { error: ok.why });
 
+    // AH-145: MODELS = the model, then backups (each has its own day's free quota and its own crowd); unset = MODEL alone
+    const listed = String(env.MODELS || "").split(",").map((m) => m.trim()).filter(Boolean);
+    const models = listed.length ? listed : [MODEL];
     try {
-      let out;
+      let out, said = "", m = 0;
       for (let k = 0; ; k++) { // Google busy for a moment: try again HERE, so the invite's fix is counted only once
         out = await fetch(GEMINI, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.GEMINI_KEY}` },
-          body: JSON.stringify({ model: MODEL, messages: [{ role: "user", content: prompt }], response_format: body.response_format, max_tokens: 4096 }),
+          body: JSON.stringify({ model: models[m], messages: [{ role: "user", content: prompt }], response_format: body.response_format, max_tokens: 4096 }),
           signal: AbortSignal.timeout(GOOGLE_WAIT_MS),
         });
-        if (out.ok || ![500, 502, 503, 504].includes(out.status) || k === 2) break;
-        await out.body?.cancel();
+        if (out.ok) break;
+        said = await out.text(); // read, never sent on
+        // the day's quota gone or overloaded: the next model at once, never back to this one, counted before Google
+        if (m + 1 < models.length && ([502, 503].includes(out.status) || (out.status === 429 && /perday/i.test(said)))
+          && (await take(true).catch(() => ({}))).allowed) {
+          m++;
+          continue;
+        }
+        if (![500, 502, 503, 504].includes(out.status) || k >= 2) break;
         await new Promise((ok) => setTimeout(ok, [1000, 3000][k]));
       }
       // Google's answer goes back as is; on its errors only our own words (its body could echo the key's project)
-      if (out.ok) return new Response(out.body, { status: 200, headers: { "Content-Type": "application/json" } });
+      // a backup's answer says so (AH-145): the engine keeps it under that model and the pane tells the user
+      if (out.ok) return new Response(out.body, { status: 200, headers: { "Content-Type": "application/json", ...(m ? { "X-Model": models[m] } : {}) } });
       if (out.status !== 429) return json(502, { error: `Google AI answered with error ${out.status}. Try again in a few minutes.` });
       // a 429 is either "too many this minute" or "today's free quota is gone" - Google's text says which (read, never sent on)
-      const daily = /perday/i.test(await out.text());
+      const daily = /perday/i.test(said);
       return json(429, { error: daily ? "The shared free AI is used up for today. It resets at midnight US Pacific time."
         : "The shared AI is busy right now. Try again in a minute." });
     } catch (e) { // Google unreachable (network, DNS) or silent: our own JSON, never an uncaught throw
@@ -100,14 +112,14 @@ export class Counter {
     this.state = state;
   }
   async fetch(req) {
-    const { who, perUser, total } = await req.json();
+    const { who, perUser, total, again } = await req.json();
     const day = dayKey();
     const c = (await this.state.storage.get("c")) || {};
     const today = c.day === day ? c : { day, total: 0, by: {} };
     if (today.total >= total) return json(200, { allowed: false, why: "Today's shared AI limit is used up. It resets at midnight US Pacific time." });
-    if ((today.by[who] || 0) >= perUser) return json(200, { allowed: false, why: "You've used today's AI fixes for this invite. They reset at midnight US Pacific time." });
+    if (!again && (today.by[who] || 0) >= perUser) return json(200, { allowed: false, why: "You've used today's AI fixes for this invite. They reset at midnight US Pacific time." });
     today.total += 1;
-    today.by[who] = (today.by[who] || 0) + 1;
+    if (!again) today.by[who] = (today.by[who] || 0) + 1;
     await this.state.storage.put("c", today);
     return json(200, { allowed: true });
   }

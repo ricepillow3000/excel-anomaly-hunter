@@ -44,6 +44,7 @@ paths:
                     start_col: {type: integer, minimum: 0}
                     intent: {type: string, maxLength: 2000}
                     formulas: {type: array, nullable: true}
+                    memory: {type: array, nullable: true, maxItems: 5, items: {type: string, maxLength: 200}}
       responses:
         "200":
           description: The AI's fix, or (care true) the engine's own helpline message, with nothing sent to the AI
@@ -58,6 +59,7 @@ paths:
                     type: array
                     items: {type: object, required: [cell, new], properties: {cell: {type: string}, new: {type: string}}}
                   care: {type: boolean, enum: [true]}  # AH-125: the request read as someone in crisis (ai/care.py)
+                  model: {type: string}  # AH-145: only when a backup Gemini model answered (the pane says so on the card)
         "400": {$ref: "#/components/responses/Error"}
         "502": {$ref: "#/components/responses/Error"}
         "503": {$ref: "#/components/responses/Error"}
@@ -138,4 +140,5 @@ components:
     Json: {description: OK, content: {application/json: {schema: {type: object}}}}
     Error:
       description: A plain-English problem for the pane
-      content: {application/json: {schema: {type: object, required: [error], properties: {error: {type: string}}}}}
+      # limit (AH-145, /fix and /odd-text): every Gemini model used up for today ("day") or busy ("busy")
+      content: {application/json: {schema: {type: object, required: [error], properties: {error: {type: string}, limit: {type: string, enum: [day, busy]}}}}}

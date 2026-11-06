@@ -6,6 +6,7 @@ import { checkFix } from "./fix.js";
 import { plainReason } from "./scan.js";
 import { colLetter } from "../utils/sheet.js";
 import { isOurs, plainError } from "../utils/errors.js";
+import { recall } from "./memory.js";
 
 // Ask AI: the API client in the workflow (the engine forwards to Gemini). Optional; fixes work without it.
 export function setAi(on) {
@@ -44,10 +45,14 @@ export async function askFix() { // talks to the engine only; the sheet is touch
   show("fix-care", false);
   show("fix-label");
   try {
-    const { columns, rows, startRow, startCol } = state.lastScan;
+    const { columns, rows, startRow, startCol } = state.lastScan, reason = state.lastRows[f.i].reason;
+    // AH-143: the fixes the user accepted before in the flagged column, the one the engine reads from the reason (the
+    // longest header it names: "Column 31" over "Column 3")
+    const flagged = columns.map(String).filter((c) => c.trim() && String(reason ?? "").includes(c)).sort((a, b) => b.length - a.length)[0];
+    const memory = flagged ? recall(flagged) : [];
     const out = await post("/fix", {
       columns, rows, row_index: f.i, start_row: startRow, start_col: startCol,
-      reason: state.lastRows[f.i].reason, intent: $("fix-intent").value, formulas: f.calc,
+      reason, intent: $("fix-intent").value, formulas: f.calc, ...(memory.length ? { memory } : {}),
     }, 300);
     // AH-125: the engine read the request as someone in crisis and sent nothing to the AI. Its helpline message goes
     // on the card as text, with no fix to check and no Accept beside it
@@ -58,13 +63,26 @@ export async function askFix() { // talks to the engine only; the sheet is touch
     const v = await checkFix(f, out.changes).catch(() => null); // Agent 3 looks first; null = a formula, judged after Accept
     if (v) out.explanation += v.clean ? " Checked: with this fix the row looks right."
       : ` Checked: with this fix the row would still look unusual: ${plainReason(v.reason)}.`;
-    if (state.fix === f) await showFix(f, "AI's fix", out); // else: the user moved to another row meanwhile
+    if (state.fix !== f) return; // the user moved to another row meanwhile
+    await showFix(f, "AI's fix", out);
+    // AH-145: Google's main model was busy or used up for today and a backup Gemini model answered (the engine names it
+    // only then)
+    if (out.model) notice("Google's main AI was busy, so a backup Gemini model answered. Check its change before you accept.");
   } catch (e) {
-    if (state.fix === f) $("fix-status").textContent = plainError(e, "AI could not help");
+    if (state.fix !== f) return;
+    if (Object.hasOwn(LIMITS, String(e.limit))) notice(LIMITS[e.limit]); // every model used up for today, or busy: John's words, in the notice box
+    else $("fix-status").textContent = plainError(e, "AI could not help");
   } finally {
     f.asking = false;
     if (state.fix === f) (btn.disabled = !state.aiAvailable), (btn.textContent = "Ask AI");
   }
+}
+
+const LIMITS = { day: "Ask AI has used today's free requests. It works again tomorrow.", busy: "Google's AI is busy right now. Try again in a minute." };
+
+function notice(words) { // the card's notice box (a hairline box and a square), the helpline message's
+  $("fix-care").textContent = words;
+  show("fix-care");
 }
 
 function careSaid(f, words) {

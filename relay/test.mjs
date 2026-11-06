@@ -214,8 +214,71 @@ assert.equal(sent.length, before, "and never reaches Google");
   for (const kept of [...puts.map(([, v]) => v), ...counted]) {
     assert.ok(!kept.includes(marker) && !kept.includes("Fix row") && !kept.includes("inv_ana"), "nothing the request said is stored - " + kept);
   }
-  assert.deepEqual([...read].filter((k) => !["TOKENS", "COUNTER", "DAILY_PER_INVITE", "DAILY_TOTAL", "GEMINI_KEY"].includes(k)), [],
+  assert.deepEqual([...read].filter((k) => !["TOKENS", "COUNTER", "DAILY_PER_INVITE", "DAILY_TOTAL", "GEMINI_KEY", "MODELS"].includes(k)), [],
     "the relay reads no other binding - " + [...read]);
+}
+// AH-145: one free model's day used up, or it overloaded for hours, while others answered (each model has its own
+// quota). With MODELS listing backups, the relay asks the next one at once, counted against the day's total first;
+// without them (the default), it answers as before
+{
+  const perDay = '{"error":{"message":"Quota exceeded for metric GenerateRequestsPerDayPerProjectPerModel-FreeTier, project 1234"}}';
+  const perMinute = '{"error":{"message":"Quota exceeded for metric GenerateRequestsPerMinutePerProjectPerModel-FreeTier, project 1234"}}';
+  const menv = (extra) => ({ ...env, COUNTER: namespace(), DAILY_PER_INVITE: "3", DAILY_TOTAL: "5", ...extra });
+  const ask = (e) => worker.fetch(new Request("https://relay.example/fix", { method: "POST", headers: { Authorization: "Bearer inv_ana" },
+    body: JSON.stringify(good) }), e);
+  const models = (from) => sent.slice(from).map((s) => s.body.model);
+  googleStatus = 200;
+  for (const first of [429, 503, 502]) {
+    googleBody = perDay;
+    const e = menv({ MODELS: "gemini-3.8-flash, gemini-3.6-flash,gemini-3.5-flash" });
+    googleQueue.push(first);
+    const from = sent.length;
+    const r = await ask(e);
+    assert.equal(r.status, 200, `${first}: the next model answered`);
+    assert.equal(r.headers.get("X-Model"), "gemini-3.6-flash", "the engine is told a backup answered (the pane says so)");
+    assert.deepEqual(models(from), ["gemini-3.8-flash", "gemini-3.6-flash"], `${first}: in the listed order, at once`);
+    assert.deepEqual(sent.at(-1).body.messages, sent.at(-2).body.messages, "the same request");
+    for (let i = 0; i < 2; i++) {
+      const main = await ask(e);
+      assert.ok(main.status === 200 && main.headers.get("X-Model") === null, "the main model's answer names no model");
+    }
+    assert.equal((await ask(e)).status, 429, "the backup call counted against the day's total (5), not Ana's 3: 2 + 1 + 1 + 1");
+  }
+  googleBody = perMinute; // too many this minute: another model would not help the next minute, so no switch
+  let e = menv({ MODELS: "gemini-3.8-flash,gemini-3.6-flash" });
+  googleQueue.push(429);
+  let from = sent.length;
+  let r = await ask(e);
+  assert.equal(r.status, 429);
+  assert.match((await r.json()).error, /minute/);
+  assert.deepEqual(models(from), ["gemini-3.8-flash"]);
+  googleBody = perDay; // the day's total reached: the backup is never asked uncounted
+  e = menv({ MODELS: "gemini-3.8-flash,gemini-3.6-flash", DAILY_TOTAL: "1" });
+  googleQueue.push(429);
+  from = sent.length;
+  r = await ask(e);
+  assert.match((await r.json()).error, /used up for today/);
+  assert.deepEqual(models(from), ["gemini-3.8-flash"]);
+  googleQueue.push(429, 429); // every listed model used up: said once, as before
+  e = menv({ MODELS: "gemini-3.8-flash,gemini-3.6-flash" });
+  from = sent.length;
+  r = await ask(e);
+  assert.equal(r.status, 429);
+  assert.match((await r.json()).error, /used up for today/);
+  assert.deepEqual(models(from), ["gemini-3.8-flash", "gemini-3.6-flash"]);
+  // no MODELS (today's relay): one model, the same words as before
+  e = menv({});
+  googleQueue.push(429);
+  from = sent.length;
+  r = await ask(e);
+  assert.equal((await r.json()).error, "The shared free AI is used up for today. It resets at midnight US Pacific time.");
+  assert.deepEqual(models(from), ["gemini-3.8-flash"]);
+  googleQueue.push(503, 503, 503);
+  from = sent.length;
+  r = await ask(e);
+  assert.equal(r.status, 502);
+  assert.deepEqual(models(from), ["gemini-3.8-flash", "gemini-3.8-flash", "gemini-3.8-flash"], "busy: 3 tries of the one model, as before");
+  googleBody = JSON.stringify({ error: { message: "project 1234 key AQ.secret" } });
 }
 console.log("relay abuse tests passed");
 

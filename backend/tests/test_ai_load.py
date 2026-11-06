@@ -338,3 +338,128 @@ def test_a_very_wide_row_is_fitted_to_one_request_in_seconds(monkeypatch):
     started = time.monotonic()
     client.suggest_fix(columns, [[f"v{j}" for j in range(8000)]], 0, 0, 0, "Column 4000 too high", "")
     assert time.monotonic() - started < 3
+
+
+# AH-145: gemini-3.8-flash gives a free key 20 requests a day and was overloaded for hours (503 "high demand") while
+# other free models answered: each model has its own quota. With backups configured, a used-up day or an overload goes
+# to the next model at once; empty (the default until ai_eval admits a model), nothing changes
+DAILY = (429, '{"error": {"message": "Quota exceeded for metric: GenerateRequestsPerDayPerProjectPerModel-FreeTier"}}')
+MINUTE = (429, '{"error": {"message": "Quota exceeded for metric: GenerateRequestsPerMinutePerProjectPerModel-FreeTier"}}')
+
+
+@pytest.mark.parametrize("first", [DAILY, 503, 502])
+def test_a_used_up_day_or_an_overload_is_answered_by_the_next_model_at_once(monkeypatch, first):
+    waits = []
+    monkeypatch.setattr(client, "_sleep", waits.append)
+    monkeypatch.setattr(client, "GEMINI_FALLBACKS", ("gemini-backup-a", "gemini-backup-b"))
+    sent = fake_google(monkeypatch, first, 200)
+    assert client._ask("fix it").explanation == "Use 50."
+    assert [s["model"] for s in sent] == [client.GEMINI_MODEL, "gemini-backup-a"] and waits == []
+    assert {k: v for k, v in sent[1].items() if k != "model"} == {k: v for k, v in sent[0].items() if k != "model"}
+
+
+def test_a_per_minute_limit_waits_for_the_same_model_and_never_switches(monkeypatch):
+    monkeypatch.setattr(client, "GEMINI_FALLBACKS", ("gemini-backup-a",))
+    sent = fake_google(monkeypatch, MINUTE, 200)
+    assert client._ask("fix it").explanation == "Use 50."
+    assert [s["model"] for s in sent] == [client.GEMINI_MODEL] * 2
+
+
+def test_with_no_backup_models_a_used_up_day_and_an_overload_say_what_they_said_before(monkeypatch):
+    assert client.GEMINI_FALLBACKS == ()  # off until backend/bench/ai_eval.py numbers admit a model
+    sent = fake_google(monkeypatch, DAILY)
+    with pytest.raises(ValueError) as e:
+        client._ask("fix it")
+    assert str(e.value) == "Today's free Google AI limit is used up. It resets at midnight Pacific time." and len(sent) == 1
+    sent = fake_google(monkeypatch, *[503] * 10)
+    with pytest.raises(ValueError) as e:
+        client._ask("fix it")
+    assert str(e.value) == "Google AI is busy right now. Try again in a few minutes."
+    assert len(sent) == 1 + len(client.WAITS) and {s["model"] for s in sent} == {client.GEMINI_MODEL}
+
+
+def test_when_every_model_is_used_up_for_today_the_user_hears_it_once(monkeypatch):
+    monkeypatch.setattr(client, "GEMINI_FALLBACKS", ("gemini-backup-a",))
+    sent = fake_google(monkeypatch, DAILY, DAILY)
+    with pytest.raises(ValueError, match="used up. It resets at midnight"):
+        client._ask("fix it")
+    assert [s["model"] for s in sent] == [client.GEMINI_MODEL, "gemini-backup-a"]
+
+
+def test_a_finished_answer_is_kept_under_the_model_that_gave_it(monkeypatch):
+    key = lambda model: client.hashlib.sha256(json.dumps(["gemini", client.MODEL, model, "fix", "fix it"]).encode()).hexdigest()
+    fake_google(monkeypatch)
+    client._ask("fix it")  # no backups: the same file name as before AH-145
+    assert [f.stem for f in client._cache_dir().glob("*.json")] == [key(client.GEMINI_MODEL)]
+    for f in client._cache_dir().glob("*.json"):
+        f.unlink()
+    monkeypatch.setattr(client, "GEMINI_FALLBACKS", ("gemini-backup-a",))
+    sent = fake_google(monkeypatch, 503, 200)
+    client._ask("fix it")
+    assert [f.stem for f in client._cache_dir().glob("*.json")] == [key("gemini-backup-a")]
+    assert client._ask("fix it").explanation == "Use 50." and len(sent) == 2  # the repeat is the backup's kept answer
+
+
+ASK = {"columns": ["OrderDate", "Region", "Units"], "row_index": 1, "start_row": 0, "start_col": 0, "reason": "Units below weird low 0",
+       "rows": [["2026-01-06", "East", 95], ["2026-01-07", "West", -5], ["2026-01-08", "East", 50]]}
+
+
+def test_the_fix_names_its_model_only_when_a_backup_answered(monkeypatch):
+    # the pane tells the user a backup answered (John, 2026-11-06): the engine says so only then
+    from anomaly_hunter.server import create_app
+    app = create_app().test_client()
+    fake_google(monkeypatch, fix={"explanation": "Use 5.", "changes": [{"cell": "C3", "new": "5"}]})
+    assert "model" not in app.post("/fix", json=ASK).get_json()
+    monkeypatch.setattr(client, "GEMINI_FALLBACKS", ("gemini-backup-a",))
+    fake_google(monkeypatch, 503, fix={"explanation": "Use 6.", "changes": [{"cell": "C3", "new": "6"}]})
+    out = app.post("/fix", json={**ASK, "intent": "another"}).get_json()
+    assert out["model"] == "gemini-backup-a" and out["changes"] == [{"cell": "C3", "new": "6"}]
+    assert app.post("/fix", json={**ASK, "intent": "another"}).get_json()["model"] == "gemini-backup-a"  # kept answer, same words
+
+
+def test_a_relay_answer_from_a_backup_model_is_named_and_kept_under_it(monkeypatch):
+    sent = fake_google(monkeypatch)
+    client.KEY_FILE.unlink()
+    monkeypatch.setattr(client, "RELAY_URL", "https://relay.example")
+    client.INVITE_FILE.write_text("inv_" + "a" * 24, encoding="utf-8")
+    real = client.urllib.request.urlopen
+
+    def backup(req, timeout=None, **kw):  # relay/worker.js says which backup answered in X-Model
+        r = real(req, timeout)
+        r.headers = {"X-Model": "gemini-3.6-flash"}
+        return r
+    monkeypatch.setattr(client.urllib.request, "urlopen", backup)
+    out = client.suggest_fix(ASK["columns"], ASK["rows"], 1, 0, 0, ASK["reason"], "")
+    assert out["model"] == "gemini-3.6-flash" and len(sent) == 1
+    key = client.hashlib.sha256(json.dumps(["relay", client.MODEL, "gemini-3.6-flash", "fix", sent[0]["messages"][0]["content"]]).encode()).hexdigest()
+    assert [f.stem for f in client._cache_dir().glob("*.json")] == [key]
+
+
+@pytest.mark.parametrize("answers,limit,words", [
+    ((DAILY,), "day", "Today's free Google AI limit is used up. It resets at midnight Pacific time."),
+    ((503,) * 10, "busy", "Google AI is busy right now. Try again in a few minutes."),
+    ((400,), None, "Google AI answered with error 400. Try again in a few minutes."),
+])
+def test_a_used_up_day_or_google_busy_is_tagged_so_the_pane_can_say_it_and_the_words_stay(monkeypatch, answers, limit, words):
+    # John, 2026-11-06: the pane says in its notice box when every model is used up for today or busy
+    from anomaly_hunter.server import create_app
+    fake_google(monkeypatch, *answers)
+    r = create_app().test_client().post("/fix", json=ASK)
+    assert r.status_code == 502 and r.get_json().get("error") == words and r.get_json().get("limit") == limit
+
+
+@pytest.mark.parametrize("status,said,limit", [
+    (429, "The shared free AI is used up for today. It resets at midnight US Pacific time.", "day"),
+    (429, "You've used today's AI fixes for this invite. They reset at midnight US Pacific time.", "day"),
+    (429, "The shared AI is busy right now. Try again in a minute.", "busy"),
+    (502, "Google AI answered with error 503. Try again in a few minutes.", "busy"),
+    (502, "Google AI answered with error 403. Try again in a few minutes.", None),
+])
+def test_the_relays_used_up_day_and_busy_are_tagged_too(monkeypatch, status, said, limit):
+    from anomaly_hunter.server import create_app
+    fake_google(monkeypatch, (status, json.dumps({"error": said})))
+    client.KEY_FILE.unlink()
+    monkeypatch.setattr(client, "RELAY_URL", "https://relay.example")
+    client.INVITE_FILE.write_text("inv_" + "a" * 24, encoding="utf-8")
+    out = create_app().test_client().post("/fix", json=ASK).get_json()
+    assert out["error"] == said and out.get("limit") == limit

@@ -2,6 +2,7 @@ import { $, show } from "../utils/dom.js";
 import { saveKey } from "../features/ai.js";
 import { forgetWorkbook } from "../features/forget.js";
 import { act } from "../hooks/use-action.js";
+import { clearAll } from "../features/memory.js";
 
 // One /key at a time: a double click on Save sent two, and each Google key is tried with Google for up to 15 s (AH-87).
 // Not act(): it would put "AI help is on/off" over the words the engine sent back about the key
@@ -26,6 +27,10 @@ export function initSettings() {
     else $("ai-state").textContent = "Paste a key in the box first, then click Save key."; // an empty Save is not a Remove
   });
   $("remove-key").onclick = once(() => saveKey(""));
+  $("forget-ai").addEventListener("click", () => { // AH-143: every fix Ask AI remembers on this PC, in every workbook
+    clearAll();
+    $("forget-ai-state").textContent = "Done. Ask AI no longer knows any fix you accepted before.";
+  });
   $("forget-book").onclick = act(async () => {
     $("forget-state").textContent = "";
     const gone = await forgetWorkbook();

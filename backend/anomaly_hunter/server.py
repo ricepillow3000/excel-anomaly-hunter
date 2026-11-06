@@ -231,8 +231,8 @@ def create_app(scan_csv=None):
             app.logger.exception("Claude API error")
             code = f" (HTTP {e.status_code})" if getattr(e, "status_code", None) else ""
             return {"error": f"Claude answered with a problem{code}. Try again in a minute, and if it happens again, the details are in {LOG_AT}."}, 502
-        except ValueError as e:
-            return {"error": str(e)}, 502
+        except ValueError as e:  # AH-145: limit "day" or "busy" = the pane's notice says it in its own words
+            return {"error": str(e), **({"limit": e.limit} if isinstance(e, client.Limit) else {})}, 502
         except Exception:  # anything new still answers in our words, never Werkzeug's or the provider's (2026-10-16)
             app.logger.exception("AI call failed")
             return {"error": f"Ask AI hit a problem it didn't expect. Try again, and if it happens again, the details are in {LOG_AT}."}, 502
@@ -285,10 +285,14 @@ def create_app(scan_csv=None):
         formulas = body.get("formulas")  # the flagged row's formulas, so Claude fixes inputs instead of overwriting them
         if formulas is not None and not (isinstance(formulas, list) and len(formulas) == len(body["columns"])):
             return {"error": "'formulas' must be a list as long as 'columns'"}, 400
+        memory = body.get("memory")  # AH-143: fixes the user accepted before in this column, kept by the pane on this PC
+        if memory is not None and not (isinstance(memory, list) and len(memory) <= 5
+                                       and all(isinstance(m, str) and len(m) <= 200 for m in memory)):
+            return {"error": "'memory' must be a list of at most 5 texts, each at most 200 characters"}, 400
         if care.distress(intent):  # AH-125: helpline numbers from the engine itself, before any key check or AI call
             return {"explanation": care.MESSAGE, "changes": [], "care": True}
         return ai(lambda: client.suggest_fix(body["columns"], body["rows"], body["row_index"], body["start_row"],
-                                             body["start_col"], str(body.get("reason") or ""), intent, formulas))
+                                             body["start_col"], str(body.get("reason") or ""), intent, formulas, memory=memory))
 
     @app.post("/odd-text")
     def odd_text_route():

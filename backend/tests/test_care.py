@@ -61,6 +61,16 @@ def test_a_crisis_request_gets_the_care_answer_with_no_ai_call_and_nothing_cache
     assert not client._cache_dir().exists() or list(client._cache_dir().iterdir()) == []
 
 
+def test_a_crisis_request_sends_none_of_the_users_past_fixes_and_caches_nothing(monkeypatch):
+    # AH-143: the past fixes the pane remembers ride along with Ask AI; a care answer still sends nothing at all
+    calls = _no_network(monkeypatch)
+    client.KEY_FILE.write_text("AIzaFakeKeyForTheTest_123")
+    r = create_app().test_client().post("/fix", json={**BODY, "intent": "I want to die", "memory": ["Units: x: -5 -> 5"]})
+    assert r.status_code == 200 and r.get_json() == {"explanation": care.MESSAGE, "changes": [], "care": True}
+    assert calls == []
+    assert not client._cache_dir().exists() or list(client._cache_dir().iterdir()) == []
+
+
 def test_the_care_answer_needs_no_ai_key(monkeypatch):
     calls = _no_network(monkeypatch)
     assert not client.api_key_configured()
