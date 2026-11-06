@@ -123,6 +123,14 @@ EXCEL_ERROR = re.compile(r"#(N/A|DIV/0!|REF!|VALUE!|NAME\?|NUM!|NULL!|SPILL!|CAL
 MONEY = re.compile(r"(\()?([-+])?[$€£]?\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s*(%)?(\))?")
 
 
+def _float(v):
+    # pandas reads "1E 92" (tidytuesday's historical_markers marker_no) as a number, float() does not: text, never a 500 (AH-140)
+    try:
+        return float(v)
+    except ValueError:
+        return float("nan")
+
+
 def _num(s):
     """Cells -> numbers (NaN where not a number). Plain numbers as pandas reads them, plus money/percent text."""
     # "-" is how accounting format shows 0 in an exported sheet - when it's the column's convention (8%+ of its cells, the
@@ -134,7 +142,7 @@ def _num(s):
     # ...and read exactly: pandas' own parser is off in the 15th digit (-0.013338153250515461 came back -0.0133381532505154),
     # so a reason quoted a value no cell holds (AH-40)
     if num.dtype.kind == "f":  # whole numbers it reads exactly, and keeps as integers
-        num[num.notna()] = src[num.notna()].astype(float)
+        num[num.notna()] = src[num.notna()].map(_float)
     m = s[num.isna()].astype(str).str.strip().str.extract(f"^{MONEY.pattern}$")
     ok = m[2].notna() & (m[0].isna() == m[5].isna())  # parentheses come in pairs
     v = (m[2].str.replace(",", "") + m[3].fillna("")).astype(float)
