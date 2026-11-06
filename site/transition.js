@@ -188,7 +188,9 @@
     old.after(next); // the new page is in the document before the old one leaves it: no frame without a page
     current = pageOf(u);
 
-    // where the new page opens: its saved place (Back, Forward), its #anchor, or its top with the header where it was
+    // where the new page opens: its saved place (Back, Forward), its #anchor, or its top with the header where it was. A
+    // second blind review (AH-138) asked for the very top, the notice line shown, but the header, which stays mounted
+    // over the curtain, then dropped 36 px at the swap; the first review praised that it stays put, so it does
     const anchor = y === null ? find(next, u.hash) || find(document, u.hash) : null;
     if (y !== null) scrollTo(0, y);
     else if (anchor) anchor.scrollIntoView();
@@ -245,9 +247,56 @@
 // the closed links, only on a phone with this script running). Escape closes it and gives focus back to the button; a
 // link closes it as it is followed. Listeners on the document, so the header kept across page changes needs no new
 // ones, and its own block, apart from the transitions above, so either can change alone.
+// A dropdown from its button (AH-138, John 2026-11-06: "popovers start at scale 0.95, come in from their trigger and go
+// out to it"): it opens from the button's centre (--menu-x, in px from the links' left edge, styles.css's
+// transform-origin) and, with motion, closes back there: aria-expanded says "false" at once, while data-closing keeps the
+// links drawn, out of reach (inert), for the exit's --pop-out; reopened meanwhile, the exit is dropped
 (() => {
+  const html = document.documentElement;
+  const still = () => (window.AH ? window.AH.still : matchMedia("(prefers-reduced-motion: reduce)").matches);
   const btn = () => document.querySelector(".menu-btn");
-  const set = (b, open) => b.setAttribute("aria-expanded", open ? "true" : "false");
+  let closing = null; // { nav, done }
+  const drop = () => { if (closing) closing.done(); };
+  // open, it closes as a popover does (AH-138 review): on a press anywhere outside it and its button, and once the page
+  // has scrolled more than 8 px from where it opened (on a phone the bar scrolls away with it)
+  let from = 0;
+  const outside = (e) => { const b = btn(); if (b && !(e.target.closest && e.target.closest(".menu-btn, #main-nav"))) set(b, false); };
+  const scrolled = () => { const b = btn(); if (b && Math.abs(scrollY - from) > 8) set(b, false); };
+  const watch = (on) => { const f = on ? addEventListener : removeEventListener;
+    f("pointerdown", outside, { capture: true, passive: true }); f("scroll", scrolled, { passive: true }); };
+  function set(b, open) {
+    const nav = document.getElementById(b.getAttribute("aria-controls"));
+    const was = b.getAttribute("aria-expanded") === "true";
+    if (open) {
+      drop();
+      b.setAttribute("aria-expanded", "true");
+      from = scrollY; watch(true);
+      // read once the links are drawn (closed, they have no box), before the frame that shows them
+      if (nav) { const r = b.getBoundingClientRect(); nav.style.setProperty("--menu-x", Math.round(r.left + r.width / 2 - nav.getBoundingClientRect().left) + "px"); }
+      // its links are at rest as it opens: opened during the first load's entrance, they were still flying in from past the
+      // screen's right edge inside the menu (motion.js), where a press could not reach them
+      if (nav) for (const a of nav.getAnimations({ subtree: true })) if (a.effect && a.effect.target !== nav) a.finish();
+      return;
+    }
+    watch(false);
+    // the exit plays only for a menu that is open and drawn (a phone), with motion
+    if (was && nav && !still() && b.getClientRects().length && nav.getClientRects().length) {
+      drop();
+      nav.setAttribute("data-closing", "");
+      nav.inert = true;
+      const t = parseFloat(getComputedStyle(html).getPropertyValue("--pop-out")) || 160;
+      const ended = (e) => { if (e.target === nav && e.animationName === "pop-out") me.done(); };
+      const me = { nav, done() {
+        if (closing !== me) return;
+        closing = null; clearTimeout(me.timer); nav.removeEventListener("animationend", ended);
+        nav.removeAttribute("data-closing"); nav.inert = false;
+      } };
+      closing = me;
+      nav.addEventListener("animationend", ended);
+      me.timer = setTimeout(me.done, t + 150); // if the animationend never comes (a hidden tab)
+    }
+    b.setAttribute("aria-expanded", "false");
+  }
   document.addEventListener("click", (e) => {
     const b = btn(), t = e.target.closest ? e.target : null;
     if (!b || !t) return;

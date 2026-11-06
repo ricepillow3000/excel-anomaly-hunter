@@ -49,8 +49,15 @@
      350 ms put a slow phone's headline (4x CPU, slow 4G) past AH-87's 2.5 s budget; 120 ms keeps the bar first */
   --reveal-dur: 1100ms; --reveal-rise: 24px; --stagger: 90ms; --stagger-cap: 6;
   --lift-dur: 1200ms; --ease-lift: cubic-bezier(.33, 1, .68, 1); /* the checks' heading turned face up (AH-91) */
-  --skeleton-dur: 1300ms; --land-step: 32ms; --land-fade: 280ms; /* the sample sheet loading (AH-89) */
+  --skeleton-dur: 1300ms; --land-step: 30ms; --land-fade: 280ms; /* the sample sheet loading (AH-89); its rows land on the
+     list rows' 30 ms rhythm (AH-138, was 32) */
   --turn-dur: 700ms; --fill-dur: 350ms; --podium-dur: 250ms; /* the sample sheet's page turn, button fill, raised cell (AH-92) */
+  /* AH-138 (John, 2026-11-06): list rows stagger 30 ms (headings, ledes and blocks keep --stagger); a press settles to
+     .97; a popover (the phone's menu, a row's detail box) grows from .95 at its trigger in 200 ms and goes back to it in
+     160 ms, an exit 20% shorter than its entrance; the tabs' one mark slides in 300 ms and stretches 12% on the way; the
+     page catches up with a wheel on a 150 ms time constant; a success pulses once over 600 ms */
+  --stagger-row: 30ms; --press: .97; --press-dur: 120ms; --pop-in: 200ms; --pop-out: 160ms; --pop-from: .95;
+  --slide-dur: 300ms; --stretch: 1.12; --scroll-weight: 150ms; --pulse-dur: 600ms;
 
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='g' filterUnits='userSpaceOnUse' x='0' y='0' width='320' height='320'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' seed='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .05 0 0 0 0 .1 0 0 0 0 .22 0 0 0 -2 1.25'/%3E%3C/filter%3E%3Crect width='320' height='320' filter='url%28%23g%29' opacity='.07'/%3E%3C/svg%3E");
   --grain-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='g' filterUnits='userSpaceOnUse' x='0' y='0' width='320' height='320'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' seed='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .94 0 0 0 0 .9 0 0 0 0 .82 0 0 0 -2 1.25'/%3E%3C/filter%3E%3Crect width='320' height='320' filter='url%28%23g%29' opacity='.06'/%3E%3C/svg%3E");
@@ -63,10 +70,16 @@
 [hidden] { display: none !important; }
 html { scroll-padding-top: 88px; } /* the sticky bar would cover an anchor's heading */
 body { margin: 0; background: var(--grain), var(--grid), var(--paper); color: var(--ink-2); font: 400 var(--fs-0)/1.55 var(--sans); }
+/* a short page (the 404, the thank-you) fills the screen to its footer (AH-138 review: the 404 ended at 740 px of 900 over
+   bare grid). The page itself grows; while transition.js swaps pages the leaving one is fixed, out of the flow */
+body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+main { flex: 1 0 auto; }
 a { color: var(--ink); text-decoration-color: var(--gold); text-underline-offset: 3px; text-decoration-thickness: 1px; }
 a:hover { text-decoration-thickness: 2px; }
 /* Chromium's own placeholder grey is 4.2:1 on paper: the notes' colour, at full strength (AH-87) */
 ::placeholder { color: var(--muted); opacity: 1; }
+/* a tap shows our own pressed look (the gold line), never the browser's cyan box over it (AH-138 review) */
+a, button, summary, [role="tab"] { -webkit-tap-highlight-color: transparent; }
 :focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 h1, h2, h3 { margin: 0; color: var(--ink); font-weight: 800; }
 h1, h2 { line-height: .95; letter-spacing: normal; text-wrap: balance; }
@@ -88,12 +101,16 @@ code { font-family: var(--mono); font-size: .88em; background: var(--paper-2); b
    out on a soft edge of plain paper in the section's own colour, so no contour line crosses the text (AH-98, John
    2026-11-02). One still layer under the block: nothing about it moves or redraws. Before any rule that positions a
    block otherwise (the contents' sticky list).
-   The paper reaches 32 px past the block and fades over those 32 px (two masks, intersected, so the corners round off).
+   The paper reaches 96 px past the block above and below and fades over those 96 px (two masks, intersected, so the
+   corners round off): 32 px read as pale rectangles with straight edges where the contour lines stopped (AH-138 review).
+   Sideways it reaches as far as the screen allows, up to 96 px (--feather-x: the wrap's margin, or more past 1280 px),
+   so it never makes the page scroll sideways.
    It sits at z-index -1 in its wrap, under every text there; a headline is lifted over it (z-index 1), since a block
    still rising is a layer of its own and would otherwise lay its paper over the headline above it */
 .calm { position: relative; }
-.calm::before { content: ""; position: absolute; inset: -32px; z-index: -1; background: var(--calm, var(--paper)); pointer-events: none;
-  mask-image: linear-gradient(90deg, transparent, #000 32px, #000 calc(100% - 32px), transparent), linear-gradient(transparent, #000 32px, #000 calc(100% - 32px), transparent);
+.calm::before { --feather-x: min(96px, max(var(--margin), (100vw - var(--wrap)) / 2 - 8px));
+  content: ""; position: absolute; inset: -96px calc(-1 * var(--feather-x)); z-index: -1; background: var(--calm, var(--paper)); pointer-events: none;
+  mask-image: linear-gradient(90deg, transparent, #000 var(--feather-x), #000 calc(100% - var(--feather-x)), transparent), linear-gradient(transparent, #000 96px, #000 calc(100% - 96px), transparent);
   mask-composite: intersect; }
 .band-panel { --calm: var(--paper-2); }
 .sec-title, .page-head h1 { position: relative; z-index: 1; }
@@ -107,7 +124,7 @@ code { font-family: var(--mono); font-size: .88em; background: var(--paper-2); b
 /* the announcement line and the bar */
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--dark); }
 .notice-bar { background: var(--dark); color: var(--on-dark); }
-.notice-bar p { max-width: calc(var(--wrap) + 2 * var(--margin)); margin: 0 auto; padding: 8px var(--margin); font: 500 var(--fs--1)/1.5 var(--sans); }
+.notice-bar p { max-width: calc(var(--wrap) + 2 * var(--margin)); margin: 0 auto; padding: 8px var(--margin); font: 500 var(--fs--1)/1.5 var(--sans); text-wrap: balance; } /* two even lines on a phone, never "Download" alone on the second (AH-138 review) */
 .notice-bar a { color: var(--on-dark); text-decoration-color: var(--gold-hi); text-decoration-thickness: 2px; }
 /* a link standing alone (the notice's Download, the footer's, the checks' "Row 22") is a target of 24 px at least
    (AH-115, WCAG 2.2 2.5.8: they were 17 and 21 px tall); the padding that makes it so is taken back by an equal margin, so
@@ -130,8 +147,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .menu-btn { display: none; }
 
 /* buttons: rectangles */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 48px; padding: 0 var(--s3); border: 2px solid transparent; border-radius: 0;
-  font: 700 var(--fs--1)/1 var(--sans); text-decoration: none; cursor: pointer; } /* hover swaps colours at once: no colour is animated */
+.btn { position: relative; isolation: isolate; display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 48px; padding: 0 var(--s3); border: 2px solid transparent; border-radius: 0;
+  font: 700 var(--fs--1)/1 var(--sans); text-decoration: none; cursor: pointer; } /* no colour is animated: with motion, a hover's new fill is drawn across by a mask (below) */
 .btn svg { width: 18px; height: 18px; flex: none; }
 .btn-primary { background: var(--wine); color: var(--on-wine); }
 .btn-primary:hover { background: var(--ink); color: var(--paper); }
@@ -140,6 +157,22 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .btn-ghost:hover { background: var(--ink); color: var(--paper); }
 .btn-plain { background: var(--paper); color: var(--ink); border-color: var(--ink); }
 .btn-plain:hover { background: var(--ink); color: var(--paper); }
+/* AH-138 (John, 2026-11-06: "masks for reveals and colour changes"): with motion, a button's hover colour is drawn across
+   from the left by a layer growing by scaleX over --fill-dur, and taken back 20% faster. The main button's navy lies under
+   its label (z-index -1 inside the button's own stacking context), whose white turns paper at once: light on wine and on
+   navy at every frame. The outlined buttons' label would turn paper on paper half way, so their layer is the filters'
+   difference fill instead: #EBDCB8 less the paper is the navy exactly, and less the navy label a light gold (10:1), over
+   the button's own paper. Under reduced motion and forced colours: the instant swap above, and no layer */
+@media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
+  .btn::before { content: ""; position: absolute; inset: 0; transform: scaleX(0); transform-origin: 0 50%; pointer-events: none;
+    transition: transform calc(var(--fill-dur) * .8) var(--ease-out); }
+  .btn:hover::before { transform: scaleX(1); transition-duration: var(--fill-dur); }
+  .btn-primary::before { inset: -2px; z-index: -1; background: var(--ink); } /* over the 2 px transparent border too: the wine showed through it as a rim */
+  .btn-primary:hover { background: var(--wine); }
+  .btn-ghost, .btn-plain { background: var(--grain), var(--paper); }
+  .btn-ghost::before, .btn-plain::before { z-index: 1; background: #EBDCB8; mix-blend-mode: difference; }
+  .btn-ghost:hover, .btn-plain:hover { background: var(--grain), var(--paper); color: var(--ink); }
+}
 
 /* sections: a hairline between them, the headline from column 1 over ten columns, as the hero's, and the lede from
    column 7. The small capitals label that sat over each headline was dropped (AH-98: it named what the headline says) */
@@ -173,7 +206,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .ws-top { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s3); align-items: center; padding: 0 var(--s3); min-height: 52px; background: var(--ink); color: var(--paper); }
 .ws-top b { font: 800 var(--fs-0)/1.3 var(--sans); letter-spacing: normal; }
 .ws-top > span { font-size: var(--fs--1); color: var(--on-dark-2); font-variant-numeric: tabular-nums; }
-.tabs { display: flex; flex-wrap: wrap; margin-left: auto; align-self: stretch; } /* text at 200% wraps them, never past the screen (AH-112) */
+.tabs { position: relative; display: flex; flex-wrap: wrap; margin-left: auto; align-self: stretch; } /* text at 200% wraps them, never past the screen (AH-112) */
 .tabs button { position: relative; font: 600 var(--fs--1)/1 var(--sans); color: var(--on-dark-2); background: none; border: 0; border-bottom: 3px solid transparent; border-radius: 0; padding: 3px 16px 0; cursor: pointer; }
 .tabs button:hover { color: var(--paper); }
 .tabs button[aria-selected="true"] { color: var(--paper); }
@@ -181,6 +214,11 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .tabs button::after { content: ""; position: absolute; left: 0; right: 0; bottom: -3px; height: 3px; background: var(--gold-hi); transform: scaleX(0); transform-origin: 0 50%; }
 .tabs button:is(:hover, :focus-visible, [aria-selected="true"])::after { transform: scaleX(1); }
 .tabs button:not([aria-selected="true"]):is(:hover, :focus-visible)::after { opacity: .5; }
+/* AH-138 (John, 2026-11-06: "one shared element reused across shared objects"): with home.js the chosen tab's line is
+   one mark, the same node for every tab, moved from tab to tab (a 1 px line posed by translate and scaleX to the chosen
+   tab's place and width); the chosen tab's own line steps aside for it, and a hovered tab keeps its fainter sweep */
+.tab-mark { position: absolute; left: 0; top: 0; width: 1px; height: 3px; background: var(--gold-hi); transform-origin: 0 50%; pointer-events: none; }
+.tabs[data-mark] button[aria-selected="true"]::after { transform: scaleX(0); opacity: 0; transition-duration: 0s; }
 /* the filter column ends where the page's third column does: (12 columns - 11 gutters) / 4, plus its gutters */
 .ws-body { position: relative; display: grid; grid-template-columns: calc((100% - 11 * var(--gutter)) / 4 + 2.5 * var(--gutter)) minmax(0, 1fr); }
 .typology { display: grid; align-content: start; border-right: 1px solid var(--ink); }
@@ -235,21 +273,36 @@ table.grid { width: 100%; border-collapse: collapse; font: 500 var(--fs--1)/1.3 
 .ws:not([data-filter="all"]) .grid tbody tr:not(.skip) { opacity: .7; }
 .ws[data-filter="recon"] .grid tbody tr[data-kind~="recon"], .ws[data-filter="keying"] .grid tbody tr[data-kind~="keying"],
 .ws[data-filter="label"] .grid tbody tr[data-kind~="label"], .ws[data-filter="time"] .grid tbody tr[data-kind~="time"] { opacity: 1; }
+/* ... and loses its marks: its coloured cells read as plain ones and its key square goes, so only the chosen check's rows
+   still look flagged (AH-138 review: under "Totals that don't add up" all 7 rows still looked flagged). Its values stay */
+:is(.ws[data-filter="recon"] .grid tbody tr:not([data-kind~="recon"]), .ws[data-filter="keying"] .grid tbody tr:not([data-kind~="keying"]),
+  .ws[data-filter="label"] .grid tbody tr:not([data-kind~="label"]), .ws[data-filter="time"] .grid tbody tr:not([data-kind~="time"])) :is(td.flag, td.q, td.mended) {
+  background: transparent; color: var(--ink); font-weight: 500; box-shadow: none; outline: none; border-bottom-color: var(--rule); }
+:is(.ws[data-filter="recon"] .grid tbody tr:not([data-kind~="recon"]), .ws[data-filter="keying"] .grid tbody tr:not([data-kind~="keying"]),
+  .ws[data-filter="label"] .grid tbody tr:not([data-kind~="label"]), .ws[data-filter="time"] .grid tbody tr:not([data-kind~="time"])) td.why i { visibility: hidden; }
 /* the detail box under its row */
 /* the page turn (AH-92, home.js): a copy of the panel as it was, over the real one, turning away from its left edge while
    the real panel already shows the new state underneath. The copy is clipped to the sheet */
 .ws-main:has(> [data-turn]) { overflow: clip; }
 [data-turn] { position: absolute; z-index: 3; margin: 0; background: var(--grain), var(--paper-2); transform-origin: 0 50%; backface-visibility: hidden; pointer-events: none; }
+/* the copy is a still picture of the panel: a CSS animation in it (the scan meter's fill) restarted from its first frame
+   (AH-138 review: the bar refilled from 20% under "100%"); turn() writes each meter's pose onto the copy */
+[data-turn] * { animation: none !important; }
 [data-turn-shade] { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(12, 25, 56, .08), rgba(12, 25, 56, .45)); opacity: 0; }
-.matrix { position: absolute; left: var(--s2); z-index: 2; width: min(440px, calc(100% - 32px)); background: var(--paper); border: 1px solid var(--ink); font-size: var(--fs--1); color: var(--ink); }
+/* a box's closing copy (home.js, AH-138) wears the box's looks without its class, so nothing that counts the open boxes
+   ever counts it */
+/* raised off the sheet: a still shadow under it, never animated (AH-138 review: flat on the table it did not read as a popover) */
+.matrix, [data-pop-copy] { box-shadow: 0 18px 40px -16px rgba(12, 25, 56, .35); }
+.matrix, [data-pop-copy] { position: absolute; left: var(--s2); z-index: 2; width: min(440px, calc(100% - 32px)); background: var(--paper); border: 1px solid var(--ink); font-size: var(--fs--1); color: var(--ink); }
 .m-head { display: flex; justify-content: space-between; align-items: center; gap: var(--s2); padding: 8px 12px; background: var(--ink); color: var(--paper); }
 .m-head b { font: 700 var(--fs--1)/1.3 var(--sans); }
 .m-close { font: 700 var(--fs--1)/1 var(--sans); color: var(--paper); background: none; border: 1px solid var(--paper); border-radius: 0; padding: 6px 8px; cursor: pointer; }
 .m-close:hover { background: var(--paper); color: var(--ink); }
-.matrix dl { margin: 0; display: grid; grid-template-columns: minmax(0, 112px) minmax(0, 1fr); }
-.matrix dt, .matrix dd { margin: 0; padding: 7px 12px; border-bottom: 1px solid var(--rule); line-height: 1.45; }
-.matrix dt { color: var(--ink-2); font-weight: 700; border-right: 1px solid var(--rule); }
-.matrix dl > :nth-last-child(-n+2) { border-bottom: 0; }
+[data-pop-copy] { pointer-events: none; }
+:is(.matrix, [data-pop-copy]) dl { margin: 0; display: grid; grid-template-columns: minmax(0, 112px) minmax(0, 1fr); }
+:is(.matrix, [data-pop-copy]) :is(dt, dd) { margin: 0; padding: 7px 12px; border-bottom: 1px solid var(--rule); line-height: 1.45; }
+:is(.matrix, [data-pop-copy]) dt { color: var(--ink-2); font-weight: 700; border-right: 1px solid var(--rule); }
+:is(.matrix, [data-pop-copy]) dl > :nth-last-child(-n+2) { border-bottom: 0; }
 .m-said { padding: 8px 12px; border-top: 1px solid var(--ink); background: var(--paper-2); color: var(--ink-2); }
 /* the scanning state, in the pane's own words; the after-fixes state is the sheet itself, corrected */
 .busy { min-height: 440px; display: grid; align-content: center; justify-items: start; gap: var(--s2); padding: var(--s5); }
@@ -270,6 +323,7 @@ table.grid { width: 100%; border-collapse: collapse; font: 500 var(--fs--1)/1.3 
 .grid td.mended { font-weight: 800; box-shadow: inset 0 -3px 0 var(--gold); }
 td.why i.ok { display: inline-block; width: 10px; height: 10px; margin-right: 8px; vertical-align: -1px; background: var(--gold); }
 .after-note { padding: 12px var(--s3); border-top: 1px solid var(--rule); font-size: var(--fs--1); color: var(--ink-2); }
+.swipe { display: none; } /* a phone only (below): the sample scrolls sideways there */
 .ws-foot { padding: 12px var(--s3); border-top: 1px solid var(--ink); font-size: var(--fs--1); color: var(--ink-2); }
 /* the way on to the checks, right under the sheet (AH-91) */
 .next-up { grid-column: 1 / -1; margin-top: var(--s3); display: flex; justify-content: center; }
@@ -325,6 +379,8 @@ dl.anchor { position: relative; margin: 0; display: grid; grid-template-columns:
    link to the release page took 1 or 2, so the facts grew when GitHub answered. An invisible hash of zeros, floated
    under the text with no width of its own, keeps the box that tall at every width */
 #sha { display: flow-root; }
+/* the hash may break anywhere, the release page link's words never ("pag / e" on a phone, AH-138 review) */
+#sha a { word-break: normal; overflow-wrap: normal; }
 #sha::before { content: "0000000000000000000000000000000000000000000000000000000000000000"; float: left; width: 100%; margin-right: -100%; visibility: hidden; }
 #rel { font-variant-numeric: tabular-nums; }
 .steps { grid-column: 1 / -1; margin-top: var(--s8); display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); column-gap: var(--gutter); row-gap: var(--s4); }
@@ -334,11 +390,38 @@ dl.anchor { position: relative; margin: 0; display: grid; grid-template-columns:
 .steps li::before { content: counter(step, decimal-leading-zero); font: 800 var(--fs-5)/.9 var(--sans); letter-spacing: normal; color: var(--wine); font-variant-numeric: tabular-nums; }
 .steps li b { color: var(--ink); }
 .steps .line { display: block; margin-top: 12px; font-size: var(--fs--2); word-break: normal; overflow-x: auto; white-space: nowrap; }
+/* the PowerShell line's Copy button (AH-138): home.js shows it (hidden with no script). Copied, its two icons trade places
+   (the copy icon shrinks, blurs and fades as the check comes in from the same) and a gold ring pulses out once */
+.copy-btn { position: relative; display: inline-flex; align-items: center; gap: 8px; min-height: 32px; margin-top: 8px; padding: 0 12px;
+  font: 700 var(--fs--1)/1 var(--sans); color: var(--ink); background: var(--paper); border: 1px solid var(--ink); border-radius: 0; cursor: pointer; }
+.copy-btn:hover { background: var(--ink); color: var(--paper); }
+.copy-btn .icons { position: relative; width: 16px; height: 16px; flex: none; }
+.copy-btn .ico { position: absolute; inset: 0; }
+.copy-btn .ico svg { display: block; width: 16px; height: 16px; }
+/* the label is as wide as "Copied" from the start (an invisible copy of the word in the same cell), so the button never
+   grows under the pointer when it says so (AH-138 review: 172 to 198 px); "Press Ctrl+C" may widen it */
+.copy-label { display: inline-grid; justify-items: center; }
+.copy-label > *, .copy-label::after { grid-area: 1 / 1; }
+.copy-label::after { content: "Copied"; visibility: hidden; }
+.copy-btn .ico + .ico, .copy-btn[data-done] .ico:first-child { opacity: 0; transform: scale(.6); filter: blur(4px); }
+.copy-btn[data-done] .ico + .ico { opacity: 1; transform: none; filter: none; }
+/* a success pulses once (AH-138): a hairline ring, opacity and scale only. The Copy button's reaches a third past it; the
+   forms' result box's a few pixels, each time it appears (an element that starts being drawn starts its animation) */
+.copy-btn::after, .result::after { content: ""; position: absolute; inset: -1px; border: 1px solid var(--gold); opacity: 0; pointer-events: none; }
+.result::after { --ring-to: 1.02; }
+@media (prefers-reduced-motion: no-preference) {
+  .copy-btn .ico { transition: opacity var(--pop-out) var(--ease-out), transform var(--pop-out) var(--ease-out), filter var(--pop-out) var(--ease-out); }
+  .copy-btn[data-done] .ico { transition-duration: var(--pop-in), var(--pop-in), var(--pop-in); }
+  .copy-btn[data-done]::after, .result::after { animation: pulse var(--pulse-dur) var(--ease-out); }
+}
+@keyframes pulse { from { opacity: .6; transform: scale(1); } to { opacity: 0; transform: scale(var(--ring-to, 1.35)); } }
 /* the checksum and the Unblock route, closed under the steps (AH-135): a person who wants them opens them */
 .check-file { grid-column: 1 / span 6; align-self: start; border-top: 1px solid var(--rule); font-size: var(--fs--1); color: var(--ink-2); }
 .check-file summary { display: flex; align-items: center; min-height: 44px; cursor: pointer; font-weight: 700; color: var(--ink); }
 .check-file summary:active { background: var(--paper); }
-.check-file > div { display: grid; gap: var(--s2); padding-bottom: var(--s2); }
+/* one column that may shrink below the PowerShell line's width (it scrolls in its own box): an auto track took the
+   line's full width, and open at 320 px with text at 200% the page scrolled 321 px sideways (found by AH-138's check) */
+.check-file > div { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s2); padding-bottom: var(--s2); }
 .check-file b { color: var(--ink); }
 .steps .aside { grid-column: 7 / -1; font-size: var(--fs--1); color: var(--ink-2); padding-top: var(--s2); border-top: 1px solid var(--rule); }
 
@@ -409,7 +492,7 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
 .field input:focus, .field select:focus, .field textarea:focus { outline: 2px solid var(--ink); outline-offset: 0; border-color: var(--ink); }
 .confirm { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 10px; font-size: var(--fs--1); align-items: start; color: var(--ink); }
 .confirm input { width: 24px; height: 24px; margin: 0; accent-color: var(--ink); } /* 24 px, a target a thumb can hit (AH-115) */
-.result { border: 1px solid var(--ink); background: var(--paper); padding: 14px; display: grid; gap: 10px; font-size: var(--fs--1); color: var(--ink); justify-items: start; }
+.result { position: relative; border: 1px solid var(--ink); background: var(--paper); padding: 14px; display: grid; gap: 10px; font-size: var(--fs--1); color: var(--ink); justify-items: start; }
 .error { font-size: var(--fs--1); color: var(--ink); font-weight: 700; padding: 10px 12px; border: 1px solid var(--ink); background: var(--paper); }
 /* a missing field's message is scrolled to just above a phone's keyboard: flush to the edge, a fraction of a pixel of it
    fell off the screen once the bar above changed height (AH-126; the 390 x 420 check of AH-114) */
@@ -475,10 +558,17 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
 .foot a { color: var(--on-dark); text-decoration-color: var(--gold-hi); }
 
 /* pressed (AH-120): a hover said nothing to a finger on a phone, so everything that acts as a button draws a dark gold
-   line just inside its edge while it is held down (3.6:1 on paper, 4.4:1 on navy, so it shows on either fill). A colour,
-   never a movement: nothing shifts, with or without reduced motion, and nothing is animated */
-.btn:active, .links .btn-trim:active, .typology button:active, .tabs button:active, .rowbtn:active, .m-close:active, .faq summary:active, .menu-btn:active {
+   line just inside its edge while it is held down (3.6:1 on paper, 4.4:1 on navy, so it shows on either fill), in every
+   mode. John, 2026-11-06 (AH-138): "buttons scale to 0.97 on press": with motion it also settles to --press, over
+   --press-dur on --ease-out, around its centre, and back when let go. None of these has a transform of its own to lose
+   (the fills and lines are their ::before and ::after). Under reduced motion the line alone, nothing moves */
+.btn:active, .links .btn-trim:active, .typology button:active, .tabs button:active, .rowbtn:active, .m-close:active, .faq summary:active, .menu-btn:active, .copy-btn:active {
   outline: 2px solid var(--gold); outline-offset: -5px; }
+@media (prefers-reduced-motion: no-preference) {
+  .btn, .links .btn-trim, .typology button, .tabs button, .rowbtn, .m-close, .faq summary, .menu-btn, .copy-btn { transition: transform var(--press-dur) var(--ease-out); }
+  .btn:active, .links .btn-trim:active, .typology button:active, .tabs button:active, .rowbtn:active, .m-close:active, .faq summary:active, .menu-btn:active, .copy-btn:active {
+    transform: scale(var(--press)); }
+}
 
 /* motion (AH-72, AH-83, AH-84, AH-89 to AH-93; docs/design/motion.md). boot.js marks the page before it paints: data-ah
    holds the bar's and the hero's blocks for their entrance (motion.js lifts it at once, boot.js itself after 1.4 s), and data-js, kept for the
@@ -525,10 +615,16 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
     animation: sweep var(--skeleton-dur) var(--ease-in-out) both; }
   html[data-js] dl.anchor[data-loading]::after { animation-iteration-count: infinite; }
   html[data-js] dl.anchor[data-loading] :is(#sha, #sha *, #rel) { color: transparent; text-decoration-color: transparent; }
-  /* the phone's menu opens with its links settling down into place (AH-126) */
-  html[data-js] .menu-btn[aria-expanded="true"] + .links { animation: menu-in var(--fill-dur) var(--ease-out) both; }
+  /* the phone's menu is a dropdown from its button (AH-138, John 2026-11-06: "popovers start at scale 0.95, come in from
+     their trigger and go out to it"): it grows from --pop-from at the Menu button's centre (--menu-x, set by
+     transition.js as it opens) and the links' top over --pop-in, and shrinks back there over --pop-out while
+     data-closing keeps it shown (transition.js); its links settled 8 px down over 350 ms before (AH-126) */
+  html[data-js] .bar .links { transform-origin: var(--menu-x, 50%) 0; }
+  html[data-js] .menu-btn[aria-expanded="true"] + .links { animation: pop-in var(--pop-in) var(--ease-out); }
+  html[data-js] .menu-btn + .links[data-closing] { animation: pop-out var(--pop-out) var(--ease-out) forwards; }
 }
-@keyframes menu-in { from { opacity: 0; transform: translate3d(0, -8px, 0); } to { opacity: 1; transform: translate3d(0, 0, 0); } }
+@keyframes pop-in { from { opacity: 0; transform: scale(var(--pop-from)); } to { opacity: 1; transform: none; } }
+@keyframes pop-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(var(--pop-from)); } }
 @keyframes sweep { from { transform: translate3d(-100%, 0, 0); } to { transform: translate3d(100%, 0, 0); } }
 @keyframes land { from { transform: translate3d(0, 5px, 0); } to { transform: translate3d(0, 0, 0); } }
 @media print { .reveal-item, [data-enter] { opacity: 1 !important; transform: none !important; } }
@@ -598,7 +694,7 @@ html[data-moving] #field { z-index: 2; }
   /* the chosen tab's line is its ::after, whose gold the theme would paint over with the page colour; a tab's own
      transparent border would show on every tab */
   .tabs button { border-bottom-color: Canvas; }
-  .tabs button::after { forced-color-adjust: none; background: CanvasText; }
+  .tabs button::after, .tab-mark { forced-color-adjust: none; background: CanvasText; }
 }
 
 @media (max-width: 1100px) {
@@ -635,6 +731,7 @@ html[data-moving] #field { z-index: 2; }
   .tabs button { padding-inline: 12px; }
   .tabs button:first-child { padding-left: 0; }
   .ws-body { grid-template-columns: minmax(0, 1fr); }
+  .swipe { display: block; padding: 10px var(--s2) 0; font-size: var(--fs--1); color: var(--ink-2); }
   /* two columns of filters, or one when the text is so large (200%, AH-112) that two 8rem columns don't fit */
   .typology { grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr)); border-right: 0; border-bottom: 1px solid var(--ink); }
   .typology .label, .typology .key { grid-column: 1 / -1; }
@@ -671,18 +768,23 @@ html[data-moving] #field { z-index: 2; }
   /* the phone's menu (AH-126): the brand and the Menu button share the bar's first row, the links open in full width
      below them */
   html[data-js] .bar .cols { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; column-gap: var(--s2); }
-  html[data-js] .bar .links { flex: 1 0 100%; }
+  /* open, the links lie over the page under the bar (AH-138 review: in the flow they pushed the page down 85 px, and
+     "Checks" landed 85 px off when the menu closed and the page moved back up) */
+  html[data-js] .bar .links { position: absolute; top: calc(100% + 1px); left: 0; right: 0; z-index: 2; flex: none; background: var(--grain), var(--paper);
+    border-bottom: 1px solid var(--ink); padding: 8px max(var(--margin), env(safe-area-inset-right, 0px)) 12px max(var(--margin), env(safe-area-inset-left, 0px));
+    box-shadow: 0 12px 32px rgba(12, 25, 56, .18); } /* a still shadow: it lies over the page */
+  html[data-js] .bar .links a { display: flex; align-items: center; min-height: 44px; } /* a thumb's target (AH-138 review: 36 px) */
   html[data-js] .menu-btn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 var(--s2); font: 700 var(--fs--1)/1 var(--sans); color: var(--ink);
     background: var(--paper); border: 1px solid var(--ink); border-radius: 0; cursor: pointer; }
   html[data-js] .menu-btn[aria-expanded="true"] { background: var(--ink); color: var(--paper); }
-  html[data-js] .menu-btn[aria-expanded="false"] + .links { display: none; }
+  html[data-js] .menu-btn[aria-expanded="false"] + .links:not([data-closing]) { display: none; }
   html[data-js] #home .foot { padding-bottom: calc(var(--s5) + 73px + env(safe-area-inset-bottom, 0px)); }
 }
 @media (min-width: 761px) { .dock { display: none; } }
 /* a short laptop screen (1280 x 720): the hero's download was 27 px below the first screen, so the hero starts higher */
 @media (min-width: 761px) and (max-height: 820px) {
-  .hero { padding-top: var(--s5); }
-  .hero-copy { margin-top: var(--s4); }
+  .hero { padding-top: var(--s2); }
+  .hero-copy { margin-top: 12px; } /* and its buttons and the line under them 8 px or more inside the screen (AH-138 review: the line was below it) */
 }
 
 /* AH-136: a phone number broke over two lines ("(770) 265–" / "9930") on the thank-you page; kept whole where there is

@@ -14,14 +14,17 @@
 //                             and the .next-up under it below the sticky bar, "top" puts the target under the bar
 //   class="reveal-item"       content that rises into place once, the first time it scrolls into view (an
 //                             IntersectionObserver, never a scroll listener); items of the nearest data-reveal-group
-//                             that arrive together start --stagger apart, at most --stagger-cap steps
+//                             that arrive together start --stagger apart, at most --stagger-cap steps, or
+//                             --stagger-row apart in a group of list rows, data-reveal-group="rows" (AH-138)
 //   span.rule, data-depth     decoration tied to the scroll bar: a hairline drawn across, a label drifting at its own
 //                             rate. styles.css plays them on a scroll timeline (animation-timeline: view()); a browser
 //                             without one gets the same pure function of scrollY from the one scroll reader below,
 //                             for every decoration, written through --p and --drift only when a pose changes
 //   data-band                 the dark band, so the field behind the page (field.js) can invert its lines there
-// Nothing smooths toward a target: stop scrolling and everything stops where it is, scroll back and it reverses
-// exactly, and no frame is asked for while nothing moves (the idle checks in tools/test_site.mjs).
+// No decoration smooths toward a target: it is a pure function of scrollY, so stop scrolling and it stops where it is,
+// scroll back and it reverses exactly, and no frame is asked for while nothing moves (the idle checks in
+// tools/test_site.mjs). The one thing that does chase a target is the page itself after a mouse wheel (AH-138, below),
+// and only while it is catching up.
 // AH-73's page transitions dispatch "ah:page" with { detail: { root, wait } }: the new page's entrance and reveals
 // wait that many ms, hidden at their first pose, so they start as the curtain's edge passes halfway.
 (() => {
@@ -34,7 +37,7 @@
   const ENTER = ms("--enter-dur"), STEP = ms("--enter-step"), SHIFT = parseFloat(token("--enter-shift")) || 0;
   const LAST = 4 * STEP; // the fifth block and later start together
   const BAR = ms("--enter-bar-step"), LEAD = ms("--enter-lead");
-  const REVEAL = ms("--reveal-dur"), STAGGER = ms("--stagger"), CAP = parseFloat(token("--stagger-cap")) || 0, RISE = parseFloat(token("--reveal-rise")) || 0;
+  const REVEAL = ms("--reveal-dur"), STAGGER = ms("--stagger"), ROW = ms("--stagger-row") || STAGGER, CAP = parseFloat(token("--stagger-cap")) || 0, RISE = parseFloat(token("--reveal-rise")) || 0;
   const SEEN = 0.15; // how much of an item must be on screen (above the bottom 8%) before it rises
 
   // the same curve as CSS's cubic-bezier(): at(x) is the progress at time x, when(y) the time a progress is reached
@@ -141,7 +144,9 @@
     if (still || now) settle(); // nothing moves: styles.css never hid it, or it is shown at once
     else timer = setTimeout(settle, Math.max(...batch.map(([, d]) => d)) + REVEAL + 150); // when a transitionend never comes (a hidden tab)
   }
-  // items that come into view together start STAGGER apart, in page order, per group
+  // items that come into view together start STAGGER apart, in page order, per group; list rows (a table's rows, a list's
+  // items, a ledger's cells: data-reveal-group="rows") ROW apart, John 2026-11-06 (AH-138): "list rows stagger 30 ms",
+  // while the headings, ledes and blocks keep their slower 90 ms
   function cascade(list) {
     const groups = new Map(), out = [];
     for (const el of list) {
@@ -149,9 +154,10 @@
       if (!groups.has(g)) groups.set(g, []);
       groups.get(g).push(el);
     }
-    for (const items of groups.values()) {
+    for (const [g, items] of groups) {
+      const step = g !== scope && g.getAttribute("data-reveal-group") === "rows" ? ROW : STAGGER;
       items.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
-      items.forEach((el, i) => out.push([el, host(el) + Math.min(i, CAP) * STAGGER]));
+      items.forEach((el, i) => out.push([el, host(el) + Math.min(i, CAP) * step]));
     }
     return out;
   }
@@ -235,6 +241,7 @@
   function stop() {
     cancelAnimationFrame(raf); raf = 0; clearTimeout(later);
     if (glider) glider();
+    halt();
     removeEventListener("scroll", request); removeEventListener("resize", relayout); removeEventListener("scrollend", sweep);
     for (const o of [observer, io, tail]) if (o) o.disconnect();
     observer = io = tail = null;
@@ -253,7 +260,7 @@
   // A glide says when it starts and ends ("ah:glide-start", "ah:glide-end" on document, detail { target, arrived }) and
   // AH.gliding() is true while one runs: the sample sheet's skeleton waits for the glide to land (AH-99), since played
   // on the way down it had mostly finished by the time the visitor arrived
-  let glider = null;
+  let glider = null, ended = null;
   const tell = (type, detail) => document.dispatchEvent(new CustomEvent(type, { detail }));
   const barBottom = () => { const b = document.querySelector(".bar"), c = b && getComputedStyle(b);
     return c && c.position === "sticky" ? (parseFloat(c.top) || 0) + b.offsetHeight : 0; };
@@ -270,6 +277,7 @@
     let id = 0, t0 = 0;
     const end = (how) => {
       if (glider !== end) return;
+      if (how && how.type === "wheel") ended = how; // that wheel only stops the glide: the wheel below lets it scroll nothing
       cancelAnimationFrame(id); for (const k of STOPS) removeEventListener(k, end, true);
       glider = null;
       tell("ah:glide-end", { target: el, arrived: how === true });
@@ -303,7 +311,75 @@
     glide(el, a.dataset.glide);
   });
 
-  window.AH = { start, stop, request, still, ease, inout, INOUT, gliding: () => !!glider, onFrame: (f) => { subs.push(f); request(); } };
+  // ---- the heavy wheel (AH-138): the page eases after a mouse wheel instead of jumping a notch at a time ----
+  // John, 2026-11-06: "a HEAVY wheel scroll: the page eases after the wheel (slightly delayed, fluid), not a direct
+  // jump". Each notch moves a target; the page closes the gap by the clock, y += (target - y)(1 - e^(-dt / TAU)) with TAU
+  // --scroll-weight, so it never passes the target (no bounce) and it stops asking for frames once within half a pixel.
+  // Only for a mouse (a fine pointer that hovers) and never under reduced motion: a finger or a pen drives the page
+  // itself, 1:1 with the browser's own rubber band at the ends ("never tween what the hand drives"). The browser keeps
+  // every wheel it handles better: a zoom (Ctrl, Cmd), a sideways one, one over a field or over a box that can still
+  // scroll that way, a page too short to scroll. A key, a press, a touch, a glide or a page change ends the catch-up where
+  // it is, and so does any scroll it did not make itself (the scrollbar, find, an anchor)
+  const TAU = ms("--scroll-weight") || 150;
+  const mouse = matchMedia("(hover: hover) and (pointer: fine)");
+  let heavy = !still && mouse.matches, wy = 0, wt = 0, wraf = 0, wlast = 0, wrote = 0, catching = false;
+  mouse.addEventListener("change", () => { heavy = !still && mouse.matches; if (!heavy) halt(); });
+  const room = () => Math.max(0, html.scrollHeight - html.clientHeight);
+  function halt() { if (wraf) cancelAnimationFrame(wraf); wraf = 0; wlast = 0; catching = false; }
+  function catchUp(now) {
+    wraf = 0;
+    const dt = wlast ? Math.min(64, Math.max(0, now - wlast)) : 16;
+    wlast = now;
+    wy += (wt - wy) * (1 - Math.exp(-dt / TAU));
+    const last = Math.abs(wt - wy) < 0.5;
+    if (last) wy = wt;
+    scrollTo(0, wy);
+    wrote = scrollY;
+    if (last) halt(); else wraf = requestAnimationFrame(catchUp);
+  }
+  // a box between the pointer and the page that can still scroll this way takes the wheel itself
+  const takes = (el, down) => {
+    for (let e = el; e && e !== document.body && e !== html; e = e.parentElement) {
+      if (e.isContentEditable || e.matches("textarea, select, input")) return true;
+      const o = getComputedStyle(e).overflowY;
+      if ((o === "auto" || o === "scroll") && e.scrollHeight > e.clientHeight + 1 && (down ? e.scrollTop + e.clientHeight < e.scrollHeight - 1 : e.scrollTop > 0)) return true;
+    }
+    return false;
+  };
+  addEventListener("wheel", (e) => {
+    if (e === ended) { e.preventDefault(); ended = null; return; } // a wheel ends a glide where it is
+    if (!heavy || e.ctrlKey || e.metaKey || e.shiftKey || !e.deltaY || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+    const max = room();
+    if (!max || (e.target instanceof Element && takes(e.target, e.deltaY > 0))) return;
+    e.preventDefault();
+    if (!catching) { wy = wt = scrollY; wrote = scrollY; catching = true; }
+    const d = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? html.clientHeight : 1);
+    wt = Math.min(max, Math.max(0, wt + d));
+    if (!wraf) wraf = requestAnimationFrame(catchUp);
+  }, { passive: false });
+  // anything else that scrolls the page, or that the reader does, ends the catch-up where it is
+  for (const k of ["keydown", "pointerdown", "touchstart"]) addEventListener(k, () => { if (catching) halt(); }, { capture: true, passive: true });
+  document.addEventListener("ah:glide-start", halt);
+  addEventListener("scroll", () => { if (catching && Math.abs(scrollY - wrote) > 2) halt(); }, { passive: true });
+  addEventListener("resize", () => { if (catching) wt = Math.min(room(), wt); });
+
+  // ---- an answer that opens settles in turn (AH-138 review, John 2026-11-06: "stagger when details settle") ----
+  // A <details> opened by the reader (a question, "Want to check the file first?") brings its answer's blocks up 6 px and
+  // in, --stagger-row apart, over --pop-in: opacity and transform only, never its height. Closing is at once. One listener
+  // for every page (toggle does not bubble, so it is caught on the way down); none before the page has loaded, so an
+  // answer open in the markup never plays, and none under reduced motion
+  const POP = ms("--pop-in") || 200;
+  let loaded = document.readyState === "complete";
+  addEventListener("load", () => { loaded = true; });
+  document.addEventListener("toggle", (e) => {
+    const d = e.target;
+    if (still || !loaded || !(d instanceof HTMLDetailsElement) || !d.open || !d.animate) return;
+    const box = d.querySelector(":scope > summary + *");
+    if (box) [...box.children].forEach((el, i) => el.animate([{ opacity: 0, transform: "translate3d(0, 6px, 0)" }, { opacity: 1, transform: "none" }],
+      { duration: POP, delay: Math.min(i, CAP) * ROW, easing: EASE, fill: "backwards" }));
+  }, true);
+
+  window.AH = { start, stop, request, still, ease, inout, INOUT, gliding: () => !!glider, smoothing: () => catching, onFrame: (f) => { subs.push(f); request(); } };
   document.addEventListener("ah:page", (e) => start((e.detail && e.detail.root) || document, e.detail && e.detail.wait));
   start();
 })();

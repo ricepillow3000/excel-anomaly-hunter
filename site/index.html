@@ -77,6 +77,7 @@
           </nav>
 
           <div class="ws-main">
+            <p class="swipe">Swipe the table sideways to see each finding.</p>
             <div class="panel" id="p-found" role="tabpanel" aria-labelledby="t-found">
               <div class="scroll" tabindex="0" role="region" aria-label="Findings, scrolls sideways">
                 <table class="grid" aria-label="Sample sales sheet with seven flagged rows">
@@ -239,7 +240,7 @@
       <!-- the third column is true of the sample sheet above, row by row, or says it has none (test_site_sample.py) -->
       <table class="checks-table" aria-labelledby="checks-title">
         <thead><tr><th scope="col">Check</th><th scope="col">What it catches</th><th scope="col">In the sample above</th></tr></thead>
-        <tbody data-reveal-group>
+        <tbody data-reveal-group="rows">
           <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Reconciliation</th><td>Totals and products that don't add up: A + B + C, Qty × Price, a price after a discount. When one cell is off, the row's own numbers give the exact correction.</td><td class="in-sample"><a class="to-row" href="#r22" data-glide="frame">Row 22</a><span class="val">83.58 ÷ 1.99 = 42</span></td></tr>
           <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Keying errors</th><td>A figure typed ten or a hundred times too large, a percent typed as a whole number, a flipped sign, or a figure far past its column's usual range.</td><td class="in-sample"><a class="to-row" href="#r22" data-glide="frame">Row 22</a><span class="val">Units 7777, usual limit 105</span></td></tr>
           <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Consistency</th><td>The same label typed different ways: stray spaces, capitals, misspellings, short forms.</td><td class="in-sample"><a class="to-row" href="#r31" data-glide="frame">Row 31</a><span class="val">"east " to "East"</span></td></tr>
@@ -259,7 +260,7 @@
     <div class="wrap cols" data-reveal-group>
       <h2 class="sec-title reveal-item" data-depth="0.03" id="proof-title">What the tests measured</h2>
       <p class="sec-lede calm reveal-item">Mistakes were planted in test sheets and the engine was asked to find them. Each figure links to the record it comes from.</p>
-      <dl class="proof calm" data-reveal-group>
+      <dl class="proof calm" data-reveal-group="rows">
         <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>51 of 51</dt><dd>planted mistakes found on the industry bench of 27 sheets, in the <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/blob/main/docs/proof/2026-11-05-stress-test.md">stress test of 5 November 2026</a>.</dd></div>
         <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>199 of 201</dt><dd>found on the blind bench of 42 sheets it was never tuned on, in the same <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/blob/main/docs/proof/2026-11-05-stress-test.md">stress test</a>.</dd></div>
         <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>0</dt><dd>clean rows called probably wrong, among the 2,724 and 6,954 clean rows of the two benches (<a href="https://github.com/ricepillow3000/excel-anomaly-hunter/blob/main/docs/proof/2026-11-05-stress-test.md">the record</a>).</dd></div>
@@ -316,7 +317,7 @@
     <div class="wrap cols" data-reveal-group>
       <h2 class="sec-title reveal-item" data-depth="0.03" id="it-title">For your IT team</h2>
       <p class="sec-lede calm reveal-item">You don't need this part to use Arcas. Share it with whoever looks after your computers. No licence server and no admin console. Each install belongs to one Windows account and can be removed with one command.</p>
-      <dl class="it-ledger calm" data-reveal-group>
+      <dl class="it-ledger calm" data-reveal-group="rows">
         <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>Price</dt><dd>Free, for any number of people. No seats to allocate. Open source under the <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/blob/main/LICENSE">MIT License</a>.</dd></div>
         <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>Who can install it</dt><dd>One Windows account, which must be an administrator on this PC. It never asks to run as administrator.</dd></div>
         <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>Internet use</dt><dd>The engine listens on 127.0.0.1 only. A scan runs offline.</dd></div>
@@ -439,7 +440,7 @@
       </div>
       <div class="steps calm" data-reveal-group>
         <span class="label reveal-item">Install it in four steps</span>
-        <ol data-reveal-group>
+        <ol data-reveal-group="rows">
           <li class="reveal-item"><span class="rule" aria-hidden="true"></span><div>Open your Downloads folder and double-click <b>Arcas.exe</b>.</div></li>
           <li class="reveal-item"><span class="rule" aria-hidden="true"></span><div>A blue "Windows protected your PC" box appears, because the file is not signed yet. Click <b>More info</b>, then <b>Run anyway</b>. Some PCs show "Open File - Security Warning" instead: click <b>Run</b>.</div></li>
           <li class="reveal-item"><span class="rule" aria-hidden="true"></span><div>A Security Warning asks whether to install a certificate. Windows names it Anomaly Hunter local CA, Arcas's old name. It only lets Excel talk to Arcas on this computer. Click <b>Yes</b>. If you click No, the install stops, and you can run it again.</div></li>
@@ -448,7 +449,7 @@
         <details class="check-file reveal-item">
           <summary>Want to check the file first? (optional)</summary>
           <div>
-            <p>In PowerShell, in your Downloads folder, run the line below and compare the result with the SHA-256 in the list above. If they differ, delete the file and download it again.<code class="line" tabindex="0">Get-FileHash .\Arcas.exe -Algorithm SHA256</code></p>
+            <p>In PowerShell, in your Downloads folder, run the line below and compare the result with the SHA-256 in the list above. If they differ, delete the file and download it again.<code class="line" tabindex="0">Get-FileHash .\Arcas.exe -Algorithm SHA256</code><button type="button" class="copy-btn" hidden><span class="icons"><span class="ico" aria-hidden="true"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 1.75h8.75v9.5M1.75 4.75h8.5v9.5h-8.5z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></span><span class="ico" aria-hidden="true"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.25 8.5l3.75 3.75 7.75-8.5" fill="none" stroke="currentColor" stroke-width="1.75"/></svg></span></span><span class="copy-label"><span class="copy-said" aria-live="polite">Copy</span></span></button></p>
             <p>To skip the blue box, right-click the file before you open it, click <b>Properties</b>, tick <b>Unblock</b> and click <b>OK</b>.</p>
           </div>
         </details>
@@ -461,7 +462,7 @@
     <div class="wrap cols" data-reveal-group>
       <h2 class="sec-title reveal-item" data-depth="0.03" id="code-signing-title">Code signing policy</h2>
       <p class="sec-lede calm reveal-item">Arcas has applied to the SignPath Foundation's free code signing program for open-source projects. Until the application is accepted and the release build signs the file, Arcas.exe is not code-signed, and Windows may warn about it.</p>
-      <dl class="it-ledger calm" data-reveal-group>
+      <dl class="it-ledger calm" data-reveal-group="rows">
         <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>Once accepted</dt><dd>Releases will say: "Free code signing provided by <a href="https://signpath.io">SignPath.io</a>, certificate by <a href="https://signpath.org">SignPath Foundation</a>."</dd></div>
         <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>What gets signed</dt><dd>Only Arcas.exe as built by this repository's GitHub Actions workflow (<a href="https://github.com/ricepillow3000/excel-anomaly-hunter/blob/main/.github/workflows/build-exe.yml">build-exe.yml</a>) from the public source code, after its tests pass, including the install on a fresh Windows PC. Nothing built anywhere else, and no other project's files.</dd></div>
         <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>Team roles</dt><dd>Committer and reviewer: <a href="https://github.com/ricepillow3000">John Nguyen</a>. Approver: John Nguyen. Changes from anyone else are reviewed by John before they are merged.</dd></div>

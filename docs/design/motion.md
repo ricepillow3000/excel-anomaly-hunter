@@ -1,20 +1,22 @@
-# Motion on the website (AH-83, AH-84, AH-85, AH-89 to AH-93)
+# Motion on the website (AH-83, AH-84, AH-85, AH-89 to AH-93, AH-138)
 
 How the site moves, and how to change it. The real code is in `site/styles.css` (tokens and states), `site/boot.js`
-(the first mark), `site/motion.js` (entrance, reveal, glide, scroll fallback), `site/home.js` (the sample sheet's
-skeleton, page turn and the download's skeleton), `site/field.js` (the background) and `site/transition.js` (page
-changes). `tools/test_site.mjs --browser` checks every promise below.
+(the first mark), `site/motion.js` (entrance, reveal, glide, the wheel's catch-up, scroll fallback), `site/home.js` (the
+sample sheet's skeleton, page turn, detail box, tab mark, the download's skeleton and the Copy button), `site/field.js`
+(the background) and `site/transition.js` (page changes and the phone's menu). `tools/test_site.mjs --browser` checks every promise below.
 
 ## Rules
 
 1. Only `transform`, `translate` and `opacity` are animated. The GPU composites them without a layout or a paint.
-   The static half of `tools/test_site.mjs` fails on any other property in a `transition` or `@keyframes`.
+   The static half of `tools/test_site.mjs` fails on any other property in a `transition` or `@keyframes` (the Copy
+   button's icon blur is the one exception, below).
 2. Two curves. `--ease-out: cubic-bezier(.16, 1, .3, 1)`, a fast start and a long, soft landing, drives everything that
    arrives: the bar's and the hero's entrance, the reveal, the card lift, the hairlines, the scan meter, the filters'
    fill, the raised cell, the page curtain, the browser's own page crossfade and the field's fade-in.
    `--ease-in-out: cubic-bezier(.65, 0, .35, 1)`, soft at both ends, drives what starts from rest and must not jerk:
-   the glide, the page turn and the skeleton's band of light. Linear is used once, on purpose: the depth drift of
-   labels and headlines, because a parallax has to move in step with the scroll bar.
+   the glide, the page turn, the skeleton's band of light and the tab mark's slide. Linear is used once, on purpose: the
+   depth drift of labels and headlines, because a parallax has to move in step with the scroll bar. No curve overshoots:
+   every `cubic-bezier` keeps both control points' y within [0, 1] (no spring, no bounce; a static test holds it).
 3. Content moves once, by the clock, when it is seen (an IntersectionObserver, never a scroll listener). Decoration
    moves with the scroll bar, as a pure function of the scroll position: stop and it stops, scroll back and it
    reverses.
@@ -35,8 +37,15 @@ changes). `tools/test_site.mjs --browser` checks every promise below.
   --stagger: 90ms;      /* the stagger speed: the gap between items of one group that rise together */
   --stagger-cap: 6;     /* after this many steps, later items start together, so a long list never drags */
   --lift-dur: 1200ms; --ease-lift: cubic-bezier(.33, 1, .68, 1); /* the checks' heading turned face up */
-  --skeleton-dur: 1300ms; --land-step: 32ms; --land-fade: 280ms; /* the sample sheet loading */
-  --turn-dur: 700ms; --fill-dur: 350ms; --podium-dur: 250ms; /* page turn, filter fill, raised cell */
+  --skeleton-dur: 1300ms; --land-step: 30ms; --land-fade: 280ms; /* the sample sheet loading (rows land 30 ms apart) */
+  --turn-dur: 700ms; --fill-dur: 350ms; --podium-dur: 250ms; /* page turn, filter and button fill, raised cell */
+  /* AH-138 */
+  --stagger-row: 30ms;   /* list rows: a table's rows, a list's items, a ledger's cells (data-reveal-group="rows") */
+  --press: .97; --press-dur: 120ms;       /* a press settles to 97% */
+  --pop-in: 200ms; --pop-out: 160ms; --pop-from: .95; /* a popover: in from .95 at its trigger, out 20% faster */
+  --slide-dur: 300ms; --stretch: 1.12;    /* the tab mark's slide, 12% wider at its half way */
+  --scroll-weight: 150ms;                 /* the wheel's catch-up time constant */
+  --pulse-dur: 600ms;                     /* a success's ring, once */
 }
 ```
 
@@ -66,13 +75,17 @@ again; its links stay plain links that land at once.
 ### HTML
 
 Mark each block with `class="reveal-item"` and the parent whose children should cascade with `data-reveal-group`.
-An item's group is its nearest `data-reveal-group` parent; items with none form one group per page.
+An item's group is its nearest `data-reveal-group` parent; items with none form one group per page. A group of list
+rows (a table's rows, a list's items, a ledger's cells) is `data-reveal-group="rows"` and steps `--stagger-row` (30 ms)
+apart; headings, ledes and blocks keep `--stagger` (90 ms) (AH-138). On the home page: the checks table's `tbody`, the
+proof figures, both IT ledgers and the install steps' `ol`; on support.html the questions; on privacy.html and
+terms.html the contents lists.
 
 ```html
 <!-- the checks table (AH-98): each row rises in its turn; a table row can be a reveal item, and its .rule hairline is
      placed against the row (position: relative on the tr) -->
 <table class="checks-table">
-  <tbody data-reveal-group>
+  <tbody data-reveal-group="rows">
     <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Reconciliation</th><td>Totals that don't add up.</td></tr>
     <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Keying errors</th><td>A figure typed ten times too large.</td></tr>
   </tbody>
@@ -207,7 +220,8 @@ own sideways overflow.
 At 1440 x 900 (`tools/test_site.mjs`): before scrolling, a row of the checks table below the fold has opacity 0,
 `translateY` equal to `--reveal-rise` and `will-change: transform, opacity`; after it is scrolled into view the table's 8
 rows (all 8 on one screen: rows padded 16 and 20 px, AH-98) rest at opacity 1
-with no transform, with transition delays 0, 90, 180, 270, 360, 450, 540, 540 ms; once landed `will-change` is `auto`;
+with no transform, with transition delays 0, 30, 60, 90, 120, 150, 180, 180 ms (list rows, AH-138; the headline, fact
+and lede above them 0, 90, 180); once landed `will-change` is `auto`;
 the observer has unobserved them and a trip away and back does not hide them; a Chromium trace of the reveal has no
 Layout event from the scroll to the last `transitionend`. With JavaScript off, or `motion.js` failing to load, every
 block is shown in place. With the deferred scripts 1.6 s late, no block ever goes from visible to hidden.
@@ -274,7 +288,8 @@ cubic-bezier, so its poses match the CSS ones (worst measured difference 0.003 i
 is requested once the scrolling stops. Content is never scroll-linked. The WebGL field behind the page also follows
 the scroll, through the same frame. It moves at full strength in the hero and on the navy band; under the prose, lists
 and tables of the other sections it fades out on a still layer of plain paper (`.calm::before`, z-index -1 in its wrap,
-32 px past the block and masked to nothing over those 32 px), so no contour line crosses body text (AH-98). That layer
+96 px past the block above and below, and sideways as far as the screen allows up to 96 px, masked to nothing over that
+reach; 32 px left pale rectangles with straight edges, AH-138 review), so no contour line crosses body text (AH-98). That layer
 never moves or redraws, and works the same on a software renderer, where the field is one still picture.
 
 ## The sample sheet (AH-89, AH-92)
@@ -303,7 +318,7 @@ left side to the right side at a relatively fast pace". A colour can't move on t
 growing by `scaleX` from the left over `--fill-dur`. It lies over the label in `mix-blend-mode: difference`: `#E3D3AC`
 less the paper (`#EFECE4`) is the navy `#0C1938` exactly, and less the navy text it is a light gold, so the label reads
 at every frame, half on paper and half on navy. The pressed filter stays filled. The tabs get the same sweep as a gold
-line under them.
+line under them on hover; the chosen tab's line is one shared mark that slides from tab to tab (AH-138, below).
 
 **The page turn.** John: "when I click it... on the right side of the sample sheet... it is being turned like a page".
 A copy of the visible panel (ids stripped, `aria-hidden`, `inert`, each row's opacity frozen as it was) is laid over
@@ -353,9 +368,91 @@ and the notice line's links are not glides: they still land at once.
   It runs for 800 ms on `--ease-out`; the new page's entrance starts when the edge is halfway across (81 ms on that
   curve, computed from the curve), and the old page is removed when all three curtain animations have finished, with a
   timer only as a fallback.
-- The glide is the one `requestAnimationFrame` loop outside the scroll reader and the field: a scroll position cannot be
-  animated by CSS or WAAPI. It asks for frames only while it runs.
+- The glide and the wheel's catch-up are the `requestAnimationFrame` loops outside the scroll reader and the field: a
+  scroll position cannot be animated by CSS or WAAPI. Each asks for frames only while it runs.
+- The Copy button's two icons crossfade with a blur (`filter`, AH-138): the static test allows `filter` only in a rule
+  whose every selector is a `.copy-btn`'s `.ico`, and in no other transition and no keyframes. Two 16 px icons, for 200 ms.
 - The field's pointer bend (`field.js`) chases a moving target, so it is an exponential approach with a 220 ms time
   constant by the clock, not a fixed-length curve.
 - The old hand-coded expo, cubic and quadratic curves in `motion.js` and the curtain's `cubic-bezier(.77, 0, .18, 1)`
   are gone.
+
+## AH-138: John's motion list (2026-11-06)
+
+John: "ease-out for entrances; dropdowns 150-250 ms; list rows stagger 30 ms; buttons scale to 0.97 on press; a moving
+knob stretches 12%; stagger when details settle; arcs for object movement; a pulse confirms success; ease-in-out for
+on-screen movement; popovers start at scale 0.95, come in from their trigger and go out to it; no spring or bounce;
+never tween what the hand drives; exits about 20% shorter than entrances; the new state comes in as the old leaves;
+masks for reveals and colour changes; icons crossfade with scale and blur; rubber band past drag limits; one shared
+element reused across shared objects; and a heavy wheel scroll". Nothing of it plays under `prefers-reduced-motion`.
+
+| Rule | Where it lives on the site |
+|---|---|
+| Ease-out for entrances | `--ease-out` on every arrival: the entrance, the reveal, the popovers, the press, the fills, the pulse |
+| Ease-in-out on screen | `--ease-in-out` on what moves across the screen from rest: the glide, the page turn, the tab mark |
+| Dropdowns 150 to 250 ms | `--pop-in` 200 ms: the phone's menu and a row's detail box (the menu took 350 ms before) |
+| Exits 20% shorter | `--pop-out` 160 ms (0.8 of `--pop-in`); the button fill goes back in 0.8 of `--fill-dur`; the Copy icons return over `--pop-out` |
+| Popovers from their trigger, from 0.95 | the menu grows from the Menu button's centre (`--menu-x`, set by `transition.js`) and shrinks back there while `data-closing` keeps it drawn and inert; the detail box grows from its row's button's centre and a copy of it (no ids, `aria-hidden`, `inert`) shrinks back there while the box itself is already hidden |
+| Stagger when details settle | the detail box's head and each line of its details settle 4 px up, `--stagger-row` apart |
+| List rows stagger 30 ms | `data-reveal-group="rows"` steps `--stagger-row`; the skeleton's rows land `--land-step` (30 ms) apart |
+| Buttons scale to 0.97 | every element with a pressed look settles to `--press` over `--press-dur`, the gold line kept in every mode |
+| Masks for colour changes | a button's hover colour is a layer drawn across by `scaleX` from the left (the main button's navy under its label, the outlined buttons' difference fill over theirs, as the filters'); the hairlines and fills already draw by `scaleX` from an edge |
+| Masks for reveals | the hairlines (`span.rule`) and the filters' and tabs' lines draw from an edge by `scaleX`; the page curtain is a moving clip |
+| The new state comes in as the old leaves | the page turn (the old panel's copy turns away over the new one), the detail box (its copy leaves as the real box is gone), the curtain |
+| One shared element | the tabs' gold line is one `span.tab-mark`, the same node for every tab, posed by `translate` and `scaleX` |
+| A moving knob stretches 12% | the tab mark, half way between two tabs, is the two widths' average times `--stretch` |
+| Arcs for object movement | only where something travels in two directions: the tab mark between tabs on two lines (text at 200%), lifted a fifth of the rise at its half way. Nothing else on the site moves along two axes at once |
+| A pulse confirms success | the Copy button's gold ring, once, `--pulse-dur`; the forms' result box, a ring a few pixels out each time it appears (CSS alone: an element that starts being drawn starts its animation) |
+| Icons crossfade with scale and blur | the Copy button's copy icon and check (opacity, scale .6, blur 4 px) |
+| No spring, no bounce | every `cubic-bezier` keeps y1 and y2 within [0, 1] (static test); the wheel's catch-up is an exponential approach that never passes its target |
+| A heavy wheel | below |
+| Never tween what the hand drives | touch and pen scroll the page 1:1 (the wheel's catch-up is for a fine pointer that hovers only); there is no drag on the site |
+| Rubber band past drag limits | there is no drag on the site, and a finger's scroll is the browser's own, with its own overscroll at the ends |
+
+### The heavy wheel
+
+A mouse wheel moves a target (a notch's `deltaY`, lines times 16 px, pages times the screen) and the page eases after it
+by the clock: each frame `y += (target - y) (1 - e^(-dt / --scroll-weight))`, `dt` capped at 64 ms, so it is slightly
+behind, fluid, and never passes the target. Within half a pixel it lands and asks for no more frames. `motion.js` does it
+only where `(hover: hover) and (pointer: fine)` matches and never under reduced motion; it leaves the wheel to the
+browser for a zoom (Ctrl, Cmd), a sideways or Shift wheel, a wheel over a field (`textarea`, `select`, `input`,
+`contenteditable`) or over any box that can still scroll that way, and on a page too short to scroll. A key, a press, a
+touch, a glide, a page change, or a scroll it did not make (the scrollbar, find, an anchor; more than 2 px from where it
+put the page) ends it where it is. The wheel that ends a glide only ends it: it scrolls nothing. `AH.smoothing()` is true
+while it catches up. Decoration stays a pure function of `scrollY`: it follows the page wherever the page is.
+
+What the tests hold it to (`tools/test_site.mjs`, the AH-138 block): 400 px of wheel from rest is on its way 50 ms later,
+rises every frame, never passes its target, arrives within 1.5 s, and no frame is asked for in the second after; PageDown
+ends it; with reduced motion, and on a touch phone, the wheel scrolls the browser's way; over the support form's full
+message box the box scrolls and the page does not. The same block holds the press (0.97 held, 1 let go, the line in
+every mode), the main button's fill (seen part way, then whole; no layer under reduced motion), the menu and the detail
+box (from .95 at their trigger, out in 0.8 of the time, drawn while leaving, then gone), the tab mark (one node, 250 to
+350 ms, its widest at the average times 1.12, at rest under the chosen tab; none moving under reduced motion), the
+Copy button (hidden without a script; it copies the line, crossfades with a blur, pulses once and says Copy again 2 s
+later; refused, it selects the line and says to press Ctrl+C) and a group of blocks still 90 ms apart.
+
+### Fix round 1 (a blind design review, 2026-11-06)
+
+- The page turn's copy is a still picture: `[data-turn] * { animation: none !important }`, and `turn()` writes each scan
+  meter's pose and each cell's marks onto the copy, so the bar no longer refills under "100%" while the page turns.
+- The phone's menu lies over the page under the bar (`position: absolute` in the bar's wrap, the bar's own paper and a
+  hairline under it): opening it moves nothing below, and "Checks" lands on the checks.
+- A detail box carries a still shadow (`box-shadow`, never animated), so it reads as lying over the sheet.
+- An answer that opens (`<details>`: the questions, "Want to check the file first?") settles its blocks 6 px up and in,
+  `--stagger-row` apart, over `--pop-in` (`motion.js`, on `toggle`); closing is at once; none under reduced motion.
+- The main button's navy covers its 2 px border too; a filter clears the other rows' marks; the Copy label keeps the
+  width of "Copied"; a tap shows no browser highlight over the gold pressed line.
+
+### Fix round 2 (a second blind design review, 2026-11-06)
+
+- The phone's menu closes as a popover does: on a press outside it and its button, and once the page has scrolled more
+  than 8 px from where it opened, each time through the same exit. Its links are 44 px targets, and the open sheet has a
+  still shadow.
+- Not taken: the review asked a page change by a link to open at the very top with the notice line shown. The header
+  stays mounted over the curtain, so it dropped 36 px at the swap; the first review praised that it stays put, so a page
+  change keeps the header where it was (S4 holds that, from the bottom, from 400 px and from 10 px).
+- The page turn's copy grows to a taller new panel's height, so After fixes' lower rows stay under it until it passes.
+- The phone's download bar also hides while the contact form is on screen or focus is in a form.
+- The notice line balances its two lines on a phone, so "Download" is never alone; at 1280 x 720 the hero starts higher,
+  its buttons and note 8 px or more inside the screen.
+

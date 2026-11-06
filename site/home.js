@@ -4,7 +4,9 @@
 // the home page in ("ah:page"), and lets go of it when that page leaves ("ah:leave"): its ticker and its listeners on
 // the document go with it, so a visit back never stacks a second set.
 // The sheet's motion (AH-89, AH-92, John 2026-11-02): it loads once a visit as a skeleton of itself, a click on a filter
-// or a tab turns the old view away like a page, and the timings are the tokens in styles.css :root.
+// or a tab turns the old view away like a page, and the timings are the tokens in styles.css :root. AH-138 (John
+// 2026-11-06): a row's detail box is a popover from its row's button, the tabs' gold line is one mark that slides from tab
+// to tab, and the PowerShell line has a Copy button.
 (() => {
   const API = "https://api.github.com/repos/ricepillow3000/excel-anomaly-hunter/releases/latest";
   // the pane's own progress line for this 60-row sheet (frontend/features/scan.js; test_site_sample.py holds them to it):
@@ -14,8 +16,12 @@
   const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const tokens = getComputedStyle(html);
   const ms = (n, d) => { const v = tokens.getPropertyValue(n).trim(); return v ? (parseFloat(v) || 0) * (/[^m]s$/.test(v) ? 1000 : 1) : d; };
-  const SHIMMER = ms("--skeleton-dur", 1300), STEP = ms("--land-step", 32), FADE = ms("--land-fade", 280), TURN = ms("--turn-dur", 700);
+  const SHIMMER = ms("--skeleton-dur", 1300), STEP = ms("--land-step", 30), FADE = ms("--land-fade", 280), TURN = ms("--turn-dur", 700);
   const INOUT = tokens.getPropertyValue("--ease-in-out").trim() || "cubic-bezier(.65, 0, .35, 1)";
+  const EASE = tokens.getPropertyValue("--ease-out").trim() || "cubic-bezier(.16, 1, .3, 1)";
+  const POP_IN = ms("--pop-in", 200), POP_OUT = ms("--pop-out", 160), ROW = ms("--stagger-row", 30), SLIDE = ms("--slide-dur", 300);
+  const num = (n, d) => parseFloat(tokens.getPropertyValue(n)) || d;
+  const FROM = num("--pop-from", 0.95), STRETCH = num("--stretch", 1.12);
   const SHOWN = 700, GIVE_UP = 6000; // the download's skeleton: long enough never to flash, never longer than a slow answer
   let mounted = null; // { root, off }
   let release = null; // GitHub's answer, asked once a visit to the site and kept while it is good
@@ -104,21 +110,28 @@
     const bar = root.querySelector("#dock"), cta = root.querySelector(".hero-cta .btn-primary"), dl = root.querySelector("#download");
     if (!bar || !cta || !dl || !window.IntersectionObserver) return () => {};
     const phone = matchMedia("(max-width: 760px)");
-    let past = false, near = false, rise = null;
+    // the contact form and every form on the page count as "near" too, and so does focus inside a form: the bar lay over
+    // the contact form's own button (AH-138 review)
+    const nears = new Set([dl, ...root.querySelectorAll("#contact, form")]), seen = new Set();
+    let past = false, near = false, typing = false, rise = null;
     const set = () => {
-      const on = phone.matches && past && !near;
+      const on = phone.matches && past && !near && !typing;
       if (on === !bar.hidden) return;
       bar.hidden = !on;
       if (rise) { rise.cancel(); rise = null; }
       if (on && !still && bar.animate) rise = bar.animate([{ transform: "translate3d(0, 100%, 0)", opacity: 0 }, { transform: "translate3d(0, 0, 0)", opacity: 1 }], { duration: ms("--fill-dur", 350), easing: tokens.getPropertyValue("--ease-out").trim() || "ease-out" });
     };
-    const io = new IntersectionObserver((seen) => {
-      for (const e of seen) if (e.target === cta) past = !e.isIntersecting && e.boundingClientRect.top < 0; else near = e.isIntersecting;
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) if (e.target === cta) past = !e.isIntersecting && e.boundingClientRect.top < 0; else if (e.isIntersecting) seen.add(e.target); else seen.delete(e.target);
+      near = seen.size > 0;
       set();
     });
-    io.observe(cta); io.observe(dl);
+    io.observe(cta); for (const el of nears) io.observe(el);
+    const focus = () => { const a = document.activeElement; typing = !!(a && a.closest && root.contains(a) && a.closest("form")); set(); };
+    const later = () => setTimeout(focus);
+    root.addEventListener("focusin", focus); root.addEventListener("focusout", later);
     phone.addEventListener("change", set);
-    return () => { io.disconnect(); phone.removeEventListener("change", set); if (rise) rise.cancel(); bar.hidden = true; };
+    return () => { io.disconnect(); root.removeEventListener("focusin", focus); root.removeEventListener("focusout", later); phone.removeEventListener("change", set); if (rise) rise.cancel(); bar.hidden = true; };
   }
 
   function mount(root) {
@@ -145,6 +158,11 @@
       if (!moving() || !panel || !panel.animate) return apply();
       const copy = panel.cloneNode(true), real = [...panel.querySelectorAll("tr")], fake = [...copy.querySelectorAll("tr")];
       real.forEach((tr, i) => { fake[i].style.opacity = getComputedStyle(tr).opacity; });
+      // a still picture: each mark as the old filter drew it (the new one applies to the real rows at once) and each scan
+      // meter where it was (styles.css stops every animation inside the copy, AH-138 review)
+      const sel = "td.flag, td.q, td.mended, td.why i, .meter span", marked = [...panel.querySelectorAll(sel)], faked = [...copy.querySelectorAll(sel)];
+      marked.forEach((el, i) => { const c = getComputedStyle(el), f = faked[i].style;
+        for (const k of ["backgroundColor", "color", "fontWeight", "boxShadow", "visibility", "transform"]) f[k] = c[k]; });
       for (const el of [copy, ...copy.querySelectorAll("[id]")]) el.removeAttribute("id");
       for (const el of [copy, ...copy.querySelectorAll("[data-in]")]) el.removeAttribute("data-in");
       copy.removeAttribute("role"); copy.removeAttribute("aria-labelledby");
@@ -156,6 +174,10 @@
       copy.append(shade);
       panel.parentElement.append(copy);
       apply();
+      // a taller new panel (After fixes after Scanning) showed its lower rows under the copy before the turn reached them
+      // (AH-138 review): the copy, the panel's own paper, grows to cover it; the sheet still clips it
+      const now = ws.querySelector(".ws-main > .panel:not([hidden]):not([data-turn])");
+      if (now && now.offsetHeight > panel.offsetHeight) s.height = now.offsetHeight + "px";
       const timing = { duration: TURN, easing: INOUT, fill: "forwards" };
       const anims = [copy.animate([{ transform: "perspective(2400px) rotateY(0deg)" }, { transform: "perspective(2400px) rotateY(-100deg)" }], timing),
         shade.animate([{ opacity: 0 }, { opacity: 1 }], timing)];
@@ -163,6 +185,37 @@
       turning = gone;
       anims[0].finished.then(gone, () => {});
     }
+
+    // One gold mark for the chosen tab (AH-138, John 2026-11-06: "one shared element (layout id) reused across shared
+    // objects", "a moving knob stretches 12%", "arcs for object movement"): the same <span class="tab-mark"
+    // aria-hidden="true"> moves to every tab, posed as translate(x, y) scaleX(width) from a 1 px line, where the chosen
+    // tab's own line is (its ::after steps aside, styles.css). Between two tabs it slides over --slide-dur on
+    // --ease-in-out, stretched at the half way to the two widths' average times --stretch and centred between them; on
+    // two lines (text at 200% wraps the tabs) the half way also lifts it only a fifth of the rise, so it travels an arc.
+    // With reduced motion it is there at once
+    const strip = ws.querySelector(".tabs");
+    let mark = strip.querySelector(".tab-mark"), slide = null, at = null;
+    if (!mark) { mark = document.createElement("span"); mark.className = "tab-mark"; mark.setAttribute("aria-hidden", "true"); strip.append(mark); }
+    strip.setAttribute("data-mark", "");
+    const poseOf = (t) => ({ x: t.offsetLeft, y: t.offsetTop + t.offsetHeight - 3, w: t.offsetWidth }); // the ::after's place: the 3 px under the tab
+    const posed = (q) => `translate(${q.x}px, ${q.y}px) scaleX(${q.w})`;
+    function markTo(tab, move) {
+      const to = poseOf(tab);
+      let from = at;
+      if (slide) { const m = new DOMMatrix(getComputedStyle(mark).transform); from = { x: m.e, y: m.f, w: m.a }; slide.cancel(); slide = null; }
+      mark.style.transform = posed(to);
+      at = to;
+      if (!move || !from || !moving() || !mark.animate || (Math.abs(from.x - to.x) < 0.5 && Math.abs(from.y - to.y) < 0.5 && Math.abs(from.w - to.w) < 0.5)) return;
+      const w = ((from.w + to.w) / 2) * STRETCH, c = (from.x + from.w / 2 + to.x + to.w / 2) / 2;
+      const mid = { x: c - w / 2, y: from.y + 0.2 * (to.y - from.y), w };
+      const a = slide = mark.animate([{ transform: posed(from) }, { transform: posed(mid), offset: 0.5 }, { transform: posed(to) }], { duration: SLIDE, easing: INOUT });
+      a.finished.then(() => { if (slide === a) slide = null; }, () => {});
+    }
+    const chosen = () => tabs.find((t) => t.getAttribute("aria-selected") === "true") || tabs[0];
+    markTo(chosen(), false);
+    // a font swap, text at 200% or a narrower screen moves the tabs: the mark follows at once
+    const sized = window.ResizeObserver ? new ResizeObserver(() => markTo(chosen(), false)) : null;
+    if (sized) for (const el of [strip, ...tabs]) sized.observe(el);
 
     let tick;
     function show(tab) {
@@ -172,6 +225,7 @@
         t.tabIndex = sel ? 0 : -1;
         byId(t.getAttribute("aria-controls")).hidden = !sel;
       }
+      markTo(tab, true);
       const state = tab.id.slice(2);
       ws.dataset.state = state;
       // "clean" is the sheet with the three suggested fixes in: four rows are still worth a check there (AH-88), and the
@@ -212,19 +266,51 @@
       });
     }
 
+    // A row's detail box is a popover from its row's button (AH-138, John 2026-11-06: "popovers start at scale 0.95, come
+    // in from their trigger and go out to it", "stagger when details settle"): with motion it grows from --pop-from at
+    // the button's centre over --pop-in, its head and then each line of its details settling 4 px up, --stagger-row
+    // apart. Closed, the box itself is hidden at once (what the keyboard, a reader and the tests meet), and a copy of it
+    // (no ids, no role, hidden from readers, inert) shrinks back to the button over --pop-out: removed when done, at the
+    // next open, or when the page leaves
     const main = ws.querySelector("#p-found");
-    let open = null;
-    function closeMatrix() {
+    let open = null, leaving = null;
+    const unleave = () => { if (leaving) leaving(); };
+    function leave(box, origin) {
+      unleave();
+      const copy = box.cloneNode(true);
+      for (const el of [copy, ...copy.querySelectorAll("[id]")]) el.removeAttribute("id");
+      copy.removeAttribute("role"); copy.removeAttribute("aria-label"); copy.classList.remove("matrix");
+      copy.setAttribute("aria-hidden", "true"); copy.inert = true; copy.setAttribute("data-pop-copy", "");
+      copy.style.transformOrigin = origin;
+      box.after(copy);
+      const a = copy.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: `scale(${FROM})` }], { duration: POP_OUT, easing: EASE, fill: "forwards" });
+      const gone = () => { a.cancel(); copy.remove(); if (leaving === gone) leaving = null; };
+      leaving = gone;
+      a.finished.then(gone, () => {});
+    }
+    function settle(box) {
+      box.animate([{ opacity: 0, transform: `scale(${FROM})` }, { opacity: 1, transform: "none" }], { duration: POP_IN, easing: EASE });
+      const rise = (els, delay) => { for (const el of els) if (el) el.animate([{ opacity: 0, transform: "translate3d(0, 4px, 0)" }, { opacity: 1, transform: "none" }], { duration: POP_IN, delay, easing: EASE, fill: "backwards" }); };
+      const lines = [...box.querySelectorAll("dl > *")];
+      rise([box.querySelector(".m-head")], 0);
+      for (let i = 0; i < lines.length; i += 2) rise(lines.slice(i, i + 2), (i / 2) * ROW);
+      rise([box.querySelector(".m-said")], (lines.length / 2) * ROW);
+    }
+    function closeMatrix(swap) {
       if (!open) return;
-      open.btn.setAttribute("aria-expanded", "false");
-      open.box.hidden = true;
+      const { btn, box, origin } = open;
+      for (const a of box.getAnimations({ subtree: true })) a.cancel();
+      if (swap !== true && moving() && box.animate && !main.hidden) leave(box, origin); // another box opening at once needs none
+      btn.setAttribute("aria-expanded", "false");
+      box.hidden = true;
       open = null;
     }
     function openMatrix(btn) {
       const box = byId(btn.getAttribute("aria-controls"));
       const same = open && open.btn === btn;
-      closeMatrix();
+      closeMatrix(!same);
       if (same) return;
+      unleave();
       // under its row, or above it where it would pass the findings' bottom: under them, rows 22 to 57 covered the
       // caption and "See every check", whose clicks then did nothing (AH-132). Taller than the room on either side (a
       // narrow phone), it sits on the findings' bottom
@@ -233,7 +319,11 @@
       const h = box.offsetHeight, under = row.bottom - sheet.top, over = row.top - sheet.top - h;
       box.style.top = (under + h <= sheet.height ? under : over >= 0 ? over : Math.max(0, sheet.height - h)) + "px";
       btn.setAttribute("aria-expanded", "true");
-      open = { btn, box };
+      const b = btn.getBoundingClientRect(), r = box.getBoundingClientRect(), px = (v) => Math.round(v * 10) / 10 + "px";
+      const origin = px(b.left + b.width / 2 - r.left) + " " + px(b.top + b.height / 2 - r.top);
+      box.style.transformOrigin = origin;
+      open = { btn, box, origin };
+      if (moving() && box.animate) settle(box);
       // the box is a dialog that sits after the whole table in the page: without this a keyboard or screen-reader user
       // reached it only after every other row; Escape and Close bring focus back to the row
       box.querySelector(".m-close").focus();
@@ -252,7 +342,34 @@
     window.addEventListener("resize", closeMatrix, on);
 
     const unask = checksum(root), undock = dock(root);
-    mounted = { root, off: () => { clearInterval(tick); bye.abort(); unload(); unask(); undock(); if (turning) turning(); mounted = null; } };
+    copier(root, on);
+    mounted = { root, off: () => { clearInterval(tick); bye.abort(); unload(); unask(); undock(); if (turning) turning(); unleave(); if (sized) sized.disconnect(); if (slide) slide.cancel(); mounted = null; } };
+  }
+
+  // The PowerShell line's Copy button (AH-138, John 2026-11-06: "a pulse confirms success", "icons crossfade with scale
+  // and blur"): shown only with this script. It copies the line right before it, read from the page, never typed twice;
+  // copied, it says so (its label is a live region a screen reader announces), its copy icon gives way to a check and a
+  // ring pulses once (styles.css), and 2 s later it is Copy again. With no clipboard, or a refused one, the line's text is
+  // selected and the label says to press Ctrl+C
+  function copier(root, on) {
+    const b = root.querySelector(".copy-btn"), code = b && b.previousElementSibling, label = b && b.querySelector(".copy-said");
+    if (!b || !label || !code || !code.matches("code.line")) return;
+    let timer = 0;
+    const say = (t) => { label.textContent = t; };
+    const back = () => { clearTimeout(timer); b.removeAttribute("data-done"); say("Copy"); };
+    const done = () => { back(); getComputedStyle(b, "::after").animationName; b.setAttribute("data-done", ""); say("Copied"); timer = setTimeout(back, 2000); };
+    const fail = () => {
+      back();
+      const r = document.createRange(), sel = getSelection();
+      r.selectNodeContents(code); sel.removeAllRanges(); sel.addRange(r);
+      say("Press Ctrl+C"); timer = setTimeout(back, 4000);
+    };
+    b.addEventListener("click", () => {
+      const c = navigator.clipboard;
+      if (c && typeof c.writeText === "function") c.writeText(code.textContent).then(done, fail); else fail();
+    }, on);
+    on.signal.addEventListener("abort", () => clearTimeout(timer));
+    b.hidden = false;
   }
 
   // AbortSignal.timeout is missing from Safari before 16 and Chrome before 103; a timer does the same there
