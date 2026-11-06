@@ -157,7 +157,7 @@
     // replay on a pinned page). Read before anything moves, written inline over all three
     const frozen = [...old.querySelectorAll("[data-enter], .reveal-item, .rule, [data-depth]")].map((el) => { const c = getComputedStyle(el); return [el, c.transform, c.translate, c.opacity]; });
     for (const [el, tf, tr, op] of frozen) { const s = el.style; s.transition = s.animation = "none"; s.transform = tf; s.translate = tr; s.opacity = op; }
-    const r = old.getBoundingClientRect(), notice = document.querySelector(".notice-bar");
+    const r = old.getBoundingClientRect();
     // while the pages trade places the browser must not "anchor" the scroll to a node of the leaving page (it moved
     // the new page to 738 px instead of its top); also lifts the field over the moving pages (styles.css)
     html.setAttribute("data-moving", "");
@@ -188,11 +188,13 @@
     old.after(next); // the new page is in the document before the old one leaves it: no frame without a page
     current = pageOf(u);
 
-    // where the new page opens: its saved place (Back, Forward), its #anchor, or its top with the header where it was
+    // where the new page opens: its saved place (Back, Forward), its #anchor, or its very top, the notice line shown (it
+    // kept the header where it was, so from far down a page the new one opened 36 px down, the notice line scrolled away:
+    // AH-138 review)
     const anchor = y === null ? find(next, u.hash) || find(document, u.hash) : null;
     if (y !== null) scrollTo(0, y);
     else if (anchor) anchor.scrollIntoView();
-    else scrollTo(0, Math.min(scrollY, notice ? notice.offsetTop + notice.offsetHeight : 0)); // a sticky bar's offsetTop is where it is stuck
+    else scrollTo(0, 0);
     history.replaceState({ ah: 1, i: index, y: Math.round(scrollY) }, "");
 
     const still = window.AH ? window.AH.still : matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -255,16 +257,28 @@
   const btn = () => document.querySelector(".menu-btn");
   let closing = null; // { nav, done }
   const drop = () => { if (closing) closing.done(); };
+  // open, it closes as a popover does (AH-138 review): on a press anywhere outside it and its button, and once the page
+  // has scrolled more than 8 px from where it opened (on a phone the bar scrolls away with it)
+  let from = 0;
+  const outside = (e) => { const b = btn(); if (b && !(e.target.closest && e.target.closest(".menu-btn, #main-nav"))) set(b, false); };
+  const scrolled = () => { const b = btn(); if (b && Math.abs(scrollY - from) > 8) set(b, false); };
+  const watch = (on) => { const f = on ? addEventListener : removeEventListener;
+    f("pointerdown", outside, { capture: true, passive: true }); f("scroll", scrolled, { passive: true }); };
   function set(b, open) {
     const nav = document.getElementById(b.getAttribute("aria-controls"));
     const was = b.getAttribute("aria-expanded") === "true";
     if (open) {
       drop();
       b.setAttribute("aria-expanded", "true");
+      from = scrollY; watch(true);
       // read once the links are drawn (closed, they have no box), before the frame that shows them
       if (nav) { const r = b.getBoundingClientRect(); nav.style.setProperty("--menu-x", Math.round(r.left + r.width / 2 - nav.getBoundingClientRect().left) + "px"); }
+      // its links are at rest as it opens: opened during the first load's entrance, they were still flying in from past the
+      // screen's right edge inside the menu (motion.js), where a press could not reach them
+      if (nav) for (const a of nav.getAnimations({ subtree: true })) if (a.effect && a.effect.target !== nav) a.finish();
       return;
     }
+    watch(false);
     // the exit plays only for a menu that is open and drawn (a phone), with motion
     if (was && nav && !still() && b.getClientRects().length && nav.getClientRects().length) {
       drop();

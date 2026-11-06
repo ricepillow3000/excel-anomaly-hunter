@@ -124,7 +124,7 @@ code { font-family: var(--mono); font-size: .88em; background: var(--paper-2); b
 /* the announcement line and the bar */
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--dark); }
 .notice-bar { background: var(--dark); color: var(--on-dark); }
-.notice-bar p { max-width: calc(var(--wrap) + 2 * var(--margin)); margin: 0 auto; padding: 8px var(--margin); font: 500 var(--fs--1)/1.5 var(--sans); }
+.notice-bar p { max-width: calc(var(--wrap) + 2 * var(--margin)); margin: 0 auto; padding: 8px var(--margin); font: 500 var(--fs--1)/1.5 var(--sans); text-wrap: balance; } /* two even lines on a phone, never "Download" alone on the second (AH-138 review) */
 .notice-bar a { color: var(--on-dark); text-decoration-color: var(--gold-hi); text-decoration-thickness: 2px; }
 /* a link standing alone (the notice's Download, the footer's, the checks' "Row 22") is a target of 24 px at least
    (AH-115, WCAG 2.2 2.5.8: they were 17 and 21 px tall); the padding that makes it so is taken back by an equal margin, so
@@ -771,7 +771,9 @@ html[data-moving] #field { z-index: 2; }
   /* open, the links lie over the page under the bar (AH-138 review: in the flow they pushed the page down 85 px, and
      "Checks" landed 85 px off when the menu closed and the page moved back up) */
   html[data-js] .bar .links { position: absolute; top: calc(100% + 1px); left: 0; right: 0; z-index: 2; flex: none; background: var(--grain), var(--paper);
-    border-bottom: 1px solid var(--ink); padding: 8px max(var(--margin), env(safe-area-inset-right, 0px)) 12px max(var(--margin), env(safe-area-inset-left, 0px)); }
+    border-bottom: 1px solid var(--ink); padding: 8px max(var(--margin), env(safe-area-inset-right, 0px)) 12px max(var(--margin), env(safe-area-inset-left, 0px));
+    box-shadow: 0 12px 32px rgba(12, 25, 56, .18); } /* a still shadow: it lies over the page */
+  html[data-js] .bar .links a { display: flex; align-items: center; min-height: 44px; } /* a thumb's target (AH-138 review: 36 px) */
   html[data-js] .menu-btn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 var(--s2); font: 700 var(--fs--1)/1 var(--sans); color: var(--ink);
     background: var(--paper); border: 1px solid var(--ink); border-radius: 0; cursor: pointer; }
   html[data-js] .menu-btn[aria-expanded="true"] { background: var(--ink); color: var(--paper); }
@@ -781,8 +783,8 @@ html[data-moving] #field { z-index: 2; }
 @media (min-width: 761px) { .dock { display: none; } }
 /* a short laptop screen (1280 x 720): the hero's download was 27 px below the first screen, so the hero starts higher */
 @media (min-width: 761px) and (max-height: 820px) {
-  .hero { padding-top: var(--s5); }
-  .hero-copy { margin-top: var(--s4); }
+  .hero { padding-top: var(--s2); }
+  .hero-copy { margin-top: 12px; } /* and its buttons and the line under them 8 px or more inside the screen (AH-138 review: the line was below it) */
 }
 
 /* AH-136: a phone number broke over two lines ("(770) 265–" / "9930") on the thank-you page; kept whole where there is

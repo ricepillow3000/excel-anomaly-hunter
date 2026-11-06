@@ -443,3 +443,15 @@ later; refused, it selects the line and says to press Ctrl+C) and a group of blo
 - The main button's navy covers its 2 px border too; a filter clears the other rows' marks; the Copy label keeps the
   width of "Copied"; a tap shows no browser highlight over the gold pressed line.
 
+### Fix round 2 (a second blind design review, 2026-11-06)
+
+- The phone's menu closes as a popover does: on a press outside it and its button, and once the page has scrolled more
+  than 8 px from where it opened, each time through the same exit. Its links are 44 px targets, and the open sheet has a
+  still shadow.
+- A page change by a link lands at the new page's very top with the notice line shown (it kept the header where it was,
+  so from far down a page it opened 36 px down). Back and Forward still return to their saved place.
+- The page turn's copy grows to a taller new panel's height, so After fixes' lower rows stay under it until it passes.
+- The phone's download bar also hides while the contact form is on screen or focus is in a form.
+- The notice line balances its two lines on a phone, so "Download" is never alone; at 1280 x 720 the hero starts higher,
+  its buttons and note 8 px or more inside the screen.
+

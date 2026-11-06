@@ -2633,6 +2633,109 @@ for (const file of PAGES.filter((f) => /<header[\s\S]*aria-current="page"[\s\S]*
   assert.deepEqual(miss, [], `AH-138 fix round 1:\n${miss.join("\n")}`);
   console.log("AH-138 fix round 1: the turning page's meter frozen, the phone's menu over the page and its Checks landing on the checks, the release link's words whole at 390 and 320 px (200%), a filter clearing the other rows' marks, the button fills to their edge, the Copy button's width kept, the phone's swipe hint, short pages to the screen's bottom, answers settling 30 ms apart, the detail box's shadow");
 }
+// ---- AH-138 fix round 2 (a second blind design review, 2026-11-06): the phone's menu closes like a popover (a press
+// outside it, or a scroll) and its links are 44 px targets; the phone's download bar never covers the contact form; the
+// turning copy covers the taller After fixes panel until it passes; a page change by a link lands at the top; the hero's
+// buttons and note fit a 1280 x 720 screen; the notice line never leaves "Download" alone ----
+{
+  const miss = [];
+  const want = (ok, what) => { if (!ok) miss.push(what); };
+  const settle = (p, sel) => p.$eval(sel, (el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => {}))));
+  const menu = (p) => p.evaluate(() => { const n = document.getElementById("main-nav"); return { expanded: document.querySelector(".menu-btn").getAttribute("aria-expanded"), drawn: n.getClientRects().length > 0, closing: n.hasAttribute("data-closing"),
+    links: [...n.querySelectorAll("a")].map((a) => Math.round(a.getBoundingClientRect().height * 10) / 10), bottom: n.getBoundingClientRect().bottom }; });
+  // 1. the phone's menu: 44 px links; a press outside it closes it (with its exit), and so does a scroll
+  {
+    const t = await open("index.html", { width: 390, height: 844 });
+    const p = t.page;
+    await p.waitForTimeout(ENTERED);
+    await p.click(".menu-btn"); await settle(p, "#main-nav");
+    const m0 = await menu(p);
+    want(m0.expanded === "true" && m0.links.length === 5 && m0.links.every((h) => h >= 44), `S1 the phone menu's links: ${JSON.stringify(m0)}`);
+    await p.mouse.click(200, Math.min(830, m0.bottom + 80));
+    const m1 = await menu(p);
+    await p.waitForFunction(() => !document.getElementById("main-nav").hasAttribute("data-closing"), null, { timeout: 1000 }).catch(() => {});
+    const m2 = await menu(p);
+    want(m1.expanded === "false" && !m2.drawn && !m2.closing, `S1 a press outside the open menu: ${JSON.stringify([m1, m2])}`);
+    if ((await menu(p)).expanded !== "true") await p.click(".menu-btn");
+    await settle(p, "#main-nav");
+    await p.evaluate(() => scrollTo(0, scrollY + 600)); await p.waitForTimeout(300);
+    await p.waitForFunction(() => !document.getElementById("main-nav").hasAttribute("data-closing"), null, { timeout: 1000 }).catch(() => {});
+    const m3 = await menu(p);
+    want(m3.expanded === "false" && !m3.drawn, `S1 a scroll of 600 px with the menu open: ${JSON.stringify(m3)}`);
+    await done(t, "S1 phone menu closes", [API]);
+  }
+  // 2. the phone's download bar never lies over the contact form's button
+  {
+    const t = await open("index.html", { width: 390, height: 844 });
+    const p = t.page, sel = '#note button[type="submit"]';
+    await p.waitForTimeout(ENTERED);
+    // the button low on the screen, where the bar would lie (the review's frame), and then in the middle
+    for (const low of [true, false]) {
+    await p.$eval(sel, (b, low) => { if (!low) return b.scrollIntoView({ block: "center" }); let top = 0; for (let e = b; e; e = e.offsetParent) top += e.offsetTop; scrollTo(0, top + b.offsetHeight - innerHeight + 30); }, low);
+    await p.waitForTimeout(800);
+    const r = await p.$eval(sel, (b) => { const x = b.getBoundingClientRect(), at = document.elementFromPoint(x.left + x.width / 2, x.top + x.height / 2);
+      return { dock: document.getElementById("dock").hidden, hit: !!at && (at === b || b.contains(at)), on: at ? at.tagName + "." + at.className : null }; });
+    want(r.dock && r.hit, `S2 the download bar over the contact form (${low ? "low" : "mid"} screen): ${JSON.stringify(r)}`);
+    }
+    await done(t, "S2 dock and the contact form", [API]);
+  }
+  // 3. Scanning, then After fixes: the turning copy covers the taller new panel's lower rows until it passes them
+  {
+    const t = await open("index.html", { width: 1440, height: 900 });
+    const p = t.page;
+    await p.waitForTimeout(ENTERED);
+    await p.evaluate((y) => scrollTo(0, y), await frameAt(p));
+    await p.waitForFunction(() => !document.getElementById("preview").hasAttribute("data-loading"), null, { timeout: 4000 }).catch(() => {});
+    await p.click("#t-busy"); await p.waitForTimeout(1200);
+    await p.evaluate(() => { window.__cover = [];
+      const look = (ms) => { const cell = document.querySelector("#p-clean tbody tr:last-child td:nth-child(6)"), c = document.querySelector("[data-turn]");
+        cell.scrollIntoView({ block: "center" });
+        const r = cell.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2, b = c && c.getBoundingClientRect();
+        window.__cover.push({ ms, row: cell.parentElement.querySelector("th").textContent, covered: !!b && x >= b.left && x <= b.right && y >= b.top && y <= b.bottom && getComputedStyle(c).opacity === "1" }); };
+      document.getElementById("t-clean").addEventListener("click", () => { for (const ms of [0, 60, 150]) setTimeout(() => look(ms), ms); }, { capture: true, once: true }); });
+    await p.click("#t-clean");
+    await p.waitForTimeout(300);
+    await p.waitForFunction(() => !document.querySelector("[data-turn]"), null, { timeout: 2000 }).catch(() => {});
+    const r = await p.evaluate(() => { const cell = document.querySelector("#p-clean tbody tr:last-child td:nth-child(6)"); cell.scrollIntoView({ block: "center" }); const x = cell.getBoundingClientRect(), at = document.elementFromPoint(x.left + x.width / 2, x.top + x.height / 2);
+      return { cover: window.__cover, reach: at === cell || cell.contains(at) }; });
+    want(r.cover.length === 3 && r.cover.every((c) => c.row === "57" && c.covered) && r.reach, `S3 After fixes' row 57 during the turn: ${JSON.stringify(r)}`);
+    await done(t, "S3 turning copy covers the new panel", [API]);
+  }
+  // 4. a page change by a link lands at the page's top, the notice line shown: from the bottom by the footer, from 400 px
+  // by the header
+  {
+    const t = await open("privacy.html", { width: 1440, height: 900 });
+    const p = t.page;
+    await p.waitForTimeout(ENTERED);
+    const land = async (label) => { await p.waitForFunction(() => !document.documentElement.hasAttribute("data-moving"), null, { timeout: 3000 }).catch(() => {}); await p.waitForTimeout(300);
+      const r = await p.evaluate(() => ({ at: location.pathname, y: scrollY, notice: document.querySelector(".notice-bar").getBoundingClientRect().top }));
+      want(r.y === 0 && r.notice === 0, `S4 ${label}: ${JSON.stringify(r)}`); };
+    await p.evaluate(() => scrollTo(0, document.documentElement.scrollHeight)); await p.waitForTimeout(400);
+    await p.click('footer a[href="terms.html"]'); await p.waitForURL(/terms\.html$/); await land("the footer's Terms from the bottom of privacy.html");
+    await p.evaluate(() => scrollTo(0, 400)); await p.waitForTimeout(400);
+    await p.click('header a[href="support.html"]'); await p.waitForURL(/support\.html$/); await land("the header's Support from 400 px down terms.html");
+    await done(t, "S4 page changes land at the top", [API]);
+  }
+  // 5. on a 1280 x 720 laptop the hero's buttons and the note under them fit, 8 px to spare
+  {
+    const t = await open("index.html", { width: 1280, height: 720, motion: "reduce" });
+    const r = await t.page.evaluate(() => ({ note: document.querySelector(".hero .note").getBoundingClientRect().bottom, cta: document.querySelector(".hero-cta").getBoundingClientRect().bottom, h: innerHeight }));
+    want(r.note <= r.h - 8 && r.cta <= r.h - 8, `S5 the hero at 1280 x 720: ${JSON.stringify(r)}`);
+    await done(t, "S5 hero at 1280 x 720", [API]);
+  }
+  // 6. on a phone the notice line's last line holds more than "Download", on every page
+  for (const file of [...PAGES, MISSING]) {
+    const t = await open(file, { width: 390, height: 844, motion: "reduce" });
+    const r = await t.page.evaluate(() => { const p = document.querySelector(".notice-bar p"), a = p.querySelector("a"), top = (x) => Math.round(x.getBoundingClientRect().top);
+      const w = document.createTreeWalker(p, NodeFilter.SHOW_TEXT); let dot = null; for (let n = w.nextNode(); n; n = w.nextNode()) if (!a.contains(n) && n.textContent.includes("·")) dot = n;
+      const q = document.createRange(), i = dot.textContent.lastIndexOf("·"); q.setStart(dot, i); q.setEnd(dot, i + 1);
+      return { dot: Math.round(q.getBoundingClientRect().top), link: top(a), lines: new Set([...(() => { const all = document.createRange(); all.selectNodeContents(p); return all.getClientRects(); })()].map((x) => Math.round(x.top))).size }; });
+    want(Math.abs(r.dot - r.link) <= 6, `S6 ${file} at 390 px: "Download" alone on the notice line's last line ${JSON.stringify(r)}`);
+    await done(t, `S6 notice line on ${file}`, file === MISSING ? [] : [API]);
+  }
+  assert.deepEqual(miss, [], `AH-138 fix round 2:\n${miss.join("\n")}`);
+  console.log("AH-138 fix round 2: the phone menu's 44 px links, closed by a press outside or a scroll; the download bar off the contact form; the turning copy over the taller After fixes panel; page changes landing at the top; the hero at 1280 x 720 with 8 px to spare; the notice line never leaving Download alone");
+}
 console.log(`page transitions: ${measured.moving} ms of motion on screen (${measured.swap} ms in the page, ${measured.duration} ms from the click), both pages in ${measured.both} of ${measured.ofFrames} frames, ` +
   `the whitest of ${measured.frames} screencast frames ${(measured.white * 100).toFixed(2)}% white; seeked to its middle (${measured.mid.t} ms, the seek took ${measured.mid.spent} ms) the old page shows ${measured.mid.old.toFixed(1)} px and the new ${measured.mid.new.toFixed(1)} px of ${measured.mid.width}, ` +
   `overlap ${measured.mid.overlap.toFixed(1)} px (worst frame ${measured.overlap.toFixed(1)} px), the edge ${measured.mid.seam.toFixed(1)} px off the boundary; ` +

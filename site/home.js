@@ -110,21 +110,28 @@
     const bar = root.querySelector("#dock"), cta = root.querySelector(".hero-cta .btn-primary"), dl = root.querySelector("#download");
     if (!bar || !cta || !dl || !window.IntersectionObserver) return () => {};
     const phone = matchMedia("(max-width: 760px)");
-    let past = false, near = false, rise = null;
+    // the contact form and every form on the page count as "near" too, and so does focus inside a form: the bar lay over
+    // the contact form's own button (AH-138 review)
+    const nears = new Set([dl, ...root.querySelectorAll("#contact, form")]), seen = new Set();
+    let past = false, near = false, typing = false, rise = null;
     const set = () => {
-      const on = phone.matches && past && !near;
+      const on = phone.matches && past && !near && !typing;
       if (on === !bar.hidden) return;
       bar.hidden = !on;
       if (rise) { rise.cancel(); rise = null; }
       if (on && !still && bar.animate) rise = bar.animate([{ transform: "translate3d(0, 100%, 0)", opacity: 0 }, { transform: "translate3d(0, 0, 0)", opacity: 1 }], { duration: ms("--fill-dur", 350), easing: tokens.getPropertyValue("--ease-out").trim() || "ease-out" });
     };
-    const io = new IntersectionObserver((seen) => {
-      for (const e of seen) if (e.target === cta) past = !e.isIntersecting && e.boundingClientRect.top < 0; else near = e.isIntersecting;
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) if (e.target === cta) past = !e.isIntersecting && e.boundingClientRect.top < 0; else if (e.isIntersecting) seen.add(e.target); else seen.delete(e.target);
+      near = seen.size > 0;
       set();
     });
-    io.observe(cta); io.observe(dl);
+    io.observe(cta); for (const el of nears) io.observe(el);
+    const focus = () => { const a = document.activeElement; typing = !!(a && a.closest && root.contains(a) && a.closest("form")); set(); };
+    const later = () => setTimeout(focus);
+    root.addEventListener("focusin", focus); root.addEventListener("focusout", later);
     phone.addEventListener("change", set);
-    return () => { io.disconnect(); phone.removeEventListener("change", set); if (rise) rise.cancel(); bar.hidden = true; };
+    return () => { io.disconnect(); root.removeEventListener("focusin", focus); root.removeEventListener("focusout", later); phone.removeEventListener("change", set); if (rise) rise.cancel(); bar.hidden = true; };
   }
 
   function mount(root) {
@@ -167,6 +174,10 @@
       copy.append(shade);
       panel.parentElement.append(copy);
       apply();
+      // a taller new panel (After fixes after Scanning) showed its lower rows under the copy before the turn reached them
+      // (AH-138 review): the copy, the panel's own paper, grows to cover it; the sheet still clips it
+      const now = ws.querySelector(".ws-main > .panel:not([hidden]):not([data-turn])");
+      if (now && now.offsetHeight > panel.offsetHeight) s.height = now.offsetHeight + "px";
       const timing = { duration: TURN, easing: INOUT, fill: "forwards" };
       const anims = [copy.animate([{ transform: "perspective(2400px) rotateY(0deg)" }, { transform: "perspective(2400px) rotateY(-100deg)" }], timing),
         shade.animate([{ opacity: 0 }, { opacity: 1 }], timing)];
