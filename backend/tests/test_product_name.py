@@ -255,6 +255,39 @@ def test_install_lists_arcas_in_installed_apps_and_uninstall_takes_it_out(tmp_pa
     assert app.uninstall() == 0 and (app.UNINSTALL, None) in gone
 
 
+def read_cmd(line):
+    """A cmd.exe command line the way cmd reads it: '"cmd" /d /s /c "..."' -> (cmd, [each command's words]). /s takes
+    the outer quotes off; & ends a command only outside quotes, and a quoted path is one word, & and spaces included."""
+    import shlex
+    cmd, rest = line[1:].split('" ', 1)
+    assert rest.startswith('/d /s /c "') and rest.endswith('"'), rest
+    lex = shlex.shlex(rest[len('/d /s /c "'):-1], posix=True, punctuation_chars="&")
+    lex.escape, lex.whitespace_split = "", True  # cmd has no backslash escapes: C:\Users stays C:\Users
+    words, commands = list(lex), [[]]
+    for w in words:
+        commands.append([]) if w == "&" else commands[-1].append(w)
+    return cmd, commands
+
+
+def test_the_uninstall_cleanup_runs_windows_own_cmd_and_survives_a_profile_path_with_an_ampersand_and_a_space(tmp_path, monkeypatch):
+    # AH-140 audit: "cmd.exe" by bare name (CreateProcess looks in the exe's own folder first), and a user name with &
+    # was cut by cmd into a second command: C:\Users\A&B\... ran "B\..."
+    (tmp_path / "A&B Smith").mkdir()
+    home, _ = fake_pc(tmp_path / "A&B Smith", monkeypatch)
+    me = home / "Arcas.exe"
+    me.write_bytes(b"new")
+    monkeypatch.setattr(sys, "executable", str(me))
+    monkeypatch.setattr(app, "reg_delete", lambda *a, **k: None)
+    monkeypatch.setenv("LOCALAPPDATA", str(home.parent))
+    started = []
+    monkeypatch.setattr(app.subprocess, "Popen", lambda args, **k: started.append(args))
+    assert app.uninstall() == 0 and len(started) == 1 and isinstance(started[0], str)
+    cmd, line = read_cmd(started[0])
+    assert cmd == str(app.WIN / "cmd.exe")
+    assert line == [[str(app.WIN / "PING.EXE"), "-n", "4", "127.0.0.1", ">nul"], ["del", "/f", "/q", str(me.resolve())],
+                    ["rmdir", str(home)]]
+
+
 def test_an_uninstall_from_installed_apps_removes_the_running_app_file_too(tmp_path, monkeypatch):
     # Installed apps runs the installed copy, which cannot delete itself while it runs: it asks Windows' own cmd to
     # delete it, and the empty folder, a few seconds after it exits (an uninstall from Downloads leaves that file be)
@@ -267,9 +300,9 @@ def test_an_uninstall_from_installed_apps_removes_the_running_app_file_too(tmp_p
     started = []
     monkeypatch.setattr(app.subprocess, "Popen", lambda args, **k: started.append(args))
     assert app.uninstall() == 0
-    assert len(started) == 1 and started[0][:3] == ["cmd.exe", "/d", "/c"]
-    line = started[0][3:]
-    assert line[line.index("del") + 3] == str(me.resolve()) and line[-2:] == ["rmdir", str(home)]
+    assert len(started) == 1
+    cmd, line = read_cmd(started[0])
+    assert cmd == str(app.WIN / "cmd.exe") and line[1] == ["del", "/f", "/q", str(me.resolve())] and line[2] == ["rmdir", str(home)]
     assert not (home / "AnomalyHunter.exe").exists()
     started.clear()
     monkeypatch.setattr(sys, "executable", str(tmp_path / "Downloads" / "Arcas.exe"))

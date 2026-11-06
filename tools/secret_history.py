@@ -12,7 +12,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SHAPES = {  # each is the provider's own published prefix and length, so an ordinary word cannot match
-    "a Google API key": r"AIza[0-9A-Za-z_-]{35}",
+    # AH-140: and Google's newer keys, as server.py's key check and its comment give them ("AQ.Ab8...", dots inside, no
+    # length stated); one that ends in ".." is that comment's own "AQ.Ab8...", never a key
+    "a Google API key": r"AIza[0-9A-Za-z_-]{35}|(?<![\w.-])AQ\.Ab8[A-Za-z0-9_.-]*+(?<!\.\.)",
     "a private key block": r"-----BEGIN [A-Z ]*PRIVATE KEY-----",
     "a GitHub token": r"gh[pousr]_[A-Za-z0-9]{36,}",
     "a Slack token": r"xox[baprs]-[0-9A-Za-z-]{10,}",
@@ -23,7 +25,7 @@ SHAPES = {  # each is the provider's own published prefix and length, so an ordi
 # the same test must still be found. All three in the history on 2026-11-02 (AH-87): test_grounding.py's
 # "AIzaSECRET-key-should-never..." and "inv_SECRETinvitecode...", e2e/run.mjs's "inv_e2eNotARealInviteCode...".
 # A new fake says it is one in its own first letters and goes here, or carries the marker below.
-FAKES = ("AIzaSECRET", "inv_SECRET", "inv_e2eNot")
+FAKES = ("AIzaSECRET", "inv_SECRET", "inv_e2eNot", "AQ.Ab8_madeUp")  # the last: test_fix.py's "AQ.Ab8_madeUp-Test.key"
 ALLOW = "gitleaks:allow"  # the marker gitleaks and this file both honour, for a fake that doesn't start like one above
 NAMES = re.compile(r"(^|/)(\.env|\.dev\.vars|invite-code\.txt|gemini-key\.txt|relay/tokens\.json)$|\.(pem|key|p12|pfx)$")
 

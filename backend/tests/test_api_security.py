@@ -200,6 +200,16 @@ def test_more_cells_than_the_pane_ever_sends_is_a_clear_400(monkeypatch):
     assert r.status_code == 400 and "too many cells" in r.get_json()["error"]
 
 
+def test_more_columns_than_excel_has_is_a_clear_400_before_any_scan():
+    # AH-140 audit: with rows [] the cell cap is 0, so 500,000 column names in a 4 MB body held a thread for hours
+    import time
+    started = time.monotonic()
+    r = APP.test_client().post("/scan", json={"columns": [f"c{k}" for k in range(16_385)], "rows": []})
+    assert r.status_code == 400 and r.is_json and "too many columns" in r.get_json()["error"]
+    assert time.monotonic() - started < 5
+    assert "too many columns" not in (server._bad({"columns": [f"c{k}" for k in range(16_384)], "rows": []}) or "")
+
+
 def test_every_workflow_action_is_pinned_to_a_commit():
     # 2026-10-15 audit: the release job (contents: write) publishes the exe every new user downloads. A tag like
     # @v8 can be moved to other code; a 40-hex commit can't. Bump one by re-resolving its tag with git ls-remote.
@@ -424,6 +434,26 @@ def test_the_ai_key_the_invite_code_and_the_tls_key_are_readable_only_by_their_o
         client.KEY_FILE.chmod(0o644)
         assert c.post("/key", json={"key": "AIzaMadeUpTestKey456"}).status_code == 200  # gitleaks:allow - made-up
         assert client.KEY_FILE.stat().st_mode & 0o077 == 0
+    finally:
+        os.umask(old)
+
+
+@pytest.mark.skipif(__import__("os").name == "nt", reason="Windows: %LOCALAPPDATA%'s own ACL is the user's alone")
+def test_the_engines_data_folder_is_open_only_to_its_owner(monkeypatch, tmp_path):
+    # AH-140 audit: off Windows the folder took the default umask, so latest-scan.csv (the whole sheet), the AI answer
+    # cache and server.log were readable by every account on the machine; an older 0755 folder is tightened at start
+    import os
+    home = tmp_path / "AnomalyHunter"
+    monkeypatch.setattr(server, "HOME", home)
+    monkeypatch.setattr(server, "_already_running", lambda *a, **k: False)
+    monkeypatch.setattr(server.sys, "argv", ["serve"])
+    old = os.umask(0o022)
+    try:
+        for _ in range(2):
+            with pytest.raises(SystemExit):  # no cert here: main() stops before it serves
+                server.main()
+            assert home.stat().st_mode & 0o077 == 0, oct(home.stat().st_mode)
+            home.chmod(0o755)
     finally:
         os.umask(old)
 

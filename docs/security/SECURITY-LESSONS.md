@@ -77,6 +77,10 @@ protection on `main` so nothing reaches the release job without John's review.
 
 - **Another program on the same PC can call the engine** (it sends no Origin header). It could already read
   `gemini-key.txt` as the same Windows user, and blocking it would need a login flow. Every website is still refused.
+- **Another account logged in on the same PC can call the engine too** (127.0.0.1 is the whole machine, not one
+  user): it could remove or swap the AI key, spend the invite's share, or overwrite `latest-scan.csv`. DPAPI and the
+  0600/0700 files stop it reading the key and the scans, not calling the engine. If shared PCs matter, the fix is to
+  check the caller's account on every request (AH-140).
 - **An invite code is a bearer token**, like a password not tied to a device. If one leaks, anyone can use that
   invite's daily share until John deletes it from `tokens.json`. The daily caps (per invite and total, counted before
   Google is called) are the limit on damage.

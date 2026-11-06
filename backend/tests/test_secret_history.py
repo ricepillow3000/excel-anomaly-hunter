@@ -12,6 +12,7 @@ GOOGLE = "AIza" + "Qx7_" * 8 + "abc"
 INVITE = "inv_" + "Zk3-" * 6
 PRIVATE = "-----BEGIN " + "EC PRIVATE KEY-----"
 GITHUB = "ghp_" + "a1B2" * 9
+GOOGLE_AQ = "AQ." + "Ab8" + "Rk2_q.9-" * 6  # Google's newer key shape (server.py's key check: dots are part of it)
 
 pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
 
@@ -52,7 +53,8 @@ def test_a_clean_history_passes(tmp_path):
 
 
 @pytest.mark.parametrize("secret,what", [(GOOGLE, "a Google API key"), (INVITE, "a relay invite code"),
-                                         (PRIVATE, "a private key block"), (GITHUB, "a GitHub token")])
+                                         (PRIVATE, "a private key block"), (GITHUB, "a GitHub token"),
+                                         (GOOGLE_AQ, "a Google API key")])
 def test_a_secret_deleted_in_a_later_commit_is_still_found_and_never_printed(tmp_path, secret, what):
     repo = repo_with(tmp_path, {"README.md": "hello\n"}, {"config.py": f"KEY = '{secret}'\n"}, {"config.py": None})
     code, out = scan(repo)
@@ -85,3 +87,10 @@ def test_a_shallow_checkout_is_a_skip_and_a_failure_when_the_whole_history_is_re
     assert code == 0 and out.startswith("SKIP:") and "unshallow" in out
     code, out = scan(shallow, "--full")
     assert code == 1 and out.startswith("FAIL:")
+
+
+def test_the_newer_google_key_shape_written_as_an_example_or_a_made_up_test_key_passes(tmp_path):
+    # AH-140: the code's own comments write the shape as "AQ.Ab8..." and test_fix.py types a made-up one
+    text = ('# newer keys "AQ.Ab8..." contain dots\n# they look like "AQ.Ab8x...": a dot is part of the key\n'
+            'KEY = "AQ.Ab8_madeUp-Test.key"\nRELAY = {"GEMINI_KEY": "AQ.the-secret"}\n')
+    assert scan(repo_with(tmp_path, {"test_x.py": text}))[0] == 0
