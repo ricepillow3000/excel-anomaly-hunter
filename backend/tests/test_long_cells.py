@@ -41,3 +41,16 @@ def test_a_date_before_1900_padded_to_a_fixed_width_is_still_read_for_the_far_da
     rows[30][1] = "2862-06-07".ljust(60)
     out = scan(["Person", "born", "n"], rows, fair=False)[1]
     assert "is far outside the column's dates" in out[30]["reason"], out[30]["reason"]
+
+
+def test_a_number_with_a_space_after_its_e_is_text_never_a_crash():
+    # AH-140: tidytuesday's historical_markers.csv has marker_no "1E 92". pandas reads it as a number, float() does not,
+    # and the exact re-read raised: every scan of the sheet was a 500
+    ids = [[f"M{i}", str(i + 1), i] for i in range(60)]  # 1..60 under marker_no is an ID column: no crash there either
+    ids[7][1] = "1E 92"
+    scan(["Marker", "marker_no", "n"], ids, fair=False)
+    rows = [[f"M{i}", str(1 + i % 40), i] for i in range(60)]  # numbers that repeat: a number column
+    rows[7][1] = "1E 92"
+    _, out, *_ = scan(["Marker", "marker_no", "n"], rows, fair=False)
+    assert 'Text "1E 92" in number column marker_no' in out[7]["reason"]
+    assert _kind(pd.Series([r[1] for r in rows], name="marker_no")) == "number"

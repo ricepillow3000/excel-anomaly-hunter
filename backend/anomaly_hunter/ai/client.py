@@ -95,7 +95,9 @@ class Fix(BaseModel):
 
 # formulas that reach outside the workbook - a prompt-injected sheet could use them to send data out.
 # "[Book.xlsx]Sheet!" = another workbook ("]" then a sheet name and "!"); Table1[Units] is this workbook's own table
-OUTSIDE = re.compile(r"WEBSERVICE|IMAGE\s*\(|HYPERLINK|RTD\s*\(|CALL\s*\(|REGISTER|FILTERXML|://|\][^\[\]]*!|\|", re.IGNORECASE)
+# AH-140: a path or share with no brackets ('\\host\s\b.xlsx'!x, 'C:\...\b.xlsx'!Total) is another workbook too, and
+# Excel fetches a share over SMB (the NTLM hash, data in the path): any backslash, or a sheet part naming a workbook file
+OUTSIDE = re.compile(r"WEBSERVICE|IMAGE\s*\(|HYPERLINK|RTD\s*\(|CALL\s*\(|REGISTER|FILTERXML|://|\][^\[\]]*!|\||\\|\.xl\w*'?!", re.IGNORECASE)
 # A blocklist only stops the names someone thought of: the 2026-10-15 audit got IMPORTCSV, COPILOT, a full-width "＝"
 # and INDIRECT("[Other.xlsx]...") past OUTSIDE. So an AI formula may call only these functions, all of which stay
 # inside this workbook (no web, files, other workbooks, Python, AI or live data).
@@ -442,8 +444,16 @@ def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent, 
     hits = [j for j, c in enumerate(columns) if str(c) and str(c) in (reason or "")]
     flagged = max(hits, key=lambda j: len(str(columns[j])), default=0)  # "Column 31" over "Column 3"
     nearest = sorted(range(len(columns)), key=lambda j: abs(j - flagged))
-    # fewer rows around it first (5, 2, 0), then the columns furthest from the flagged one
-    for ctx, n in [(c, len(columns)) for c in (5, 2, 0)] + [(0, n) for n in range(len(columns) - 1, 0, -1)]:
+    def tries():  # fewer rows around it first (5, 2, 0), then the columns furthest from the flagged one
+        yield from ((c, len(columns)) for c in (5, 2, 0))
+        # AH-140: a prompt only grows with n, so the widest that fits is found by halving (one by one, 16,000 columns took 81 s)
+        lo, hi = 0, len(columns) - 1
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            lo, hi = (mid, hi) if _fits(_fix_prompt(columns, rows, row_index, start_row, start_col, reason, intent, formulas,
+                                                    ctx=0, keep=sorted(nearest[:mid]), flagged=flagged)) else (lo, mid - 1)
+        yield from [(0, lo)] if lo else []
+    for ctx, n in tries():
         cut = set()
         prompt = _fix_prompt(columns, rows, row_index, start_row, start_col, reason, intent, formulas,
                              ctx=ctx, keep=sorted(nearest[:n]), cut=cut, flagged=flagged)
@@ -469,7 +479,8 @@ def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent, 
     shown_rows = {start_row + 1} | {start_row + 2 + k for k in range(max(0, row_index - ctx), min(len(rows), row_index + ctx + 1))}
     shown_cols = {get_column_letter(1 + start_col + j) for j in nearest[:n]}
     loops = [c["cell"] for c in changes if refers_to_itself(c["cell"], c["new"])]
-    outside = [c["cell"] for c in changes if c["new"].lstrip()[:1] in "=+-@" and OUTSIDE.search(c["new"])]
+    typed = lambda t: unicodedata.normalize("NFKC", t).lstrip()  # AH-140: a full-width "＝cmd|..." skipped OUTSIDE
+    outside = [c["cell"] for c in changes if typed(c["new"])[:1] in "=+-@" and OUTSIDE.search(typed(c["new"]))]
     unknown = [c["cell"] for c in changes if c["cell"] not in outside and unsafe_call(c["new"])]
     away = [c["cell"] for c in changes if not _in_table(c["cell"], start_row, start_col, len(rows), len(columns))]
     part = [c["cell"] for c in changes if c["cell"] in cut]  # it saw only the start of that cell: a rewrite could lose text

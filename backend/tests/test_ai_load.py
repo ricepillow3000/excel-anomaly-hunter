@@ -305,3 +305,36 @@ def test_a_column_whose_name_alone_is_too_big_for_a_request_is_left_out_and_the_
     hits, partial = client.odd_text({huge: ["Pen", "Desk", "London"], "Col0": ["category value 0", "category value 1"]})
     assert log and not partial and all(huge not in p for p in log)
     assert [h["column"] for h in hits] == ["Col0"]
+
+
+def _old_widest(columns, rows, i, reason, intent):
+    """The rule before AH-140, kept here to hold the new one to it: every column count from n-1 down, one by one."""
+    hits = [j for j, c in enumerate(columns) if str(c) and str(c) in (reason or "")]
+    flagged = max(hits, key=lambda j: len(str(columns[j])), default=0)
+    nearest = sorted(range(len(columns)), key=lambda j: abs(j - flagged))
+    for ctx, n in [(c, len(columns)) for c in (5, 2, 0)] + [(0, n) for n in range(len(columns) - 1, 0, -1)]:
+        prompt = client._fix_prompt(columns, rows, i, 0, 0, reason, intent, None, ctx=ctx, keep=sorted(nearest[:n]),
+                                    cut=set(), flagged=flagged)
+        if client._fits(prompt):
+            return prompt
+
+
+@pytest.mark.parametrize("width", [3, 40, 61, 150, 777])
+def test_the_widest_ask_ai_request_that_fits_is_the_same_one_the_column_by_column_rule_chose(monkeypatch, width):
+    # AH-140: the old rule rebuilt the prompt for every column count (16,000 columns: 81 s before any AI call)
+    log = []
+    monkeypatch.setattr(client, "_ask", lambda prompt, *a, **k: log.append(prompt) or client.Fix(explanation="x", changes=[]))
+    columns = [f"Column {j} " + "w" * (j % 13) for j in range(width)]
+    rows = [[f"value {j}-{k}" for j in range(width)] for k in range(12)]
+    reason = f"{columns[width // 2]} too high"
+    client.suggest_fix(columns, rows, 6, 0, 0, reason, "")
+    assert log == [_old_widest(columns, rows, 6, reason, "")]
+
+
+def test_a_very_wide_row_is_fitted_to_one_request_in_seconds(monkeypatch):
+    import time
+    monkeypatch.setattr(client, "_ask", lambda prompt, *a, **k: client.Fix(explanation="x", changes=[]))
+    columns = [f"Column {j}" for j in range(8000)]  # column by column: ~20 s on this box
+    started = time.monotonic()
+    client.suggest_fix(columns, [[f"v{j}" for j in range(8000)]], 0, 0, 0, "Column 4000 too high", "")
+    assert time.monotonic() - started < 3

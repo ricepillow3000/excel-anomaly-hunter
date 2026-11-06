@@ -23,7 +23,6 @@ dependencies = [
 [project.scripts]
 arcas = "anomaly_hunter.cli:main"
 anomaly-hunter = "anomaly_hunter.cli:main"  # the name before AH-101: scripts written for it keep working
-anomaly-hunter-server = "anomaly_hunter.server:main"
 
 [project.optional-dependencies]
 dev = ["pytest", "schemathesis==4.28.0", "ruff==0.17.0", "pip-audit==2.10.1", "pyyaml"]  # fuzzing (test_fuzz_api.py), security lint + dependency audit + workflow parse (tools/check.py, CI)

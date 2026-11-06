@@ -1,7 +1,8 @@
 # One-file build: python -m PyInstaller packaging/AnomalyHunter.spec  ->  dist/Arcas.exe (Windows)
 # The bundle carries Python, every package and the pane (frontend/); the PC needs nothing installed.
 # Build on Windows for Windows (PyInstaller does not cross-compile): .github/workflows/build-exe.yml does it.
-# (This file keeps its old name: README, build-exe.yml and test_bias_context.py read it by path. The exe is Arcas, AH-101.)
+# (This file keeps its old name: README, build-exe.yml, test_bias_context.py and test_product_name.py read it by path.
+# The exe is Arcas, AH-101.)
 import re
 import sys
 from pathlib import Path
@@ -17,6 +18,8 @@ a = Analysis(
     datas=[(str(ROOT / "frontend"), "frontend"), (str(ROOT / "backend" / "anomaly_hunter" / "ai" / "bias_rules.json"), "anomaly_hunter/ai")],
     excludes=["tkinter", "IPython", "pytest", "schemathesis"],  # not used at run time
 )
+# the pane's dev-only lint (tools/check.py runs it): in the bundle, the engine would serve it at /selfcheck.js
+a.datas = [d for d in a.datas if d[0].replace("\\", "/") != "frontend/selfcheck.js"]
 
 # The file's Properties (and what SignPath reads from the signed file): the product's name, and the release tag the build
 # step stamps into frontend/version.txt ("v0.1.123 (2026-11-03)"); a local build without that file is 0.1.0

@@ -57,7 +57,7 @@ logging.getLogger("werkzeug").setLevel(logging.WARNING)
 WSGIRequestHandler.timeout = 60
 MAX_CELLS = 2_000_000  # same as the pane's maxCells (frontend/utils/sheet.js): it never sends more in one scan
 EXCEL_ROWS = 1_048_576  # a sheet's rows: the header can't sit lower
-FORMULA_START, _inert = powerbi.FORMULA_START, powerbi.inert  # the CSV-injection guard lives with the Power BI CSV
+EXCEL_COLUMNS = 16_384  # a sheet's columns. AH-140: rows [] made the cell cap 0, and 500,000 names held a thread for hours
 # two workbooks scanning at once shared one temp file: a replace found it gone and a file could mix both (2026-10-16)
 _CSV_LOCK = threading.Lock()
 
@@ -67,6 +67,8 @@ def _bad(body):
     -> error text or None. Anything else is a clear 400, never a crash deep in pandas."""
     if not isinstance(body, dict) or not isinstance(body.get("columns"), list) or not body["columns"]:
         return "'columns' must be a non-empty list"
+    if len(body["columns"]) > EXCEL_COLUMNS:
+        return f"That's too many columns for one scan. Select at most {EXCEL_COLUMNS:,} columns and try again."
     rows = body.get("rows")
     if not isinstance(rows, list) or any(not isinstance(r, list) or len(r) != len(body["columns"]) for r in rows):
         return "'rows' must be a list of lists, each as long as 'columns'"
@@ -453,7 +455,9 @@ def main():
     if _already_running():
         print("Arcas engine already running.")
         return
-    HOME.mkdir(parents=True, exist_ok=True)
+    HOME.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if os.name != "nt":  # AH-140: off Windows the umask left latest-scan.csv, ai-cache and server.log open to every account
+        HOME.chmod(0o700)
     if sys.stderr is None:  # pythonw (autostart) has no console: fresh log file each start
         sys.stdout = sys.stderr = open_log(HOME)
     crt, key = HOME / "cert.pem", HOME / "key.pem"

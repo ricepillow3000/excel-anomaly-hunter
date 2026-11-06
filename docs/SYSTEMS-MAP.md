@@ -63,7 +63,7 @@ Add a piece only when its "add it when" signal shows up in a measurement, and sa
 |---|---|---|
 | Encryption in transit | TLS 1.2+ only (ECDHE suites), a certificate good only for localhost/127.0.0.1; HTTPS to Google and the relay | `server.tls_context`, `make_cert` |
 | Encryption at rest | not added: the files live in the user's own Windows profile (`PRIVACY.md` lists them, including the plain-text Power BI copy of the last sheet, made only when the user turns it on) | `PRIVACY.md` |
-| SQL injection's relatives | no SQL; formula injection (CSV text always quoted, AI formulas allow-listed) and prompt injection are guarded | `server._inert`, `client.SAFE` |
+| SQL injection's relatives | no SQL; formula injection (CSV text always quoted, AI formulas allow-listed) and prompt injection are guarded | `powerbi.inert`, `client.SAFE` |
 | DDoS | the engine listens on 127.0.0.1 only and refuses other websites; the relay sits behind Cloudflare with daily caps | `own_panel_only`, `relay/worker.js` |
 | DNS | DNS rebinding refused (Host must be localhost) | `own_panel_only` |
 
