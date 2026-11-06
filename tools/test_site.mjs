@@ -226,13 +226,38 @@ const TOKENS = Object.fromEntries([...css.matchAll(/(--[a-z-]+)\s*:\s*([^;]+);/g
 const msOf = (n) => { assert.ok(/^\d+ms$/.test(TOKENS[n] || ""), `styles.css: ${n} is not a time in ms (${TOKENS[n]})`); return parseFloat(TOKENS[n]); };
 // the last of the hero's blocks starts --enter-lead after the bar's, at most 4 steps in, and lasts --enter-dur
 const ENTERED = msOf("--enter-lead") + 4 * msOf("--enter-step") + msOf("--enter-dur") + 150;
-// only transform, translate and opacity are ever animated: the GPU composites them without a layout or a paint (AH-85)
+// only transform, translate and opacity are ever animated: the GPU composites them without a layout or a paint (AH-85).
+// One exception (AH-138): the Copy button's two icons crossfade with a blur, so filter may move in a rule whose every
+// selector is a .copy-btn's .ico, and in no other transition and no keyframes
 {
   const flat = (v) => { let x = v; while (/\([^()]*\)/.test(x)) x = x.replace(/\([^()]*\)/g, ""); return x; };
-  const moved = [...css.matchAll(/(?:^|[;{\s])transition(?:-property)?\s*:\s*([^;}]+)/g)].flatMap((m) => flat(m[1]).split(",").map((t) => t.trim().split(/\s+/)[0]));
-  for (const m of css.matchAll(/@keyframes\s+[\w-]+\s*\{((?:[^{}]*\{[^{}]*\})*)\s*\}/g)) moved.push(...[...m[1].matchAll(/\{([^{}]*)\}/g)].flatMap((b) => [...b[1].matchAll(/([a-z-]+)\s*:/g)].map((d) => d[1])));
+  const ICO = /^\.copy-btn(?:\[[a-z-]+\])? \.ico$/;
+  const moved = [], blurred = [];
+  for (const [, sel, body] of css.matchAll(/([^{}]*)\{([^{}]*)\}/g)) {
+    const props = [...body.matchAll(/(?:^|[;{\s])transition(?:-property)?\s*:\s*([^;}]+)/g)].flatMap((m) => flat(m[1]).split(",").map((t) => t.trim().split(/\s+/)[0]));
+    const icon = sel.split(",").every((x) => ICO.test(x.trim().replace(/\s+/g, " ")));
+    for (const prop of props) { if (prop === "filter" && icon) blurred.push(sel.trim()); else moved.push(prop); }
+  }
+  const frames = [];
+  for (const m of css.matchAll(/@keyframes\s+[\w-]+\s*\{((?:[^{}]*\{[^{}]*\})*)\s*\}/g)) frames.push(...[...m[1].matchAll(/\{([^{}]*)\}/g)].flatMap((b) => [...b[1].matchAll(/([a-z-]+)\s*:/g)].map((d) => d[1])));
+  moved.push(...frames);
   assert.ok(moved.length >= 6, `styles.css: the animated properties were not found (${moved})`);
   for (const prop of moved) assert.ok(["transform", "translate", "opacity"].includes(prop), `styles.css animates ${prop}, which the GPU cannot composite alone`);
+  // the exception is used where it is meant, and filter moves nowhere else (a transition elsewhere or a keyframe fails above)
+  assert.ok(blurred.length >= 1 && !frames.includes("filter"), `styles.css: the Copy button's icon blur is not the one filter that moves (${blurred})`);
+}
+// AH-138 (John, 2026-11-06): no spring and no bounce: every curve keeps both control points' y within [0, 1], so nothing
+// overshoots its place; the new tokens are there, a popover's exit is 20% shorter than its entrance, and the entrance is
+// a dropdown's 150 to 250 ms
+{
+  const curves = [...css.matchAll(/cubic-bezier\(([^)]*)\)/g)].map((m) => m[1].split(",").map(Number));
+  assert.ok(curves.length >= 3, "styles.css: no cubic-bezier curves found");
+  for (const [x1, y1, x2, y2] of curves) assert.ok([x1, y1, x2, y2].every(Number.isFinite) && y1 >= 0 && y1 <= 1 && y2 >= 0 && y2 <= 1, `styles.css: cubic-bezier(${x1}, ${y1}, ${x2}, ${y2}) overshoots (a bounce)`);
+  const num = (n) => { assert.ok(/^\d*\.?\d+$/.test(TOKENS[n] || ""), `styles.css: ${n} is not a number (${TOKENS[n]})`); return parseFloat(TOKENS[n]); };
+  assert.deepEqual([msOf("--stagger-row"), msOf("--land-step"), num("--press"), msOf("--press-dur"), num("--pop-from"), msOf("--slide-dur"), num("--stretch"), msOf("--scroll-weight"), msOf("--pulse-dur")],
+    [30, 30, 0.97, 120, 0.95, 300, 1.12, 150, 600], "styles.css: the AH-138 tokens");
+  const pin = msOf("--pop-in"), pout = msOf("--pop-out");
+  assert.ok(pin >= 150 && pin <= 250 && Math.abs(pout - 0.8 * pin) < 0.5, `styles.css: a popover enters in ${pin} ms (150 to 250) and leaves in ${pout} ms (0.8 of it)`);
 }
 for (const url of css.match(/url\([^)]*\)/g)) assert.ok(/^url\("(data:|assets\/)/.test(url), `styles.css loads ${url}`);
 const used = PAGES.map((p) => html[p]).join("") + read(MISSING) + SCRIPTS.map(read).join("");
@@ -245,7 +270,7 @@ for (const m of css.matchAll(/letter-spacing\s*:\s*([^;}]+)/g)) assert.ok(!/^-/.
 // AH-120: everything that acts as a button shows it is pressed; a hover alone said nothing to a finger on a phone
 {
   const selectors = [...css.matchAll(/([^{}]+)\{/g)].flatMap((m) => m[1].split(",").map((x) => x.trim().replace(/\s+/g, " ")));
-  for (const sel of [".btn", ".links .btn-trim", ".typology button", ".tabs button", ".rowbtn", ".m-close", ".faq summary", ".menu-btn"])
+  for (const sel of [".btn", ".links .btn-trim", ".typology button", ".tabs button", ".rowbtn", ".m-close", ".faq summary", ".menu-btn", ".copy-btn"])
     assert.ok(selectors.includes(sel + ":active"), `styles.css: no pressed (:active) look for ${sel}`);
 }
 // AH-119: each page names itself to search engines and to a shared link: its own title (Arcas first, then what the page
@@ -513,8 +538,9 @@ const json = (body, status = 200) => (r) => r.fulfill({ status, contentType: "ap
 // field's own motion (its pointer bend, its scroll-linked shape, its inversion on the band) name a GPU instead
 const GPU = () => { const get = WebGL2RenderingContext.prototype.getParameter;
   WebGL2RenderingContext.prototype.getParameter = function (k) { return k === 0x1F01 || k === 0x9246 ? "ANGLE (a test GPU)" : get.call(this, k); }; };
-async function open(file, { width = 1280, height = 900, api = json(release), motion = "no-preference", until = "networkidle", init = null, gpu = false, js = true, setup = null, colors = "none", url = null } = {}) {
-  const ctx = await browser.newContext({ viewport: { width, height }, reducedMotion: motion, javaScriptEnabled: js, forcedColors: colors });
+async function open(file, { width = 1280, height = 900, api = json(release), motion = "no-preference", until = "networkidle", init = null, gpu = false, js = true, setup = null, colors = "none", url = null, touch = false } = {}) {
+  // touch: a phone a finger drives (a coarse pointer that cannot hover), for AH-138's wheel that must leave it alone
+  const ctx = await browser.newContext({ viewport: { width, height }, reducedMotion: motion, javaScriptEnabled: js, forcedColors: colors, hasTouch: touch, isMobile: touch });
   const page = await ctx.newPage();
   if (gpu) await page.addInitScript(GPU);
   if (init) await page.addInitScript(init);
@@ -1586,10 +1612,10 @@ let decoCss = null;
 }
 
 // ---- the reveal (AH-83): content waits below its place, see-through, and rises into place once, the first time it
-// scrolls into view; a group's items start --stagger (50 ms) apart, up to --stagger-cap steps; only opacity and transform
-// move, so the reveal runs with no layout at all ----
+// scrolls into view; a group's items start --stagger (90 ms) apart, a group of list rows' --stagger-row (30 ms, AH-138),
+// up to --stagger-cap steps; only opacity and transform move, so the reveal runs with no layout at all ----
 const tokens = (p) => p.evaluate(() => { const c = getComputedStyle(document.documentElement), g = (n) => c.getPropertyValue(n).trim();
-  return { ease: g("--ease-out"), rise: parseFloat(g("--reveal-rise")), dur: parseFloat(g("--reveal-dur")), stagger: parseFloat(g("--stagger")), cap: parseFloat(g("--stagger-cap")) }; });
+  return { ease: g("--ease-out"), rise: parseFloat(g("--reveal-rise")), dur: parseFloat(g("--reveal-dur")), stagger: parseFloat(g("--stagger")), row: parseFloat(g("--stagger-row")), cap: parseFloat(g("--stagger-cap")) }; });
 const revealed = (p, sel) => p.$$eval(sel, (es) => es.map((e) => { const c = getComputedStyle(e), m = new DOMMatrix(c.transform);
   return { op: c.opacity, tf: c.transform, x: m.e, y: m.f, will: c.willChange, delay: Math.round(parseFloat(c.transitionDelay) * 1000), ease: c.transitionTimingFunction,
     dur: Math.round(parseFloat(c.transitionDuration) * 1000), revealed: e.hasAttribute("data-revealed"), settled: e.hasAttribute("data-settled") }; }));
@@ -1599,8 +1625,8 @@ let reveal = null;
     IntersectionObserver.prototype.unobserve = function (el) { window.__unobserved.push(el); return un.call(this, el); }; } });
   const p = t.page, GRID = ".checks-table tbody > .reveal-item"; // the checks table's 8 rows (AH-98; they were 8 cards)
   const tok = await tokens(p);
-  // John's 2026-11-02 timings (AH-90): an unhurried cascade, 90 ms apart, each item 1.1 s
-  assert.ok(tok.ease === "cubic-bezier(.16, 1, .3, 1)" && tok.stagger === 90 && tok.dur === 1100 && tok.rise >= 20 && tok.rise <= 30 && tok.cap >= 1, `the motion tokens: ${JSON.stringify(tok)}`);
+  // John's 2026-11-02 timings (AH-90): an unhurried cascade, 90 ms apart, each item 1.1 s; list rows 30 ms apart (AH-138)
+  assert.ok(tok.ease === "cubic-bezier(.16, 1, .3, 1)" && tok.stagger === 90 && tok.row === 30 && tok.dur === 1100 && tok.rise >= 20 && tok.rise <= 30 && tok.cap >= 1, `the motion tokens: ${JSON.stringify(tok)}`);
   // (a) before any scrolling: the checks below the fold wait one --reveal-rise down, see-through, on their own layer
   const before = await revealed(p, GRID);
   assert.equal(await p.evaluate(() => document.documentElement.hasAttribute("data-js")), true, "boot.js did not mark the page");
@@ -1622,9 +1648,10 @@ let reveal = null;
   const s0 = mark("reveal-start"), s1 = mark("reveal-end"), last = Math.max(...events.map((e) => e.ts || 0));
   assert.ok(s0 && s1, "the trace has no reveal window");
   const count = (name, to) => events.filter((e) => e.name === name && e.pid === s0.pid && e.tid === s0.tid && e.ts >= s0.ts && e.ts <= to).length;
-  // (b) at rest, in place, with transition delays 0, 50, 100 ms ... in page order, held at the cap after it
+  // (b) at rest, in place, with transition delays 0, 30, 60 ms ... in page order (the table's rows are list rows,
+  // data-reveal-group="rows", AH-138), held at the cap after it
   const after = await revealed(p, GRID);
-  const want = after.map((x, i) => Math.min(i, tok.cap) * tok.stagger);
+  const want = after.map((x, i) => Math.min(i, tok.cap) * tok.row);
   assert.ok(rising.every((x) => x.revealed) && rising.some((x) => +x.op < 1 || x.y > 0), `the checks did not rise in: ${JSON.stringify(rising[7])}`);
   assert.ok(after.every((x) => x.op === "1" && x.tf === "none"), `the checks are not at rest: ${JSON.stringify(after)}`);
   assert.deepEqual(after.map((x) => x.delay), want, "the checks' transition delays");
@@ -2217,6 +2244,240 @@ for (const file of PAGES.filter((f) => /<header[\s\S]*aria-current="page"[\s\S]*
   const ten = await p.evaluate(() => ({ marker: window.__marker, mains: document.querySelectorAll("main").length, y: scrollY, at: location.pathname }));
   assert.deepEqual([once, ten], [{ marker: 1, mains: 1, y: 0 }, { marker: 1, mains: 1, y: 0, at: "/" + file }], `${file}: its own link in the bar, once and then ten times quickly`);
   await done(t, `${file}'s own link`, [API]);
+}
+// ---- AH-138 (John, 2026-11-06): the motion list. The page eases after a mouse wheel (never after a finger, never under
+// reduced motion), a press settles to 0.97, a button's hover fill is drawn across by a mask, the phone's menu and a row's
+// detail box are popovers from their trigger, the tabs' one gold mark slides and stretches from tab to tab, the Copy
+// button crossfades its icons and pulses once, and list rows stagger 30 ms while a group of blocks keeps 90. Each check
+// collects what it finds and the group fails once with all of it ----
+{
+  const miss = [];
+  const want = (ok, what) => { if (!ok) miss.push(what); };
+  const settle = (p, sel) => p.$eval(sel, (el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => {}))));
+  const frames = async (p, ms) => { await p.evaluate(() => { window.__frames = 0; const raf = window.requestAnimationFrame.bind(window); window.requestAnimationFrame = (f) => (window.__frames++, raf(f)); });
+    await p.waitForTimeout(ms); return p.evaluate(() => window.__frames); };
+  const tok = (p) => p.evaluate(() => { const c = getComputedStyle(document.documentElement), n = (k) => parseFloat(c.getPropertyValue(k));
+    return { popIn: n("--pop-in"), popOut: n("--pop-out"), from: n("--pop-from"), row: n("--stagger-row"), stagger: n("--stagger"), press: n("--press"), stretch: n("--stretch") }; });
+  // (a) the heavy wheel: 400 px of wheel from rest, the page on its way at 50 ms, rising every frame and never past its
+  // target, there within 1.5 s, then no frame asked for
+  {
+    const t = await open("index.html", { width: 1440, height: 900 });
+    const p = t.page;
+    await p.waitForTimeout(ENTERED);
+    await p.evaluate(() => scrollTo(0, 600)); await p.waitForTimeout(300);
+    await p.mouse.move(16, 450);
+    const y0 = await p.evaluate(() => { window.__ys = []; window.__on = []; addEventListener("wheel", () => {
+      setTimeout(() => { window.__y50 = scrollY; }, 50);
+      const look = () => { window.__ys.push(scrollY); window.__on.push(window.AH.smoothing()); if (window.AH.smoothing() || window.__ys.length < 3) requestAnimationFrame(look); else window.__end = performance.now(); };
+      window.__t0 = performance.now(); requestAnimationFrame(look); }, { once: true, passive: true }); return scrollY; });
+    await p.mouse.wheel(0, 400);
+    await p.waitForFunction(() => window.__end, null, { timeout: 3000 }).catch(() => {});
+    const w = await p.evaluate(() => ({ y50: window.__y50, ys: window.__ys, ms: window.__end - window.__t0, y: scrollY, on: window.__on.some(Boolean) }));
+    want(w.y50 > y0 && w.y50 < y0 + 400, `AH-138 wheel: 50 ms after 400 px of wheel the page is at ${w.y50} (from ${y0}): it jumped or never moved`);
+    want(w.on && w.ys.every((y, i) => i === 0 || y >= w.ys[i - 1]) && Math.max(...w.ys) <= y0 + 400, `AH-138 wheel: not a steady catch-up that stops at its target: ${w.ys.join(" ")}`);
+    want(w.ms <= 1500 && Math.abs(w.y - (y0 + 400)) <= 1, `AH-138 wheel: at ${w.y} after ${Math.round(w.ms)} ms (want ${y0 + 400} within 1.5 s)`);
+    await p.waitForTimeout(300); // the last scroll's own event, as after a glide
+    const f = await frames(p, 1000);
+    want(f === 0, `AH-138 wheel: ${f} frames asked for in the second after the catch-up`);
+    // a key ends the catch-up where it is (PageDown then scrolls as the browser does)
+    await p.mouse.wheel(0, 400); await p.waitForTimeout(40);
+    const mid = await p.evaluate(() => window.AH.smoothing());
+    await p.keyboard.press("PageDown");
+    want(mid && !(await p.evaluate(() => window.AH.smoothing())), `AH-138 wheel: PageDown during the catch-up (${mid ? "catching up" : "not catching up"}) did not end it`);
+    await done(t, "AH-138 wheel", [API]);
+  }
+  // ... and none with reduced motion, nor for a finger: the browser's own scroll, 1:1
+  for (const [motion, touch] of [["reduce", false], ["no-preference", true]]) {
+    const t = await open("index.html", touch ? { width: 390, height: 844, touch } : { width: 1440, height: 900, motion });
+    const p = t.page, label = `AH-138 wheel ${touch ? "on a touch phone" : "with reduced motion"}`;
+    if (motion !== "reduce") await p.waitForTimeout(ENTERED);
+    await p.evaluate(() => scrollTo(0, 600)); await p.waitForTimeout(300);
+    await p.mouse.move(16, 400);
+    await p.evaluate(() => { window.__on = false; const look = () => { window.__on = window.__on || window.AH.smoothing(); if (!window.__stop) requestAnimationFrame(look); }; requestAnimationFrame(look); });
+    const y0 = await p.evaluate(() => scrollY);
+    await p.mouse.wheel(0, 400); await p.waitForTimeout(400);
+    const r = await p.evaluate(() => { window.__stop = true; return { on: window.__on, y: scrollY }; });
+    want(!r.on && r.y > y0, `${label}: ${JSON.stringify({ y0, ...r })}`);
+    await done(t, label, [API]);
+  }
+  // ... and a box that can scroll takes the wheel itself: the support form's message, full of lines
+  {
+    const t = await open("support.html", { width: 1280, height: 900 });
+    const p = t.page;
+    await p.waitForTimeout(ENTERED);
+    await p.fill("#details", Array.from({ length: 60 }, (_, i) => `line ${i + 1}`).join("\n"));
+    await p.evaluate(() => { const d = document.getElementById("details"); d.scrollTop = 0; d.scrollIntoView({ block: "center" }); }); await p.waitForTimeout(1500);
+    const b = await p.locator("#details").boundingBox();
+    await p.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+    const y0 = await p.evaluate(() => scrollY);
+    await p.mouse.wheel(0, 100); await p.waitForTimeout(400);
+    const r = await p.evaluate(() => ({ box: document.getElementById("details").scrollTop, y: scrollY, on: window.AH.smoothing(), overflows: document.getElementById("details").scrollHeight > document.getElementById("details").clientHeight }));
+    want(r.overflows && r.box > 0 && r.y === y0 && !r.on, `AH-138 wheel over a full text box: ${JSON.stringify({ y0, ...r })}`);
+    await done(t, "AH-138 wheel over a text box", [API]);
+  }
+  // (b) a press settles to 0.97 and back, the gold line held in every mode; (c) the main button's hover fill is drawn
+  // across by its ::before, and under reduced motion there is no layer: the colours swap at once
+  for (const motion of ["no-preference", "reduce"]) {
+    const t = await open("index.html", { width: 1440, height: 900, motion });
+    const p = t.page, sel = ".hero-cta .btn-primary", label = `AH-138 the hero's download (${motion})`;
+    if (motion !== "reduce") await p.waitForTimeout(ENTERED);
+    await p.evaluate((sel) => document.querySelector(sel).addEventListener("click", (e) => e.preventDefault()), sel);
+    const look = () => p.$eval(sel, (el) => { const c = getComputedStyle(el), b = getComputedStyle(el, "::before");
+      return { scale: c.transform === "none" ? 1 : new DOMMatrix(c.transform).a, tf: c.transform, outline: `${c.outlineStyle} ${c.outlineWidth}`, fill: b.content === "none" ? null : new DOMMatrix(b.transform).a, fillMoves: b.transitionDuration }; });
+    const box = await p.locator(sel).boundingBox();
+    await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    const sweep = [];
+    for (let i = 0; i < 8; i++) { sweep.push((await look()).fill); await p.waitForTimeout(40); }
+    await settle(p, sel);
+    const hovered = await look();
+    await p.mouse.down();
+    await settle(p, sel);
+    const held = await look();
+    await p.mouse.up();
+    await settle(p, sel);
+    const free = await look();
+    if (motion === "reduce") {
+      want(held.tf === "none" && held.outline === "solid 2px" && hovered.fill === null && sweep.every((v) => v === null), `${label}: pressed ${JSON.stringify(held)}, hovered ${JSON.stringify(hovered)}`);
+    } else {
+      want(Math.abs(held.scale - 0.97) <= 0.005 && held.outline === "solid 2px" && Math.abs(free.scale - 1) <= 0.001, `${label}: pressed ${JSON.stringify(held)}, let go ${JSON.stringify(free)}`);
+      want(sweep.some((v) => v > 0.02 && v < 0.98) && hovered.fill === 1, `${label}: the hover fill does not sweep in: ${sweep.map((v) => (v === null ? "none" : v.toFixed(2))).join(" ")} then ${hovered.fill}`);
+    }
+    await done(t, label, [API]);
+  }
+  // (d) the phone's menu: a dropdown from the Menu button, in over --pop-in from .95 and see-through, out over 0.8 of
+  // that back to .95, drawn and out of reach while it leaves, then gone
+  {
+    const t = await open("index.html", { width: 375, height: 667 });
+    const p = t.page, k = await tok(p);
+    await p.waitForTimeout(ENTERED);
+    const read = () => p.evaluate(() => { const n = document.getElementById("main-nav"), b = document.querySelector(".menu-btn"), a = n.getAnimations()[0], nr = n.getBoundingClientRect(), br = b.getBoundingClientRect();
+      const kf = a ? a.effect.getKeyframes() : [], o = getComputedStyle(n).transformOrigin.split(" ").map(parseFloat);
+      return { name: a ? a.animationName : "", dur: a ? a.effect.getComputedTiming().duration : 0, first: kf[0] ? [kf[0].opacity, kf[0].transform] : [], last: kf.length ? [kf.at(-1).opacity, kf.at(-1).transform] : [],
+        x: nr.left + o[0], btn: [br.left, br.right], drawn: n.getClientRects().length > 0, closing: n.hasAttribute("data-closing"), inert: n.inert, expanded: b.getAttribute("aria-expanded") }; });
+    await p.click(".menu-btn");
+    const o = await read();
+    await settle(p, "#main-nav");
+    const x = await read(); // the origin read where it sits once the links are at rest (scaled, their box is not)
+    want(o.expanded === "true" && o.name === "pop-in" && o.first[0] === "0" && o.first[1] === "scale(0.95)" && o.dur >= 150 && o.dur <= 250 && x.x >= x.btn[0] && x.x <= x.btn[1], `AH-138 menu opening: ${JSON.stringify({ ...o, x: x.x, btn: x.btn })}`);
+    await p.click(".menu-btn");
+    const c = await read();
+    want(c.expanded === "false" && c.closing && c.drawn && c.inert && Math.abs(c.dur - 0.8 * o.dur) <= 10 && c.last[0] === "0" && c.last[1] === "scale(0.95)", `AH-138 menu closing: ${JSON.stringify(c)}`);
+    await p.waitForFunction(() => !document.getElementById("main-nav").hasAttribute("data-closing"), null, { timeout: 1000 }).catch(() => {});
+    const g = await read();
+    want(!g.drawn && !g.closing && !g.inert, `AH-138 menu closed: ${JSON.stringify(g)}`);
+    await done(t, "AH-138 menu", [API]);
+  }
+  // (e) a row's detail box: from .95 at its row's button, its lines settling 30 ms apart; closed, the box is hidden at once
+  // and one copy no reader can reach shrinks back over 0.8 of the opening's length, then is gone
+  {
+    const t = await open("index.html", { width: 1440, height: 900 });
+    const p = t.page, k = await tok(p);
+    await p.waitForTimeout(ENTERED);
+    await p.evaluate((y) => scrollTo(0, y), await frameAt(p));
+    await p.waitForFunction(() => !document.getElementById("preview").hasAttribute("data-loading"), null, { timeout: 4000 }).catch(() => {});
+    await p.click('.rowbtn[aria-controls="m22"]');
+    const o = await p.evaluate(() => { const box = document.getElementById("m22"), a = box.getAnimations()[0], kf = a ? a.effect.getKeyframes() : [];
+      return { first: kf[0] ? [kf[0].opacity, kf[0].transform] : [], dur: a ? a.effect.getComputedTiming().duration : 0, head: (document.querySelector("#m22 .m-head").getAnimations()[0] || { effect: { getTiming: () => ({ delay: -1 }) } }).effect.getTiming().delay,
+        pairs: [...box.querySelectorAll("dt")].map((dt) => { const [x] = dt.getAnimations(), [y] = dt.nextElementSibling.getAnimations(); return x && y && x.effect.getTiming().delay === y.effect.getTiming().delay ? x.effect.getTiming().delay : -1; }) }; });
+    want(o.first[0] === "0" && o.first[1] === "scale(0.95)" && o.dur === k.popIn && o.head === 0 && JSON.stringify(o.pairs) === JSON.stringify(o.pairs.map((_, i) => i * k.row)) && o.pairs.length === 5, `AH-138 detail box opening: ${JSON.stringify(o)}`);
+    await settle(p, "#m22");
+    const at = await p.evaluate(() => { const box = document.getElementById("m22"), r = box.getBoundingClientRect(), b = document.querySelector('.rowbtn[aria-controls="m22"]').getBoundingClientRect(), [x, y] = getComputedStyle(box).transformOrigin.split(" ").map(parseFloat);
+      return { dx: Math.round((r.left + x - (b.left + b.width / 2)) * 10) / 10, dy: Math.round((r.top + y - (b.top + b.height / 2)) * 10) / 10 }; });
+    want(Math.abs(at.dx) <= 2 && Math.abs(at.dy) <= 2, `AH-138 detail box: grows from ${JSON.stringify(at)} off its button's centre`);
+    await p.click("#m22 .m-close");
+    const c = await p.evaluate(() => { const box = document.getElementById("m22"), cs = [...document.querySelectorAll("[data-pop-copy]")], a = cs[0] && cs[0].getAnimations()[0], kf = a ? a.effect.getKeyframes() : [];
+      return { hidden: box.hidden && !box.getClientRects().length, n: cs.length, aria: cs.map((x) => x.getAttribute("aria-hidden")).join(), inert: cs.every((x) => x.inert), role: cs.some((x) => x.hasAttribute("role")),
+        ids: cs.reduce((n, x) => n + (x.id ? 1 : 0) + x.querySelectorAll("[id]").length, 0), boxes: [...document.querySelectorAll(".matrix")].filter((m) => !m.hidden).length,
+        dur: a ? a.effect.getComputedTiming().duration : 0, last: kf.length ? [kf.at(-1).opacity, kf.at(-1).transform] : [] }; });
+    want(c.hidden && c.n === 1 && c.aria === "true" && c.inert && !c.role && c.ids === 0 && c.boxes === 0 && Math.abs(c.dur - 0.8 * o.dur) <= 10 && c.last[0] === "0" && c.last[1] === "scale(0.95)", `AH-138 detail box closing: ${JSON.stringify(c)}`);
+    await p.waitForFunction(() => !document.querySelector("[data-pop-copy]"), null, { timeout: 1000 }).catch(() => want(false, "AH-138 detail box: its closing copy was never removed"));
+    await done(t, "AH-138 detail box", [API]);
+  }
+  // (f) one tab mark: the same node for every tab, sliding over --slide-dur, wider than either tab on the way and widest
+  // at the half way (the two widths' average times --stretch), at rest exactly under the chosen tab; with reduced motion
+  // it is there at once
+  for (const motion of ["no-preference", "reduce"]) {
+    const t = await open("index.html", { width: 1440, height: 900, motion });
+    const p = t.page, k = await tok(p), label = `AH-138 tab mark (${motion})`;
+    if (motion !== "reduce") await p.waitForTimeout(ENTERED);
+    await p.evaluate((y) => scrollTo(0, y), await frameAt(p));
+    await p.waitForFunction(() => !document.getElementById("preview").hasAttribute("data-loading"), null, { timeout: 4000 }).catch(() => {});
+    const w = await p.evaluate(() => { window.__mark = document.querySelector(".tab-mark"); window.__ws = [];
+      const look = () => { window.__ws.push(new DOMMatrix(getComputedStyle(window.__mark).transform).a); if (window.__ws.length < 60) requestAnimationFrame(look); }; requestAnimationFrame(look);
+      return { n: document.querySelectorAll(".tab-mark").length, w0: document.getElementById("t-found").offsetWidth, w1: document.getElementById("t-clean").offsetWidth }; });
+    await p.click("#t-clean");
+    const s = await p.evaluate(() => { const m = document.querySelector(".tab-mark"), a = m.getAnimations()[0], kf = a ? a.effect.getKeyframes() : [];
+      return { same: m === window.__mark, n: document.querySelectorAll(".tab-mark").length, anims: m.getAnimations().length, dur: a ? a.effect.getComputedTiming().duration : 0, peak: kf[1] ? new DOMMatrix(kf[1].transform).a : 0, hidden: m.getAttribute("aria-hidden"), focusable: m.tabIndex >= 0 }; });
+    await settle(p, ".tabs");
+    await p.waitForFunction(() => window.__ws.length >= 60, null, { timeout: 3000 }).catch(() => {});
+    const r = await p.evaluate(() => { const m = document.querySelector(".tab-mark").getBoundingClientRect(), b = document.getElementById("t-clean").getBoundingClientRect(); return { dl: m.left - b.left, dw: m.width - b.width, ws: window.__ws }; });
+    const avg = (w.w0 + w.w1) / 2 * k.stretch, top = Math.max(...r.ws);
+    want(w.n === 1 && s.same && s.n === 1 && s.hidden === "true" && !s.focusable, `${label}: not one shared mark ${JSON.stringify({ ...w, ...s })}`);
+    if (motion === "reduce") want(s.anims === 0, `${label}: it moves (${s.anims} animations)`);
+    else want(s.dur >= 250 && s.dur <= 350 && Math.abs(s.peak / avg - 1) <= 0.03 && top > Math.max(w.w0, w.w1), `${label}: slide ${JSON.stringify({ dur: s.dur, peak: s.peak, avg, top, w0: w.w0, w1: w.w1 })}`);
+    want(Math.abs(r.dl) <= 1 && Math.abs(r.dw) <= 1, `${label}: at rest it is ${JSON.stringify({ dl: r.dl, dw: r.dw })} off the chosen tab`);
+    await done(t, label, [API]);
+  }
+  // (g) the Copy button: hidden with no script; it copies the PowerShell line, says Copied, crossfades its icons with a
+  // scale and a blur, pulses once and is Copy again 2 s later; refused the clipboard, it selects the line and says to press
+  // Ctrl+C, with no pulse
+  {
+    const t = await open("index.html", { width: 1280, js: false, until: "load" });
+    want(await t.page.evaluate(() => { const b = document.querySelector(".copy-btn"); return !!b && b.hidden && !b.getClientRects().length; }), "AH-138 Copy: shown with no script");
+    await done(t, "AH-138 Copy with no script");
+  }
+  for (const refused of [false, true]) {
+    const t = await open("index.html", { width: 1280, init: refused ? () => { Object.defineProperty(navigator.clipboard, "writeText", { value: () => Promise.reject(new Error("refused")) }); } : null });
+    const p = t.page, label = `AH-138 Copy${refused ? " with the clipboard refused" : ""}`;
+    if (!refused) await t.ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: BASE.slice(0, -1) });
+    await p.waitForTimeout(ENTERED);
+    await p.click(".check-file summary");
+    await settle(p, ".check-file");
+    await p.evaluate(() => { const b = document.querySelector(".copy-btn"), [a, c] = b.querySelectorAll(".ico"); window.__pulses = 0; window.__icons = [];
+      b.addEventListener("animationstart", (e) => { if (e.animationName === "pulse") window.__pulses++; });
+      const pose = (el) => { const s = getComputedStyle(el); return [+s.opacity, s.transform === "none" ? 1 : new DOMMatrix(s.transform).a, parseFloat((/blur\(([\d.]+)px\)/.exec(s.filter) || [0, 0])[1])]; };
+      b.addEventListener("click", () => { const look = () => { window.__icons.push([pose(a), pose(c)]); if (window.__icons.length < 40) requestAnimationFrame(look); }; requestAnimationFrame(look); }); });
+    const shown = await p.evaluate(() => { const b = document.querySelector(".copy-btn"), r = b.getBoundingClientRect(); return { hidden: b.hidden, w: r.width, h: r.height }; });
+    want(!shown.hidden && shown.w >= 24 && shown.h >= 24, `${label}: not shown as a 24 px target ${JSON.stringify(shown)}`);
+    const t0 = Date.now();
+    await p.click(".copy-btn");
+    await p.waitForTimeout(700);
+    const r = await p.evaluate(async (refused) => { const b = document.querySelector(".copy-btn"), code = b.previousElementSibling, [a, c] = b.querySelectorAll(".ico");
+      return { label: b.textContent.trim(), done: b.hasAttribute("data-done"), line: code.textContent, picked: getSelection().toString(), pulses: window.__pulses, icons: window.__icons,
+        rest: [getComputedStyle(a).opacity, getComputedStyle(c).opacity], clip: refused ? "" : await navigator.clipboard.readText().catch(() => "?") }; }, refused);
+    if (refused) want(r.label === "Press Ctrl+C" && r.picked === r.line && !r.done && r.pulses === 0, `${label}: ${JSON.stringify({ ...r, icons: r.icons.length })}`);
+    else {
+      const mid = r.icons.some(([x, y]) => x[0] > 0 && x[0] < 1 && y[0] > 0 && y[0] < 1 && x[2] > 0 && y[2] > 0 && x[1] < 1 && y[1] < 1);
+      want(r.clip === r.line && r.line === "Get-FileHash .\\Arcas.exe -Algorithm SHA256" && r.label === "Copied" && r.done && mid && r.rest[0] === "0" && r.rest[1] === "1" && r.pulses === 1, `${label}: ${JSON.stringify({ ...r, icons: r.icons.slice(0, 12) })}`);
+      await p.waitForFunction(() => document.querySelector(".copy-btn").textContent.trim() === "Copy", null, { timeout: 3000 }).catch(() => {});
+      const back = Date.now() - t0;
+      want(back >= 1900 && back <= 2900 && !(await p.evaluate(() => document.querySelector(".copy-btn").hasAttribute("data-done"))), `AH-138 Copy: back to Copy after ${back} ms`);
+    }
+    await done(t, label, [API]);
+  }
+  // ... and open at 320 px with text at 200%, it scrolls nothing sideways and stays a 24 px target
+  {
+    const t = await open("index.html", { width: 320, height: 800, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate(() => { document.documentElement.style.fontSize = "200%"; document.querySelector(".check-file").open = true; });
+    await p.waitForTimeout(100);
+    const r = await p.evaluate(() => { const b = document.querySelector(".copy-btn").getBoundingClientRect(); return { over: document.documentElement.scrollWidth - document.documentElement.clientWidth, w: b.width, h: b.height, right: b.right }; });
+    want(r.over <= 0 && r.w >= 24 && r.h >= 24 && r.right <= 320, `AH-138 Copy at 320 px with text at 200%: ${JSON.stringify(r)}`);
+    await done(t, "AH-138 Copy at 320 px", [API]);
+  }
+  // (h) a group of blocks keeps --stagger: the checks' headline, fact and lede rise 0, 90 and 180 ms apart (the table's
+  // rows, list rows, are held to 30 ms in the reveal check above)
+  {
+    const t = await open("index.html", { width: 1440, height: 900 });
+    const p = t.page, k = await tok(p);
+    await p.waitForTimeout(ENTERED);
+    await p.evaluate(() => scrollTo(0, document.getElementById("checks").offsetTop - 200)); await p.waitForTimeout(200);
+    const d = await p.$$eval("#checks > .wrap > .reveal-item", (es) => es.map((e) => Math.round(parseFloat(getComputedStyle(e).transitionDelay) * 1000)));
+    want(JSON.stringify(d) === JSON.stringify([0, k.stagger, 2 * k.stagger]) && k.stagger === 90, `AH-138 a group of blocks: delays ${d} (want 0, 90, 180)`);
+    await done(t, "AH-138 a group of blocks", [API]);
+  }
+  assert.deepEqual(miss, [], `John's motion list (AH-138):\n${miss.join("\n")}`);
+  console.log("AH-138: the heavy wheel (on its way at 50 ms, steady, never past its target, there within 1.5 s, then idle; a key ends it; none under reduced motion or for a finger; a full text box keeps its wheel), the press to 0.97 and the main button's mask fill (none under reduced motion), the menu and a row's detail box as popovers from their trigger (exits 0.8 of their entrances), one tab mark that slides and stretches, the Copy button's crossfade, pulse and Ctrl+C fallback, blocks still 90 ms apart");
 }
 console.log(`page transitions: ${measured.moving} ms of motion on screen (${measured.swap} ms in the page, ${measured.duration} ms from the click), both pages in ${measured.both} of ${measured.ofFrames} frames, ` +
   `the whitest of ${measured.frames} screencast frames ${(measured.white * 100).toFixed(2)}% white; seeked to its middle (${measured.mid.t} ms, the seek took ${measured.mid.spent} ms) the old page shows ${measured.mid.old.toFixed(1)} px and the new ${measured.mid.new.toFixed(1)} px of ${measured.mid.width}, ` +

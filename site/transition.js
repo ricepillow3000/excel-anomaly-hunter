@@ -245,9 +245,44 @@
 // the closed links, only on a phone with this script running). Escape closes it and gives focus back to the button; a
 // link closes it as it is followed. Listeners on the document, so the header kept across page changes needs no new
 // ones, and its own block, apart from the transitions above, so either can change alone.
+// A dropdown from its button (AH-138, John 2026-11-06: "popovers start at scale 0.95, come in from their trigger and go
+// out to it"): it opens from the button's centre (--menu-x, in px from the links' left edge, styles.css's
+// transform-origin) and, with motion, closes back there: aria-expanded says "false" at once, while data-closing keeps the
+// links drawn, out of reach (inert), for the exit's --pop-out; reopened meanwhile, the exit is dropped
 (() => {
+  const html = document.documentElement;
+  const still = () => (window.AH ? window.AH.still : matchMedia("(prefers-reduced-motion: reduce)").matches);
   const btn = () => document.querySelector(".menu-btn");
-  const set = (b, open) => b.setAttribute("aria-expanded", open ? "true" : "false");
+  let closing = null; // { nav, done }
+  const drop = () => { if (closing) closing.done(); };
+  function set(b, open) {
+    const nav = document.getElementById(b.getAttribute("aria-controls"));
+    const was = b.getAttribute("aria-expanded") === "true";
+    if (open) {
+      drop();
+      b.setAttribute("aria-expanded", "true");
+      // read once the links are drawn (closed, they have no box), before the frame that shows them
+      if (nav) { const r = b.getBoundingClientRect(); nav.style.setProperty("--menu-x", Math.round(r.left + r.width / 2 - nav.getBoundingClientRect().left) + "px"); }
+      return;
+    }
+    // the exit plays only for a menu that is open and drawn (a phone), with motion
+    if (was && nav && !still() && b.getClientRects().length && nav.getClientRects().length) {
+      drop();
+      nav.setAttribute("data-closing", "");
+      nav.inert = true;
+      const t = parseFloat(getComputedStyle(html).getPropertyValue("--pop-out")) || 160;
+      const ended = (e) => { if (e.target === nav && e.animationName === "pop-out") me.done(); };
+      const me = { nav, done() {
+        if (closing !== me) return;
+        closing = null; clearTimeout(me.timer); nav.removeEventListener("animationend", ended);
+        nav.removeAttribute("data-closing"); nav.inert = false;
+      } };
+      closing = me;
+      nav.addEventListener("animationend", ended);
+      me.timer = setTimeout(me.done, t + 150); // if the animationend never comes (a hidden tab)
+    }
+    b.setAttribute("aria-expanded", "false");
+  }
   document.addEventListener("click", (e) => {
     const b = btn(), t = e.target.closest ? e.target : null;
     if (!b || !t) return;
