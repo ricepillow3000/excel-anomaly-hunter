@@ -553,6 +553,14 @@ def date_forms(df, column_types, skip):
         t = text[d.index]
         if t.str.fullmatch(TIME_ONLY).all():  # times with no day: each was "read as" the day of the scan (AH-142)
             continue
+        # a year alone has no day or month to misread, only less of the date: a film list's 241 "2017" among "26-Oct-12"
+        # were each a Medium row (AH-142); written 5+ times it is one note, a few still each a date to check
+        year = t.str.fullmatch(r"\d{4}")
+        if year.sum() >= 5:
+            notes[t.index[year][0]].append(Why(f"{col} gives only the year in {year.sum()} rows, read as 1 January", col))
+            d, t = d[~year], t[~year]
+            if t.empty:
+                continue
         told = _orders(text.where(text.str.len() <= 64, ""))
         dayfirst = told[0] > told[1]  # as load read the column (a cell a date fits in, load._dates)
         yf, yl = t.str.extract(YEAR_FIRST), t.str.extract(SPLIT_YEAR_LAST)
@@ -1139,18 +1147,25 @@ def fractions(df, column_types, skip):
 def codes(df, column_types, skip):
     """A column's top value is all 9s (999, 9999, 99999) and over twice the next one: a code for "missing" or "too big to
     record" (census capital gains stop at 41,310, then 244 people have 99999), not an amount - it wrecks every average.
-    Repeats don't hide it: the code is typed the same way each time."""
-    out = [[] for _ in range(len(df))]
+    Repeats don't hide it: the code is typed the same way each time. -> (reasons, notes): one written 5+ times through 4
+    of the 5 fifths of the sheet is one note, like a negative code (AH-142: the real census's 99999, 148 to 244 times in
+    every fifth, was 551 Medium rows on 3 copies); a block of them is still each a code to check."""
+    out, notes = [[] for _ in range(len(df))], [[] for _ in range(len(df))]
     for col in numbers(column_types):
         x = df[col][~skip].dropna().astype(float)
         top = np.sort(x.unique())[-2:]
         if len(x) < 20 or len(top) < 2 or not top[1].is_integer() or top[1] < 999 or set(str(int(top[1]))) != {"9"} \
                 or top[1] < 2 * top[0]:
             continue
-        for i in x.index[x == top[1]]:
+        hit = x.index[x == top[1]]
+        if len(hit) >= 5 and _spread(df.index.get_indexer(hit), len(df)):
+            notes[hit[0]].append(Why(f"{col} {say(top[1])} is written {len(hit)} times: the column's code for no value or "
+                                     f"too big to record", col))
+            continue
+        for i in hit:
             out[i].append(Why(f"{col} {say(top[1])} looks like a code, not a real value (all 9s, over twice the next "
                               f"highest, {say(top[0])})", col))
-    return out
+    return out, notes
 
 
 def shifted(df, column_types, skip):
@@ -1237,13 +1252,13 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
     (hole, coded), far = placeholders(df, column_types, skip), far_dates(df, column_types, skip)
     zeros = lost_zeros(df, column_types, skip)
     forms, many_forms = date_forms(df, column_types, skip)
-    code = codes(df, column_types, skip)
+    code, coded_top = codes(df, column_types, skip)
     spell, spell_fix, missed, spell_maybe, spell_exact = spellings(df, column_types, skip)
     missed = [m + s + f + w + b + g for m, s, f, w, b, g in zip(missed, shifted(df, column_types, skip), fractions(df, column_types, skip),
                                                                  whole_numbers(df, column_types, skip), named_bounds(df, column_types, skip),
                                                                  spread, strict=True)]  # all "worth a check" (Low)
-    missed = [m + t + h + c + d + r + f for m, t, h, c, d, r, f in zip(missed, lim["top_reasons"], lim["held_reasons"], coded,
-                                                                       typ_coded, repeats, many_forms, strict=True)]  # a lone top value (AH-29), one its row's arithmetic confirms (AH-74), a placeholder code (AH-45), many repeats (AH-48), a date column of many forms (AH-76)
+    missed = [m + t + h + c + d + r + f + o for m, t, h, c, d, r, f, o in zip(missed, lim["top_reasons"], lim["held_reasons"], coded,
+                                                                               typ_coded, repeats, many_forms, coded_top, strict=True)]  # a lone top value (AH-29), one its row's arithmetic confirms (AH-74), a placeholder code (AH-45), many repeats (AH-48), a date column of many forms (AH-76)
     if s >= ALONE:
         missed = [m + a for m, a in zip(missed, lim["alone_reasons"], strict=True)]
     rows = []
