@@ -57,7 +57,6 @@ logging.getLogger("werkzeug").setLevel(logging.WARNING)
 WSGIRequestHandler.timeout = 60
 MAX_CELLS = 2_000_000  # same as the pane's maxCells (frontend/utils/sheet.js): it never sends more in one scan
 EXCEL_ROWS = 1_048_576  # a sheet's rows: the header can't sit lower
-FORMULA_START, _inert = powerbi.FORMULA_START, powerbi.inert  # the CSV-injection guard lives with the Power BI CSV
 # two workbooks scanning at once shared one temp file: a replace found it gone and a file could mix both (2026-10-16)
 _CSV_LOCK = threading.Lock()
 

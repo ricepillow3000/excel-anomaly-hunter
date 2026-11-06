@@ -58,7 +58,7 @@ def test_the_protective_rule_stays_even_if_the_rules_file_is_missing(monkeypatch
     bias_context._load.cache_clear()
     try:
         assert bias_context.rules_for(["Name", "Sex", "Salary"]) == [bias_context.PROTECT]
-        assert bias_context.pane_note("Sex", "outcome") is None
+        assert bias_context.pane_note_matching("Sex", "outcome", "income", 1, {"Male": (1, 0.9), "Female": (1, 0.1)}) is None
         (tmp_path / "gone.json").write_text("{not json", encoding="utf-8")
         bias_context._load.cache_clear()
         assert bias_context.rules_for(["Name", "Sex", "Salary"]) == [bias_context.PROTECT]
@@ -136,7 +136,9 @@ def test_a_real_gap_in_an_outcome_gets_one_sentence_of_public_context_and_a_flag
                                                ("Gender", "flag", None), ("Product", "outcome", None), ("Religion", "outcome", None),
                                                ("Region", "outcome", None)])
 def test_the_fairness_sentence_comes_only_from_a_rule_for_that_column(column, kind, has):
-    note = bias_context.pane_note(column, kind)
+    # a gap the rules fit: a subject naming what each rule measured, every rule's high group above its low one
+    groups = {r[side]: (20, rate) for r in DATA["rules"] if r.get("pane_for") == kind for side, rate in (("pane_high", 0.9), ("pane_low", 0.1))}
+    note = bias_context.pane_note_matching(column, kind, "income occupation", 1, groups)
     assert (note is None) if has is None else (has in note and note in {r.get("pane") for r in DATA["rules"]})
 
 

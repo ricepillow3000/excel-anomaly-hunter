@@ -162,7 +162,7 @@ def test_power_bi_csv_never_carries_a_live_formula(tmp_path):
 
 
 def test_a_semicolon_before_a_formula_never_splits_the_power_bi_csv(tmp_path):
-    # 2026-10-15 audit: _inert only guards the start of a field. Excel in a ";" locale (DE, FR, NL) splits an
+    # 2026-10-15 audit: powerbi.inert only guards the start of a field. Excel in a ";" locale (DE, FR, NL) splits an
     # unquoted "Pen;=cmd|..." into a second cell that starts with "=" and runs. Quoted text can't be split.
     out = tmp_path / "s.csv"
     rows = SHEET["rows"] + [["Pen;=cmd|' /C calc'!A0", 12]]
