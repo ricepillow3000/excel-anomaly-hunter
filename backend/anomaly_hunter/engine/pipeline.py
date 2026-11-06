@@ -516,6 +516,7 @@ def named_bounds(df, column_types, skip):
 
 YEAR_FIRST = r"^(\d{4})([-/.])\d{1,2}\2\d{1,2}(?:$|[T ])"  # 2024-01-05, 2024/1/5, "2024-01-05 08:30:00"
 SPLIT_YEAR_LAST = r"^(\d{1,2})([-/.])(\d{1,2})\2(\d{4}|\d{2})(?:$|[T ])"  # 05/01/2024, 5.1.24
+TIME_ONLY = r"\s*\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?\s*(?:[AaPp]\.?[Mm]\.?)?\s*"  # 17:43, 0:00:00, 5:30 PM
 SHARE_OF_FORM = 0.8  # a form this much of a column writes is the column's own; under it, the column has none
 
 
@@ -535,6 +536,8 @@ def date_forms(df, column_types, skip):
         if len(d) < 5:
             continue
         t = text[d.index]
+        if t.str.fullmatch(TIME_ONLY).all():  # times with no day: each was "read as" the day of the scan (AH-142)
+            continue
         told = _orders(text.where(text.str.len() <= 64, ""))
         dayfirst = told[0] > told[1]  # as load read the column (a cell a date fits in, load._dates)
         yf, yl = t.str.extract(YEAR_FIRST), t.str.extract(SPLIT_YEAR_LAST)
@@ -544,7 +547,8 @@ def date_forms(df, column_types, skip):
         key[yl[0].notna()] = "?" + yl[1] + "?" + yl[1] + yl[3].str.len().map({2: "YY", 4: "YYYY"})
         key[yf[0].notna()] = "YYYY" + yf[1] + "MM" + yf[1] + "DD"
         other = key == "other"  # a form of its own: its shape, "20240105" -> 99999999
-        key[other] = "shape:" + t[other].str.split(r"[T ]", n=1).str[0].str.replace(r"\d", "9", regex=True)
+        # a run of digits is one 9: "0:00:00" and "17:43:00" are one form (388 Medium rows on eclipse_partial_2024, AH-142)
+        key[other] = "shape:" + t[other].str.split(r"[T ]", n=1).str[0].str.replace(r"\d+", "9", regex=True)
 
         def label(k, t=t, key=key, dayfirst=dayfirst):
             if k.startswith("?"):
@@ -997,7 +1001,7 @@ def _person_name(col, columns, labels):
 
 
 def spellings(df, column_types, skip):
-    """Same category typed differently ("Sales" / "sales " / "SALES") - breaks SUMIFS and pivots silently.
+    """Same category typed differently ("Sales" / "sales " / "SALES"): a stray space splits SUMIFS, COUNTIF and pivots (they ignore case).
     Only case/space differences, only in category-like columns (<= 50 distinct). Every spelling but the right one is
     flagged, however common ("employed" 77 times next to "Employed" 82): the right one is written like the column's other
     labels (capitalised or not), then the most common. A common second spelling in the column's own style is one note
@@ -1029,6 +1033,8 @@ def spellings(df, column_types, skip):
             spelt.setdefault(" ".join(raw.split()).casefold(), {})[raw] = c
         for key, counts in spelt.items():
             right = rights[key] = max(counts, key=lambda v: (capital(v) == caps and v == " ".join(v.split()), counts[v]))
+            if NO_VALUE_WORD.fullmatch(key):  # "NA" beside "na" both say no value: 3,213 Medium rows on one real table (AH-142)
+                continue
             for raw, c in counts.items():
                 if raw == right or many:
                     continue
@@ -1039,9 +1045,13 @@ def spellings(df, column_types, skip):
                 # a share: on the round 22-38 sheets every such variant written 4+ times was the source's own, however
                 # rare beside the usual one (wildlife strikes' ARRIVAL 7 of 20,000, cocktails' Highball Glass 75 beside
                 # 302, under AH-64's third), and one written 2-4 times stays a slip to check (AH-67)
-                if c >= 5 and capital(raw) == caps and raw == " ".join(raw.split()):
+                # also one note, written 5+ times: more often than the "right" one (LazyData "true" 5,156 beside "TRUE"
+                # 790: each card rewrote a correct cell to the minority's form), or only its spaces differ (shelter
+                # color1 "brown " 2,415 beside "brown" 4,482, from a split): 21,572 Medium rows on 16 of 323 real tables (AH-142)
+                if c >= 5 and (capital(raw) == caps and raw == " ".join(raw.split()) or c >= counts[right]
+                               or raw.split() == right.split()):
                     missed[s.index[s == raw][0]].append(Why(f'{col} is written "{_short(raw)}" {c} times and "{_short(right)}" '
-                                                            f'{counts[right]} times (same word, different capitals/spaces)', col))
+                                                            f'{counts[right]} time{"s" * (counts[right] > 1)} (same word, different capitals/spaces)', col))
                     continue
                 for i in s.index[s == raw]:
                     out[i].append(Why(f'{col} "{_short(raw)}" looks like "{_short(right)}" (same word, different capitals/spaces)', col))
