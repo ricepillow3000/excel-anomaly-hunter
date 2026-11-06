@@ -57,3 +57,48 @@ def test_a_variant_off_the_columns_style_is_still_flagged_however_common():
     out = scan(cols, rows, fair=False)[1]
     rows_with = [i for i, r in enumerate(rows) if r[1] == "highball glass"]
     assert all('"highball glass" looks like "Highball glass"' in out[i]["reason"] for i in rows_with)
+
+
+def flags(name, labels, others, seed=142):
+    rng = np.random.default_rng(seed)
+    labels = list(labels) + [o for o in others for _ in range(60)]
+    rng.shuffle(labels)
+    return ["Package", name, "Size"], [[f"pkg{i}", v, int(rng.integers(1, 900))] for i, v in enumerate(labels)]
+
+
+def test_a_spelling_written_more_often_than_the_one_it_looks_like_is_one_note_never_a_card_a_row():
+    # AH-142: CRAN's LazyData "true" 5,156 times beside "TRUE" 790 was 5,156 Medium rows, each a card writing "TRUE"
+    # over a correct cell: the majority rewritten to the minority's form
+    cols, rows = flags("LazyData", ["true"] * 400 + ["TRUE"] * 60, [])
+    out = scan(cols, rows, fair=False)[1]
+    said = [o for o in out if "LazyData" in o["reason"]]
+    assert len(said) == 1, [o["reason"] for o in said[:3]]
+    assert 'LazyData is written "true" 400 times and "TRUE" 60 times' in said[0]["reason"], said[0]["reason"]
+    assert said[0]["severity"] == "Low" and not said[0].get("likely") and not said[0].get("exact"), said[0]
+    assert not [o for o in out if "LazyData" in o.get("likely", {}) or "LazyData" in o.get("exact", {})]
+
+
+@pytest.mark.parametrize("times", [5, 240])
+def test_a_label_written_with_a_stray_space_5_times_or_more_is_one_note_for_the_column(times):
+    # AH-142: Austin's shelter color1 "brown " 2,415 times beside "brown" 4,482 (a split left the space) was 2,415
+    # Medium rows; it splits a pivot or a COUNTIF, so it is said once, with both spellings and their counts
+    cols, rows = flags("Color", ["brown "] * times + ["brown"] * 450, ["black", "white", "tan"])
+    out = scan(cols, rows, fair=False)[1]
+    said = [o for o in out if "brown" in o["reason"]]
+    assert len(said) == 1, [o["reason"] for o in said[:3]]
+    assert f'Color is written "brown " {times} times and "brown" 450 times' in said[0]["reason"], said[0]["reason"]
+    assert said[0]["severity"] == "Low" and not said[0].get("likely"), said[0]
+
+
+def test_a_word_for_no_value_is_never_a_capitals_variant_of_itself():
+    # AH-142: "NA" 3,213 times was each a Medium row "looks like na": both say no value, neither is a label to fix
+    cols, rows = flags("Breed", ["na"] * 300 + ["NA"] * 40, ["labrador", "beagle", "poodle"])
+    out = scan(cols, rows, fair=False)[1]
+    assert not [o["reason"] for o in out if "same word" in o["reason"]]
+
+
+def test_a_spelling_the_column_writes_once_is_said_as_1_time():
+    # AH-142: CRAN's LazyLoad "no" 21 times beside "No" once read "1 times" in the note
+    cols, rows = flags("LazyLoad", ["no"] * 21 + ["No"], ["Yes", "Unsure"])
+    said = [o["reason"] for o in scan(cols, rows, fair=False)[1] if "LazyLoad" in o["reason"]]
+    assert any('LazyLoad is written "no" 21 times and "No" 1 time (' in r for r in said), said

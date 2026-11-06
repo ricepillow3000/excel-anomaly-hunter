@@ -83,3 +83,34 @@ def test_a_logs_error_level_is_a_category_never_no_value():
         rows[i][1] = "ERROR"
     out = scan(["Time", "Level", "Message"], rows, fair=False)[1]
     assert not any("no value" in o["reason"] for o in out), [o["reason"] for o in out if "no value" in o["reason"]][:1]
+
+
+def test_a_placeholder_written_through_a_big_sheet_on_under_1_percent_of_its_rows_is_one_note():
+    # AH-142: a refugee table wrote coo_name "Unknown" 459 times in 50,000 rows (0.92%), in every fifth: under 1% of the
+    # column, so each was a Medium row
+    cols, rows = points(20000, "Unknown", 120)  # 167 of 20,000: 0.83%
+    out = scan(cols, rows, fair=False)[1]
+    got = said(out, '"Unknown"')
+    assert len(got) == 1 and got[0][1] == "Low" and got[0][2].endswith('facility_type is "Unknown" (no value) in 167 of 20000 rows'), got[:3]
+
+
+def test_a_placeholder_written_through_four_fifths_of_the_sheet_is_one_note():
+    # AH-142: a table's type "Unknown" 390 times, none in its first fifth (the rows before the source began writing it)
+    cols, rows = points(4000, "Kiosk", 4000)
+    for i in range(803, 4000, 12):
+        rows[i][1] = "Unknown"
+    out = scan(cols, rows, fair=False)[1]
+    got = said(out, '"Unknown"')
+    assert len(got) == 1 and got[0][0] == 803 and got[0][1] == "Low", got[:3]
+
+
+def test_a_block_of_placeholders_beside_a_few_stray_ones_is_still_each_a_slip():
+    # AH-142 review: 300 "Unknown" pasted in a row plus 3 strays in three other fifths are a paste gone wrong, not the
+    # column's code: a fifth counts only with 2% of them
+    cols, rows = points(20000, "Kiosk", 20000)
+    hit = [100, 12100, 16100] + list(range(8000, 8300))
+    for i in hit:
+        rows[i][1] = "Unknown"
+    out = scan(cols, rows, fair=False)[1]
+    got = said(out, '"Unknown"')
+    assert [i for i, *_ in got] == sorted(hit) and all(s == "Medium" for _, s, _ in got), got[:2]

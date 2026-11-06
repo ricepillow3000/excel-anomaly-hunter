@@ -130,8 +130,8 @@ def type_errors(n, errors_log, column_types):
     """Text in a number or date column. A text shape the column repeats 5+ times is its own code system (partisan lean
     "R+51.5", district "16A": 8,000 false rows on one real sheet, 2026-10-16), not a slip; placeholders and missing-value
     words (N/A, -, NA) never are. The cells stay in errors_log: they are text, for duplicates and blanks alike.
-    -> (reasons, notes): a placeholder the column writes max(MANY, SHARE of the rows) times through every fifth of the
-    sheet is its code for "no value", one note (AH-45: a survey's 1-5 rating of Italy's cuisine, "N/A" 67 times)."""
+    -> (reasons, notes): a placeholder the column writes max(MANY, NO_VALUE_SHARE of the rows) times through 4 of the 5
+    fifths of the sheet is its code for "no value", one note (AH-45: a survey's 1-5 rating of Italy's cuisine, "N/A" 67 times)."""
     out, notes = [[] for _ in range(n)], [[] for _ in range(n)]
     ph = collections.defaultdict(list)
     for i, col, raw in errors_log:
@@ -139,7 +139,7 @@ def type_errors(n, errors_log, column_types):
             ph[col, str(raw).strip().upper()].append(i)
     coded = set()
     for (col, _), rows in ph.items():
-        if _ != "ERROR" and len(rows) >= max(MANY, SHARE * n) and len({i * 5 // n for i in rows}) == 5:
+        if _ != "ERROR" and len(rows) >= max(MANY, NO_VALUE_SHARE * n) and _spread(rows, n):
             coded |= {(i, col) for i in rows}
             raw = next(str(r).strip() for j, c, r in errors_log if j == rows[0] and c == col)
             notes[rows[0]].append(Why(f'{col} is "{_short(raw)}" (no value) in {len(rows)} of {n} rows', col))
@@ -178,8 +178,8 @@ def lost_zeros(df, column_types, skip):
 def placeholders(df, column_types, skip):
     """ERROR / UNKNOWN / N/A / NULL / ? / - left in a text column, when that word is rare (< 8% of the column: more often
     it's a real category, like Status "Error"). Excel errors (#N/A) always: they are a broken formula, never a category.
-    -> (reasons per row, notes per row): a word the column writes max(MANY, SHARE of it) times through every fifth of the
-    sheet is its own code for "no value", one note on its first row (AH-45): water points' "Unknown" 797 times and "NULL" 436 times, a survey's "N/A"
+    -> (reasons per row, notes per row): a word the column writes max(MANY, NO_VALUE_SHARE of it) times through 4 of the 5
+    fifths of the sheet is its own code for "no value", one note on its first row (AH-45): water points' "Unknown" 797 times and "NULL" 436 times, a survey's "N/A"
     173 times were each a Medium row in blind round 36, like R's NA (AH-27). A rarer one is still each a slip."""
     out, notes = [[] for _ in range(len(df))], [[] for _ in range(len(df))]
     for col, t in column_types.items():
@@ -193,12 +193,12 @@ def placeholders(df, column_types, skip):
         rare = times <= max(1, 0.08 * filled)
         # ...never ERROR: a log's Level ERROR on 3% of rows is a real category, not "no value" (AH-45 review), so it keeps
         # the rare-word flag it always had
-        code = ph & rare & (times >= max(MANY, SHARE * filled)) & (key != "ERROR")
+        code = ph & rare & (times >= max(MANY, NO_VALUE_SHARE * filled)) & (key != "ERROR")
         for k in key[code].unique():
             first = df.index[code & (key == k)]
-            # ...found in every fifth of the sheet, like blanks (AH-28): a block of 50 "?" in a census's first 150 rows is a
+            # ...found in 4 of the 5 fifths of the sheet, like blanks (AH-28, AH-142): a block of 50 "?" in a census's first 150 rows is a
             # paste or an export that went wrong, still each a slip (test_wild_census)
-            if len(set(np.flatnonzero((code & (key == k)).to_numpy()) * 5 // len(df))) < 5:
+            if not _spread(np.flatnonzero((code & (key == k)).to_numpy()), len(df)):
                 code &= key != k
                 continue
             notes[first[0]].append(Why(f'{col} is "{v[first].mode().iloc[0]}" (no value) in {len(first)} of {(~skip).sum()} rows', col))
@@ -211,6 +211,18 @@ def placeholders(df, column_types, skip):
 
 MANY = 20  # blanks in one column: from here, spread through the sheet, they are how the data is (AH-28)
 SHARE = 0.01  # ...and at least 1% of its rows: 20 values gone from a 20,000-row column are still each a slip (AH-28 review)
+# a blank or a placeholder from 0.5%: 1% made a ZIP's 280 unknowns in 28,156 rows (0.99%) and a coo_name's 459 "Unknown"
+# in 50,000 each a Medium row (AH-142); 20 in 20,000 (0.1%) are still each a slip
+NO_VALUE_SHARE = 0.005
+
+
+def _spread(pos, n):
+    """Found in 4 of the 5 fifths of the sheet: rodents' tag, blank for 2,064 animals never tagged from row 6,772 on, had
+    none in the first fifth and was 2,064 Medium rows (AH-142). A block (a paste, an export that stopped) sits in one or two:
+    a fifth counts only with 2% of the cells, so 300 deleted in a row beside 3 strays elsewhere stay each a slip (AH-142
+    review: a fifth of one cell counted, and 093's names, fifths 2/2/89/33/0, were one note)."""
+    c = np.bincount(np.asarray(pos, dtype=int) * 5 // n, minlength=5)
+    return (c >= 0.02 * len(pos)).sum() >= 4
 
 
 def _sorted_end(s, blank, skip):
@@ -254,7 +266,7 @@ def _survey(cols):
 def blanks(df, column_types, skip, errors_log, threshold=0.80):
     """Blank cell in a column that is >= 80% filled (summary rows not counted): a required field left empty. Mostly-empty
     columns (notes, optional extras) are left alone. Was 95%: a credit sheet's Income, 92% filled, hid 39 blanks.
-    -> (blank reasons per row, notes per row): 20+ blanks found in every fifth of the sheet are one note on the first."""
+    -> (blank reasons per row, notes per row): 20+ blanks found in 4 of the 5 fifths of the sheet are one note on the first."""
     out, prot = [[] for _ in range(len(df))], fairness.protected(column_types)
     notes = [[] for _ in range(len(df))]
     wrong = {}  # text/errors already named as such are not blanks
@@ -265,7 +277,10 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
     labels = {}
     for g, t in column_types.items():
         lab = df[g].astype(str).str.strip().where(~skip & ~_blank(df[g])) if t == "text" else None
-        if lab is not None and lab.nunique() <= 50 and len(labels) < 64:  # 64: a crafted 1,000-column sheet stays fast
+        # 200 labels of 5+ rows on average, never an ID's or a note's: outer space objects' Code is blank for the 13 of 110
+        # entities with no ISO code, and the old cap of 50 made all 142 Medium (AH-142)
+        many = lab is not None and (lab.nunique() <= 50 or lab.nunique() <= 200 and lab.count() >= 5 * lab.nunique())
+        if many and len(labels) < 64:  # 64: a crafted 1,000-column sheet stays fast
             labels[g] = lab
     cols = list(column_types)
     if not cols:
@@ -340,7 +355,7 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
                 # "otherwise filled for EYE Brown Eyes" was 43 honest unknowns on a wide sheet (round 37, AH-56)
                 if len(full) and empty.any() and per[empty, j].sum() >= 0.8 * b.sum():
                     pos = np.flatnonzero(b & np.isin(code, full))
-                    if len(pos) >= max(MANY, SHARE * len(b)) and len(set(pos * 5 // len(b))) == 5:  # many and spread: the data
+                    if len(pos) >= max(MANY, NO_VALUE_SHARE * len(b)) and _spread(pos, len(b)):  # many and spread: the data
                         events.append(("note", df.index[pos[0]], Why(f"{col} is blank in {len(pos)} of {n} rows where {g} would fill it, spread through the sheet", col)))
                     else:
                         events.append(("pend", j, pos, lambda i, col=col, g=g: f"Blank cell in column {col}, which is otherwise filled for {g} {_short(labels[g][i])}"))
@@ -365,7 +380,7 @@ def blanks(df, column_types, skip, errors_log, threshold=0.80):
             continue
         _, j, pos, said_so, word = e
         col, live = cols[j], pos if said_so else pos[~drop[pos]]
-        if len(pos) >= 5 if said_so else len(live) >= max(MANY, SHARE * len(blank)) and len(set(live * 5 // len(blank))) == 5:
+        if len(pos) >= 5 if said_so else len(live) >= max(MANY, NO_VALUE_SHARE * len(blank)) and _spread(live, len(blank)):
             notes[df.index[live[0]]].append(Why(f'{col} is "{word}" (no value) in {len(pos)} of {n} rows' if said_so
                                                 else f"{col} is blank in {len(live)} of {n} rows, spread through the sheet", col))
             pos = pos[drop[pos]]  # ...and those who stopped still count toward their unfinished record, below
@@ -516,6 +531,7 @@ def named_bounds(df, column_types, skip):
 
 YEAR_FIRST = r"^(\d{4})([-/.])\d{1,2}\2\d{1,2}(?:$|[T ])"  # 2024-01-05, 2024/1/5, "2024-01-05 08:30:00"
 SPLIT_YEAR_LAST = r"^(\d{1,2})([-/.])(\d{1,2})\2(\d{4}|\d{2})(?:$|[T ])"  # 05/01/2024, 5.1.24
+TIME_ONLY = r"\s*\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?\s*(?:[AaPp]\.?[Mm]\.?)?\s*"  # 17:43, 0:00:00, 5:30 PM
 SHARE_OF_FORM = 0.8  # a form this much of a column writes is the column's own; under it, the column has none
 
 
@@ -535,6 +551,16 @@ def date_forms(df, column_types, skip):
         if len(d) < 5:
             continue
         t = text[d.index]
+        if t.str.fullmatch(TIME_ONLY).all():  # times with no day: each was "read as" the day of the scan (AH-142)
+            continue
+        # a year alone has no day or month to misread, only less of the date: a film list's 241 "2017" among "26-Oct-12"
+        # were each a Medium row (AH-142); written 5+ times it is one note, a few still each a date to check
+        year = t.str.fullmatch(r"\d{4}")
+        if year.sum() >= 5:
+            notes[t.index[year][0]].append(Why(f"{col} gives only the year in {year.sum()} rows, read as 1 January", col))
+            d, t = d[~year], t[~year]
+            if t.empty:
+                continue
         told = _orders(text.where(text.str.len() <= 64, ""))
         dayfirst = told[0] > told[1]  # as load read the column (a cell a date fits in, load._dates)
         yf, yl = t.str.extract(YEAR_FIRST), t.str.extract(SPLIT_YEAR_LAST)
@@ -544,7 +570,8 @@ def date_forms(df, column_types, skip):
         key[yl[0].notna()] = "?" + yl[1] + "?" + yl[1] + yl[3].str.len().map({2: "YY", 4: "YYYY"})
         key[yf[0].notna()] = "YYYY" + yf[1] + "MM" + yf[1] + "DD"
         other = key == "other"  # a form of its own: its shape, "20240105" -> 99999999
-        key[other] = "shape:" + t[other].str.split(r"[T ]", n=1).str[0].str.replace(r"\d", "9", regex=True)
+        # a run of digits is one 9: "0:00:00" and "17:43:00" are one form (388 Medium rows on eclipse_partial_2024, AH-142)
+        key[other] = "shape:" + t[other].str.split(r"[T ]", n=1).str[0].str.replace(r"\d+", "9", regex=True)
 
         def label(k, t=t, key=key, dayfirst=dayfirst):
             if k.startswith("?"):
@@ -997,7 +1024,7 @@ def _person_name(col, columns, labels):
 
 
 def spellings(df, column_types, skip):
-    """Same category typed differently ("Sales" / "sales " / "SALES") - breaks SUMIFS and pivots silently.
+    """Same category typed differently ("Sales" / "sales " / "SALES"): a stray space splits SUMIFS, COUNTIF and pivots (they ignore case).
     Only case/space differences, only in category-like columns (<= 50 distinct). Every spelling but the right one is
     flagged, however common ("employed" 77 times next to "Employed" 82): the right one is written like the column's other
     labels (capitalised or not), then the most common. A common second spelling in the column's own style is one note
@@ -1029,6 +1056,8 @@ def spellings(df, column_types, skip):
             spelt.setdefault(" ".join(raw.split()).casefold(), {})[raw] = c
         for key, counts in spelt.items():
             right = rights[key] = max(counts, key=lambda v: (capital(v) == caps and v == " ".join(v.split()), counts[v]))
+            if NO_VALUE_WORD.fullmatch(key):  # "NA" beside "na" both say no value: 3,213 Medium rows on one real table (AH-142)
+                continue
             for raw, c in counts.items():
                 if raw == right or many:
                     continue
@@ -1039,9 +1068,13 @@ def spellings(df, column_types, skip):
                 # a share: on the round 22-38 sheets every such variant written 4+ times was the source's own, however
                 # rare beside the usual one (wildlife strikes' ARRIVAL 7 of 20,000, cocktails' Highball Glass 75 beside
                 # 302, under AH-64's third), and one written 2-4 times stays a slip to check (AH-67)
-                if c >= 5 and capital(raw) == caps and raw == " ".join(raw.split()):
+                # also one note, written 5+ times: more often than the "right" one (LazyData "true" 5,156 beside "TRUE"
+                # 790: each card rewrote a correct cell to the minority's form), or only its spaces differ (shelter
+                # color1 "brown " 2,415 beside "brown" 4,482, from a split): 21,572 Medium rows on 16 of 323 real tables (AH-142)
+                if c >= 5 and (capital(raw) == caps and raw == " ".join(raw.split()) or c >= counts[right]
+                               or raw.split() == right.split()):
                     missed[s.index[s == raw][0]].append(Why(f'{col} is written "{_short(raw)}" {c} times and "{_short(right)}" '
-                                                            f'{counts[right]} times (same word, different capitals/spaces)', col))
+                                                            f'{counts[right]} time{"s" * (counts[right] > 1)} (same word, different capitals/spaces)', col))
                     continue
                 for i in s.index[s == raw]:
                     out[i].append(Why(f'{col} "{_short(raw)}" looks like "{_short(right)}" (same word, different capitals/spaces)', col))
@@ -1114,18 +1147,25 @@ def fractions(df, column_types, skip):
 def codes(df, column_types, skip):
     """A column's top value is all 9s (999, 9999, 99999) and over twice the next one: a code for "missing" or "too big to
     record" (census capital gains stop at 41,310, then 244 people have 99999), not an amount - it wrecks every average.
-    Repeats don't hide it: the code is typed the same way each time."""
-    out = [[] for _ in range(len(df))]
+    Repeats don't hide it: the code is typed the same way each time. -> (reasons, notes): one written 5+ times through 4
+    of the 5 fifths of the sheet is one note, like a negative code (AH-142: the real census's 99999, 148 to 244 times in
+    every fifth, was 551 Medium rows on 3 copies); a block of them is still each a code to check."""
+    out, notes = [[] for _ in range(len(df))], [[] for _ in range(len(df))]
     for col in numbers(column_types):
         x = df[col][~skip].dropna().astype(float)
         top = np.sort(x.unique())[-2:]
         if len(x) < 20 or len(top) < 2 or not top[1].is_integer() or top[1] < 999 or set(str(int(top[1]))) != {"9"} \
                 or top[1] < 2 * top[0]:
             continue
-        for i in x.index[x == top[1]]:
+        hit = x.index[x == top[1]]
+        if len(hit) >= 5 and _spread(df.index.get_indexer(hit), len(df)):
+            notes[hit[0]].append(Why(f"{col} {say(top[1])} is written {len(hit)} times: the column's code for no value or "
+                                     f"too big to record", col))
+            continue
+        for i in hit:
             out[i].append(Why(f"{col} {say(top[1])} looks like a code, not a real value (all 9s, over twice the next "
                               f"highest, {say(top[0])})", col))
-    return out
+    return out, notes
 
 
 def shifted(df, column_types, skip):
@@ -1212,13 +1252,13 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
     (hole, coded), far = placeholders(df, column_types, skip), far_dates(df, column_types, skip)
     zeros = lost_zeros(df, column_types, skip)
     forms, many_forms = date_forms(df, column_types, skip)
-    code = codes(df, column_types, skip)
+    code, coded_top = codes(df, column_types, skip)
     spell, spell_fix, missed, spell_maybe, spell_exact = spellings(df, column_types, skip)
     missed = [m + s + f + w + b + g for m, s, f, w, b, g in zip(missed, shifted(df, column_types, skip), fractions(df, column_types, skip),
                                                                  whole_numbers(df, column_types, skip), named_bounds(df, column_types, skip),
                                                                  spread, strict=True)]  # all "worth a check" (Low)
-    missed = [m + t + h + c + d + r + f for m, t, h, c, d, r, f in zip(missed, lim["top_reasons"], lim["held_reasons"], coded,
-                                                                       typ_coded, repeats, many_forms, strict=True)]  # a lone top value (AH-29), one its row's arithmetic confirms (AH-74), a placeholder code (AH-45), many repeats (AH-48), a date column of many forms (AH-76)
+    missed = [m + t + h + c + d + r + f + o for m, t, h, c, d, r, f, o in zip(missed, lim["top_reasons"], lim["held_reasons"], coded,
+                                                                               typ_coded, repeats, many_forms, coded_top, strict=True)]  # a lone top value (AH-29), one its row's arithmetic confirms (AH-74), a placeholder code (AH-45), many repeats (AH-48), a date column of many forms (AH-76)
     if s >= ALONE:
         missed = [m + a for m, a in zip(missed, lim["alone_reasons"], strict=True)]
     rows = []

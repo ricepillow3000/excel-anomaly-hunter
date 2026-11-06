@@ -98,3 +98,37 @@ def test_a_number_in_a_date_column_names_the_excel_date_it_may_be():
     for serial, day in ((1, "1900-01-01"), (59, "1900-02-28"), (61, "1900-03-01"), (2958465, "9999-12-31")):
         rows[20][4] = serial
         assert f"(an Excel date serial for {day}?)" in scan(cols, rows)[20]["reason"]
+
+
+def test_a_column_of_times_is_never_read_as_dates_in_another_form():
+    # AH-142: eclipse_partial_2024's eclipse_1..5 wrote "0:00:00" 313 times among "17:43:00": the shape read each digit,
+    # so 0:00:00 was "in another form", 388 Medium rows "read as" the day of the scan
+    rng = np.random.default_rng(142)
+    cols = ["Site", "Eclipse start"]
+    rows = [[f"S{i}", f"{int(rng.integers(10, 24))}:{int(rng.integers(0, 60)):02d}:00" if i % 9 else "0:00:00"] for i in range(90)]
+    rows[40][1] = "17:43"
+    got = scan(cols, rows)
+    assert about(got, "Eclipse start") == [], [got[i]["reason"] for i in about(got, "Eclipse start")]
+
+
+MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def test_a_year_written_alone_many_times_is_one_note_for_the_column():
+    # AH-142: a film list's release_date gave only the year for 241 of 3,328 films among "26-Oct-12": each was a Medium
+    # row "written in another form (read as 2017-01-01)", though a year alone has no day and month to misread
+    cols, rows = hr(form=lambda y, m, d: f"{d}-{MONTHS[m - 1]}-{y % 100:02d}")
+    for i in (7, 15, 23, 31, 39, 47):
+        rows[i][4] = str(2015 + i % 9)
+    got = scan(cols, rows)
+    assert about(got) == [7] and got[7]["severity"] == "Low", [got[i]["reason"] for i in about(got)]
+    assert "HireDate gives only the year in 6 rows, read as 1 January" in got[7]["reason"]
+
+
+def test_a_year_written_alone_a_few_times_is_still_each_flagged():
+    cols, rows = hr(form=lambda y, m, d: f"{d}-{MONTHS[m - 1]}-{y % 100:02d}")
+    for i in (7, 31):
+        rows[i][4] = "2019"
+    got = scan(cols, rows)
+    assert about(got) == [7, 31] and all(got[i]["severity"] == "Medium" for i in (7, 31))
+    assert 'HireDate "2019" is written in another form where the column writes the month\'s name (read as 2019-01-01)' in got[7]["reason"]

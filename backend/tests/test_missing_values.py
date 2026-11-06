@@ -121,3 +121,35 @@ def test_a_few_deletions_spread_through_a_big_sheet_are_still_flagged_one_by_one
         rows[i][1] = ""
     out = scan(["Id", "Amount", "Units"], rows, fair=False)[1]
     assert all("Blank cell in column Amount" in out[i]["reason"] for i in gone), [out[i]["reason"] for i in gone][:3]
+
+
+def test_blanks_spread_through_a_big_sheet_on_under_1_percent_of_its_rows_are_one_note():
+    # AH-142: a ZIP left blank on 280 of 28,156 rows (0.99%), in every fifth of the sheet: honest unknowns, each a Medium
+    # row while the bar was 1% of the column
+    cols, rows = _sheet(20000, "", 110)  # 182 of 20,000: 0.91%
+    _, out, *_ = scan(cols, rows, fair=False)
+    assert not flagged(out, "Blank cell"), [out[i]["reason"] for i in flagged(out, "Blank cell")][:3]
+    assert flagged(out, "is blank in") == [3] and out[3]["reason"] == "Age is blank in 182 of 20000 rows, spread through the sheet", out[3]
+
+
+def test_blanks_spread_through_four_fifths_of_the_sheet_are_one_note():
+    # AH-142: rodents' tag blank 2,064 times from row 6,772 on (fifths 0/80/431/902/651): animals never tagged, each a
+    # Medium row because the first fifth had none
+    cols, rows = _sheet(5000, "", 6)
+    for i in range(3, 1200, 6):
+        rows[i][2] = 40.0
+    _, out, *_ = scan(cols, rows, fair=False)
+    assert not flagged(out, "Blank cell"), [out[i]["reason"] for i in flagged(out, "Blank cell")][:3]
+    assert flagged(out, "is blank in") == [1203], flagged(out, "is blank in")
+
+
+def test_a_deleted_block_beside_a_few_stray_blanks_is_still_flagged_one_by_one():
+    # AH-142 review: 300 values deleted in a row plus 3 stray blanks in three other fifths met "4 of the 5 fifths" and
+    # became one note, the block's 300 rows unflagged. A fifth counts only with 2% of the blanks
+    cols, rows = _sheet(20000, "", 10**9)  # row 3 blank: fifth 0
+    gone = [3, 12100, 16100] + list(range(8000, 8300))
+    for i in gone:
+        rows[i][2] = ""
+    _, out, *_ = scan(cols, rows, fair=False)
+    assert not flagged(out, "is blank in"), [out[i]["reason"] for i in flagged(out, "is blank in")]
+    assert flagged(out, "Blank cell in column Age") == sorted(gone)

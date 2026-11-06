@@ -86,3 +86,19 @@ def test_a_sign_flip_is_likely_only_for_the_columns_one_negative():
         rows[i][2] = v
     out = scan(["category", "year", "gross_inv"], rows, fair=False)[1]
     assert likely_on(out, "gross_inv") == [], likely_on(out, "gross_inv")
+
+
+def test_a_minus_99_written_hundreds_of_times_beside_two_deeper_values_is_still_the_code():
+    # AH-142: a model export wrote -99 for no estimate 1,990 times (30%) among values like 44.5; 4 other values of 4,579
+    # lay at or below -49.5 (one a real -6496 to catch), and "the rest goes as deep" made all 1,995 rows Medium
+    rng = np.random.default_rng(6)
+    rows = [[f"M{i}", round(float(rng.normal(40, 15)), 1)] for i in range(2000)]
+    coded = list(range(1, 2000, 3))
+    for i in coded:
+        rows[i][1] = -99
+    rows[1002][1], rows[1602][1] = -6496.0, -62.6
+    out = scan(["model", "lower"], rows, fair=False)[1]
+    assert [i for i in coded if out[i]["severity"] in SURE] == [], [out[i]["reason"] for i in coded if out[i]["severity"] in SURE][:3]
+    assert sum(f"lower -99 is written {len(coded)} times: the column's code for no value" in r["reason"] for r in out) == 1
+    assert out[1002]["severity"] in SURE and "lower" in out[1002]["reason"], out[1002]
+
