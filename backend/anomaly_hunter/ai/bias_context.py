@@ -84,19 +84,14 @@ def with_rules(build, fits, on=True):
     return fix_prompt
 
 
-def pane_note(column, kind):
-    """One plain sentence of public context for a fairness gap on `column` (kind "outcome" or "missing"), or None."""
-    topics = _topics(column)
-    return next((str(r["pane"]) for r in _load()[1] if r.get("pane_for") == kind and r.get("topic") in topics and r.get("pane")), None)
-
-
 # how a sheet writes the census's own labels: "F", "Women" for Female (anything else must match the census label itself)
 SAME = {"m": "male", "man": "male", "men": "male", "f": "female", "woman": "female", "women": "female"}
 _key = lambda label: (lambda k: SAME.get(k, k))("".join(ch for ch in str(label).casefold() if ch.isalnum()))
 
 
 def pane_note_matching(column, kind, subject, polarity, groups):
-    """pane_note, only when the measured rule fits the gap: the column the gap is in (subject) names what the rule
+    """One plain sentence of public context for a fairness gap on `column` (kind "outcome" or "missing"), only when the
+    measured rule fits the gap: the column the gap is in (subject) names what the rule
     measured (pane_match: earnings, an unknown occupation), and the sheet's groups run the same way as the rule's
     (pane_high above pane_low, counted on the same side: polarity -1 = the counted label is the lower side, as in
     "<=50K"; 0 = unsure). Else None: a loan's denials got the census sentence about who earns over 50K, and so did a

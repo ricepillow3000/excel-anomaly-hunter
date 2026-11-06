@@ -248,9 +248,10 @@ def uninstall():
     shutil.rmtree(Path(os.environ["LOCALAPPDATA"], r"Microsoft\Office\16.0\Wef"), ignore_errors=True)
     if me.parent == server.HOME.resolve():
         # run from Installed apps: the installed copy can't delete itself while it runs, so Windows' own cmd deletes it,
-        # and the then empty folder, a few seconds after this exits (ping is cmd's way to wait)
-        subprocess.Popen(["cmd.exe", "/d", "/c", "ping", "-n", "4", "127.0.0.1", ">nul", "&", "del", "/f", "/q", str(me),  # noqa: S603, S607
-                          "&", "rmdir", str(server.HOME)], creationflags=QUIET | 0x00000008)
+        # and the then empty folder, a few seconds after this exits (ping is cmd's way to wait). AH-140: by full path, and
+        # one string with each path in quotes (a list quotes only spaces, so a user name with & split the command)
+        subprocess.Popen(f'"{WIN / "cmd.exe"}" /d /s /c ""{WIN / "PING.EXE"}" -n 4 127.0.0.1 >nul & del /f /q "{me}" & '  # noqa: S603
+                         f'rmdir "{server.HOME}""', creationflags=QUIET | 0x00000008)
         say("Arcas is uninstalled.")
         return 0
     say(f"Arcas is uninstalled. You can delete {me.name} now.")

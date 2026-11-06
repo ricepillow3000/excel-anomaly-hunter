@@ -56,3 +56,31 @@ def test_two_common_near_twins_are_both_labels():
     labels = ["Austria"] * 20 + ["Australia"] * 20 + ["Niger"] * 15 + ["Nigeria"] * 15 + ["Japan"] * 9 + ["Japn"] * 9
     out = scan(["Id", "Country", "Units"], [[f"r{i}", w, i % 9] for i, w in enumerate(labels)], fair=False)[1]
     assert not any("misspelling" in o["reason"] for o in out)
+
+
+# AH-139: a 3-letter label is a guess only in a closed set (6 labels or fewer) beside a label written 20+ times, and only
+# when typed once: 16% of the 664 three-letter words among the 10,000 commonest have a neighbour-swap twin (own/won)
+@pytest.mark.parametrize("col, usual, odd, others", [
+    ("Answer", "Yes", "Yse", ["No"]),
+    ("Condition", "New", "Nwe", ["Used"]),
+])
+def test_a_three_letter_label_typed_once_with_two_letters_swapped_is_worth_a_check(col, usual, odd, others):
+    labels = [usual] * 300 + [o for o in others for _ in range(200)] + [odd]
+    out = scan(["Id", col, "Units"], [[f"r{i}", w, 10 + i % 7] for i, w in enumerate(labels)], fair=False)[1]
+    r = out[-1]
+    assert r["severity"] == "Low" and f'{col} "{odd}" looks like a misspelling of "{usual}"' in r["reason"], r
+    assert r["maybe"] == {col: usual} and not r.get("exact"), "a guess the user confirms, never auto-fixed"
+    assert not any("misspelling" in o["reason"] for o in out[:-1])
+
+
+def test_a_three_letter_swap_in_an_open_list_of_labels_is_left_alone():
+    others = ["Lease", "Rent", "Loan", "Gift", "Shared", "Family", "Trust", "Company", "Other"]
+    labels = ["Own"] * 30 + [o for o in others for _ in range(25)] + ["Won"]
+    out = scan(["Id", "Tenure", "Units"], [[f"r{i}", w, 10 + i % 7] for i, w in enumerate(labels)], fair=False)[1]
+    assert not any("misspelling" in o["reason"] for o in out), out[-1]["reason"]
+
+
+def test_a_three_letter_swap_written_twice_is_left_alone():
+    labels = ["Yes"] * 300 + ["No"] * 200 + ["Yse"] * 2
+    out = scan(["Id", "Answer", "Units"], [[f"r{i}", w, 10 + i % 7] for i, w in enumerate(labels)], fair=False)[1]
+    assert not any("misspelling" in o["reason"] for o in out)

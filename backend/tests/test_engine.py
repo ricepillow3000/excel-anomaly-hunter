@@ -960,6 +960,20 @@ def test_a_blank_that_its_whole_category_group_shares_is_the_sheets_layout():
     assert [i for i, o in enumerate(out) if "Blank cell" in o["reason"]] == [101]
 
 
+def test_a_blank_its_whole_group_shares_is_the_layout_beside_over_fifty_labels():
+    # AH-142: space objects by entity: Code (an ISO code) is blank for exactly the 13 entities with none (ESA, NATO...),
+    # but Entity has 110 labels, over the old cap of 50, so all 142 blanks were Medium. A blank inside a group that has
+    # its code is still a slip
+    r = np.random.default_rng(31)
+    rows = []
+    for k in range(110):
+        for y in range(10):
+            rows.append([f"Entity {k:03d}", "" if k % 8 == 3 else f"E{k:03d}", 1960 + y, int(r.integers(1, 40))])
+    rows[505][1] = ""  # Entity 050 has its code everywhere else
+    _, out = _scan(["Entity", "Code", "Year", "num_objects"], rows)
+    assert [i for i, o in enumerate(out) if "Blank cell" in o["reason"] or "is blank in" in o["reason"]] == [505]
+
+
 def test_text_codes_a_number_column_uses_many_times_are_its_own_code_system():
     # blind real-sheet test 2026-10-16: 4,409 partisan-lean codes ("R+51.5") and 3,591 district labels ("16A") were each
     # flagged as text in a number column. A shape the column repeats 5+ times is its code system; a one-off slip is not

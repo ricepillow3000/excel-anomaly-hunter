@@ -123,6 +123,14 @@ EXCEL_ERROR = re.compile(r"#(N/A|DIV/0!|REF!|VALUE!|NAME\?|NUM!|NULL!|SPILL!|CAL
 MONEY = re.compile(r"(\()?([-+])?[$€£]?\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s*(%)?(\))?")
 
 
+def _float(v):
+    # pandas reads "1E 92" (tidytuesday's historical_markers marker_no) as a number, float() does not: text, never a 500 (AH-140)
+    try:
+        return float(v)
+    except ValueError:
+        return float("nan")
+
+
 def _num(s):
     """Cells -> numbers (NaN where not a number). Plain numbers as pandas reads them, plus money/percent text."""
     # "-" is how accounting format shows 0 in an exported sheet - when it's the column's convention (8%+ of its cells, the
@@ -134,7 +142,7 @@ def _num(s):
     # ...and read exactly: pandas' own parser is off in the 15th digit (-0.013338153250515461 came back -0.0133381532505154),
     # so a reason quoted a value no cell holds (AH-40)
     if num.dtype.kind == "f":  # whole numbers it reads exactly, and keeps as integers
-        num[num.notna()] = src[num.notna()].astype(float)
+        num[num.notna()] = src[num.notna()].map(_float)
     m = s[num.isna()].astype(str).str.strip().str.extract(f"^{MONEY.pattern}$")
     ok = m[2].notna() & (m[0].isna() == m[5].isna())  # parentheses come in pairs
     v = (m[2].str.replace(",", "") + m[3].fillna("")).astype(float)
@@ -184,7 +192,9 @@ def _code(num):
         if hit.sum() < 5 or len(rest) < 5:
             continue
         small = code > -99 and (rest.min() < 0 or set(rest.unique()) <= {0, 1} or rest.nunique() > 20 or (rest != rest.round()).any())
-        if small or code <= -99 and rest.min() <= code / 2:
+        # ...counted, not the deepest: -99 written 1,990 times beside 4 deeper values in 4,579 (one a real -6496) was no
+        # code, 1,995 Medium rows on a model export (AH-142); 150 real depths of 392 below -499.5 still make -999 a value
+        if small or code <= -99 and (rest <= code / 2).sum() > max(2, 0.001 * len(rest)):
             continue
         return code, hit.index[hit]
     return None

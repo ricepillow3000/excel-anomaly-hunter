@@ -62,6 +62,22 @@ def test_an_all_nines_top_value_is_a_code(scanned):
         assert out[i]["severity"] == "Medium" and "capital-gain 99999 looks like a code, not a real value" in out[i]["reason"]
 
 
+def test_an_all_nines_code_written_through_the_whole_sheet_is_one_note_for_the_column():
+    # AH-142: the real census writes capital-gain 99999 for 148 to 244 people in every fifth of the file: one Medium row
+    # each (551 on 3 copies of it, blind set 142). A block of them (the 30 above) is still each a code to check
+    rows, planted = census()
+    for i in planted["99999"]:
+        rows[i][5] = 0
+    hit = list(range(10, 3000, 60))
+    for i in hit:
+        rows[i][5] = 99999
+    out = scan_agent.scan(COLS, rows)[1]
+    assert not any("looks like a code" in r["reason"] for r in out)
+    noted = [i for i, r in enumerate(out) if "capital-gain 99999 is written 50 times: the column's code for no value or too big to record" in r["reason"]]
+    assert noted == [10] and out[10]["severity"] == "Low" and out[10]["cells"] == ["capital-gain"]
+    assert not any(out[i]["severity"] in ("High", "Medium") for i in hit)
+
+
 def test_a_real_top_value_is_not_a_code():
     rows = [[k, 100 + k % 900] for k in range(200)] + [[200, 999]]  # 999 is next to 998: a price, not a code
     out = scan_agent.scan(["n", "Price"], rows)[1]
