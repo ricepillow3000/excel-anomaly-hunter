@@ -448,8 +448,9 @@ later; refused, it selects the line and says to press Ctrl+C) and a group of blo
 - The phone's menu closes as a popover does: on a press outside it and its button, and once the page has scrolled more
   than 8 px from where it opened, each time through the same exit. Its links are 44 px targets, and the open sheet has a
   still shadow.
-- A page change by a link lands at the new page's very top with the notice line shown (it kept the header where it was,
-  so from far down a page it opened 36 px down). Back and Forward still return to their saved place.
+- Not taken: the review asked a page change by a link to open at the very top with the notice line shown. The header
+  stays mounted over the curtain, so it dropped 36 px at the swap; the first review praised that it stays put, so a page
+  change keeps the header where it was (S4 holds that, from the bottom, from 400 px and from 10 px).
 - The page turn's copy grows to a taller new panel's height, so After fixes' lower rows stay under it until it passes.
 - The phone's download bar also hides while the contact form is on screen or focus is in a form.
 - The notice line balances its two lines on a phone, so "Download" is never alone; at 1280 x 720 the hero starts higher,

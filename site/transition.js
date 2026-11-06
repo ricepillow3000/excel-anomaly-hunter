@@ -157,7 +157,7 @@
     // replay on a pinned page). Read before anything moves, written inline over all three
     const frozen = [...old.querySelectorAll("[data-enter], .reveal-item, .rule, [data-depth]")].map((el) => { const c = getComputedStyle(el); return [el, c.transform, c.translate, c.opacity]; });
     for (const [el, tf, tr, op] of frozen) { const s = el.style; s.transition = s.animation = "none"; s.transform = tf; s.translate = tr; s.opacity = op; }
-    const r = old.getBoundingClientRect();
+    const r = old.getBoundingClientRect(), notice = document.querySelector(".notice-bar");
     // while the pages trade places the browser must not "anchor" the scroll to a node of the leaving page (it moved
     // the new page to 738 px instead of its top); also lifts the field over the moving pages (styles.css)
     html.setAttribute("data-moving", "");
@@ -188,13 +188,13 @@
     old.after(next); // the new page is in the document before the old one leaves it: no frame without a page
     current = pageOf(u);
 
-    // where the new page opens: its saved place (Back, Forward), its #anchor, or its very top, the notice line shown (it
-    // kept the header where it was, so from far down a page the new one opened 36 px down, the notice line scrolled away:
-    // AH-138 review)
+    // where the new page opens: its saved place (Back, Forward), its #anchor, or its top with the header where it was. A
+    // second blind review (AH-138) asked for the very top, the notice line shown, but the header, which stays mounted
+    // over the curtain, then dropped 36 px at the swap; the first review praised that it stays put, so it does
     const anchor = y === null ? find(next, u.hash) || find(document, u.hash) : null;
     if (y !== null) scrollTo(0, y);
     else if (anchor) anchor.scrollIntoView();
-    else scrollTo(0, 0);
+    else scrollTo(0, Math.min(scrollY, notice ? notice.offsetTop + notice.offsetHeight : 0)); // a sticky bar's offsetTop is where it is stuck
     history.replaceState({ ah: 1, i: index, y: Math.round(scrollY) }, "");
 
     const still = window.AH ? window.AH.still : matchMedia("(prefers-reduced-motion: reduce)").matches;

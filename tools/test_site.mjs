@@ -2701,20 +2701,27 @@ for (const file of PAGES.filter((f) => /<header[\s\S]*aria-current="page"[\s\S]*
     want(r.cover.length === 3 && r.cover.every((c) => c.row === "57" && c.covered) && r.reach, `S3 After fixes' row 57 during the turn: ${JSON.stringify(r)}`);
     await done(t, "S3 turning copy covers the new panel", [API]);
   }
-  // 4. a page change by a link lands at the page's top, the notice line shown: from the bottom by the footer, from 400 px
-  // by the header
+  // 4. a page change by a link keeps the header where it was: it stays mounted over the curtain, and opening the new page
+  // at its very top dropped it 36 px at the swap (tried in fix round 2, kept out): from the bottom by the footer, from
+  // 400 px by the header, and from 10 px, where the notice line is still part shown, the bar's top is the same after
   {
     const t = await open("privacy.html", { width: 1440, height: 900 });
     const p = t.page;
     await p.waitForTimeout(ENTERED);
-    const land = async (label) => { await p.waitForFunction(() => !document.documentElement.hasAttribute("data-moving"), null, { timeout: 3000 }).catch(() => {}); await p.waitForTimeout(300);
-      const r = await p.evaluate(() => ({ at: location.pathname, y: scrollY, notice: document.querySelector(".notice-bar").getBoundingClientRect().top }));
-      want(r.y === 0 && r.notice === 0, `S4 ${label}: ${JSON.stringify(r)}`); };
+    const bar = () => p.evaluate(() => Math.round(document.querySelector(".bar").getBoundingClientRect().top * 10) / 10);
+    const keep = async (label, before) => { await p.waitForFunction(() => !document.documentElement.hasAttribute("data-moving"), null, { timeout: 3000 }).catch(() => {}); await p.waitForTimeout(300);
+      const after = await bar();
+      want(Math.abs(after - before) <= 0.5, `S4 ${label}: the bar's top went from ${before} to ${after}`); };
     await p.evaluate(() => scrollTo(0, document.documentElement.scrollHeight)); await p.waitForTimeout(400);
-    await p.click('footer a[href="terms.html"]'); await p.waitForURL(/terms\.html$/); await land("the footer's Terms from the bottom of privacy.html");
+    let before = await bar();
+    await p.click('footer a[href="terms.html"]'); await p.waitForURL(/terms\.html$/); await keep("the footer's Terms from the bottom of privacy.html", before);
     await p.evaluate(() => scrollTo(0, 400)); await p.waitForTimeout(400);
-    await p.click('header a[href="support.html"]'); await p.waitForURL(/support\.html$/); await land("the header's Support from 400 px down terms.html");
-    await done(t, "S4 page changes land at the top", [API]);
+    before = await bar();
+    await p.click('header a[href="support.html"]'); await p.waitForURL(/support\.html$/); await keep("the header's Support from 400 px down terms.html", before);
+    await p.evaluate(() => scrollTo(0, 10)); await p.waitForTimeout(400);
+    before = await bar();
+    await p.click('header a[href="privacy.html"]'); await p.waitForURL(/privacy\.html$/); await keep("the header's Privacy from 10 px down support.html", before);
+    await done(t, "S4 a page change keeps the header where it was", [API]);
   }
   // 5. on a 1280 x 720 laptop the hero's buttons and the note under them fit, 8 px to spare
   {
