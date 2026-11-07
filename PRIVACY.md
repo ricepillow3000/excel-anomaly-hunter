@@ -67,8 +67,9 @@ can be charged by Google for what AI help uses; without billing, the free tier c
   sends nothing to the AI.
 - Where it goes:
   - With your own Google key: straight to Google's Gemini API.
-  - Either way, Google's main Gemini model answers. A backup Gemini model, also Google's, gets the same request only
-    if Google's main model is busy, once backups are switched on in a later update.
+  - Either way, Google's main Gemini model (gemini-3.8-flash) answers. With your own Google key, if that model is
+    busy or its free requests for the day are used up, the same request goes to a backup Gemini model
+    (gemini-3.5-flash-lite), also Google's, and the pane says so. With an invite code, only the main model answers.
   - With an invite code: to John's relay on Cloudflare, which passes it to Google with John's key. A developer setting
     on the PC, `ANOMALY_HUNTER_RELAY`, sends invite calls to another relay's https address instead.
     - The relay keeps one counter: for the last day anyone used it, how many AI calls each invite made, under the

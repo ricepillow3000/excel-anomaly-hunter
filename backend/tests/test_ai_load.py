@@ -36,6 +36,7 @@ def fake_google(monkeypatch, *answers, fix=FIX):
 
 
 def test_google_busy_spells_are_retried_until_it_answers(monkeypatch):
+    monkeypatch.setattr(client, "GEMINI_FALLBACKS", ())  # the main model alone: its own retries (AH-145 backups below)
     waits = []
     monkeypatch.setattr(client, "_sleep", waits.append)
     sent = fake_google(monkeypatch, 503, 503, TimeoutError(), 502, 200)
@@ -44,6 +45,7 @@ def test_google_busy_spells_are_retried_until_it_answers(monkeypatch):
 
 
 def test_what_retrying_cannot_help_fails_at_once(monkeypatch):
+    monkeypatch.setattr(client, "GEMINI_FALLBACKS", ())  # the main model alone: its own retries (AH-145 backups below)
     for answer, words in [((429, '{"error": {"message": "Quota exceeded: GenerateRequestsPerDayPerProjectPerModel"}}'), "(?i)today"),
                           (400, "error 400"), (401, "did not accept"), (403, "did not accept"), (413, "too large")]:
         sent = fake_google(monkeypatch, answer)
@@ -53,6 +55,7 @@ def test_what_retrying_cannot_help_fails_at_once(monkeypatch):
 
 
 def test_retrying_stops_at_the_deadline_and_honours_retry_after(monkeypatch):
+    monkeypatch.setattr(client, "GEMINI_FALLBACKS", ())  # the main model alone: its own retries (AH-145 backups below)
     clock, waits = [0.0], []
     monkeypatch.setattr(client.time, "monotonic", lambda: clock[0])
     monkeypatch.setattr(client, "_sleep", lambda s: (waits.append(s), clock.__setitem__(0, clock[0] + s)))
@@ -342,7 +345,7 @@ def test_a_very_wide_row_is_fitted_to_one_request_in_seconds(monkeypatch):
 
 # AH-145: gemini-3.8-flash gives a free key 20 requests a day and was overloaded for hours (503 "high demand") while
 # other free models answered: each model has its own quota. With backups configured, a used-up day or an overload goes
-# to the next model at once; empty (the default until ai_eval admits a model), nothing changes
+# to the next model at once; empty, nothing changes
 DAILY = (429, '{"error": {"message": "Quota exceeded for metric: GenerateRequestsPerDayPerProjectPerModel-FreeTier"}}')
 MINUTE = (429, '{"error": {"message": "Quota exceeded for metric: GenerateRequestsPerMinutePerProjectPerModel-FreeTier"}}')
 
@@ -366,7 +369,7 @@ def test_a_per_minute_limit_waits_for_the_same_model_and_never_switches(monkeypa
 
 
 def test_with_no_backup_models_a_used_up_day_and_an_overload_say_what_they_said_before(monkeypatch):
-    assert client.GEMINI_FALLBACKS == ()  # off until backend/bench/ai_eval.py numbers admit a model
+    monkeypatch.setattr(client, "GEMINI_FALLBACKS", ())  # no backup configured: the words from before AH-145
     sent = fake_google(monkeypatch, DAILY)
     with pytest.raises(ValueError) as e:
         client._ask("fix it")
@@ -389,7 +392,7 @@ def test_when_every_model_is_used_up_for_today_the_user_hears_it_once(monkeypatc
 def test_a_finished_answer_is_kept_under_the_model_that_gave_it(monkeypatch):
     key = lambda model: client.hashlib.sha256(json.dumps(["gemini", client.MODEL, model, "fix", "fix it"]).encode()).hexdigest()
     fake_google(monkeypatch)
-    client._ask("fix it")  # no backups: the same file name as before AH-145
+    client._ask("fix it")  # the main model answered: the same file name as before AH-145
     assert [f.stem for f in client._cache_dir().glob("*.json")] == [key(client.GEMINI_MODEL)]
     for f in client._cache_dir().glob("*.json"):
         f.unlink()
@@ -443,6 +446,7 @@ def test_a_relay_answer_from_a_backup_model_is_named_and_kept_under_it(monkeypat
 def test_a_used_up_day_or_google_busy_is_tagged_so_the_pane_can_say_it_and_the_words_stay(monkeypatch, answers, limit, words):
     # John, 2026-11-06: the pane says in its notice box when every model is used up for today or busy
     from anomaly_hunter.server import create_app
+    monkeypatch.setattr(client, "GEMINI_FALLBACKS", ())  # the main model alone: its own retries
     fake_google(monkeypatch, *answers)
     r = create_app().test_client().post("/fix", json=ASK)
     assert r.status_code == 502 and r.get_json().get("error") == words and r.get_json().get("limit") == limit

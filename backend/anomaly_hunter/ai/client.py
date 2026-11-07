@@ -26,8 +26,8 @@ MODEL = "claude-opus-5"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"  # OpenAI-compatible
 GEMINI_MODEL = "gemini-3.8-flash"  # free tier, no credit card (aistudio.google.com)
 # AH-145: tried in order when GEMINI_MODEL's day is used up or it is overloaded (each model has its own free quota).
-# Empty until backend/bench/ai_eval.py --model numbers admit one: a model changes only with eval numbers (CLAUDE.md)
-GEMINI_FALLBACKS = ()
+# John 2026-11-07: flash-lite answered 88/88 on ai_eval dev (p50 0.9 s) while the main model was overloaded most of 11-06/07
+GEMINI_FALLBACKS = ("gemini-3.5-flash-lite",)
 KEY_FILE = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local") / "AnomalyHunter" / "gemini-key.txt"
 # John's relay (relay/worker.js): invited users send an invite code there and never hold his Gemini key.
 # Not a secret: without a valid invite code the relay refuses everything (401). Deployed 2026-10-12.
