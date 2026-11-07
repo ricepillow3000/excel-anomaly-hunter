@@ -2746,6 +2746,99 @@ for (const file of PAGES.filter((f) => /<header[\s\S]*aria-current="page"[\s\S]*
   assert.deepEqual(miss, [], `AH-138 fix round 2:\n${miss.join("\n")}`);
   console.log("AH-138 fix round 2: the phone menu's 44 px links, closed by a press outside or a scroll; the download bar off the contact form; the turning copy over the taller After fixes panel; page changes landing at the top; the hero at 1280 x 720 with 8 px to spare; the notice line never leaving Download alone");
 }
+// ---- AH-146 and AH-147 (John, 2026-11-07, two iPhone recordings). AH-146: on iPhone Safari the phone's menu showed its
+// links only while it popped in, then lost them under the bar's overflow clip while the button stayed dark (Chromium never
+// clipped it, so no check saw it): on a phone the bar clips nothing, and nothing ever scrolls sideways for it. AH-147: the
+// sample's Scanning tab looped its three words and refilled its bar forever ("at 100% it is still scanning and jumping
+// from step 3 to 2"): it now plays the pane's three words once, the bar filling once, then turns to the findings ----
+{
+  const miss = [];
+  const want = (ok, what) => { if (!ok) miss.push(what); };
+  const STAGES = JSON.parse(/const STAGES = (\[[^\]]*\]);/.exec(read("home.js"))[1]);
+  // AH-146: the phone's bar clips nothing; the open menu's links are there to press a second later
+  {
+    const t = await open("index.html", { width: 390, height: 844 });
+    const p = t.page;
+    await p.waitForTimeout(ENTERED);
+    const o = await p.$eval(".bar", (b) => [getComputedStyle(b).overflowX, getComputedStyle(b).overflowY]);
+    want(o.join() === "visible,visible", `AH-146 the phone's bar clips (${o})`);
+    await p.click(".menu-btn"); await p.waitForTimeout(1000);
+    const r = await p.evaluate(() => ({ expanded: document.querySelector(".menu-btn").getAttribute("aria-expanded"),
+      hit: [...document.querySelectorAll("#main-nav a")].map((a) => { const x = a.getBoundingClientRect(), at = document.elementFromPoint(x.left + x.width / 2, x.top + x.height / 2); return !!at && (at === a || a.contains(at)); }) }));
+    want(r.expanded === "true" && r.hit.length === 5 && r.hit.every(Boolean), `AH-146 the open menu a second later: ${JSON.stringify(r)}`);
+    await done(t, "AH-146 phone menu stays", [API]);
+  }
+  // ... and with the bar unclipped, no frame of a fresh load scrolls sideways (the links slid in from past the right edge on
+  // a wide screen; on a phone they wait in the closed menu, and the brand and the notice line come from the left)
+  for (const [width, size] of [[320, "100%"], [390, "100%"], [320, "200%"]]) {
+    // open() takes no argument for its init script, so this context is made here, the same way
+    const ctx = await browser.newContext({ viewport: { width, height: 800 } });
+    const p = await ctx.newPage();
+    await p.route("https://api.github.com/**", json(release)); await p.route(/^https:\/\/(?!api\.github\.com)/, (r) => r.abort());
+    await p.addInitScript((size) => { window.__wide = 0; const look = () => { const d = document.documentElement;
+      if (d) { if (size !== "100%") d.style.fontSize = size; window.__wide = Math.max(window.__wide, d.scrollWidth - d.clientWidth); }
+      if (performance.now() < 3000) requestAnimationFrame(look); }; requestAnimationFrame(look); }, size);
+    await p.goto(BASE + "index.html", { waitUntil: "load" });
+    await p.waitForFunction(() => performance.now() >= 3000, null, { timeout: 10000 });
+    const wide = await p.evaluate(() => window.__wide);
+    want(wide <= 0, `AH-146 a fresh load at ${width} px, text ${size}, scrolled ${wide} px sideways in its first 3 s`);
+    await ctx.close();
+  }
+  // AH-147: the Scanning tab plays the pane's words once, each once and in order, the bar filling once and full when it
+  // says 100%; nothing loops; then the sheet turns to the findings and nothing more moves
+  const scanRun = async (motion) => {
+    const t = await open("index.html", { width: 1440, height: 900, motion });
+    const p = t.page, label = `AH-147 Scanning (${motion})`;
+    if (motion !== "reduce") await p.waitForTimeout(ENTERED);
+    await p.evaluate((y) => scrollTo(0, y), await frameAt(p));
+    await p.waitForFunction(() => !document.getElementById("preview").hasAttribute("data-loading"), null, { timeout: 4000 }).catch(() => {});
+    const arm = () => p.evaluate(() => { const tk = document.getElementById("ticker"), span = document.querySelector("#p-busy .meter span");
+      window.__texts = []; window.__meter = []; window.__loops = 0; window.__anims = 0; window.__run = true; window.__go = false;
+      document.getElementById("t-busy").addEventListener("click", () => { window.__go = true; }, { capture: true, once: true });
+      if (window.__mo) window.__mo.disconnect();
+      window.__mo = new MutationObserver(() => window.__texts.push(tk.textContent)); window.__mo.observe(tk, { childList: true, characterData: true, subtree: true });
+      const look = () => { const m = getComputedStyle(span).transform; if (window.__go) window.__meter.push([m === "none" ? 1 : new DOMMatrix(m).a, tk.textContent]);
+        const all = document.getAnimations(); window.__anims = Math.max(window.__anims, all.length);
+        window.__loops += all.filter((a) => a.effect && a.effect.getComputedTiming().iterations === Infinity).length;
+        if (window.__run) setTimeout(look, 16); };
+      look(); });
+    await arm();
+    await p.click("#t-busy");
+    const end = await p.waitForFunction(() => document.getElementById("t-found").getAttribute("aria-selected") === "true" && !document.getElementById("p-found").hidden, null, { timeout: 3500 }).then(() => true, () => false);
+    const r = await p.evaluate(() => { window.__run = false; return { texts: window.__texts, meter: window.__meter, loops: window.__loops, anims: window.__anims, focus: document.activeElement.id,
+      busy: [...document.querySelectorAll("#p-busy .stages li")].map((li) => [li.getAttribute("aria-current"), li.hasAttribute("data-done")]) }; });
+    const run = r.meter;
+    const full = run.find(([, x]) => x === STAGES[1]);
+    want(end && r.focus === "t-found", `${label}: not on the findings within 3.5 s (${end}, focus ${r.focus})`);
+    want(JSON.stringify(r.texts) === JSON.stringify(STAGES), `${label}: the ticker said ${JSON.stringify(r.texts)}`);
+    want(r.loops === 0, `${label}: ${r.loops} samples saw an animation that never ends`);
+    const climb = run.slice(0, run.findIndex(([, x]) => x === STAGES[2]) + 1);
+    want(climb.every(([a], i) => i === 0 || a >= climb[i - 1][0] - 0.001) && full && Math.abs(full[0] - 1) <= 0.01, `${label}: the bar ${climb.map(([a, x]) => a.toFixed(2) + (x === STAGES[1] ? "*" : "")).join(" ")}`);
+    if (motion === "reduce") want(r.anims === 0, `${label}: ${r.anims} animations under reduced motion`);
+    if (motion !== "reduce") {
+      await p.waitForTimeout(900);
+      await p.evaluate(() => { window.__frames = 0; const raf = window.requestAnimationFrame.bind(window); window.requestAnimationFrame = (f) => (window.__frames++, raf(f)); });
+      await p.waitForTimeout(1000);
+      const f = await p.evaluate(() => window.__frames);
+      want(f === 0, `${label}: ${f} frames asked for in the second after the run`);
+      // chosen again, it starts again from the first word
+      await arm(); await p.click("#t-busy"); await p.waitForTimeout(100);
+      const again = await p.evaluate(() => ({ texts: window.__texts.slice(), now: document.getElementById("ticker").textContent }));
+      want(again.texts[0] === STAGES[0] && again.now === STAGES[0], `${label}: chosen again it does not start over: ${JSON.stringify(again)}`);
+      await p.waitForFunction(() => document.getElementById("t-found").getAttribute("aria-selected") === "true", null, { timeout: 3500 }).catch(() => {});
+      // left for After fixes mid-run, it never jumps to the findings afterwards
+      await p.click("#t-busy"); await p.waitForTimeout(600); await p.click("#t-clean"); await p.waitForTimeout(4000);
+      const stay = await p.evaluate(() => [document.getElementById("t-clean").getAttribute("aria-selected"), document.getElementById("p-clean").hidden]);
+      want(stay[0] === "true" && stay[1] === false, `${label}: After fixes chosen mid-run did not stay: ${stay}`);
+      await p.evaluate(() => { window.__run = false; });
+    }
+    await done(t, label, [API]);
+  };
+  await scanRun("no-preference");
+  await scanRun("reduce");
+  assert.deepEqual(miss, [], `AH-146 and AH-147:\n${miss.join("\n")}`);
+  console.log("AH-146: the phone's bar clips nothing, the open menu's links there a second later, no sideways scroll in the first 3 s at 320 and 390 px (and 320 px at 200%); AH-147: Scanning plays the pane's three words once, the bar filling once and full at 100%, nothing looping, then the findings and no more frames; chosen again it starts over; After fixes chosen mid-run stays; with reduced motion the same words and no animation");
+}
 console.log(`page transitions: ${measured.moving} ms of motion on screen (${measured.swap} ms in the page, ${measured.duration} ms from the click), both pages in ${measured.both} of ${measured.ofFrames} frames, ` +
   `the whitest of ${measured.frames} screencast frames ${(measured.white * 100).toFixed(2)}% white; seeked to its middle (${measured.mid.t} ms, the seek took ${measured.mid.spent} ms) the old page shows ${measured.mid.old.toFixed(1)} px and the new ${measured.mid.new.toFixed(1)} px of ${measured.mid.width}, ` +
   `overlap ${measured.mid.overlap.toFixed(1)} px (worst frame ${measured.overlap.toFixed(1)} px), the edge ${measured.mid.seam.toFixed(1)} px off the boundary; ` +

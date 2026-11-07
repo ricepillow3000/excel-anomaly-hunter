@@ -11,7 +11,7 @@ sample sheet's skeleton, page turn, detail box, tab mark, the download's skeleto
    The static half of `tools/test_site.mjs` fails on any other property in a `transition` or `@keyframes` (the Copy
    button's icon blur is the one exception, below).
 2. Two curves. `--ease-out: cubic-bezier(.16, 1, .3, 1)`, a fast start and a long, soft landing, drives everything that
-   arrives: the bar's and the hero's entrance, the reveal, the card lift, the hairlines, the scan meter, the filters'
+   arrives: the bar's and the hero's entrance, the reveal, the card lift, the hairlines, the filters'
    fill, the raised cell, the page curtain, the browser's own page crossfade and the field's fade-in.
    `--ease-in-out: cubic-bezier(.65, 0, .35, 1)`, soft at both ends, drives what starts from rest and must not jerk:
    the glide, the page turn, the skeleton's band of light and the tab mark's slide. Linear is used once, on purpose: the
@@ -455,4 +455,18 @@ later; refused, it selects the line and says to press Ctrl+C) and a group of blo
 - The phone's download bar also hides while the contact form is on screen or focus is in a form.
 - The notice line balances its two lines on a phone, so "Download" is never alone; at 1280 x 720 the hero starts higher,
   its buttons and note 8 px or more inside the screen.
+
+## AH-146 and AH-147 (John, 2026-11-07, two iPhone recordings)
+
+- **The phone's menu stays open.** On iPhone Safari the open menu showed its links only while it popped in, then lost
+  them under the bar's `overflow-x: clip` (kept for the first load's links sliding in from past the right edge) while the
+  Menu button stayed dark. Chromium never clipped it. On a phone the bar now clips nothing (`overflow: visible`): there the
+  links wait in the closed menu through the first load, and the brand and the notice line come from the left, so no frame
+  scrolls sideways (`tools/test_site.mjs` samples the first 3 s at 320 and 390 px, and 320 px with text at 200%).
+- **The Scanning tab plays once.** It looped the pane's three words and refilled its bar forever, so at 100% it was
+  "still scanning and jumping from step 3 to 2". Now choosing it plays one run, as the pane does: "Step 1 of 3: reading
+  your sheet…" with the bar empty; the bar fills once by WAAPI (`scaleX`, about 1.1 s on `--ease-in-out`); "… 100%" when it
+  is full; "Step 2 of 3: checking 60 rows…" 0.4 s later; 1.2 s after that the sheet turns to its findings. The list marks
+  the step it is on (`aria-current="step"`) and the ones done. Another tab, Scanning chosen again or the page leaving ends
+  the run; with reduced motion the bar jumps and the sheet does not turn. The bar's old infinite `fill` animation is gone.
 
