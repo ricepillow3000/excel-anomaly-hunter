@@ -309,11 +309,15 @@ table.grid { width: 100%; border-collapse: collapse; font: 500 var(--fs--1)/1.3 
 .meter { width: min(360px, 100%); height: 12px; border: 1px solid var(--ink); }
 /* the bar fills by scaleX from its left edge, not by width: a width is laid out again every frame */
 .meter span { display: block; height: 100%; background: var(--ink); transform: scaleX(.6); transform-origin: 0 50%; }
-@media (prefers-reduced-motion: no-preference) { .meter span { animation: fill 2.4s var(--ease-out) infinite; } }
-@keyframes fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 .ticker { font: 700 var(--fs--1)/1.4 var(--sans); color: var(--ink); font-variant-numeric: tabular-nums; }
 .stages { margin: 0; padding: 0; list-style: none; display: grid; width: min(360px, 100%); border-top: 1px solid var(--ink); font-size: var(--fs--1); }
 .stages li { padding: 8px 0; border-bottom: 1px solid var(--rule); }
+/* the step the Scanning run is on, and the ones it has done (home.js, AH-147): a square before each, outlined while it
+   runs and filled once done, as the key's squares are */
+.stages li::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 8px; vertical-align: -1px; }
+.stages li[aria-current="step"] { font-weight: 700; color: var(--ink); }
+.stages li[aria-current="step"]::before { box-shadow: inset 0 0 0 2px var(--ink); }
+.stages li[data-done]::before { background: var(--ink); }
 .stages .small { margin-left: 6px; }
 .small { font-size: var(--fs--1); color: var(--muted); }
 /* after the fixes: the verdict over the sheet, a fixed cell kept bold over a dark gold underline (the wine fill is gone,
@@ -778,6 +782,10 @@ html[data-moving] #field { z-index: 2; }
     background: var(--paper); border: 1px solid var(--ink); border-radius: 0; cursor: pointer; }
   html[data-js] .menu-btn[aria-expanded="true"] { background: var(--ink); color: var(--paper); }
   html[data-js] .menu-btn[aria-expanded="false"] + .links:not([data-closing]) { display: none; }
+  /* the open menu hangs below the bar: Safari on iPhone cut it off at the bar's overflow-x clip once its pop-in was over,
+     leaving the button dark over nothing (AH-146, John 2026-11-07). On a phone the clip has nothing to hold in: the links
+     wait in the closed menu through the first load, and the brand and the notice line come from the left */
+  html[data-js] .bar { overflow: visible; }
   html[data-js] #home .foot { padding-bottom: calc(var(--s5) + 73px + env(safe-area-inset-bottom, 0px)); }
 }
 @media (min-width: 761px) { .dock { display: none; } }

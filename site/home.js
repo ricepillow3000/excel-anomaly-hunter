@@ -217,7 +217,39 @@
     const sized = window.ResizeObserver ? new ResizeObserver(() => markTo(chosen(), false)) : null;
     if (sized) for (const el of [strip, ...tabs]) sized.observe(el);
 
-    let tick;
+    // The Scanning tab plays one run of the pane's own words (AH-147, John 2026-11-07: it looped them and refilled its bar
+    // forever, "at 100% it is still scanning and jumping from step 3 to 2"): the first words with the bar empty, the bar
+    // filling once by the clock (~1.1 s on --ease-in-out), "100%" when it is full, the second step 0.4 s later, and 1.2 s
+    // after that the sheet turns to its findings (the engine's own answer), focus following only from the Scanning tab.
+    // The list marks the step it is on and the ones done. Another tab, Scanning chosen again, or the page leaving ends
+    // the run where it is; with reduced motion the bar jumps and the sheet does not turn
+    let run = null;
+    function scan() {
+      const ticker = byId("ticker"), bar = ws.querySelector("#p-busy .meter span"), steps = [...ws.querySelectorAll("#p-busy .stages li")];
+      const timers = [], later = (f, t) => timers.push(setTimeout(f, t));
+      let fill = null;
+      const step = (k) => {
+        ticker.textContent = STAGES[k];
+        const at = k < 2 ? 0 : 1;
+        steps.forEach((li, i) => { if (i === at) li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current"); li.toggleAttribute("data-done", i < at); });
+      };
+      const stop = () => { timers.forEach(clearTimeout); if (fill) fill.cancel(); if (run === stop) run = null; };
+      const full = () => {
+        bar.style.transform = "scaleX(1)";
+        if (fill) { fill.cancel(); fill = null; }
+        step(1);
+        later(() => step(2), 400);
+        later(() => { const from = document.activeElement === byId("t-busy"); stop(); pick(tabs[0]); if (from) tabs[0].focus(); }, 1600);
+      };
+      run = stop;
+      bar.style.transform = "scaleX(0)";
+      step(0);
+      if (moving() && bar.animate) {
+        fill = bar.animate([{ transform: "scaleX(0)" }, { transform: "scaleX(1)" }], { duration: 1100, easing: INOUT, fill: "forwards" });
+        fill.finished.then(full, () => {});
+      } else later(full, 1100);
+    }
+
     function show(tab) {
       for (const t of tabs) {
         const sel = t === tab;
@@ -232,13 +264,8 @@
       // key under the filters says so too (it read "Probably wrong: 3" over the corrected sheet, AH-98)
       for (const n of counts) n.textContent = state === "found" ? n.dataset.n : state === "clean" ? n.dataset.after : "·";
       closeMatrix();
-      clearInterval(tick);
-      if (state === "busy") {
-        let i = 0;
-        const ticker = byId("ticker");
-        ticker.textContent = STAGES[0];
-        tick = setInterval(() => { ticker.textContent = STAGES[++i % STAGES.length]; }, 900);
-      }
+      if (run) run();
+      if (state === "busy") scan();
     }
     const pick = (tab) => { if (tab.getAttribute("aria-selected") === "true") show(tab); else turn(() => show(tab)); };
     for (const t of tabs) t.addEventListener("click", () => pick(t));
@@ -343,7 +370,7 @@
 
     const unask = checksum(root), undock = dock(root);
     copier(root, on);
-    mounted = { root, off: () => { clearInterval(tick); bye.abort(); unload(); unask(); undock(); if (turning) turning(); unleave(); if (sized) sized.disconnect(); if (slide) slide.cancel(); mounted = null; } };
+    mounted = { root, off: () => { if (run) run(); bye.abort(); unload(); unask(); undock(); if (turning) turning(); unleave(); if (sized) sized.disconnect(); if (slide) slide.cancel(); mounted = null; } };
   }
 
   // The PowerShell line's Copy button (AH-138, John 2026-11-06: "a pulse confirms success", "icons crossfade with scale
