@@ -119,7 +119,7 @@
         <h3>Where it goes</h3>
         <ul>
           <li>With your own Google key: straight to Google's Gemini API.</li>
-          <li>Either way, Google's main Gemini model answers. A backup Gemini model, also Google's, gets the same request only if Google's main model is busy, once backups are switched on in a later update.</li>
+          <li>Either way, Google's main Gemini model (gemini-3.8-flash) answers. With your own Google key, if that model is busy or its free requests for the day are used up, the same request goes to a backup Gemini model (gemini-3.5-flash-lite), also Google's, and the pane says so. With an invite code, only the main model answers.</li>
           <li>With an invite code: to John's relay on Cloudflare, which passes it to Google with John's key. A developer setting on the PC, <code>ANOMALY_HUNTER_RELAY</code>, sends invite calls to another relay's https address instead.</li>
           <li>With neither, but with <code>ANTHROPIC_API_KEY</code> set on your PC (a developer setting): to Anthropic's Claude.</li>
         </ul>
