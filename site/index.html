@@ -67,7 +67,7 @@
         </div>
         <div class="ws-body">
           <nav class="typology" aria-label="Filter findings by check">
-            <span class="label">Findings by type</span>
+            <span class="label">Show findings by type</span>
             <button type="button" data-kind="all" aria-pressed="true">All findings<span class="n" data-n="7" data-after="4">7</span></button>
             <button type="button" data-kind="recon" aria-pressed="false">Totals that don't add up<span class="n" data-n="2" data-after="0">2</span></button>
             <button type="button" data-kind="keying" aria-pressed="false">Typing slips<span class="n" data-n="2" data-after="0">2</span></button>
@@ -109,7 +109,7 @@
               <div class="matrix" id="m11" role="dialog" aria-label="Row 11 detail" hidden>
                 <div class="m-head"><b>Row 11 · Probably wrong</b><button type="button" class="m-close" aria-label="Close">Close</button></div>
                 <dl>
-                  <dt>Checks</dt><dd>Reconciliation, keying error</dd>
+                  <dt>Checks</dt><dd>Totals that don't add up, typing slips</dd>
                   <dt>Rule</dt><dd>Total = Units × UnitCost</dd>
                   <dt>Found</dt><dd>-5 × 2.99 = -14.95, but Total is 170.43</dd>
                   <dt>Usual limit</dt><dd>Units 0 or more</dd>
@@ -120,7 +120,7 @@
               <div class="matrix" id="m22" role="dialog" aria-label="Row 22 detail" hidden>
                 <div class="m-head"><b>Row 22 · Probably wrong</b><button type="button" class="m-close" aria-label="Close">Close</button></div>
                 <dl>
-                  <dt>Checks</dt><dd>Reconciliation, keying error, temporal</dd>
+                  <dt>Checks</dt><dd>Totals that don't add up, typing slips, odd jumps over time</dd>
                   <dt>Rule</dt><dd>Total = Units × UnitCost</dd>
                   <dt>Found</dt><dd>7777 × 1.99 = 15476.23, but Total is 83.58</dd>
                   <dt>Usual limit</dt><dd>Units 105 or less</dd>
@@ -131,7 +131,7 @@
               <div class="matrix" id="m31" role="dialog" aria-label="Row 31 detail" hidden>
                 <div class="m-head"><b>Row 31 · Probably wrong</b><button type="button" class="m-close" aria-label="Close">Close</button></div>
                 <dl>
-                  <dt>Check</dt><dd>Consistency</dd>
+                  <dt>Check</dt><dd>Same word, typed two ways</dd>
                   <dt>Found</dt><dd>Region "east " (lower case, a trailing space)</dd>
                   <dt>Usual spelling</dt><dd>"East", in 20 other rows</dd>
                   <dt>Proposed fix</dt><dd>East</dd>
@@ -141,7 +141,7 @@
               <div class="matrix" id="m5" role="dialog" aria-label="Row 5 detail" hidden>
                 <div class="m-head"><b>Row 5 · Worth a check</b><button type="button" class="m-close" aria-label="Close">Close</button></div>
                 <dl>
-                  <dt>Check</dt><dd>Temporal outlier</dd>
+                  <dt>Check</dt><dd>Odd jumps over time</dd>
                   <dt>Found</dt><dd>Total 304.39 on 2026-01-09, a sharp jump from the dates around it</dd>
                   <dt>What to check</dt><dd>Nothing here is clearly broken, but the values are unusual together. Check them against the source; if they're right, leave them.</dd>
                   <dt>Behind it</dt><dd>UnitCost 4.99: the price peaks every 4 days, and Total jumps with it</dd>
@@ -151,7 +151,7 @@
               <div class="matrix" id="m21" role="dialog" aria-label="Row 21 detail" hidden>
                 <div class="m-head"><b>Row 21 · Worth a check</b><button type="button" class="m-close" aria-label="Close">Close</button></div>
                 <dl>
-                  <dt>Check</dt><dd>Temporal outlier</dd>
+                  <dt>Check</dt><dd>Odd jumps over time</dd>
                   <dt>Found</dt><dd>Total 289.42 on 2026-01-25, a sharp jump from the dates around it</dd>
                   <dt>What to check</dt><dd>Nothing here is clearly broken, but the values are unusual together. Check them against the source; if they're right, leave them.</dd>
                   <dt>Behind it</dt><dd>UnitCost 4.99: the price peaks every 4 days, and Total jumps with it</dd>
@@ -161,7 +161,7 @@
               <div class="matrix" id="m41" role="dialog" aria-label="Row 41 detail" hidden>
                 <div class="m-head"><b>Row 41 · Worth a check</b><button type="button" class="m-close" aria-label="Close">Close</button></div>
                 <dl>
-                  <dt>Check</dt><dd>Temporal outlier</dd>
+                  <dt>Check</dt><dd>Odd jumps over time</dd>
                   <dt>Found</dt><dd>Total 299.40 on 2026-02-14, a sharp jump from the dates around it</dd>
                   <dt>What to check</dt><dd>Nothing here is clearly broken, but the values are unusual together. Check them against the source; if they're right, leave them.</dd>
                   <dt>Behind it</dt><dd>UnitCost 4.99: the price peaks every 4 days, and Total jumps with it</dd>
@@ -171,7 +171,7 @@
               <div class="matrix" id="m57" role="dialog" aria-label="Row 57 detail" hidden>
                 <div class="m-head"><b>Row 57 · Worth a check</b><button type="button" class="m-close" aria-label="Close">Close</button></div>
                 <dl>
-                  <dt>Check</dt><dd>Temporal outlier</dd>
+                  <dt>Check</dt><dd>Odd jumps over time</dd>
                   <dt>Found</dt><dd>Total 284.43 on 2026-03-02, a sharp jump from the dates around it</dd>
                   <dt>What to check</dt><dd>Nothing here is clearly broken, but the values are unusual together. Check them against the source; if they're right, leave them.</dd>
                   <dt>Behind it</dt><dd>UnitCost 4.99: the price peaks every 4 days, and Total jumps with it</dd>
@@ -244,7 +244,7 @@
           <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Reconciliation</th><td>Totals and products that don't add up: A + B + C, Qty × Price, a price after a discount. When one cell is off, the row's own numbers give the exact correction.</td><td class="in-sample"><a class="to-row" href="#r22" data-glide="frame">Row 22</a><span class="val">83.58 ÷ 1.99 = 42</span></td></tr>
           <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Keying errors</th><td>A figure typed ten or a hundred times too large, a percent typed as a whole number, a flipped sign, or a figure far past its column's usual range.</td><td class="in-sample"><a class="to-row" href="#r22" data-glide="frame">Row 22</a><span class="val">Units 7777, usual limit 105</span></td></tr>
           <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Consistency</th><td>The same label typed different ways: stray spaces, capitals, misspellings, short forms.</td><td class="in-sample"><a class="to-row" href="#r31" data-glide="frame">Row 31</a><span class="val">"east " to "East"</span></td></tr>
-          <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Dates and jumps</th><td>A date far outside the rest, and sharp jumps in a dated series. Left alone: the same jump coming back at one spacing, and a cycle of 7, 12, 24, 52 or 168 rows (a week of days, a year of months, a day of hours, a year of weeks, a week of hours).</td><td class="in-sample"><a class="to-row" href="#r5" data-glide="frame">Row 5</a><span class="say">a jump in Total on 2026-01-09</span></td></tr>
+          <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Dates and jumps</th><td>A date far outside the rest, and sharp jumps in a dated series. Not flagged: a jump that comes back at regular gaps, and a cycle of 7, 12, 24, 52 or 168 rows (a week of days, a year of months, a day of hours, a year of weeks, a week of hours).</td><td class="in-sample"><a class="to-row" href="#r5" data-glide="frame">Row 5</a><span class="say">a jump in Total on 2026-01-09</span></td></tr>
           <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Missing values</th><td>Blanks in a column that is otherwise filled, N/A and TBD placeholders, Excel errors, duplicate rows.</td><td class="in-sample"><span class="nil">None in this sample</span><span class="other-sheet">On another sheet: <span class="val">#N/A</span>, a repeated row</span></td></tr>
           <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Numbers that can't be right</th><td>A month past 12, an all-nines code, a lone decimal among whole numbers, combinations of values that don't fit the rest.</td><td class="in-sample"><span class="nil">None in this sample</span><span class="other-sheet">On another sheet: <span class="val">Month 13</span>, <span class="val">99999</span></span></td></tr>
           <tr class="reveal-item"><th scope="row"><span class="rule" aria-hidden="true"></span>Fairness</th><td>Columns such as Age, Gender or Location never decide what is unusual. On a sheet about people, each scan checks whether flags, blanks and outcomes are even across their groups.</td><td class="in-sample"><span class="nil">None in this sample: it has no column about people</span><span class="other-sheet">On a sheet about people: <span class="say">Gender: rows flagged even across groups (2.0% to 3.0%, within normal variation)</span></span></td></tr>
@@ -261,9 +261,9 @@
       <h2 class="sec-title reveal-item" data-depth="0.03" id="proof-title">What the tests measured</h2>
       <p class="sec-lede calm reveal-item">Mistakes were planted in test sheets and the engine was asked to find them. Each figure links to the record it comes from.</p>
       <dl class="proof calm" data-reveal-group="rows">
-        <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>51 of 51</dt><dd>planted mistakes found on the industry bench of 27 sheets, in the <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/blob/main/docs/proof/2026-11-05-stress-test.md">stress test of 5 November 2026</a>.</dd></div>
-        <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>199 of 201</dt><dd>found on the blind bench of 42 sheets it was never tuned on, in the same <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/blob/main/docs/proof/2026-11-05-stress-test.md">stress test</a>.</dd></div>
-        <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>0</dt><dd>clean rows called probably wrong, among the 2,724 and 6,954 clean rows of the two benches (<a href="https://github.com/ricepillow3000/excel-anomaly-hunter/blob/main/docs/proof/2026-11-05-stress-test.md">the record</a>).</dd></div>
+        <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>51 of 51</dt><dd>planted mistakes found in 27 test sheets, in the <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/blob/main/docs/proof/2026-11-05-stress-test.md">stress test of 5 November 2026</a>.</dd></div>
+        <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>199 of 201</dt><dd>found in 42 more test sheets it had never seen, in the same <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/blob/main/docs/proof/2026-11-05-stress-test.md">stress test</a>.</dd></div>
+        <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>0</dt><dd>correct rows called probably wrong, among the 2,724 and 6,954 clean rows of those two sets of sheets (<a href="https://github.com/ricepillow3000/excel-anomaly-hunter/blob/main/docs/proof/2026-11-05-stress-test.md">the record</a>).</dd></div>
         <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>Free</dt><dd>for any number of people, open source under the <a href="https://github.com/ricepillow3000/excel-anomaly-hunter/blob/main/LICENSE">MIT License</a>.</dd></div>
         <div class="reveal-item"><span class="rule" aria-hidden="true"></span><dt>On your PC</dt><dd>a scan runs there and sends nothing to the internet. The <a href="privacy.html">privacy page</a> says what AI help sends.</dd></div>
       </dl>

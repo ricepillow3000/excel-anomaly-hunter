@@ -6,7 +6,8 @@
 // The sheet's motion (AH-89, AH-92, John 2026-11-02): it loads once a visit as a skeleton of itself, a click on a filter
 // or a tab turns the old view away like a page, and the timings are the tokens in styles.css :root. AH-138 (John
 // 2026-11-06): a row's detail box is a popover from its row's button, the tabs' gold line is one mark that slides from tab
-// to tab, and the PowerShell line has a Copy button.
+// to tab, and the PowerShell line has a Copy button. AH-148 (John 2026-11-09): figures count to their values, a box
+// or a menu cut short goes on from where it is, and a checks-table "Row N" link and its row in the sample share one mark.
 (() => {
   const API = "https://api.github.com/repos/ricepillow3000/excel-anomaly-hunter/releases/latest";
   // the pane's own progress line for this 60-row sheet (frontend/features/scan.js; test_site_sample.py holds them to it):
@@ -28,6 +29,26 @@
   let answered = null; // the asked answer once it has come back (a visit back shows it at once, no skeleton)
   let landed = false; // the sheet's skeleton plays once a visit
   const moving = () => !still && !!window.AH && html.hasAttribute("data-js");
+  const eased = (p) => (window.AH && window.AH.ease ? window.AH.ease.at(p) : p);
+
+  // A figure counts to its value (AH-148, John: "alive", "tabular numbers"): its text is the final value from the first
+  // frame (a reader, a find, a copy and the tests meet that), and the counting figure is drawn over it from data-tick by
+  // styles.css, with an empty alternative text so no screen reader reads it. By the clock on --ease-out, one frame
+  // loop for the count only; say(p) is the figure at eased progress p. Returns what stops it where it ends
+  function count(el, say, dur) {
+    let id = 0, t0 = 0;
+    const stop = () => { cancelAnimationFrame(id); el.removeAttribute("data-tick"); };
+    const step = (now) => {
+      if (!t0) t0 = now;
+      const p = Math.min(1, (now - t0) / dur);
+      if (p >= 1) return stop();
+      el.setAttribute("data-tick", say(eased(p)));
+      id = requestAnimationFrame(step);
+    };
+    el.setAttribute("data-tick", say(0));
+    id = requestAnimationFrame(step);
+    return stop;
+  }
 
   // A skeleton bar the size of the element's text, where the text is: --sk-x/y/w/h, from the padding box (an absolute
   // ::after's origin). Read from the layout once, before the bars show and again as they start, after any font swap
@@ -141,7 +162,7 @@
     const byId = (id) => root.querySelector("#" + CSS.escape(id));
     const bye = new AbortController(), on = { signal: bye.signal };
     const tabs = [...ws.querySelectorAll('[role="tab"]')];
-    const counts = [...ws.querySelectorAll(".typology .n, .key .kcount")];
+    const counts = [...ws.querySelectorAll(".typology .n, .key .kcount")], ticks = new Map();
     ws.querySelector(".tabs").hidden = false;
     const unload = skeleton(ws);
 
@@ -262,7 +283,14 @@
       ws.dataset.state = state;
       // "clean" is the sheet with the three suggested fixes in: four rows are still worth a check there (AH-88), and the
       // key under the filters says so too (it read "Probably wrong: 3" over the corrected sheet, AH-98)
-      for (const n of counts) n.textContent = state === "found" ? n.dataset.n : state === "clean" ? n.dataset.after : "·";
+      // ... and with motion each count that changes from one number to another ticks there over 250 ms (AH-148), from the
+      // figure it shows, so a tab chosen mid-tick goes on from there
+      for (const n of counts) {
+        const to = state === "found" ? n.dataset.n : state === "clean" ? n.dataset.after : "·", from = n.getAttribute("data-tick") || n.textContent;
+        if (ticks.has(n)) { ticks.get(n)(); ticks.delete(n); }
+        n.textContent = to;
+        if (moving() && /^\d+$/.test(from) && /^\d+$/.test(to) && from !== to) ticks.set(n, count(n, (p) => String(Math.round(+from + (to - from) * p)), 250));
+      }
       closeMatrix();
       if (run) run();
       if (state === "busy") scan();
@@ -299,23 +327,32 @@
     // apart. Closed, the box itself is hidden at once (what the keyboard, a reader and the tests meet), and a copy of it
     // (no ids, no role, hidden from readers, inert) shrinks back to the button over --pop-out: removed when done, at the
     // next open, or when the page leaves
+    // Cut short, it goes on from where it is (AH-148, John: "interruptible animation"): closed while it grows, its copy
+    // shrinks from the pose the box had reached (opacity is its progress, so the exit lasts that share of --pop-out), each
+    // line frozen as it was; opened again while its copy shrinks, the box grows from the copy's pose
     const main = ws.querySelector("#p-found");
+    const PARTS = ".m-head, dl > *, .m-said";
+    const poseNow = (el) => { const c = getComputedStyle(el); return { q: parseFloat(c.opacity), t: c.transform === "none" ? "none" : c.transform }; };
     let open = null, leaving = null;
     const unleave = () => { if (leaving) leaving(); };
-    function leave(box, origin) {
+    function leave(box, origin, from) {
       unleave();
       const copy = box.cloneNode(true);
       for (const el of [copy, ...copy.querySelectorAll("[id]")]) el.removeAttribute("id");
       copy.removeAttribute("role"); copy.removeAttribute("aria-label"); copy.classList.remove("matrix");
       copy.setAttribute("aria-hidden", "true"); copy.inert = true; copy.setAttribute("data-pop-copy", "");
       copy.style.transformOrigin = origin;
+      const parts = [...copy.querySelectorAll(PARTS)];
+      from.parts.forEach((p, i) => { if (parts[i]) { parts[i].style.opacity = p.q; parts[i].style.transform = p.t; } });
       box.after(copy);
-      const a = copy.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: `scale(${FROM})` }], { duration: POP_OUT, easing: EASE, fill: "forwards" });
+      const a = copy.animate([{ opacity: from.q, transform: from.t }, { opacity: 0, transform: `scale(${FROM})` }], { duration: POP_OUT * from.q, easing: EASE, fill: "forwards" });
       const gone = () => { a.cancel(); copy.remove(); if (leaving === gone) leaving = null; };
+      gone.box = box; gone.copy = copy;
       leaving = gone;
       a.finished.then(gone, () => {});
     }
-    function settle(box) {
+    function settle(box, from) {
+      if (from) { box.animate([{ opacity: from.q, transform: from.t }, { opacity: 1, transform: "none" }], { duration: POP_IN * (1 - from.q), easing: EASE }); return; }
       box.animate([{ opacity: 0, transform: `scale(${FROM})` }, { opacity: 1, transform: "none" }], { duration: POP_IN, easing: EASE });
       const rise = (els, delay) => { for (const el of els) if (el) el.animate([{ opacity: 0, transform: "translate3d(0, 4px, 0)" }, { opacity: 1, transform: "none" }], { duration: POP_IN, delay, easing: EASE, fill: "backwards" }); };
       const lines = [...box.querySelectorAll("dl > *")];
@@ -326,8 +363,9 @@
     function closeMatrix(swap) {
       if (!open) return;
       const { btn, box, origin } = open;
+      const from = { ...poseNow(box), parts: [...box.querySelectorAll(PARTS)].map(poseNow) }; // read before the cut
       for (const a of box.getAnimations({ subtree: true })) a.cancel();
-      if (swap !== true && moving() && box.animate && !main.hidden) leave(box, origin); // another box opening at once needs none
+      if (swap !== true && moving() && box.animate && !main.hidden && from.q > 0) leave(box, origin, from); // another box opening at once needs none
       btn.setAttribute("aria-expanded", "false");
       box.hidden = true;
       open = null;
@@ -337,6 +375,7 @@
       const same = open && open.btn === btn;
       closeMatrix(!same);
       if (same) return;
+      const back = leaving && leaving.box === box ? poseNow(leaving.copy) : null;
       unleave();
       // under its row, or above it where it would pass the findings' bottom: under them, rows 22 to 57 covered the
       // caption and "See every check", whose clicks then did nothing (AH-132). Taller than the room on either side (a
@@ -350,7 +389,7 @@
       const origin = px(b.left + b.width / 2 - r.left) + " " + px(b.top + b.height / 2 - r.top);
       box.style.transformOrigin = origin;
       open = { btn, box, origin };
-      if (moving() && box.animate) settle(box);
+      if (moving() && box.animate) settle(box, back && back.q < 1 ? back : null);
       // the box is a dialog that sits after the whole table in the page: without this a keyboard or screen-reader user
       // reached it only after every other row; Escape and Close bring focus back to the row
       box.querySelector(".m-close").focus();
@@ -368,9 +407,66 @@
     document.addEventListener("click", (e) => { if (open && !open.box.contains(e.target) && !e.target.closest("tr[data-kind]")) closeMatrix(); }, on);
     window.addEventListener("resize", closeMatrix, on);
 
-    const unask = checksum(root), undock = dock(root);
+    const unask = checksum(root), undock = dock(root), unproof = proof(root, on), unmark = rowMark(root, ws, on);
     copier(root, on);
-    mounted = { root, off: () => { if (run) run(); bye.abort(); unload(); unask(); undock(); if (turning) turning(); unleave(); if (sized) sized.disconnect(); if (slide) slide.cancel(); mounted = null; } };
+    mounted = { root, off: () => { if (run) run(); bye.abort(); unload(); unask(); undock(); unproof(); unmark(); for (const stop of ticks.values()) stop(); if (turning) turning(); unleave(); if (sized) sized.disconnect(); if (slide) slide.cancel(); mounted = null; } };
+  }
+
+  // The proof strip's figures count up once, as each rises into view (AH-148, John: "alive", "fun to scroll"): "199 of
+  // 201" from "  0 of 201" over 900 ms, the first number padded with figure spaces (a tabular digit's width) so the rest of
+  // the line never moves, ending on exactly the page's text, which stays in the page all along (count, above). It starts
+  // when the item's rise does (its opacity transition, motion.js), so never unseen, never twice, and never under reduced
+  // motion or without motion.js, where nothing rises
+  function proof(root, on) {
+    const strip = root.querySelector("dl.proof"), seen = new WeakSet(), stops = [];
+    if (!strip) return () => {};
+    strip.addEventListener("transitionstart", (e) => {
+      const item = e.target, dt = item.querySelector && item.querySelector(":scope > dt");
+      if (e.propertyName !== "opacity" || !dt || seen.has(item) || !moving()) return;
+      seen.add(item);
+      const m = /^(\d+)(\D.*)?$/.exec(dt.textContent);
+      if (!m || +m[1] === 0) return;
+      const n = +m[1], rest = m[2] || "";
+      stops.push(count(dt, (p) => String(Math.round(n * p)).padStart(m[1].length, "\u2007") + rest, 900));
+    }, on);
+    return () => stops.forEach((stop) => stop());
+  }
+
+  // A checks-table "Row 22" link and the sample's row 22 are one thing (AH-148, John: "shared element transition"): one
+  // gold frame, <span class="row-mark" aria-hidden="true">, laid over the row in its scrolling table. While the link is
+  // pointed at or focused and the row is on screen (a tall screen shows both), it shows there; when the link's glide
+  // lands on the row (motion.js's ah:glide-end), it shows for 600 ms and fades, once, opacity only, so the eye follows
+  // the link to the row. Nothing under reduced motion but the still frame while pointed at
+  function rowMark(root, ws, on) {
+    const scroll = ws.querySelector("#p-found .scroll"), links = [...root.querySelectorAll("a.to-row")];
+    if (!scroll || !links.length) return () => {};
+    let mark = null, flash = null;
+    const rowOf = (a) => { const tr = ws.querySelector("#" + CSS.escape(a.hash.slice(1))); return tr && tr.closest("#p-found") && tr.getClientRects().length && !tr.closest("[hidden]") ? tr : null; };
+    const place = (tr) => {
+      if (!mark) { mark = document.createElement("span"); mark.className = "row-mark"; mark.setAttribute("aria-hidden", "true"); scroll.append(mark); }
+      const r = tr.getBoundingClientRect(), s = scroll.getBoundingClientRect(), px = (v) => Math.round(v * 10) / 10 + "px";
+      const st = mark.style;
+      st.left = px(r.left - s.left - scroll.clientLeft + scroll.scrollLeft); st.top = px(r.top - s.top - scroll.clientTop + scroll.scrollTop);
+      st.width = px(r.width); st.height = px(r.height);
+      return mark;
+    };
+    const point = (e) => {
+      const tr = rowOf(e.currentTarget), r = tr && tr.getBoundingClientRect();
+      if (r && r.top >= 0 && r.bottom <= html.clientHeight) place(tr).setAttribute("data-on", "");
+    };
+    const unpoint = () => { if (mark) mark.removeAttribute("data-on"); };
+    for (const a of links) {
+      a.addEventListener("pointerenter", point, on); a.addEventListener("focus", point, on);
+      a.addEventListener("pointerleave", unpoint, on); a.addEventListener("blur", unpoint, on);
+    }
+    document.addEventListener("ah:glide-end", (e) => {
+      const tr = e.detail && e.detail.arrived ? e.detail.target : null;
+      if (!tr || !tr.matches || !tr.matches("#p-found tr[id]") || !moving() || !tr.getClientRects().length) return;
+      if (flash) flash.cancel();
+      const m = place(tr);
+      flash = m.animate([{ opacity: 0, easing: EASE }, { opacity: 1, offset: 0.25 }, { opacity: 1, offset: 0.6, easing: EASE }, { opacity: 0 }], { duration: 600 });
+    }, on);
+    return () => { if (flash) flash.cancel(); if (mark) mark.remove(); mark = null; };
   }
 
   // The PowerShell line's Copy button (AH-138, John 2026-11-06: "a pulse confirms success", "icons crossfade with scale
@@ -391,9 +487,13 @@
       r.selectNodeContents(code); sel.removeAllRanges(); sel.addRange(r);
       say("Press Ctrl+C"); timer = setTimeout(back, 4000);
     };
+    // optimistic (AH-148, John: "optimistic update"): Copied, its check and its pulse at the press, as a copy almost
+    // always succeeds; the clipboard's answer only takes it back, to the selected line and Ctrl+C, if it refuses
     b.addEventListener("click", () => {
       const c = navigator.clipboard;
-      if (c && typeof c.writeText === "function") c.writeText(code.textContent).then(done, fail); else fail();
+      if (!c || typeof c.writeText !== "function") return fail();
+      done();
+      c.writeText(code.textContent).catch(fail);
     }, on);
     on.signal.addEventListener("abort", () => clearTimeout(timer));
     b.hidden = false;

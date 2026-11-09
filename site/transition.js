@@ -250,9 +250,17 @@
 // A dropdown from its button (AH-138, John 2026-11-06: "popovers start at scale 0.95, come in from their trigger and go
 // out to it"): it opens from the button's centre (--menu-x, in px from the links' left edge, styles.css's
 // transform-origin) and, with motion, closes back there: aria-expanded says "false" at once, while data-closing keeps the
-// links drawn, out of reach (inert), for the exit's --pop-out; reopened meanwhile, the exit is dropped
+// links drawn, out of reach (inert), for the exit's --pop-out; reopened meanwhile, the exit is dropped.
+// Cut short, it goes on from where it is (AH-148, John 2026-11-09: "interruptible animation"): reopened while it shrinks,
+// it grows back from that pose, and closed while it grows, it shrinks from that pose. Its opacity is its progress on
+// --ease-out, so the new animation is moved to the moment of its own curve that has the same pose (AH.ease.when)
 (() => {
   const html = document.documentElement;
+  const shown = (nav) => { const o = parseFloat(getComputedStyle(nav).opacity); return Number.isFinite(o) ? o : 1; };
+  const resume = (nav, name, at) => {
+    const a = nav.getAnimations().find((x) => x.animationName === name), when = window.AH && window.AH.ease ? window.AH.ease.when : (y) => y;
+    if (a && a.effect) a.currentTime = when(at) * a.effect.getComputedTiming().duration;
+  };
   const still = () => (window.AH ? window.AH.still : matchMedia("(prefers-reduced-motion: reduce)").matches);
   const btn = () => document.querySelector(".menu-btn");
   let closing = null; // { nav, done }
@@ -268,8 +276,10 @@
     const nav = document.getElementById(b.getAttribute("aria-controls"));
     const was = b.getAttribute("aria-expanded") === "true";
     if (open) {
+      const back = closing && closing.nav === nav ? shown(nav) : 1; // how far a leaving menu still shows
       drop();
       b.setAttribute("aria-expanded", "true");
+      if (nav && back < 1 && !still()) resume(nav, "pop-in", back);
       from = scrollY; watch(true);
       // read once the links are drawn (closed, they have no box), before the frame that shows them
       if (nav) { const r = b.getBoundingClientRect(); nav.style.setProperty("--menu-x", Math.round(r.left + r.width / 2 - nav.getBoundingClientRect().left) + "px"); }
@@ -280,7 +290,9 @@
     }
     watch(false);
     // the exit plays only for a menu that is open and drawn (a phone), with motion
+    let had = 1;
     if (was && nav && !still() && b.getClientRects().length && nav.getClientRects().length) {
+      had = shown(nav); // how far its entrance had come
       drop();
       nav.setAttribute("data-closing", "");
       nav.inert = true;
@@ -296,6 +308,7 @@
       me.timer = setTimeout(me.done, t + 150); // if the animationend never comes (a hidden tab)
     }
     b.setAttribute("aria-expanded", "false");
+    if (closing && had < 1) resume(nav, "pop-out", 1 - had);
   }
   document.addEventListener("click", (e) => {
     const b = btn(), t = e.target.closest ? e.target : null;

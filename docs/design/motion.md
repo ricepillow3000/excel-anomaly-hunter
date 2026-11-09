@@ -1,4 +1,4 @@
-# Motion on the website (AH-83, AH-84, AH-85, AH-89 to AH-93, AH-138)
+# Motion on the website (AH-83, AH-84, AH-85, AH-89 to AH-93, AH-138, AH-148)
 
 How the site moves, and how to change it. The real code is in `site/styles.css` (tokens and states), `site/boot.js`
 (the first mark), `site/motion.js` (entrance, reveal, glide, the wheel's catch-up, scroll fallback), `site/home.js` (the
@@ -470,3 +470,51 @@ later; refused, it selects the line and says to press Ctrl+C) and a group of blo
   the step it is on (`aria-current="step"`) and the ones done. Another tab, Scanning chosen again or the page leaving ends
   the run; with reduced motion the bar jumps and the sheet does not turn. The bar's old infinite `fill` animation is gone.
 
+
+## AH-148 (John, 2026-11-09): alive, human, and easy to read
+
+John: make the website "feel more immersive, alive, less AI and human ... fun to scroll and look at, while keeping
+technical data simple and easy to read for non technical people", through his list below. Every rule above still holds:
+only `transform` and `opacity` move (the counts change text, not a CSS property), nothing loops, nothing draws while idle,
+and under `prefers-reduced-motion` nothing below moves. `tools/test_site.mjs` holds each one (its static AH-148 block reads
+the font's own numbers from the woff2; its browser AH-148 block measures the rest).
+
+| Principle | Where it lives |
+|---|---|
+| Kerning | the woff2 has kern pairs (GPOS `kern`); `font-kerning: normal` on every element, `!important` because each `font:` shorthand resets it to `auto` (where Safari may skip it) |
+| Optical centre | `text-box: trim-both cap alphabetic` on `.btn`, `.m-close`, `.menu-btn`, `.copy-btn` and the tabs: the capitals, not the font's ascent and descent, are the box that is centred; each keeps its min-height (`.m-close` 28 px, its old height). The download arrow measures 0.29 px from its label's capital middle, so it needs no nudge |
+| Tabular numbers | the woff2 has `tnum`; a detail box's values, the verdict (after its `font:` shorthand), the scan steps, the case studies' scope, and the counts already had it |
+| Layout shift | two "Plus Jakarta Sans Fallback" faces (Arial, Helvetica, Liberation Sans or Arimo; regular to 549, bold from 550) second in `--sans`, scaled to the font: `size-adjust` 104.02% and 101.64% (the average advance over the pages' own text, against Arial's), each override the font's ascender 1038, descender 222 and line gap 0 over it. With the font 1.5 s late, the swap shifts nothing (at most 0.01) at 1440 and 390 px, and the page's text set in the fallback is within 2% of its width |
+| Tracking | unchanged: every letter-spacing is `normal` or the column heads' small capitals, never negative |
+| Optimistic update | the Copy button says Copied, with its check and its pulse, at the press; a clipboard that refuses takes it back to the selected line and "Press Ctrl+C" |
+| x-height | the mono font at the sans's x-height (`font-size-adjust: .536`, OS/2 sxHeight) on code, the checks' values and the facts' and steps' code (said after each `font:` shorthand); the PowerShell line at `--fs--1`, not 12 px |
+| Touch target | on a phone every link, button and field outside a sentence is 44 px tall: a row's button, Copy, Close (44 wide too), the brand, the contents, the support form's box; the notice's, the footer's and the checks' "Row N" links grow by padding an equal negative margin takes back, so no line moves |
+| Leading | a privacy or terms `§` heading at 1.05 (at .95 its two lines touched) |
+| Origin-aware animation | already: the menu and a detail box grow from their trigger (AH-138) |
+| OKLCH | the brand colours stay hex (the difference fills' arithmetic needs them exact); the tints made from them are `color-mix(in oklch, ...)`: a hovered row, its flagged cells' darker wine (its hue kept), the skeleton's bars, the turning page's shade. A browser without `color-mix` gets the same mixes as hex (`@supports`) |
+| Widow | `text-wrap: pretty` on paragraphs, list items, a list's values and the questions; `balance` on `h3` and the checks' names |
+| Safe area | the notice line's text, the skip link and every page's footer keep clear of a notch and the home bar |
+| Stagger | already: blocks 90 ms apart, list rows 30 |
+| Line length | `--measure: 40ch` on the questions' answers, the steps' aside and the privacy and terms text: this font's zero is 1.58 average letters wide, so 40ch is about 63 letters and no line passes 75 (counted per rendered line at 1440). A table cell cannot take a max-width, so the checks' second column and privacy's middle one grow their right padding instead (a cell's percentage padding is of the table) |
+| Affordance | a link thickens its underline on hover and on keyboard focus, the contents' links are underlined then, the header keeps its bar; the whole finding's row takes the hover, its flagged cells too; the filters' label says "Show findings by type" |
+| Combo box | the two forms' choices are the browser's own `select`: nothing to build |
+| Interruptible animation | the phone's menu closed while it grows, or opened again while it shrinks, goes on from its pose: its opacity is its progress on `--ease-out`, so `transition.js` moves the new CSS animation to the moment of its own curve with that pose (`AH.ease.when`). A detail box closed while it grows leaves from the pose it reached (its lines frozen as they were, the exit that share of `--pop-out`), and opened again while its copy leaves, grows from the copy's pose |
+| Shared element transition | a checks-table "Row 22" link and the sample's row 22 share one gold frame (`span.row-mark`, the sample's `--gold`): when the link's glide lands on the row, the frame shows for 600 ms and fades, once, opacity only; while the link is pointed at or focused and the row is on screen (a tall screen), it shows round the row |
+
+Alive, and still plain to read:
+
+- **The proof strip counts.** As each figure rises into view (its opacity transition starting, so never unseen and never
+  twice), "199 of 201" counts from "  0 of 201" over 900 ms on `--ease-out`, the first number padded with figure spaces
+  so the rest of the line holds still, ending on exactly the page's text. That text is in the page every frame,
+  see-through under the counting figure, which `styles.css` draws from `data-tick` with an empty alternative text
+  (`content: attr(data-tick) / ""`): a screen reader, a find and a copy meet the final value. Without JavaScript the page
+  is as it was; under forced colours the copy is not drawn.
+- **A filter's count ticks** to its new value over 250 ms when a tab changes it, the same way: its text is the new value at
+  once (the tests and readers read it straight after the click), the drawn figure catches up, and a tab chosen mid-tick
+  goes on from the figure shown.
+- These are the one more frame loop (text, not a property the GPU can move): it runs while a figure counts and stops.
+- **Plain words where a visitor got lost:** "Not flagged: a jump that comes back at regular gaps", the proof strip's "27
+  test sheets" and "42 more test sheets it had never seen" (its figures still read from the record), a detail box naming
+  its checks as the filters do. Two phrases stay because a test holds them as the engine's own: "a cycle of 7, 12, 24, 52
+  or 168 rows" (`detectors.CYCLES`) and "Gender: rows flagged even across groups (2.0% to 3.0%, within normal variation)"
+  (the fairness report's sentence), both in `test_site_sample.py`.
