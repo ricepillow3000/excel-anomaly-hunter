@@ -1,6 +1,9 @@
 """AI eval: is a prompt change better, on answers with known labels? "No eval set, no change" (docs/ai-engineering).
 Usage: python backend/bench/ai_eval.py . [--dry-run] [--yes] [--split dev|held|both] [--arms base,...] [--runs 3]
-       [--max-requests 200] [--out ai-eval-results.jsonl] [--model gemini-...]
+       [--max-requests 200] [--out ai-eval-results.jsonl] [--model gemini-...] [--retrieval]
+--retrieval only measures Ask AI's memory ranking offline (recall@1 of memory.rank vs newest first), sending nothing.
+An arm whose request is byte for byte one already answered in the same run (base's, mostly) takes that answer: asking
+it again only measured noise (AH-153).
 --model asks another Gemini model than client.GEMINI_MODEL, a candidate backup (AH-145): its lines are "<arm>@<model>",
 paired against base, and every line names the model it asked. No backup is ever asked during an eval.
 Cases: Ask AI on flagged rows from the bench generators, read the way score.py reads them (the pane's table, then
@@ -33,7 +36,7 @@ import datasets2
 import datasets3
 
 from anomaly_hunter.agents import checker
-from anomaly_hunter.ai import bias_context, client
+from anomaly_hunter.ai import bias_context, client, memory
 from anomaly_hunter.ai.memory import with_memory
 from anomaly_hunter.server import create_app
 
@@ -191,17 +194,22 @@ def bias_cases(split):
     return out
 
 
-def _remembered(c, old, new):
-    """A past fix as the pane keeps it (frontend/features/memory.js lineOf): header, the reason's part naming it, old -> new."""
-    cut = lambda v, n: (lambda t: t if len(t) <= n else t[:n - 1] + "…")(" ".join(str(v).split()))
+def _kind(c):
+    """The reason's part naming the plant's column, as the pane keeps it (fix.js issuesOf: "this is" stays with its part)."""
     parts = []
     for p in re.sub(r"^Flagged by \d+ of \d+: ", "", c["reason"]).split("; "):  # fix.js issuesOf: "this is" stays with its part
         if p.startswith("this is ") and parts:
             parts[-1] += "; " + p
         else:
             parts.append(p)
-    kind = next((p for p in parts if c["col"] in p), "fix")
-    return f"{cut(c['col'], 30)}: {cut(kind, 60)}: {cut(old, 30)} -> {cut(new, 30)}"
+    return next((p for p in parts if c["col"] in p), "fix")
+
+
+def _remembered(c, old, new, kind=None):
+    """A past fix as the pane keeps and sends it (frontend/features/memory.js entry): header, the reason's part naming
+    it, old and new value, each cut as the pane cuts it."""
+    cut = lambda v, n: (lambda t: t if len(t) <= n else t[:n - 1] + "…")(" ".join(str(v).split()))
+    return {"h": cut(c["col"], 30), "k": cut(kind or _kind(c), 60), "o": cut(old, 30), "n": cut(new, 30)}
 
 
 def memory_cases(split, repo):
@@ -228,6 +236,68 @@ def memory_cases(split, repo):
                 kind = "blank_unknown" if c["kind"] == "blank" else c["kind"]  # nothing in the sheet says what a blank was
                 out.append({**c, "id": f"{c['id']}:memory_{name}", "kind": kind, "memory": [line]})
     return out
+
+
+def memory_store_cases(split, repo, per_kind=4):
+    """The arm "memory_ranked" (ai/memory.py rank and select, AH-153): a plant with a store of 5-20 past fixes, newest
+    first as the pane sends them, the right one hidden at a random place among distractors: the same column with another
+    step, other columns' true fixes (the split's other plants; the pane sends only the flagged header's, so these stand
+for the same header in another workbook) and a wrong fix of this very cell. "right" = its place,
+    None where nothing can be learned (an Excel error, a blank, a duplicate: the store is all distractors, and the
+    measure is that nothing gets invented). A plant whose fix is no step (a date, a sum) has nothing to retrieve and is
+    left out. per_kind caps the eval's requests; the offline benchmark (retrieval) takes every plant. Built inside the
+    split only: held never carries dev's history. Base runs them too, memory ignored, so they pair."""
+    plants, out, per = _plants(split, repo), [], {}
+    fixed = [p for p in plants if p["kind"] not in NO_CHANGE | {"blank"}]
+    fmt = lambda x: f"{x:.12g}"
+    for c in plants:
+        step, learn = memory.step(c["raw"], c["true"]), c["kind"] not in NO_CHANGE | {"blank"}
+        if learn and step == "other" or per_kind and per.get(c["kind"], 0) >= per_kind:
+            continue
+        per[c["kind"]] = per.get(c["kind"], 0) + 1
+        r, j = random.Random(c["id"]), [str(x) for x in c["columns"]].index(c["col"])
+        honest = [row[j] for k, row in enumerate(c["rows"]) if k != c["i"] and str(row[j]).strip()]
+        nums = [v for v in map(_num, honest) if v] if step != "case" else []
+        labels = sorted({str(v).strip() for v in honest})
+        # a past fix of this column's that went from undo(s, v) to v: the same kind of slip on another, honest row
+        kind = lambda old, new: re.sub(r"this is \S+ \(likely [^)]+\)", f"this is {old} (likely {new})", _kind(c))
+        past = lambda old, new: _remembered(c, old, new, kind(old, new))
+        undo = lambda s, v: fmt(-v if s == "sign" else v / 10 ** int(s[4:]))
+        if nums:
+            steps = [s for s in ("x10^1", "x10^-1", "x10^-2", "x10^-3", "sign") if s != step]
+            same_col = [past(undo(s, v), fmt(v)) for s, v in zip(r.sample(steps, 2), r.sample(nums, 2))]
+            wrong = past(" ".join(str(c["raw"]).split()), fmt(_num(c["raw"]) * (0.1 if step == "x10^1" else 10)) if _num(c["raw"]) else "0")
+        else:
+            same_col = [past(v[:3], v) for v in r.sample([v for v in labels if len(v) > 4] or labels, 1)]
+            wrong = past(c["raw"], next((v for v in labels if v.casefold() != " ".join(str(c["raw"]).split()).casefold()), "?"))
+        right = None
+        if learn and nums:
+            v = r.choice(nums)
+            right = past(undo(step, v), fmt(v))
+        elif learn:
+            v = r.choice(labels)
+            right = past(v.upper() if v.upper() != v else v.lower(), v)
+        away = [p for p in fixed if (p["sheet"], p["col"]) != (c["sheet"], c["col"])]
+        store = [e for e in (right, *same_col, wrong) if e]
+        store += [_remembered(p, p["raw"], p["true"]) for p in r.sample(away, min(len(away), r.randint(5, 20) - len(store)))]
+        r.shuffle(store)
+        out.append({**c, "id": f"{c['id']}:memory_store", "kind": "blank_unknown" if c["kind"] == "blank" else c["kind"],
+                    "memory": store, "right": store.index(right) if right else None})
+    return out
+
+
+def retrieval(split, repo):
+    """Offline, no API: on every store case with a right past fix, how often memory.rank puts it first (recall@1), against
+    the pane's old order (newest first) and against what select would send first."""
+    cases = [c for c in memory_store_cases(split, repo, per_kind=None) if c["right"] is not None]
+    hit = {"ranked": 0, "selected": 0, "newest": 0}
+    for c in cases:
+        value, right = c["rows"][c["i"]][[str(x) for x in c["columns"]].index(c["col"])], c["memory"][c["right"]]
+        ranked = memory.rank(c["memory"], c["reason"], value)
+        hit["ranked"] += ranked[0][1] is right
+        hit["selected"] += (memory.select(ranked, c["reason"], value) or [None])[0] is right
+        hit["newest"] += c["right"] == 0
+    return {"cases": len(cases), **hit}
 
 
 def right(case, changes):
@@ -309,7 +379,10 @@ ARMS["bias_context"] = {"fix": bias_context.with_rules(ORIG["_fix_prompt"], lamb
 # wins, the relay needs the same field, or invited users keep the default.
 ARMS["temperature_0.1"] = {"body": {"temperature": 0.1}}
 # the user's past fixes of the flagged column (ai/memory.py, AH-143), in the request after the reason; cases: memory_cases
-ARMS["memory"] = {"fix": with_memory(ORIG["_fix_prompt"], lambda p: client._fits(p))}
+# and memory_store_cases. "memory" = the newest 5 as the pane gives them; "memory_ranked" = ranked and chosen (AH-153),
+# the one the app would switch on
+ARMS["memory"] = {"fix": with_memory(ORIG["_fix_prompt"], lambda p: client._fits(p), ranked=False)}
+ARMS["memory_ranked"] = {"fix": with_memory(ORIG["_fix_prompt"], lambda p: client._fits(p))}
 
 
 def _prompts(job):
@@ -326,7 +399,8 @@ def _prompts(job):
 
 def jobs(split, repo, fix=None, odd=ODD):
     """(case, the call that answers it) for one split."""
-    fix = (bench_cases(split, repo) + bias_cases(split) + memory_cases(split, repo) + (hand_cases() if split == "dev" else [])
+    fix = (bench_cases(split, repo) + bias_cases(split) + memory_cases(split, repo) + memory_store_cases(split, repo)
+           + (hand_cases() if split == "dev" else [])
            if fix is None else fix)
     run_fix = lambda c: lambda: client.suggest_fix(c["columns"], c["rows"], c["i"], c["start_row"], c["start_col"], c["reason"], c["intent"],
                                                    c.get("formulas"), memory=c.get("memory"))
@@ -344,6 +418,10 @@ def main(argv):
     splits = list(SPLITS) if arg("--split", "dev") == "both" else [arg("--split", "dev")]
     arms, runs, cap, out = arg("--arms", "base").split(","), int(arg("--runs", 3)), int(arg("--max-requests", 200)), arg("--out", "ai-eval-results.jsonl")
     dry = "--dry-run" in argv
+    if "--retrieval" in argv:  # AH-153: the offline retrieval benchmark, no key, no request
+        for s in splits:
+            print(f"retrieval/{s}: recall@1 " + ", ".join(f"{k} {v}" for k, v in retrieval(s, repo).items()))
+        return 0
     tag = (lambda a: f"{a}@{model}") if (model := arg("--model", None)) else (lambda a: a)
     client.GEMINI_MODEL, client.GEMINI_FALLBACKS = model or client.GEMINI_MODEL, ()  # one model's numbers only
     print(f"Model: {client.GEMINI_MODEL}")
@@ -358,8 +436,9 @@ def main(argv):
     key = os.environ["GEMINI_API_KEY"]  # held here: a key removed mid-run can't switch the run to the relay or to Claude
     client.provider, client.gemini_key = lambda: "gemini", lambda: key
     cases = {s: jobs(s, repo) for s in splits}
+    arms = sorted(arms, key=lambda a: a != "base")  # base first: an arm whose request is base's takes base's answer
     plan = [(a, s, r, c, j) for s in splits for c, j in cases[s] for a in arms for r in range(runs)]
-    sizes, unsendable = {}, []
+    sizes, reused, unsendable, seen = {(a, s): [] for s in splits for a in arms}, {}, [], set()
     for a, s, r, c, j in plan:
         if r == 0:
             _arm(a)
@@ -368,19 +447,27 @@ def main(argv):
             except ValueError as e:
                 unsendable.append(f"{a}/{c['id']}: {e}")
                 continue
-            sizes.setdefault((a, s), []).extend(len(client._wire(p, client.ODD_SCHEMA if "odd" in c else client.FIX_SCHEMA,
-                                                                   "odd" if "odd" in c else "fix")) for p in ps)
+            if (s, _request(a, ps)) in seen:
+                reused[(a, s)] = reused.get((a, s), 0) + 1
+                continue
+            seen.add((s, _request(a, ps)))
+            sizes[(a, s)].extend(len(client._wire(p, client.ODD_SCHEMA if "odd" in c else client.FIX_SCHEMA,
+                                                  "odd" if "odd" in c else "fix")) for p in ps)
     for (a, s), b in sizes.items():
-        print(f"{a}/{s}: {len(b)} requests per run x {runs} runs = {len(b) * runs}, largest {max(b)} bytes, total {sum(b) * runs} bytes")
+        print(f"{a}/{s}: {len(b)} requests per run x {runs} runs = {len(b) * runs}, largest {max(b, default=0)} bytes, total {sum(b) * runs} bytes"
+              + (f", {reused[(a, s)]} reuse an identical request" if reused.get((a, s)) else ""))
     if unsendable:
         print("Cases that could not be sent:", *unsendable, sep="\n  ")
     if dry or "--yes" not in argv:
         print("Dry run: nothing was sent." if dry else "Add --yes to send these (they count against your key's quota).")
         return 0
-    done = set()
+    done, asked = set(), {}  # asked: (split, run, request) -> a finished answer of this model, whichever arm asked it
     if os.path.exists(out):
         with open(out, encoding="utf-8") as f:
-            done = {(x["arm"], x["split"], x["run"], x["case"], x["prompt"]) for x in map(json.loads, f)}
+            for x in map(json.loads, f):
+                done.add((x["arm"], x["split"], x["run"], x["case"], x["prompt"]))
+                if x.get("request") and x["model"] == client.GEMINI_MODEL and x["error"] is None:
+                    asked[(x["split"], x["run"], x["request"])] = x
     sent, wire = [0], []
     real = client.urllib.request.urlopen
 
@@ -403,10 +490,15 @@ def main(argv):
         for a, s, r, c, j in plan:
             _arm(a)
             try:
-                ph = hashlib.sha256(json.dumps(_prompts(j)).encode()).hexdigest()[:16]
+                ps = _prompts(j)
             except ValueError:
                 continue  # listed above as unsendable
+            ph, rq = hashlib.sha256(json.dumps(ps).encode()).hexdigest()[:16], _request(a, ps)
             if (tag(a), s, r, c["id"], ph) in done:
+                continue
+            if (s, r, rq) in asked:  # AH-153: the same request again only measures noise (13% of answers differed)
+                x = asked[(s, r, rq)]
+                f.write(json.dumps({**x, "arm": tag(a), "case": c["id"], "prompt": ph, "reused": True}, ensure_ascii=False) + "\n")
                 continue
             client.KEY_FILE = tmp / f"{a}-{s}-{r}" / "gemini-key.txt"  # a fresh answer cache: every run asks Google
             wire.clear()
@@ -418,11 +510,19 @@ def main(argv):
                 ans, err = None, str(e)
                 if err.startswith("Today's free Google AI limit"):
                     print("Today's quota is used up: run again tomorrow, it goes on from here."); break
-            f.write(json.dumps({"arm": tag(a), "model": client.GEMINI_MODEL, "split": s, "run": r, "case": c["id"], "prompt": ph, "answer": ans, "error": err,
-                                "wire": list(wire)}, ensure_ascii=False, default=str) + "\n")
+            line = {"arm": tag(a), "model": client.GEMINI_MODEL, "split": s, "run": r, "case": c["id"], "prompt": ph, "request": rq,
+                    "answer": ans, "error": err, "wire": list(wire)}
+            f.write(json.dumps(line, ensure_ascii=False, default=str) + "\n")
             f.flush()
+            if err is None:
+                asked[(s, r, rq)] = json.loads(json.dumps(line, default=str))
     print(summary(out, {c["id"]: c for s in splits for c, _ in cases[s]}))
     return 0
+
+
+def _request(arm, prompts):
+    """What makes two requests the same: the prompts and the arm's extra body fields (temperature_0.1's prompt is base's)."""
+    return hashlib.sha256(json.dumps([prompts, ARMS[arm].get("body", {})], sort_keys=True).encode()).hexdigest()[:16]
 
 
 def score(case, rec):

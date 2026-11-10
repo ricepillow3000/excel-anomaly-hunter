@@ -47,7 +47,7 @@ export async function askFix() { // talks to the engine only; the sheet is touch
   try {
     const { columns, rows, startRow, startCol } = state.lastScan, reason = state.lastRows[f.i].reason;
     // AH-143: the fixes the user accepted before in the flagged column, the one the engine reads from the reason (the
-    // longest header it names: "Column 31" over "Column 3")
+    // longest header it names: "Column 31" over "Column 3"); the engine ranks them and picks which go (AH-153)
     const flagged = columns.map(String).filter((c) => c.trim() && String(reason ?? "").includes(c)).sort((a, b) => b.length - a.length)[0];
     const memory = flagged ? recall(flagged) : [];
     const out = await post("/fix", {
@@ -64,6 +64,9 @@ export async function askFix() { // talks to the engine only; the sheet is touch
     if (v) out.explanation += v.clean ? " Checked: with this fix the row looks right."
       : ` Checked: with this fix the row would still look unusual: ${plainReason(v.reason)}.`;
     if (state.fix !== f) return; // the user moved to another row meanwhile
+    // AH-153: the engine's own sentence when the AI's fix repeats a past fix of the user's, so a learned habit is told
+    // apart from a fresh reading of the sheet (showFix sets the explanation as text)
+    if (typeof out.memory_note === "string") out.explanation += ` ${out.memory_note}`;
     await showFix(f, "AI's fix", out);
     // AH-145: Google's main model was busy or used up for today and a backup Gemini model answered (the engine names it
     // only then)

@@ -160,9 +160,9 @@ def test_the_memory_arm_adds_only_the_cases_past_fixes_each_from_its_own_split_a
         names = {c["id"].rsplit(":", 1)[1] for c in cases}
         assert len(cases) >= 20 and names == {"memory_same", "memory_other", "memory_wrong"}
         for c in cases:
-            assert c["id"].startswith(f"{split}:") and len(c["memory"]) == 1 and len(c["memory"][0]) <= 160, c["id"]
-            old = c["memory"][0].rsplit(": ", 1)[1].split(" -> ")[0]
-            assert any(" ".join(str(p["raw"]).split()) == old for p in plants), c["id"]  # a plant of this split
+            assert c["id"].startswith(f"{split}:") and len(c["memory"]) == 1, c["id"]
+            assert set(c["memory"][0]) == {"h", "k", "o", "n"} and all(len(v) <= 60 for v in c["memory"][0].values()), c["id"]
+            assert any(" ".join(str(p["raw"]).split()) == c["memory"][0]["o"] for p in plants), c["id"]  # a plant of this split
             run = ai_eval.jobs(split, REPO, fix=[c], odd=[])[0][1]
             ai_eval._arm("memory")
             try:
@@ -170,7 +170,7 @@ def test_the_memory_arm_adds_only_the_cases_past_fixes_each_from_its_own_split_a
             finally:
                 ai_eval._arm("base")
             base = ai_eval._prompts(run)
-            assert memory.HEAD not in base[0] and repr(c["memory"][0]) in arm[0], c["id"]
+            assert memory.HEAD not in base[0] and repr(memory.line(c["memory"][0])) in arm[0], c["id"]
             assert arm[0].replace(memory.block(c["memory"]), "") == base[0] and len(client._wire(arm[0])) <= client.BUDGET
 
 
@@ -218,3 +218,68 @@ def test_a_backup_model_is_measured_with_model_and_every_result_names_its_model(
     assert code == 0 and [b["model"] for b in run.bodies] == [default] + ["gemini-3.5-flash-lite"] * 2  # the 503 tried again, same model
     out = capsys.readouterr().out
     assert "Model: gemini-3.5-flash-lite" in out and "base@gemini-3.5-flash-lite vs base on dev: wins 0, losses 0" in out
+
+
+def test_each_store_case_holds_5_to_20_past_fixes_with_distractors_from_its_own_split_and_the_right_one_hidden_among_them():
+    # AH-153: retrieval is tested only when there is something to retrieve from: the right past fix of this column and
+    # step, among the same column's other steps, other columns' fixes and a wrong fix of this very cell
+    from anomaly_hunter.ai import memory
+    for split in ai_eval.SPLITS:
+        cases, plants = ai_eval.memory_store_cases(split, REPO), ai_eval._plants(split, REPO)
+        learn = [c for c in cases if c["right"] is not None]
+        assert len(learn) >= 20 and len(cases) - len(learn) >= 5  # rows with nothing to learn get a store too
+        assert len({c["kind"] for c in cases}) >= 8 and max(sum(c["kind"] == k for c in cases) for k in {c["kind"] for c in cases}) <= 4
+        assert {c["right"] for c in learn} - {0}  # the right one is not always the newest
+        for c in cases:
+            store = c["memory"]
+            assert c["id"].startswith(f"{split}:") and c["id"].endswith(":memory_store") and 5 <= len(store) <= 20, c["id"]
+            assert all(set(e) == {"h", "k", "o", "n"} and all(isinstance(v, str) and len(v) <= 60 for v in e.values()) for e in store)
+            assert any(e["o"] == " ".join(str(c["raw"]).split()) for e in store), c["id"]  # a wrong fix of this very cell
+            assert len({e["h"] for e in store}) >= 2, c["id"]  # other columns' fixes
+            if c["right"] is not None:
+                right = store[c["right"]]
+                assert right["h"] == c["col"] and memory.step(right["o"], right["n"]) == memory.step(c["raw"], c["true"]) != "other"
+                assert any(e["h"] == c["col"] and memory.step(e["o"], e["n"]) != memory.step(right["o"], right["n"]) for e in store)  # another step
+            run = ai_eval.jobs(split, REPO, fix=[c], odd=[])[0][1]
+            ai_eval._arm("memory_ranked")
+            try:
+                arm = ai_eval._prompts(run)
+            finally:
+                ai_eval._arm("base")
+            assert len(client._wire(arm[0])) <= client.BUDGET, c["id"]
+            if c["right"] is not None:
+                assert memory.HEAD in arm[0], c["id"]
+            if c["kind"] in ("excel_error", "duplicate_row", "blank_unknown") and "; " not in c["reason"]:
+                assert memory.HEAD not in arm[0], c["id"]  # nothing to learn: nothing sent
+        assert all(p["id"].startswith(f"{split}:") for p in plants)
+
+
+def test_offline_ranking_finds_the_right_past_fix_first_more_often_than_newest_first():
+    # AH-153: retrieval measured with no API: recall@1 of memory.rank against the pane's old newest-first order
+    for split in ai_eval.SPLITS:
+        got = ai_eval.retrieval(split, REPO)
+        print(split, got)
+        assert got["cases"] >= 50 and got["ranked"] > got["newest"] and got["ranked"] / got["cases"] >= 0.8, got
+
+
+def test_identical_prompts_are_asked_once(run, monkeypatch, capsys):
+    # AH-153: an arm whose request is byte for byte base's (no past fix to add, or none chosen) gets base's answer: the
+    # same question asked twice only measured noise (13% of answers differed between identical prompts)
+    monkeypatch.setenv("GEMINI_API_KEY", KEY)
+    code, urls, _ = run("--dry-run", "--arms", "base,memory_ranked")
+    out = capsys.readouterr().out
+    assert "base/dev: 1 requests per run" in out and "memory_ranked/dev: 0 requests per run x 3 runs = 0" in out
+    assert "1 reuse an identical request" in out and urls == []
+    code, urls, results = run("--yes", "--runs", "2", "--arms", "base,memory_ranked")
+    lines = [json.loads(x) for x in results.splitlines()]
+    assert code == 0 and len(urls) == 2  # one per run, not per arm
+    assert [(x["arm"], x["run"], x.get("reused", False)) for x in lines] == [("base", 0, False), ("base", 1, False),
+                                                                             ("memory_ranked", 0, True), ("memory_ranked", 1, True)]
+    assert lines[0]["answer"] == lines[2]["answer"] and "memory_ranked vs base on dev: wins 0, losses 0" in capsys.readouterr().out
+    urls.clear()
+    with_past = {**CASE, "memory": [{"h": "Units", "k": "Units weird limit is 20; this is 70 (likely 7)", "o": "70", "n": "7"}]}
+    monkeypatch.setitem(globals(), "CASE", with_past)  # the fixture's one case, now with a past fix the arm sends
+    code, urls, results = run("--yes", "--runs", "1", "--arms", "base,memory_ranked")
+    assert code == 0 and len(urls) == 1 and "[M1]" in run.bodies[-1]["messages"][0]["content"]  # base's is done already
+    last = json.loads(results.splitlines()[-1])
+    assert last["arm"] == "memory_ranked" and not last.get("reused") and len(results.splitlines()) == 5
