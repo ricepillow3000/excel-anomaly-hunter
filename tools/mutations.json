@@ -1,0 +1,1322 @@
+[
+ {
+  "id": "host-loosen",
+  "guard": "Host must be localhost",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "if request.host.split(\":\")[0] not in LOCAL or request.headers.get(\"Origin\") not in ORIGINS:",
+  "new": "if request.headers.get(\"Origin\") not in ORIGINS:",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_api_security.py::test_every_route_refuses_other_websites",
+   "backend/tests/test_server.py::test_other_websites_cannot_drive_engine"
+  ]
+ },
+ {
+  "id": "host-tighten",
+  "guard": "Host must be localhost",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "LOCAL = {\"127.0.0.1\", \"localhost\"}",
+  "new": "LOCAL = {\"localhost\"}",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_server.py::test_already_running_trusts_only_our_engine"
+  ]
+ },
+ {
+  "id": "origin-loosen",
+  "guard": "Origin must be the pane",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": " or request.headers.get(\"Origin\") not in ORIGINS:",
+  "new": ":",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_api_security.py::test_every_route_refuses_other_websites"
+  ]
+ },
+ {
+  "id": "origin-tighten",
+  "guard": "Origin must be the pane",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "ORIGINS = {None, f\"https://127.0.0.1:{PORT}\"}",
+  "new": "ORIGINS = {None}",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_server.py::test_the_pane_is_let_in_only_from_the_address_its_manifest_loads_it_from",
+   "backend/tests/test_server.py::test_other_websites_cannot_drive_engine"
+  ]
+ },
+ {
+  "id": "origin-localhost-loosen",
+  "guard": "Origin must be the pane (127.0.0.1 only)",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "ORIGINS = {None, f\"https://127.0.0.1:{PORT}\"}",
+  "new": "ORIGINS = {None, f\"https://127.0.0.1:{PORT}\", f\"https://localhost:{PORT}\"}",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_server.py::test_the_pane_is_let_in_only_from_the_address_its_manifest_loads_it_from"
+  ]
+ },
+ {
+  "id": "preflight-loosen",
+  "guard": "cross-site preflight is a 403",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "    def own_panel_only():\n",
+  "new": "    def own_panel_only():\n        if request.method == \"OPTIONS\":\n            return None\n",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_api_security.py::test_a_cross_site_preflight_is_refused_on_every_route"
+  ]
+ },
+ {
+  "id": "bad-shape-loosen",
+  "guard": "_bad: body must be {columns, rows}",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "if not isinstance(body, dict) or not isinstance(body.get(\"columns\"), list) or not body[\"columns\"]:",
+  "new": "if body is None:",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_api_security.py::test_every_post_route_answers_a_hostile_body_with_a_clear_4xx"
+  ]
+ },
+ {
+  "id": "bad-cells-tighten",
+  "guard": "_bad: cells text/number/bool/blank",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "isinstance(v, (str, bool, int)) or isinstance(v, float) and math.isfinite(v) for r in rows for v in r)",
+  "new": "isinstance(v, (str, bool, int)) for r in rows for v in r)",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_server.py::test_scan_flags_planted_outlier"
+  ]
+ },
+ {
+  "id": "json-depth-loosen",
+  "guard": "_JSON: too deep = 400",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "    app.json = _JSON(app)\n",
+  "new": "    app.json = DefaultJSONProvider(app)\n",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_server.py::test_a_body_nested_too_deep_is_a_clear_400"
+  ]
+ },
+ {
+  "id": "max-content-loosen",
+  "guard": "MAX_CONTENT_LENGTH 256 MB",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "app.config[\"MAX_CONTENT_LENGTH\"] = 256 * 1024 * 1024",
+  "new": "app.config[\"MAX_CONTENT_LENGTH\"] = None",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_api_security.py::test_a_body_right_at_the_size_cap_is_read_one_byte_over_it_is_refused_and_a_20_mb_sheet_fits",
+   "backend/tests/test_api_security.py::test_a_huge_body_is_refused_before_it_is_read"
+  ]
+ },
+ {
+  "id": "max-content-tighten",
+  "guard": "MAX_CONTENT_LENGTH 256 MB",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "app.config[\"MAX_CONTENT_LENGTH\"] = 256 * 1024 * 1024",
+  "new": "app.config[\"MAX_CONTENT_LENGTH\"] = 1024 * 1024",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_api_security.py::test_a_body_right_at_the_size_cap_is_read_one_byte_over_it_is_refused_and_a_20_mb_sheet_fits",
+   "backend/tests/test_api_security.py::test_a_huge_body_is_refused_before_it_is_read"
+  ]
+ },
+ {
+  "id": "max-cells-loosen",
+  "guard": "MAX_CELLS",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "if len(rows) * len(body[\"columns\"]) > MAX_CELLS:",
+  "new": "if len(rows) * len(body[\"columns\"]) > MAX_CELLS * 10:",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_api_security.py::test_more_cells_than_the_pane_ever_sends_is_a_clear_400"
+  ]
+ },
+ {
+  "id": "max-cells-tighten",
+  "guard": "MAX_CELLS",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "if len(rows) * len(body[\"columns\"]) > MAX_CELLS:",
+  "new": "if len(rows) * len(body[\"columns\"]) >= MAX_CELLS:",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_api_security.py::test_a_scan_of_exactly_the_most_cells_the_pane_sends_is_taken",
+   "backend/tests/test_api_security.py::test_more_cells_than_the_pane_ever_sends_is_a_clear_400"
+  ]
+ },
+ {
+  "id": "max-cols-loosen",
+  "guard": "EXCEL_COLUMNS",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "if len(body[\"columns\"]) > EXCEL_COLUMNS:",
+  "new": "if len(body[\"columns\"]) > EXCEL_COLUMNS * 2:",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_api_security.py::test_more_columns_than_excel_has_is_a_clear_400_before_any_scan"
+  ]
+ },
+ {
+  "id": "max-cols-tighten",
+  "guard": "EXCEL_COLUMNS",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "if len(body[\"columns\"]) > EXCEL_COLUMNS:",
+  "new": "if len(body[\"columns\"]) >= EXCEL_COLUMNS:",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_api_security.py::test_more_columns_than_excel_has_is_a_clear_400_before_any_scan"
+  ]
+ },
+ {
+  "id": "formulas-len-loosen",
+  "guard": "/scan formulas <= 8192 chars",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "len(f) <= EXCEL_FORMULA for f in r)",
+  "new": "len(f) <= 2 * EXCEL_FORMULA for f in r)",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_formulas.py::test_formulas_are_checked_before_the_scan"
+  ]
+ },
+ {
+  "id": "formulas-len-tighten",
+  "guard": "/scan formulas <= 8192 chars",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "len(f) <= EXCEL_FORMULA for f in r)",
+  "new": "len(f) < EXCEL_FORMULA for f in r)",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_formulas.py::test_a_formula_as_long_as_excel_allows_is_taken"
+  ]
+ },
+ {
+  "id": "formulas-eq-loosen",
+  "guard": "/scan formulas start with =",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "f is None or type(f) is str and f.startswith(\"=\") and len(f)",
+  "new": "f is None or type(f) is str and len(f)",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_formulas.py::test_formulas_are_checked_before_the_scan"
+  ]
+ },
+ {
+  "id": "decisions-loosen",
+  "guard": "/scan decisions only our words",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "d is None or type(d) is str and d in powerbi.DECISIONS for d in decisions",
+  "new": "d is None or type(d) is str for d in decisions",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_powerbi.py::test_each_rows_decision_is_checked_before_the_scan"
+  ]
+ },
+ {
+  "id": "memory-count-loosen",
+  "guard": "/fix memory <= 20",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "len(memory) <= 20 and all(",
+  "new": "len(memory) <= 21 and all(",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_fix.py::test_the_fix_route_takes_up_to_20_past_fixes_of_four_short_texts_and_refuses_anything_else"
+  ]
+ },
+ {
+  "id": "memory-count-tighten",
+  "guard": "/fix memory <= 20",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "len(memory) <= 20 and all(",
+  "new": "len(memory) < 20 and all(",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_fix.py::test_the_fix_route_takes_up_to_20_past_fixes_of_four_short_texts_and_refuses_anything_else"
+  ]
+ },
+ {
+  "id": "memory-len-tighten",
+  "guard": "/fix memory texts <= 60",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "isinstance(v, str) and len(v) <= 60",
+  "new": "isinstance(v, str) and len(v) < 60",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_fix.py::test_the_fix_route_takes_up_to_20_past_fixes_of_four_short_texts_and_refuses_anything_else"
+  ]
+ },
+ {
+  "id": "intent-loosen",
+  "guard": "/fix intent <= 2000",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "len(intent) > 2000:",
+  "new": "len(intent) > 4000:",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_fix.py::test_fix_route_validates_before_calling_claude"
+  ]
+ },
+ {
+  "id": "intent-tighten",
+  "guard": "/fix intent <= 2000",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "len(intent) > 2000:",
+  "new": "len(intent) >= 2000:",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_fix.py::test_each_fix_field_is_taken_right_up_to_its_limit_and_refused_one_past_it"
+  ]
+ },
+ {
+  "id": "rowindex-loosen",
+  "guard": "/fix row_index inside the table",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "nat(\"row_index\", len(body[\"rows\"]))",
+  "new": "nat(\"row_index\")",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_fix.py::test_fix_route_validates_before_calling_claude"
+  ]
+ },
+ {
+  "id": "startcol-loosen",
+  "guard": "/fix start_col inside XFD",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "nat(\"start_col\", 16384 - len(body[\"columns\"]) + 1)",
+  "new": "nat(\"start_col\", 16384 + 1)",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_fix.py::test_fix_route_validates_before_calling_claude",
+   "backend/tests/test_fix.py::test_each_fix_field_is_taken_right_up_to_its_limit_and_refused_one_past_it"
+  ]
+ },
+ {
+  "id": "startcol-tighten",
+  "guard": "/fix start_col inside XFD",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "nat(\"start_col\", 16384 - len(body[\"columns\"]) + 1)",
+  "new": "nat(\"start_col\", 16384 - len(body[\"columns\"]))",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_fix.py::test_each_fix_field_is_taken_right_up_to_its_limit_and_refused_one_past_it"
+  ]
+ },
+ {
+  "id": "fix-formulas-loosen",
+  "guard": "/fix formulas as long as columns",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "if formulas is not None and not (isinstance(formulas, list) and len(formulas) == len(body[\"columns\"])):",
+  "new": "if False:",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_fix.py::test_each_fix_field_is_taken_right_up_to_its_limit_and_refused_one_past_it"
+  ]
+ },
+ {
+  "id": "fix-formulas-tighten",
+  "guard": "/fix formulas as long as columns are taken",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "if formulas is not None and not (isinstance(formulas, list) and len(formulas) == len(body[\"columns\"])):",
+  "new": "if formulas is not None:",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_fix.py::test_each_fix_field_is_taken_right_up_to_its_limit_and_refused_one_past_it"
+  ]
+ },
+ {
+  "id": "check-changes-loosen",
+  "guard": "/check changes 1..width",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "0 < len(changes) <= width",
+  "new": "0 <= len(changes) <= width",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_agents.py::test_check_route_rejects_bad_input"
+  ]
+ },
+ {
+  "id": "debug-loosen",
+  "guard": "no debug mode (create_app)",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "    app.debug = False\n",
+  "new": "",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_api_security.py::test_an_environment_variable_can_never_turn_on_the_debugger"
+  ]
+ },
+ {
+  "id": "debugger-loosen",
+  "guard": "no debug mode (main)",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "debug=False,\n                                            use_debugger=False,",
+  "new": "debug=False,\n                                            use_debugger=True,",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_api_security.py::test_an_environment_variable_can_never_turn_on_the_debugger"
+  ]
+ },
+ {
+  "id": "threaded-tighten",
+  "guard": "main serves threaded",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "load_dotenv=False, threaded=True)",
+  "new": "load_dotenv=False, threaded=False)",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_api_security.py::test_an_environment_variable_can_never_turn_on_the_debugger"
+  ]
+ },
+ {
+  "id": "tls-min-loosen",
+  "guard": "TLS 1.2+",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "    ctx.minimum_version = ssl.TLSVersion.TLSv1_2\n",
+  "new": "    ctx.minimum_version = ssl.TLSVersion.TLSv1\n",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_server.py::test_the_engine_speaks_tls_1_2_and_1_3_and_never_anything_older"
+  ]
+ },
+ {
+  "id": "tls-min-tighten",
+  "guard": "TLS 1.2 still spoken",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "    ctx.minimum_version = ssl.TLSVersion.TLSv1_2\n",
+  "new": "    ctx.minimum_version = ssl.TLSVersion.TLSv1_3\n",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_server.py::test_the_engine_speaks_tls_1_2_and_1_3_and_never_anything_older"
+  ]
+ },
+ {
+  "id": "idle-timeout-loosen",
+  "guard": "idle connection dropped after 60 s",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "WSGIRequestHandler.timeout = 60",
+  "new": "WSGIRequestHandler.timeout = None",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_server.py::test_a_connection_that_goes_quiet_is_dropped_and_never_holds_a_thread"
+  ]
+ },
+ {
+  "id": "idle-timeout-tighten",
+  "guard": "a slow upload still has 60 s",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "WSGIRequestHandler.timeout = 60",
+  "new": "WSGIRequestHandler.timeout = 5",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_server.py::test_a_connection_that_goes_quiet_is_dropped_and_never_holds_a_thread"
+  ]
+ },
+ {
+  "id": "handshake-loosen",
+  "guard": "TLS handshake in the request's thread",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "return super().wrap_socket(sock, server_side, False, *args, **kwargs)",
+  "new": "return super().wrap_socket(sock, server_side, do_handshake_on_connect, *args, **kwargs)",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_server.py::test_one_silent_connection_does_not_freeze_the_engine"
+  ]
+ },
+ {
+  "id": "chmod-open-loosen",
+  "guard": "secret files 0600 from birth",
+  "file": "backend/anomaly_hunter/sealed.py",
+  "old": "getattr(os, \"O_BINARY\", 0), 0o600)",
+  "new": "getattr(os, \"O_BINARY\", 0), 0o644)",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_api_security.py::test_a_secret_file_is_born_readable_only_by_its_owner_never_open_for_a_moment",
+   "backend/tests/test_api_security.py::test_the_ai_key_the_invite_code_and_the_tls_key_are_readable_only_by_their_owner"
+  ]
+ },
+ {
+  "id": "chmod-fchmod-loosen",
+  "guard": "secret files 0600 (rewrite tightens)",
+  "file": "backend/anomaly_hunter/sealed.py",
+  "old": "os.fchmod(fd, 0o600)",
+  "new": "os.fchmod(fd, 0o644)",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_api_security.py::test_the_ai_key_the_invite_code_and_the_tls_key_are_readable_only_by_their_owner"
+  ]
+ },
+ {
+  "id": "home-chmod-loosen",
+  "guard": "engine folder 0700",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "        HOME.chmod(0o700)\n",
+  "new": "        pass\n",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_api_security.py::test_the_engines_data_folder_is_open_only_to_its_owner"
+  ]
+ },
+ {
+  "id": "dpapi-loosen",
+  "guard": "key sealed with DPAPI",
+  "file": "backend/anomaly_hunter/sealed.py",
+  "old": "write_private(path, PREFIX + base64.b64encode(SEAL[0](text.encode(\"utf-8\"))) if SEAL else text)",
+  "new": "write_private(path, text)",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_api_security.py::test_on_windows_the_saved_key_and_invite_code_are_sealed_and_never_plain_text"
+  ]
+ },
+ {
+  "id": "dpapi-tighten",
+  "guard": "an old plain key still read",
+  "file": "backend/anomaly_hunter/sealed.py",
+  "old": "            pass  # a read-only file or a full disk: still this user's key, sealed at a later read\n    return text",
+  "new": "            pass  # a read-only file or a full disk: still this user's key, sealed at a later read\n    return \"\" if SEAL else text",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_api_security.py::test_a_key_an_older_version_saved_in_plain_text_still_works_and_is_sealed_at_its_first_read"
+  ]
+ },
+ {
+  "id": "nokeys-loosen",
+  "guard": "server.log blanks keys (_NoKeys)",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "            text = text.replace(secret, \"[the AI key]\")",
+  "new": "            text = text",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_api_security.py::test_a_key_the_provider_echoes_never_reaches_server_log_or_the_answer"
+  ]
+ },
+ {
+  "id": "nokeys-filter-loosen",
+  "guard": "server.log blanks keys (_NoKeys attached)",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "    app.logger.addFilter(_NO_KEYS)",
+  "new": "    pass",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_api_security.py::test_a_key_the_provider_echoes_never_reaches_server_log_or_the_answer"
+  ]
+ },
+ {
+  "id": "nokeys-tighten",
+  "guard": "server.log keeps the details",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "            text += \"\\n\" + \"\".join(traceback.format_exception(*record.exc_info)).rstrip()",
+  "new": "            pass",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_api_security.py::test_a_key_the_provider_echoes_never_reaches_server_log_or_the_answer"
+  ]
+ },
+ {
+  "id": "echo-404-loosen",
+  "guard": "AI key / provider text never echoed (404)",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "f\"Google doesn't offer the AI model {models[m]} to this key. Tell the developer.\"",
+  "new": "f\"Google doesn't offer the AI model {models[m]} to this key: {said}\"",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_api_security.py::test_the_key_never_comes_back_even_when_google_echoes_it"
+  ]
+ },
+ {
+  "id": "echo-other-loosen",
+  "guard": "AI key / provider text never echoed (any other status)",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "if e.code in RETRY else f\"Google AI answered with error {e.code}. Try again in a few minutes.\")",
+  "new": "if e.code in RETRY else f\"Google AI answered with error {e.code}: {said}\")",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_api_security.py",
+   "backend/tests/test_fix.py",
+   "backend/tests/test_ai_load.py"
+  ]
+ },
+ {
+  "id": "claude-echo-loosen",
+  "guard": "Claude error text never echoed",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "return {\"error\": f\"Claude answered with a problem{code}.",
+  "new": "return {\"error\": f\"Claude answered with a problem{code} {e}.",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_api_security.py::test_a_claude_error_never_echoes_the_providers_text"
+  ]
+ },
+ {
+  "id": "relaywords-len-loosen",
+  "guard": "relay words one line <= 200",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "words = words[:200] or",
+  "new": "words = words[:2000] or",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_ai_load.py::test_the_relays_words_reach_the_user_as_one_short_line_with_no_invite_code_in_it"
+  ]
+ },
+ {
+  "id": "relaywords-line-loosen",
+  "guard": "relay words one line <= 200",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "words = \" \".join(words.split()) if isinstance(words, str) else \"\"",
+  "new": "words = words if isinstance(words, str) else \"\"",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_ai_load.py::test_the_relays_words_reach_the_user_as_one_short_line_with_no_invite_code_in_it"
+  ]
+ },
+ {
+  "id": "relaywords-tighten",
+  "guard": "relay words still reach the user",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "words = words[:200] or",
+  "new": "words = words[:20] or",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_ai_load.py"
+  ]
+ },
+ {
+  "id": "https-loosen",
+  "guard": "invite only over https",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "relay_ok = RELAY_URL.startswith((\"https://\", \"http://127.0.0.1:\"))",
+  "new": "relay_ok = bool(RELAY_URL)",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_api_security.py::test_invite_code_is_only_ever_sent_over_https"
+  ]
+ },
+ {
+  "id": "https-tighten",
+  "guard": "invite only over https",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "relay_ok = RELAY_URL.startswith((\"https://\", \"http://127.0.0.1:\"))",
+  "new": "relay_ok = RELAY_URL.startswith((\"http://127.0.0.1:\",))",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_api_security.py::test_invite_code_is_only_ever_sent_over_https"
+  ]
+ },
+ {
+  "id": "free-noauth-loosen",
+  "guard": "free tier sends no Authorization",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "{\"Content-Type\": \"application/json\"} if free else",
+  "new": "{\"Content-Type\": \"application/json\"} if False else",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_fix.py::test_with_nothing_set_on_this_pc_the_free_ai_on_johns_relay_is_on"
+  ]
+ },
+ {
+  "id": "safe-loosen",
+  "guard": "SAFE list (unsafe_call)",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "ABS ACOS ACOSH AGGREGATE",
+  "new": "ABS ACOS ACOSH AGGREGATE IMAGE COPILOT STOCKHISTORY",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_fix.py::test_an_ai_formula_using_a_function_not_on_the_safe_list_is_left_out"
+  ]
+ },
+ {
+  "id": "safe-tighten",
+  "guard": "SAFE list (unsafe_call)",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "WRAPROWS XLOOKUP XMATCH",
+  "new": "WRAPROWS XMATCH",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_fix.py::test_an_ai_formula_using_a_function_not_on_the_safe_list_is_left_out"
+  ]
+ },
+ {
+  "id": "bare-name-loosen",
+  "guard": "a bare function name counts (NAMES, AH-150)",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "s[after:after + 1] != \"(\" and CELLS.fullmatch(called)",
+  "new": "s[after:after + 1] != \"(\"",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_fix.py::test_an_ai_formula_using_a_function_not_on_the_safe_list_is_left_out"
+  ]
+ },
+ {
+  "id": "let-names-tighten",
+  "guard": "LET/LAMBDA's own names allowed",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "if NAMES.fullmatch(a) and (fn == \"LAMBDA\" or fn == \"LET\" and k % 2 == 0)]",
+  "new": "if False]",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_fix.py::test_an_ai_formula_using_a_function_not_on_the_safe_list_is_left_out"
+  ]
+ },
+ {
+  "id": "outside-share-loosen",
+  "guard": "OUTSIDE: backslash = a share or path",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "|\\||\\\\|\\.xl\\w*'?!",
+  "new": "|\\||\\.xl\\w*'?!",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_fix.py::test_an_ai_formula_naming_a_share_or_path_that_is_not_a_workbook_file_is_left_out",
+   "backend/tests/test_fix.py::test_an_ai_formula_that_reaches_another_workbook_by_path_or_share_is_left_out",
+   "backend/tests/test_fix.py::test_suggest_fix_drops_formulas_that_reach_outside_the_workbook"
+  ]
+ },
+ {
+  "id": "outside-tighten",
+  "guard": "OUTSIDE blocklist",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "re.compile(r\"WEBSERVICE|IMAGE",
+  "new": "re.compile(r\"SUM|WEBSERVICE|IMAGE",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_fix.py::test_an_ai_formula_that_reaches_another_workbook_by_path_or_share_is_left_out"
+  ]
+ },
+ {
+  "id": "nfkc-loosen",
+  "guard": "full-width = read as =",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "typed = lambda t: unicodedata.normalize(\"NFKC\", t).lstrip()",
+  "new": "typed = lambda t: t.lstrip()",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_fix.py::test_an_ai_formula_that_reaches_another_workbook_by_path_or_share_is_left_out"
+  ]
+ },
+ {
+  "id": "flagged-row-loosen",
+  "guard": "no typed request = the flagged row only",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "others = [] if intent.strip() else [",
+  "new": "others = [] if True else [",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_fix.py::test_with_no_request_a_fix_changes_only_the_flagged_row"
+  ]
+ },
+ {
+  "id": "flagged-row-tighten",
+  "guard": "a typed request may change other rows",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "others = [] if intent.strip() else [",
+  "new": "others = [] if False else [",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_fix.py::test_a_typed_request_may_still_change_other_rows"
+  ]
+ },
+ {
+  "id": "blind-loosen",
+  "guard": "a value only where the AI was shown the sheet",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "and (at(c[\"cell\"])[0] not in shown_cols or int(at(c[\"cell\"])[1]) not in shown_rows)]",
+  "new": "and False]",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_ai_answers.py::test_a_value_in_a_row_the_ai_was_never_shown_is_left_out",
+   "backend/tests/test_ai_answers.py::test_a_column_left_out_to_fit_is_not_written_blind"
+  ]
+ },
+ {
+  "id": "blind-tighten",
+  "guard": "the header row it was shown may be changed",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "shown_rows = {start_row + 1} | {",
+  "new": "shown_rows = set() | {",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_ai_answers.py::test_the_header_row_it_was_shown_may_still_be_changed_when_asked"
+  ]
+ },
+ {
+  "id": "in-table-loosen",
+  "guard": "AI writes only inside the table",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "start_row < int(row) <= start_row + 1 + n_rows",
+  "new": "start_row < int(row) <= start_row + 2 + n_rows",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_fix.py::test_the_ai_may_write_only_the_tables_header_row_and_data_rows",
+   "backend/tests/test_fix.py::test_suggest_fix_keeps_to_the_table"
+  ]
+ },
+ {
+  "id": "in-table-tighten",
+  "guard": "AI may write the header row",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "start_row < int(row) <= start_row + 1 + n_rows",
+  "new": "start_row + 1 < int(row) <= start_row + 1 + n_rows",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_fix.py::test_the_ai_may_write_only_the_tables_header_row_and_data_rows",
+   "backend/tests/test_fix.py::test_suggest_fix_keeps_to_the_table"
+  ]
+ },
+ {
+  "id": "cache-loosen",
+  "guard": "cache keeps answers only, never the prompt",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "kept.write_text(answer.model_dump_json(), encoding=\"utf-8\")",
+  "new": "kept.write_text(json.dumps({**answer.model_dump(), \"prompt\": prompt}), encoding=\"utf-8\")",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_ai_load.py::test_finished_answers_are_kept_and_a_repeat_never_reaches_google"
+  ]
+ },
+ {
+  "id": "cache-tighten",
+  "guard": "a repeat never reaches Google",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "answer = out.model_validate_json(kept(model).read_text(encoding=\"utf-8\"))",
+  "new": "answer = out.model_validate_json(\"\")",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_ai_load.py::test_finished_answers_are_kept_and_a_repeat_never_reaches_google"
+  ]
+ },
+ {
+  "id": "lock-loosen",
+  "guard": "one AI call at a time",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "if not _LOCK.acquire(blocking=False):",
+  "new": "if not _LOCK.acquire(blocking=False) and False:",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_ai_load.py::test_one_ai_call_at_a_time"
+  ]
+ },
+ {
+  "id": "lock-tighten",
+  "guard": "the next call is let in once one finishes",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "        _LOCK.release()\n",
+  "new": "        pass\n",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_ai_load.py::test_finished_answers_are_kept_and_a_repeat_never_reaches_google"
+  ]
+ },
+ {
+  "id": "care-route-loosen",
+  "guard": "care message before any AI call",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "        if care.distress(intent):",
+  "new": "        if False:",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_care.py::test_a_crisis_request_gets_the_care_answer_with_no_ai_call_and_nothing_cached"
+  ]
+ },
+ {
+  "id": "care-phrase-loosen",
+  "guard": "care phrases",
+  "file": "backend/anomaly_hunter/ai/care.py",
+  "old": "    r\"\\bsuicidal\\b\",\n",
+  "new": "",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_care.py"
+  ]
+ },
+ {
+  "id": "care-invisible-loosen",
+  "guard": "invisible characters read both ways",
+  "file": "backend/anomaly_hunter/ai/care.py",
+  "old": "for gap in (\"\", \" \")",
+  "new": "for gap in (\"\",)",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_care.py::test_words_of_someone_in_crisis_with_invisible_characters_in_them_are_still_recognised"
+  ]
+ },
+ {
+  "id": "care-data-tighten",
+  "guard": "spreadsheet talk is no crisis (_DATA)",
+  "file": "backend/anomaly_hunter/ai/care.py",
+  "old": "r\"\\bself ?-?harm(?:ing)?\\b\" + _DATA,",
+  "new": "r\"\\bself ?-?harm(?:ing)?\\b\",",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_care.py::test_spreadsheet_talk_is_never_taken_for_a_crisis"
+  ]
+ },
+ {
+  "id": "care-firstperson-tighten",
+  "guard": "first person only",
+  "file": "backend/anomaly_hunter/ai/care.py",
+  "old": "r\"\\b(?:hurt|harm|cut)(?:ing|ting)? myself\\b\",",
+  "new": "r\"\\b(?:hurt|harm|cut)(?:ing|ting)?\\b\",",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_care.py::test_spreadsheet_talk_is_never_taken_for_a_crisis"
+  ]
+ },
+ {
+  "id": "relay-method-loosen",
+  "guard": "relay: only POST /fix (method)",
+  "file": "relay/worker.js",
+  "old": "if (new URL(req.url).pathname !== \"/fix\" || req.method !== \"POST\")",
+  "new": "if (new URL(req.url).pathname !== \"/fix\")",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-path-loosen",
+  "guard": "relay: only POST /fix (path)",
+  "file": "relay/worker.js",
+  "old": "if (new URL(req.url).pathname !== \"/fix\" || req.method !== \"POST\")",
+  "new": "if (req.method !== \"POST\")",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-emptyauth-loosen",
+  "guard": "empty Authorization = 401, never public",
+  "file": "relay/worker.js",
+  "old": "const pub = !req.headers.has(\"Authorization\");",
+  "new": "const pub = !req.headers.get(\"Authorization\");",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-invite-loosen",
+  "guard": "invite hash check",
+  "file": "relay/worker.js",
+  "old": "if (!who) return json(401",
+  "new": "if (!who && false) return json(401",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-invite-tighten",
+  "guard": "a valid invite is served",
+  "file": "relay/worker.js",
+  "old": ".replace(/^Bearer /, \"\")",
+  "new": ".replace(/^Bearer/, \"\")",
+  "kind": "tighten",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-body-loosen",
+  "guard": "relay body cap 8 KB",
+  "file": "relay/worker.js",
+  "old": "if (raw.length > MAX_BODY)",
+  "new": "if (raw.length > MAX_BODY * 4)",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-body-tighten",
+  "guard": "relay body cap 8 KB (the engine's 7,000-byte request fits)",
+  "file": "relay/worker.js",
+  "old": "const MAX_BODY = 8 * 1024;",
+  "new": "const MAX_BODY = 4 * 1024;",
+  "kind": "tighten",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-body-offbyone",
+  "guard": "relay body cap 8 KB (exactly 8 KB fits)",
+  "file": "relay/worker.js",
+  "old": "if (raw.length > MAX_BODY)",
+  "new": "if (raw.length >= MAX_BODY)",
+  "kind": "tighten",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-shape-loosen",
+  "guard": "relay: one message only",
+  "file": "relay/worker.js",
+  "old": "body.messages.length !== 1 || ",
+  "new": "",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-noip-loosen",
+  "guard": "public tier needs a network to count",
+  "file": "relay/worker.js",
+  "old": "if (pub && !ip) return json(400",
+  "new": "if (false) return json(400",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-pernet-loosen",
+  "guard": "per-network cap (off by one)",
+  "file": "relay/worker.js",
+  "old": "(today[by][who] || 0) >= perUser)",
+  "new": "(today[by][who] || 0) > perUser)",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-pernet-tighten",
+  "guard": "an IPv4 network gets its full 15",
+  "file": "relay/worker.js",
+  "old": "(today[by][who] || 0) >= perUser)",
+  "new": "(today[by][who] || 0) >= perUser - 1)",
+  "kind": "tighten",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-total-loosen",
+  "guard": "public / invite total (off by one)",
+  "file": "relay/worker.js",
+  "old": "if (today[n] >= total)",
+  "new": "if (today[n] > total)",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-fallback-loosen",
+  "guard": "lost [vars] fall back to the real caps",
+  "file": "relay/worker.js",
+  "old": "perUser: cap(env.PUBLIC_DAILY_PER_NETWORK, 15)",
+  "new": "perUser: cap(env.PUBLIC_DAILY_PER_NETWORK, 30)",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-zero-loosen",
+  "guard": "a cap of 0 means off",
+  "file": "relay/worker.js",
+  "old": "v !== undefined && v !== \"\" && Number.isFinite(+v) ? +v : fallback",
+  "new": "+v || fallback",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-v6-loosen",
+  "guard": "IPv6 counted by its /64",
+  "file": "relay/worker.js",
+  "old": "all.slice(0, 4).map((g) => parseInt(g, 16).toString(16)).join(\":\") + \"::/64\"",
+  "new": "all.slice(0, 8).map((g) => parseInt(g, 16).toString(16)).join(\":\") + \"::/64\"",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-v6-tighten",
+  "guard": "another /64 has its own share",
+  "file": "relay/worker.js",
+  "old": "all.slice(0, 4).map((g) => parseInt(g, 16).toString(16)).join(\":\") + \"::/64\"",
+  "new": "all.slice(0, 3).map((g) => parseInt(g, 16).toString(16)).join(\":\") + \"::/64\"",
+  "kind": "tighten",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-v4-tighten",
+  "guard": "each IPv4 address its own share",
+  "file": "relay/worker.js",
+  "old": "if (!ip.includes(\":\")) return ip;",
+  "new": "if (!ip.includes(\":\")) return ip.split(\".\").slice(0, 3).join(\".\");",
+  "kind": "tighten",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-hmac-loosen",
+  "guard": "counted under HMAC, no IP stored",
+  "file": "relay/worker.js",
+  "old": "who = await hmac(env.GEMINI_KEY, dayKey() + network(ip))",
+  "new": "who = network(ip)",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-hmac-tighten",
+  "guard": "each network its own share",
+  "file": "relay/worker.js",
+  "old": "who = await hmac(env.GEMINI_KEY, dayKey() + network(ip))",
+  "new": "who = await hmac(env.GEMINI_KEY, dayKey())",
+  "kind": "tighten",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-model-loosen",
+  "guard": "model set by the relay",
+  "file": "relay/worker.js",
+  "old": "model: models[m], messages:",
+  "new": "model: body.model || models[m], messages:",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-maxtokens-loosen",
+  "guard": "answer length set by the relay",
+  "file": "relay/worker.js",
+  "old": "max_tokens: 4096 }",
+  "new": "max_tokens: body.max_tokens || 4096 }",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-errortext-loosen",
+  "guard": "Google's error text never forwarded",
+  "file": "relay/worker.js",
+  "old": "if (out.status !== 429) return json(502, { error: `Google AI answered with error ${out.status}. Try again in a few minutes.` });",
+  "new": "if (out.status !== 429) return json(502, { error: said });",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "esc-loosen",
+  "guard": "esc() escapes quotes",
+  "file": "frontend/utils/text.js",
+  "old": "/[&<>\"']/g",
+  "new": "/[&<>]/g",
+  "kind": "loosen",
+  "tests": [
+   "node frontend/selfcheck.js"
+  ]
+ },
+ {
+  "id": "esc-tpl-loosen",
+  "guard": "every ${} in innerHTML goes through esc()",
+  "file": "frontend/pages/limits.js",
+  "old": "`<div>${esc(col)}</div>",
+  "new": "`<div>${col}</div>",
+  "kind": "loosen",
+  "tests": [
+   "node frontend/selfcheck.js"
+  ]
+ },
+ {
+  "id": "csp-loosen",
+  "guard": "CSP: only our files + office.js",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "script-src 'self' https://appsforoffice.microsoft.com; object-src",
+  "new": "script-src 'self' 'unsafe-inline' https://appsforoffice.microsoft.com; object-src",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_api_security.py::test_safe_headers_on_every_answer"
+  ]
+ },
+ {
+  "id": "csp-tighten",
+  "guard": "CSP lets office.js in",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "script-src 'self' https://appsforoffice.microsoft.com; object-src",
+  "new": "script-src 'self'; object-src",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_api_security.py::test_safe_headers_on_every_answer"
+  ]
+ },
+ {
+  "id": "highlight-a1-loosen",
+  "guard": "kept fills: only A1 cells and #RRGGBB",
+  "file": "frontend/features/highlight.js",
+  "old": "if (A1.test(a) && (old === null || HEX.test(String(old)))) cells[a] = old;",
+  "new": "cells[a] = old;",
+  "kind": "loosen",
+  "tests": [
+   "node frontend/selfcheck.js"
+  ]
+ },
+ {
+  "id": "highlight-ours-loosen",
+  "guard": "restore only a cell still in our colour",
+  "file": "frontend/features/highlight.js",
+  "old": "fills.forEach((fill, m) => ours(fill.color) && put(fill, p.cells[part[m]]));",
+  "new": "fills.forEach((fill, m) => put(fill, p.cells[part[m]]));",
+  "kind": "loosen",
+  "tests": [
+   "node frontend/selfcheck.js",
+   "e2e"
+  ]
+ },
+ {
+  "id": "highlight-ours-tighten",
+  "guard": "Remove highlights takes ours off",
+  "file": "frontend/features/highlight.js",
+  "old": "fills.forEach((fill, m) => ours(fill.color) && put(fill, p.cells[part[m]]));",
+  "new": "fills.forEach((fill, m) => false && put(fill, p.cells[part[m]]));",
+  "kind": "tighten",
+  "tests": [
+   "node frontend/selfcheck.js",
+   "e2e"
+  ]
+ },
+ {
+  "id": "fillrow-ours-loosen",
+  "guard": "Dismiss and Accept take off only a cell still in our colour",
+  "file": "frontend/features/highlight.js",
+  "old": "      if (!on && ours(now)) put(fill, old);",
+  "new": "      if (!on) put(fill, old);",
+  "kind": "loosen",
+  "tests": [
+   "node frontend/selfcheck.js",
+   "e2e"
+  ]
+ },
+ {
+  "id": "fillrow-ours-tighten",
+  "guard": "Undo puts our colour back on the row",
+  "file": "frontend/features/highlight.js",
+  "old": "      if (on && (ours(now) || now === String(old ?? \"#FFFFFF\").toUpperCase())) fill.color = color;",
+  "new": "      if (on && ours(now)) fill.color = color;",
+  "kind": "tighten",
+  "tests": [
+   "node frontend/selfcheck.js",
+   "e2e"
+  ]
+ },
+ {
+  "id": "fillrow-undo-loosen",
+  "guard": "Undo never paints over a colour the user put on since",
+  "file": "frontend/features/highlight.js",
+  "old": "      if (on && (ours(now) || now === String(old ?? \"#FFFFFF\").toUpperCase())) fill.color = color;",
+  "new": "      if (on) fill.color = color;",
+  "kind": "loosen",
+  "tests": [
+   "node frontend/selfcheck.js",
+   "e2e"
+  ]
+ },
+ {
+  "id": "autofix-default-loosen",
+  "guard": "nothing written without Accept (auto-fix off by default)",
+  "file": "frontend/features/autofix.js",
+  "old": "return localStorage.getItem(AUTO_KEY) === \"1\";",
+  "new": "return localStorage.getItem(AUTO_KEY) !== \"0\";",
+  "kind": "loosen",
+  "tests": [
+   "node frontend/selfcheck.js",
+   "e2e"
+  ]
+ },
+ {
+  "id": "uninstall-order-loosen",
+  "guard": "uninstall: message first, then the self-delete timer (AH-150)",
+  "file": "backend/anomaly_hunter/app.py",
+  "old": "        say(\"Arcas is uninstalled.\")\n        subprocess.Popen(f'\"{WIN / \"cmd.exe\"}\" /d /s /c \"\"{WIN / \"PING.EXE\"}\" -n 4 127.0.0.1 >nul & del /f /q \"{me}\" & '  # noqa: S603\n                         f'rmdir \"{server.HOME}\"\"', creationflags=QUIET | 0x00000008)\n",
+  "new": "        subprocess.Popen(f'\"{WIN / \"cmd.exe\"}\" /d /s /c \"\"{WIN / \"PING.EXE\"}\" -n 4 127.0.0.1 >nul & del /f /q \"{me}\" & '  # noqa: S603\n                         f'rmdir \"{server.HOME}\"\"', creationflags=QUIET | 0x00000008)\n        say(\"Arcas is uninstalled.\")\n",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_product_name.py"
+  ]
+ },
+ {
+  "id": "uninstall-self-loosen",
+  "guard": "uninstall never deletes its own running file in the loop",
+  "file": "backend/anomaly_hunter/app.py",
+  "old": "        elif p.resolve() != me:\n",
+  "new": "        else:\n",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_product_name.py::test_uninstall_empties_its_folder_but_leaves_its_own_running_file_to_the_delete_timer"
+  ]
+ },
+ {
+  "id": "excel-exe-loosen",
+  "guard": "Excel started only by a real App Paths exe",
+  "file": "backend/anomaly_hunter/app.py",
+  "old": "if path.name.lower() == \"excel.exe\" and path.exists():",
+  "new": "if path.name.lower() == \"excel.exe\":",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_practice.py::test_the_installer_finds_desktop_excel_or_says_none"
+  ]
+ },
+ {
+  "id": "excel-exe-tighten",
+  "guard": "Excel found when it is there",
+  "file": "backend/anomaly_hunter/app.py",
+  "old": "if path.name.lower() == \"excel.exe\" and path.exists():",
+  "new": "if path.name == \"excel.exe\" and path.exists():",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_practice.py::test_the_installer_finds_desktop_excel_or_says_none"
+  ]
+ },
+ {
+  "id": "confirm-loosen",
+  "guard": "a breach the row's own arithmetic confirms: no vote, no likely",
+  "file": "backend/anomaly_hunter/engine/detectors.py",
+  "old": "and not in_tail(v) and (rule := ruled(i)) is not None:",
+  "new": "and not in_tail(v) and (rule := ruled(i)) is not None and False:",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_row_arithmetic_confirms.py"
+  ]
+ },
+ {
+  "id": "confirm-tighten",
+  "guard": "only the rows where the rule holds are confirmed",
+  "file": "backend/anomaly_hunter/engine/pipeline.py",
+  "old": "    m[np.asarray(at, dtype=int)] = True\n",
+  "new": "    m[:] = True\n",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_row_arithmetic_confirms.py::test_only_the_rows_where_the_rule_holds_are_confirmed",
+   "backend/tests/test_likely_guesses.py"
+  ]
+ },
+ {
+  "id": "confirm-tighten2",
+  "guard": "a breach no rule confirms still votes",
+  "file": "backend/anomaly_hunter/engine/detectors.py",
+  "old": "and not in_tail(v) and (rule := ruled(i)) is not None:",
+  "new": "and not in_tail(v) and (rule := ruled(i) or \"a rule\") is not None:",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_row_arithmetic_confirms.py",
+   "backend/tests/test_likely_guesses.py"
+  ]
+ }
+]

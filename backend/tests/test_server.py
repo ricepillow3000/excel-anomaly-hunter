@@ -1,7 +1,9 @@
 import ipaddress
 import re
 import socket
+import ssl
 import threading
+import time
 from pathlib import Path
 
 import numpy as np
@@ -9,7 +11,7 @@ import pytest
 from cryptography import x509
 from cryptography.x509 import DNSName, IPAddress
 from cryptography.x509.verification import PolicyBuilder, Store, VerificationError
-from werkzeug.serving import make_server
+from werkzeug.serving import WSGIRequestHandler, make_server
 
 from anomaly_hunter.server import BROKE, _already_running, create_app, make_cert, tls_context, version
 
@@ -64,10 +66,68 @@ def test_one_silent_connection_does_not_freeze_the_engine(tmp_path):
         srv.shutdown()
 
 
+def handshake(port, folder, lowest, highest):
+    """The TLS version a client offering only lowest..highest agrees with the engine, or None when refused. The client
+    allows the old ciphers (SECLEVEL 0), so a refusal of TLS 1.1 is the engine's, not this test's OpenSSL."""
+    ctx = ssl.create_default_context(cafile=str(folder / "ca.pem"))
+    ctx.minimum_version, ctx.maximum_version = lowest, highest
+    ctx.set_ciphers("DEFAULT:@SECLEVEL=0")
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as raw, ctx.wrap_socket(raw, server_hostname="127.0.0.1") as s:
+            return s.version()
+    except (ssl.SSLError, OSError):
+        return None
+
+
+@pytest.mark.filterwarnings("ignore:ssl.TLSVersion.TLSv1:DeprecationWarning")
+def test_the_engine_speaks_tls_1_2_and_1_3_and_never_anything_older(tmp_path):
+    # AH-155: "TLS 1.2+" rested on Python's default for PROTOCOL_TLS_SERVER (1.2 since 3.10) and the system's OpenSSL
+    # policy; nothing in the engine said it, and no test offered an older version
+    assert tls_context(*_cert(tmp_path)).minimum_version == ssl.TLSVersion.TLSv1_2
+    srv = live_engine(tmp_path)
+    try:
+        v = ssl.TLSVersion
+        assert handshake(srv.server_port, tmp_path, v.TLSv1_2, v.TLSv1_2) == "TLSv1.2"
+        assert handshake(srv.server_port, tmp_path, v.TLSv1_3, v.TLSv1_3) == "TLSv1.3"
+        assert handshake(srv.server_port, tmp_path, v.TLSv1, v.TLSv1_1) is None
+    finally:
+        srv.shutdown()
+
+
+def test_a_connection_that_goes_quiet_is_dropped_and_never_holds_a_thread(tmp_path, monkeypatch):
+    # AH-155: the 60 s idle limit was held by no test. It is the engine's setting, and it reaches the lazy handshake
+    # (the timeout is shortened here, so the test takes 1 s, not 60)
+    assert WSGIRequestHandler.timeout == 60
+    monkeypatch.setattr(WSGIRequestHandler, "timeout", 1)
+    srv = live_engine(tmp_path)
+    try:
+        with socket.create_connection(("127.0.0.1", srv.server_port), timeout=10) as quiet:
+            started = time.monotonic()
+            try:
+                assert quiet.recv(1) == b""  # the engine hung up
+            except ConnectionResetError:
+                pass
+            assert time.monotonic() - started < 5
+    finally:
+        srv.shutdown()
+
+
+def _cert(folder):
+    make_cert(folder)
+    return folder / "cert.pem", folder / "key.pem"
+
+
 def test_other_websites_cannot_drive_engine():
     c = client()
     assert c.get("/health", headers={"Origin": "https://evil.example"}).status_code == 403
     assert c.get("/health", headers={"Host": "evil.example:5055"}).status_code == 403  # DNS rebinding
+    assert c.get("/health", headers={"Origin": "https://127.0.0.1:5055"}).status_code == 200
+
+
+def test_the_pane_is_let_in_only_from_the_address_its_manifest_loads_it_from():
+    # AH-155: https://localhost:5055 was allowed, but the manifest, the pane and the install use only 127.0.0.1
+    c = client()
+    assert c.get("/health", headers={"Origin": "https://localhost:5055"}).status_code == 403
     assert c.get("/health", headers={"Origin": "https://127.0.0.1:5055"}).status_code == 200
 
 

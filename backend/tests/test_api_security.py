@@ -194,6 +194,23 @@ def test_a_huge_body_is_refused_before_it_is_read():
     assert create_app().config["MAX_CONTENT_LENGTH"] == 256 * 1024 * 1024  # a 20 MB real sheet still fits
 
 
+def test_a_body_right_at_the_size_cap_is_read_one_byte_over_it_is_refused_and_a_20_mb_sheet_fits():
+    # AH-155: only the constant was pinned, and only a body far past a lowered cap was sent
+    app = create_app()
+    app.config["MAX_CONTENT_LENGTH"] = 1000
+    at = lambda n: app.test_client().post("/scan", data=b" " * n, content_type="application/json").status_code
+    assert at(1000) == 400 and at(1001) == 413  # read (and not JSON), then refused unread
+    # the real cap: a body the size of a 2M-cell sheet (~20 MB measured) is read, never a 413
+    r = APP.test_client().post("/scan", data=b" " * 20_000_000, content_type="application/json")
+    assert r.status_code == 400 and "columns" in r.get_json()["error"]
+
+
+def test_a_scan_of_exactly_the_most_cells_the_pane_sends_is_taken(monkeypatch):
+    # AH-155: the cap was tested only one past it, so ">=" for ">" refused the pane's largest scan with every test green
+    monkeypatch.setattr(server, "MAX_CELLS", 10)
+    assert APP.test_client().post("/scan", json={"columns": ["a"], "rows": [[k] for k in range(10)]}).status_code == 200
+
+
 def test_more_cells_than_the_pane_ever_sends_is_a_clear_400(monkeypatch):
     monkeypatch.setattr(server, "MAX_CELLS", 10)
     r = APP.test_client().post("/scan", json={"columns": ["a"], "rows": [[k] for k in range(11)]})
@@ -456,6 +473,17 @@ def test_the_engines_data_folder_is_open_only_to_its_owner(monkeypatch, tmp_path
             home.chmod(0o755)
     finally:
         os.umask(old)
+
+
+def test_a_secret_file_is_born_readable_only_by_its_owner_never_open_for_a_moment(monkeypatch, tmp_path):
+    # AH-155: the fchmod after the create hid a create mode of 0644, so the end state above was the same while the key
+    # sat readable by every account from its creation to that fchmod
+    import os
+    from anomaly_hunter import sealed
+    modes, real = [], os.open
+    monkeypatch.setattr(os, "open", lambda path, flags, mode=0o777: modes.append(mode) or real(path, flags, mode))
+    sealed.write_private(tmp_path / "gemini-key.txt", "AIzaMadeUpTestKey789")  # gitleaks:allow - made-up
+    assert modes == [0o600]
 
 
 def _fake_dpapi(monkeypatch):
