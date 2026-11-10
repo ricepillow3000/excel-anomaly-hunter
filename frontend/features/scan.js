@@ -78,9 +78,13 @@ async function scan(auto, held, t0) {
   const secs = Math.max(1, Math.round((Date.now() - t0) / 1000));
   notice(`Done in ${secs} second${secs === 1 ? "" : "s"}.` + (body.power_bi_saved === false
     ? " The Power BI copy couldn't be saved (is latest-scan.csv open in another program?). Details are in server.log." : ""));
-  // a checked workbook reopens with this pane open (Office autoopen; manifest TaskpaneId)
-  Office.context.document.settings.set("Office.AutoShowTaskpaneWithDocument", true);
-  Office.context.document.settings.saveAsync();
+  // a checked workbook reopens with this pane open (Office autoopen; manifest TaskpaneId). Set once: written on every
+  // scan it made Excel ask to save a workbook nothing had changed, and opened the pane for everyone it went to (AH-150)
+  const settings = Office.context.document.settings;
+  if (!settings.get("Office.AutoShowTaskpaneWithDocument")) {
+    settings.set("Office.AutoShowTaskpaneWithDocument", true);
+    settings.saveAsync();
+  }
   if (auto !== false && autoOn()) { // step 3: exact slips fixed, then the sheet checked again so the list is current
     busy("Fixing exact mistakes…");
     const fixed = await autoFix();
