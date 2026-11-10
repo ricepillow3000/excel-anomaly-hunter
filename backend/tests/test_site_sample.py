@@ -271,7 +271,7 @@ def test_every_finding_on_the_website_says_what_the_pane_says_and_offers_its_fix
         fix = why.all("b")
         short = why.text().split(" · Fix:")[0]
         # the short summary in the Finding column is literally true: the pane's own words, or the rule it breaks
-        if short == "Total ≠ Units × UnitCost":
+        if short == "Total doesn't equal Units × UnitCost":
             assert round(row[2] * row[3], 2) != row[4] and f"Total {js(row[4])} does not add up: Units × UnitCost = " in r["reason"]
         else:
             assert short in said, f"row {n}: '{short}' is not what the pane says: '{said}'"

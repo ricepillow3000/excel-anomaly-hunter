@@ -587,6 +587,21 @@ function woff2(file) {
   const said = [...home.matchAll(/<dt>Checks?<\/dt><dd>([^<]*)<\/dd>/g)].map((m) => m[1]);
   assert.deepEqual(said, ["Totals that don't add up, typing slips", "Totals that don't add up, typing slips, odd jumps over time", "Same word, typed two ways", ...Array(4).fill("Odd jumps over time")], "the detail boxes' checks are not the filters' plain names");
 }
+// ---- AH-148 fix round 1, a blind design review: the sample's caption read like a note to a developer, a "≠" asked a
+// reader to know the sign, "John's relay" named neither John nor a relay to a stranger, and the questions looked like
+// a data table (a "Question / Answer" bar, an "Open" box on each row, an empty answer column) ----
+{
+  const home = html["index.html"], words = (s) => s.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+  const cap = words((/<figcaption class="ws-foot" id="ws-cap">([\s\S]*?)<\/figcaption>/.exec(home) || ["", ""])[1]);
+  assert.ok(cap.split(/[.:;] /).length <= 3 && cap.split(". ").length <= 2 && !/test|source/.test(cap), `the sample's caption is not two short plain sentences: "${cap}"`);
+  for (const fact of ["engine's own", "level 5 of 10", "recommended", "Click a flagged row", "the row's own numbers", "the column's usual spelling"]) assert.ok(cap.includes(fact), `the sample's caption no longer says "${fact}"`);
+  for (const p of PAGES) assert.ok(!html[p].includes("≠"), `${p}: a "≠" a reader must know the sign to read`);
+  assert.ok(!/John's relay/.test(home) && (home.match(/Arcas's own small server on Cloudflare, run by John, its maker/g) || []).length === 3, "the home page says \"John's relay\" where a stranger reads it");
+  for (const p of ["index.html", "support.html"]) assert.ok(!/faq-head/.test(html[p]), `${p}: the questions still have a "Question / Answer" bar`);
+  assert.ok(!/faq-head/.test(css), "styles.css: the questions' header bar is still styled");
+  const after = [...css.matchAll(/([^{}]*\.faq[^{}]*summary::after[^{}]*)\{([^}]*)\}/g)];
+  assert.ok(after.length && after.every((m) => !/content:\s*"[^"]/.test(m[2])), "styles.css: a question's marker is a word (Open, Close), not a chevron");
+}
 console.log(`website static check passed (${PAGES.length} pages, ${SCRIPTS.length} scripts)`);
 if (!process.argv.includes("--browser")) process.exit(0);
 
@@ -2676,7 +2691,7 @@ for (const file of PAGES.filter((f) => /<header[\s\S]*aria-current="page"[\s\S]*
   for (const width of [390, 1440]) {
     const t = await open("index.html", { width, height: 844, motion: "reduce" });
     const r = await t.page.evaluate(() => { const e = document.querySelector(".swipe"); return e ? { text: e.textContent.trim(), shown: e.getClientRects().length > 0, display: getComputedStyle(e).display } : null; });
-    want(r && r.text === "Swipe the table sideways to see each finding." && (width <= 760 ? r.shown : r.display === "none"), `R9 the swipe hint at ${width} px: ${JSON.stringify(r)}`);
+    want(r && r.text === "Swipe the table sideways to see the flagged cells." && (width <= 760 ? r.shown : r.display === "none"), `R9 the swipe hint at ${width} px: ${JSON.stringify(r)}`);
     await done(t, `R9 swipe hint at ${width}px`, [API]);
   }
   // 10. a short page fills the screen to its footer; the home page keeps its height. thanks.html is 1,136 px tall at
@@ -3209,6 +3224,52 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
   }
   assert.deepEqual(miss, [], `AH-148:\n${miss.join("\n")}`);
   console.log("AH-148: kerning, tabular figures, trimmed labels, code at the x-height; no shift when the font arrives; 44 px targets on a phone; lines of 75 letters at most; the whole row answers the pointer; Copy at the press; a menu and a box cut short go on from where they are; Row 22 and its link share one mark; figures count to their values");
+}
+// ---- AH-148 fix round 1, a blind design review, as drawn: the case studies' cards ended 476, 446 and 561 px down; the
+// questions were a table with an "Open" box a row and an empty column beside a taller form; on a 390 px phone the
+// sample's Finding sat past the screen's edge, a swipe away ----
+{
+  const miss = [];
+  const want = (ok, what) => { if (!ok) miss.push(what); };
+  {
+    const t = await open("index.html", { width: 1440, height: 900, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate(() => document.fonts.ready);
+    const bottoms = await p.$$eval(".cases .case", (cs) => cs.map((c) => Math.round(c.getBoundingClientRect().bottom * 10) / 10));
+    want(bottoms.length === 3 && Math.max(...bottoms) - Math.min(...bottoms) <= 1, `the case studies' cards end at ${bottoms} px, not on one line`);
+    // the questions: each a full-width row whose marker is a drawn chevron (no word) that turns as it opens, its answer
+    // under it
+    const q = await p.evaluate(() => {
+      const d = document.querySelector("#faq details"), s = d.querySelector("summary"), faq = d.closest(".faq"), mark = () => getComputedStyle(s, "::after");
+      const shut = [mark().content, mark().transform];
+      d.open = true;
+      return { shut, open: mark().transform, wide: Math.round(s.getBoundingClientRect().width - faq.clientWidth), below: d.querySelector(".a").getBoundingClientRect().top >= s.getBoundingClientRect().bottom - 1,
+        head: !!faq.querySelector(".faq-head"), height: s.getBoundingClientRect().height };
+    });
+    want(q.shut[0] === '""' && q.shut[1] !== "none" && q.open !== q.shut[1] && q.wide === 0 && q.below && !q.head && q.height >= 44, `a question is not a full-width row with a chevron that turns: ${JSON.stringify(q)}`);
+    // ... and the form, twice their height, no longer stands beside an empty column: it starts at the section's top, and
+    // with every question shut the space under them beside it is under a third of its height (404 of 758 px before)
+    await p.evaluate(() => document.querySelectorAll("#faq details").forEach((d) => { d.open = false; }));
+    const at = await p.evaluate(() => { const f = document.querySelector("#faq .faq").getBoundingClientRect(), c = document.getElementById("contact").getBoundingClientRect(), h = document.getElementById("faq-title").getBoundingClientRect();
+      return { under: Math.round(c.bottom - f.bottom), form: Math.round(c.height), top: Math.round(c.top - h.top) }; });
+    want(at.under < at.form / 3 && Math.abs(at.top) <= 24, `an empty column stands beside the form: ${JSON.stringify(at)}`);
+    await done(t, "AH-148 fix round 1 at 1440", [API]);
+  }
+  // row 11's Finding on a 390 px phone: its words inside the screen and inside the table's scrolling box, no swipe
+  {
+    const t = await open("index.html", { width: 390, height: 844, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate(() => document.fonts.ready);
+    await p.evaluate(() => scrollTo(0, document.getElementById("r11").getBoundingClientRect().top + scrollY - 300));
+    const r = await p.evaluate(() => { const td = document.querySelector("#r11 td.why"), rg = document.createRange(), box = td.closest(".scroll").getBoundingClientRect();
+      rg.selectNodeContents(td); const w = rg.getBoundingClientRect(), at = document.elementFromPoint(w.left + 2, w.top + w.height / 2);
+      return { text: td.textContent.trim(), words: [w.left, w.right, w.top, w.bottom].map(Math.round), box: [box.left, box.right].map(Math.round), screen: [innerWidth, innerHeight], seen: !!at && td.contains(at) }; });
+    want(r.words[0] >= 0 && r.words[1] <= r.screen[0] && r.words[2] >= 0 && r.words[3] <= r.screen[1] && r.words[0] >= r.box[0] && r.words[1] <= r.box[1] && r.seen,
+      `row 11's Finding at 390 px is off screen or under another cell: ${JSON.stringify(r)}`);
+    await done(t, "AH-148 fix round 1 at 390", [API]);
+  }
+  assert.deepEqual(miss, [], `AH-148 fix round 1:\n${miss.join("\n")}`);
+  console.log("AH-148 fix round 1: the case cards end on one line; each question a full-width row with a turning chevron, the form beside the heading; row 11's Finding on a 390 px phone's screen");
 }
 await browser.close();
 server.close();

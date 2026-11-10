@@ -380,10 +380,13 @@
       // under its row, or above it where it would pass the findings' bottom: under them, rows 22 to 57 covered the
       // caption and "See every check", whose clicks then did nothing (AH-132). Taller than the room on either side (a
       // narrow phone), it sits on the findings' bottom
+      // The box is placed in .ws-main, which on a phone holds the swipe hint above the findings: measured from the
+      // findings, every box there sat the hint's height (31 px) too high, and row 22's rose past the findings once the
+      // pinned Finding made its rows taller (AH-148 fix round 1)
       const row = btn.closest("tr").getBoundingClientRect(), sheet = main.getBoundingClientRect();
       box.hidden = false;
-      const h = box.offsetHeight, under = row.bottom - sheet.top, over = row.top - sheet.top - h;
-      box.style.top = (under + h <= sheet.height ? under : over >= 0 ? over : Math.max(0, sheet.height - h)) + "px";
+      const h = box.offsetHeight, under = row.bottom - sheet.top, over = row.top - sheet.top - h, shift = sheet.top - box.offsetParent.getBoundingClientRect().top;
+      box.style.top = shift + (under + h <= sheet.height ? under : over >= 0 ? over : Math.max(0, sheet.height - h)) + "px";
       btn.setAttribute("aria-expanded", "true");
       const b = btn.getBoundingClientRect(), r = box.getBoundingClientRect(), px = (v) => Math.round(v * 10) / 10 + "px";
       const origin = px(b.left + b.width / 2 - r.left) + " " + px(b.top + b.height / 2 - r.top);

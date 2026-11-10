@@ -519,21 +519,30 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
 /* support: the answers over seven columns, the form over five */
 .support { padding-block: 0 var(--s8); }
 .faq { grid-column: 1 / span 7; min-width: 0; border: 1px solid var(--ink); background: var(--grain), var(--grid), var(--paper-2); }
-.faq .faq-head { display: grid; grid-template-columns: minmax(0, 1fr) 80px; padding: 14px var(--s3); background: var(--ink); }
-.faq .faq-head span { font: 700 var(--fs--1)/1 var(--sans); color: var(--paper); }
-.faq .faq-head span:last-child { text-align: right; }
+/* a plain list of questions (AH-148 fix round 1: a "Question / Answer" bar, an "Open" box on each row and an empty
+   answer column read as a data table): each question a full-width row, a chevron that turns when it opens, the answer
+   under it */
 .faq details { border-bottom: 1px solid var(--rule); }
 .faq details:last-child { border-bottom: 0; }
-.faq summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: minmax(0, 1fr) 80px; gap: var(--s2); align-items: center; padding: 16px var(--s3); font-weight: 700; color: var(--ink); }
+.faq summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: var(--s2); min-height: 44px; padding: 16px var(--s3); font-weight: 700; color: var(--ink); }
 .faq summary::-webkit-details-marker { display: none; }
-.faq summary::after { content: "Open"; justify-self: end; font: 700 var(--fs--1)/1 var(--sans); color: var(--ink); padding: 7px 9px; border: 1px solid var(--ink); }
-.faq summary:hover::after { background: var(--ink); color: var(--paper); }
-.faq details[open] summary::after { content: "Close"; background: var(--ink); color: var(--paper); }
-.faq details[open] summary { border-bottom: 1px solid var(--rule); }
-.faq .a { padding: var(--s2) var(--s3) var(--s3); color: var(--ink-2); font-size: var(--fs-0); }
+.faq summary:hover { background: var(--paper); }
+.faq summary::after { content: ""; flex: none; width: 8px; height: 8px; margin: 0 4px 4px 0; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.faq details[open] > summary::after { transform: translateY(3px) rotate(-135deg); }
+.faq .a { padding: 0 var(--s3) var(--s3); color: var(--ink-2); font-size: var(--fs-0); }
 .faq .a p { margin: 0 0 8px; }
 .faq .a ol { margin: 0 0 8px; padding-left: 1.4em; }
 .faq .a b { color: var(--ink); }
+@media (prefers-reduced-motion: no-preference) { .faq summary::after { transition: transform var(--pop-in) var(--ease-out); } }
+/* the home page's form is twice as tall as its five questions, and stood beside them alone with a column of nothing
+   under them (AH-148 fix round 1): on a wide screen the form starts at the section's top, beside the heading and the
+   lede, which take the questions' seven columns. The room the form leaves stays under the questions (pushed down to the
+   form's foot, a question opening would grow upward and move the one just pressed) */
+@media (min-width: 1101px) {
+  #faq > .cols { grid-template-rows: auto auto 1fr; }
+  #faq :is(.sec-title, .sec-lede) { grid-column: 1 / span 7; }
+  #faq .form-card { grid-row: 1 / span 3; margin-top: 0; }
+}
 .form-card { grid-column: 8 / -1; min-width: 0; border: 1px solid var(--ink); background: var(--grain), var(--grid), var(--paper-2); }
 .form-card h2 { font-size: var(--fs-2); padding: 18px var(--s3); background: var(--paper); border-bottom: 1px solid var(--ink); letter-spacing: normal; line-height: 1.1; }
 .form-card form { display: grid; gap: 20px; padding: var(--s3); }
@@ -574,8 +583,10 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
 .proof > div:nth-child(4) .rule { --col: 3; }
 .proof > div:nth-child(5) .rule { --col: 4; }
 /* three public tables, scanned (AH-133): a card each, the pane's words quoted row by row, the source credited */
-.cases { grid-column: 1 / -1; margin-top: var(--s6); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gutter); align-items: start; }
-.case { display: grid; gap: 12px; padding: var(--s3); border: 1px solid var(--ink); background: var(--grain), var(--paper-2); font-size: var(--fs--1); color: var(--ink-2); }
+/* the cards of a row one height, their credits on one line at the bottom (AH-148 fix round 1: their bottoms were 476, 446
+   and 561 px down) */
+.cases { grid-column: 1 / -1; margin-top: var(--s6); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gutter); }
+.case { display: grid; grid-template-rows: auto auto auto 1fr auto; gap: 12px; padding: var(--s3); border: 1px solid var(--ink); background: var(--grain), var(--paper-2); font-size: var(--fs--1); color: var(--ink-2); }
 .case h3 { font-size: var(--fs-1); line-height: 1.2; }
 .case-scope { color: var(--muted); }
 .case-said { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
@@ -809,6 +820,17 @@ html[data-moving] #field { z-index: 2; }
   .tabs button:first-child { padding-left: 0; }
   .ws-body { grid-template-columns: minmax(0, 1fr); }
   .swipe { display: block; padding: 10px var(--s2) 0; font-size: var(--fs--1); color: var(--ink-2); }
+  /* the Finding column stays on screen, pinned to the table's right edge on a solid fill, its words wrapped, while the
+     values swipe under it (AH-148 fix round 1: at 390 px the point of the sample needed a swipe to see) */
+  /* separate borders (each cell draws only its bottom and right, so the look is the same): a collapsed border is the
+     table's to paint, and the wine of a flagged cell showed through the pinned cell's top edge */
+  table.grid { border-collapse: separate; border-spacing: 0; }
+  .grid td.why, .grid thead th:last-child { position: sticky; right: 0; z-index: 1; box-shadow: inset 1px 0 0 var(--ink); }
+  .grid td.why { width: min(12rem, 50vw); white-space: normal; background: var(--paper-2); }
+  .grid td.why .nb { white-space: nowrap; } /* a date stays whole: "2026-" over "01-09" read as two numbers */
+  /* the wrapped Finding makes the last row taller, and its hovered cell's lift (1.13, 3 px up) passed the scrolling box's
+     bottom, where the box clips it */
+  .scroll { padding-bottom: 8px; }
   /* two columns of filters, or one when the text is so large (200%, AH-112) that two 8rem columns don't fit */
   .typology { grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr)); border-right: 0; border-bottom: 1px solid var(--ink); }
   .typology .label, .typology .key { grid-column: 1 / -1; }

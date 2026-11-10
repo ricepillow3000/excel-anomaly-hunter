@@ -518,3 +518,12 @@ Alive, and still plain to read:
   its checks as the filters do. Two phrases stay because a test holds them as the engine's own: "a cycle of 7, 12, 24, 52
   or 168 rows" (`detectors.CYCLES`) and "Gender: rows flagged even across groups (2.0% to 3.0%, within normal variation)"
   (the fairness report's sentence), both in `test_site_sample.py`.
+
+### Fix round 1 (a blind design review, 2026-11-10)
+
+- **A question's chevron turns** when it opens: the summary's `::after`, two 2 px edges of an 8 px square, rotated from
+  45 to -135 degrees (pointing down, then up) over `--pop-in` on `--ease-out`, `transform` only; under reduced motion it
+  jumps. The "Question / Answer" bar and the "Open" box are gone, on the home and the support page alike.
+- Nothing else moves: the case studies' cards stretch to one height in CSS, the home page's form starts beside the
+  section's heading on a wide screen, and on a phone the sample's Finding column is pinned to the table's right edge
+  (`position: sticky`), the values sliding under it as the table is swiped.
