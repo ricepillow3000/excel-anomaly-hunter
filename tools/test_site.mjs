@@ -473,7 +473,7 @@ for (const f of SCRIPTS) {
   // the home page's questions: how to tell which Excel you have, and what leaves the PC, in plain words
   const faq = sections["faq"] || "";
   assert.ok(text(faq).includes("To check, open Excel and click File > Account. If it says Microsoft 365 under Product information, you have the right Excel. Click About Excel: the first line ends with 64-bit or 32-bit."), "the FAQ does not say how to check which Excel you have");
-  assert.ok(text(faq).includes("No, not when it checks your sheet. Arcas does all its checking on your own computer and sends nothing. Part of your sheet leaves your computer only if you set up AI help and click Ask AI or Check words with AI. Then it goes to Google, through John's own server first if John gave you an invite code. The privacy page lists exactly what goes."), "the FAQ's data answer");
+  assert.ok(text(faq).includes("No, not when it checks your sheet. Arcas does all its checking on your own computer and sends nothing. Part of your sheet leaves your computer only when you click Ask AI or Check words with AI. Then it goes to Google, through John's own server first unless you saved your own Google key. The privacy page lists exactly what goes."), "the FAQ's data answer");
   // a phone can't install it: said under the hero's download, on narrow screens only
   assert.ok(/<div class="hero-cta">[\s\S]*?<\/div>\s*<p class="phone-only">Arcas runs on a Windows computer\. Open this page on that computer to download it\.<\/p>/.test(home), "no phone line under the hero's download");
   assert.ok(/\.phone-only\s*\{\s*display:\s*none;?\s*\}/.test(css) && /@media \(max-width: 760px\)[\s\S]*\.phone-only\s*\{\s*display:\s*block;?\s*\}/.test(css), "the phone line is not shown on narrow screens only");
