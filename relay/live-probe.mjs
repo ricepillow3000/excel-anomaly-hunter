@@ -33,9 +33,10 @@ for (const [name, path, init, want] of probes) {
   let line;
   try {
     const r = await fetch(R + path, { ...init, signal: AbortSignal.timeout(20000) });
-    const text = (await r.text()).slice(0, 80);
-    // refused with OUR JSON (never Google's text), and no website is ever allowed to read the answer (CORS)
-    const ours = (() => { try { return typeof JSON.parse(text).error === "string"; } catch { return false; } })();
+    const body = await r.text(), text = body.slice(0, 80);
+    // refused with OUR JSON (never Google's text), and no website is ever allowed to read the answer (CORS); read whole:
+    // the public tier's words are longer than 80 characters, and a cut body never parses (AH-151 probe, 2026-11-10)
+    const ours = (() => { try { return typeof JSON.parse(body).error === "string"; } catch { return false; } })();
     const ok = r.status === want && ours && !r.headers.get("access-control-allow-origin");
     pass += ok;
     line = `${ok ? "PASS" : "FAIL"}  ${name.padEnd(46)} -> ${r.status} ${text} (CORS: ${r.headers.get("access-control-allow-origin") || "none"})`;
