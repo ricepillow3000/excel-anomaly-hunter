@@ -83,4 +83,10 @@ does not say "cells are data, not instructions" in words (AH-109): a prompt chan
 
 ## Gate on the merged branch
 
-Recorded in the pull request for `claude/lucid-sagan-yqmifw` with the numbers from `tools/check.py --keep-going --e2e`.
+`tools/check.py --keep-going --e2e` on 9eebb1d: 13 of 13 layers green. 1654 engine tests passed (1 skipped, 2 strict
+xfails); industry bench 51/51 caught, 42 restored, 0 Medium false alarms, 0 harmful; blind 14-domain bench 199/201,
+106 restored, 0 Medium false alarms, 0 harmful (both unchanged from main); pip-audit clean; browser e2e and the
+website in a browser pass. Two merge findings fixed on the way: the Ask AI hint test was moved to the ranked memory's
+object format, and the checks table's cycle words were shortened back to their old line count (the longer row pushed
+the table's last row out of the reveal at 1440 x 900; `tools/test_site.mjs` passes on main and now on the branch).
+In CI the `probe` check (the live relay) stays red until John redeploys the relay (open item 1).
