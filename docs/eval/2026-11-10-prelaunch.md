@@ -73,7 +73,10 @@ does not say "cells are data, not instructions" in words (AH-109): a prompt chan
    (W-L >= 0) with no rise in invented answers. First run (2026-11-10, John's own key, gemini-3.5-flash-lite, 1 run,
    `ai_eval.py --split both --arms base,memory_ranked`): dev right 93 vs 90 of 134, W3 L0 (bar 3.5, missed by a
    hair); held-out right 71 vs 71 of 103, W2 L2 (passes); invented after the checks dev 21 vs 23, held-out 13 vs 9
-   (a rise). Not passed: it stays off. Runs 2 and 3 go through the daily 09:17 UTC test, which reports when done.
+   (a rise). Not passed: it stays off. All 3 runs on dev (2026-11-10, same key and model): right 94 (base) vs 93
+   (memory_ranked) of 134, paired W1 L2 against a bar of 3.5; invented after the checks 49 vs 53 a run on dev and
+   17 vs 25 on the held-out cases measured (runs 2 and 3 of held-out stopped at 66 of 103; dev alone already decides).
+   Final: the ranked memory does not help this model and stays off; the daily test that waited for it is stopped.
    Injection obeyed: 0 in both arms.
 5. **Data fatigue, not built:** no "dismiss all like this" and no way to ignore a column; a Dismiss is lost when its
    row is edited (by design: an edit is a new row). Design work for Pod 1.
