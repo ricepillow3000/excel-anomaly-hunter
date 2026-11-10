@@ -3395,7 +3395,8 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
     want(JSON.stringify(seen.clean.cols) === JSON.stringify(seen.found.cols), `7 the sheet's columns change between Findings and After fixes at ${width} px: ${JSON.stringify(seen)}`);
     // ... and on a wide screen the verdict and its note, in the filters' column, lie under the key, never over it
     await p.click("#t-clean");
-    const sum = await p.evaluate(() => { const k = document.querySelector(".typology .key").getBoundingClientRect(), c = document.querySelector(".clean-sum").getBoundingClientRect(), n = document.querySelector(".typology").getBoundingClientRect();
+    const sum = await p.evaluate(() => { const k = document.querySelector(".typology .key").getBoundingClientRect(), s = document.querySelector(".clean-sum"), n = document.querySelector(".typology").getBoundingClientRect();
+      const c = s ? s.getBoundingClientRect() : { top: -1, left: -1, right: -1, bottom: 1e9 };
       return { key: k.bottom, top: c.top, inside: c.left >= n.left - 0.5 && c.right <= n.right + 0.5 && c.bottom <= n.bottom + 0.5, wide: innerWidth > 1100 }; });
     if (sum.wide) want(sum.top >= sum.key && sum.inside, `7 the verdict and its note at ${width} px lie over the key or outside the filters' column: ${JSON.stringify(sum)}`);
     await done(t, `AH-148 fix round 2 tabs at ${width}`, [API]);
