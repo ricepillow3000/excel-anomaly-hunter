@@ -34,3 +34,10 @@ DAILY_TOTAL = "20"      # for everyone together: John's project, gemini-3.8-flas
 # AH-145: the model, then backups tried at once when its day is used up or it is overloaded (each has its own free
 # quota; each backup call counts against DAILY_TOTAL). Backups only with backend/bench/ai_eval.py --model numbers
 MODELS = "gemini-3.8-flash"
+# AH-151: the public tier (a request with no invite code), so every user has AI help with no key. Its own model and
+# caps, counted apart from the invites': Google's free tier gives gemini-3.5-flash-lite about 500 requests a day per
+# project (gemini-3.8-flash about 20), and 400 leaves room for the invites' backup calls. A network is counted under
+# a keyed hash of the day and its IP, never the IP. PUBLIC_DAILY_TOTAL = "0" switches the public tier off
+PUBLIC_DAILY_PER_NETWORK = "15" # AI calls per network (one IP address) per day
+PUBLIC_DAILY_TOTAL = "400"      # for every public user together per day
+PUBLIC_MODELS = "gemini-3.5-flash-lite"

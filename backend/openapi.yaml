@@ -26,6 +26,12 @@ paths:
                       type: array
                       nullable: true
                       items: {type: string, enum: [fixed, dismissed], nullable: true}
+                    # AH-152: each cell's formula (Excel's R1C1 text) or null; the route also checks it is shaped
+                    # exactly like rows
+                    formulas:
+                      type: array
+                      nullable: true
+                      items: {type: array, items: {type: string, pattern: "^=", maxLength: 8192, nullable: true}}
       responses: {"200": {$ref: "#/components/responses/Json"}, "400": {$ref: "#/components/responses/Error"}}
   /fix:
     post:
@@ -44,7 +50,15 @@ paths:
                     start_col: {type: integer, minimum: 0}
                     intent: {type: string, maxLength: 2000}
                     formulas: {type: array, nullable: true}
-                    memory: {type: array, nullable: true, maxItems: 5, items: {type: string, maxLength: 200}}
+                    memory:  # AH-153: the flagged column's past fixes, newest first; the engine ranks them and sends up to 5
+                      type: array
+                      nullable: true
+                      maxItems: 20
+                      items:
+                        type: object
+                        required: [h, k, o, n]
+                        additionalProperties: false
+                        properties: {h: {type: string, maxLength: 60}, k: {type: string, maxLength: 60}, o: {type: string, maxLength: 60}, n: {type: string, maxLength: 60}}
       responses:
         "200":
           description: The AI's fix, or (care true) the engine's own helpline message, with nothing sent to the AI
@@ -60,6 +74,8 @@ paths:
                     items: {type: object, required: [cell, new], properties: {cell: {type: string}, new: {type: string}}}
                   care: {type: boolean, enum: [true]}  # AH-125: the request read as someone in crisis (ai/care.py)
                   model: {type: string}  # AH-145: only when a backup Gemini model answered (the pane says so on the card)
+                  memory: {type: string}  # AH-153: the past fix ("M2") whose step the AI's fix repeats
+                  memory_note: {type: string}  # the sentence the pane shows for it
         "400": {$ref: "#/components/responses/Error"}
         "502": {$ref: "#/components/responses/Error"}
         "503": {$ref: "#/components/responses/Error"}

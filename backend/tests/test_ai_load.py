@@ -243,6 +243,32 @@ def test_the_relay_words_reach_the_user(monkeypatch, status, body, words):
     assert words in str(e.value)
 
 
+@pytest.mark.parametrize("error", [{"message": "x"}, ["busy"], 5, None, True, ""])
+def test_a_relay_error_that_is_not_text_is_said_in_our_own_words(monkeypatch, error):
+    # AH-150: the relay's "error" went to the pane as it came: a dict or a list was a crash, not words
+    fake_google(monkeypatch, (502, json.dumps({"error": error})))
+    client.KEY_FILE.unlink()
+    monkeypatch.setattr(client, "RELAY_URL", "https://relay.example")
+    client.INVITE_FILE.write_text("inv_" + "a" * 24, encoding="utf-8")
+    with pytest.raises(ValueError) as e:
+        client._ask("fix it")
+    assert str(e.value) == "The AI relay answered with error 502. Try again later."
+
+
+def test_the_relays_words_reach_the_user_as_one_short_line_with_no_invite_code_in_it(monkeypatch):
+    # AH-150: any length, line breaks, and the invite code itself if the relay ever echoed it, went to the pane verbatim
+    invite = "inv_" + "a" * 24
+    fake_google(monkeypatch, (429, json.dumps({"error": f"Used up for today.\nYour code {invite} " + "x" * 500})))
+    client.KEY_FILE.unlink()
+    monkeypatch.setattr(client, "RELAY_URL", "https://relay.example")
+    client.INVITE_FILE.write_text(invite, encoding="utf-8")
+    with pytest.raises(client.Limit) as e:
+        client._ask("fix it")
+    said = str(e.value)
+    assert said.startswith("Used up for today. Your code [the AI key] xxx") and len(said) <= 200
+    assert "\n" not in said and invite not in said and e.value.limit == "day"
+
+
 def test_a_claude_call_is_bounded_by_the_deadline_and_not_retried_by_the_sdk(monkeypatch):
     """SDK defaults are a 10-minute timeout and 2 retries, all while the one-call lock is held (Council B4)."""
     made = {}

@@ -6,8 +6,14 @@
 //   2. a daily cap per invite code AND one daily cap for everyone together, counted in a Durable Object
 //   3. one route, POST /fix, JSON only, at most 8 KB; the model, the answer format and its length are set HERE
 //   4. no request or answer is ever logged - only "who, how many today"
+// AH-151: a request with no Authorization header at all is the public tier, so every user has AI help with no key or
+// invite: its own model (PUBLIC_MODELS) and caps, per network and for everyone, counted apart from the invites'. A
+// network (an IPv4 address, an IPv6 /64) is counted under HMAC-SHA-256(GEMINI_KEY, day + network): no IP is stored,
+// nobody without the key can reverse it, and it changes every day
 // ponytail: a cell can still carry a free-text prompt - the caps, not the shape check, are what bound abuse.
 const MODEL = "gemini-3.8-flash";
+// Google's free tier gives flash-lite ~500 requests a day per project, gemini-3.8-flash ~20 (2026-11-09)
+const PUBLIC_MODEL = "gemini-3.5-flash-lite";
 const GEMINI = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 const MAX_BODY = 8 * 1024;
 // one call to Google may take this long: the invite's fix is already counted, so a hung Google must not hold the
@@ -26,18 +32,40 @@ async function sha256(text) {
 // (2026-10-15 audit: `+"0" || 20` turned a switched-off relay back on at 20 a day)
 const cap = (v, fallback) => (v !== undefined && v !== "" && Number.isFinite(+v) ? +v : fallback);
 
+// One IPv6 subscriber gets a whole /64 (billions of addresses): an IPv6 address is counted by its /64 prefix, written
+// out in full first ("::" drops groups of 0; a dotted IPv4 tail is two groups); an IPv4 address as it is
+export function network(ip) {
+  if (!ip.includes(":")) return ip;
+  const [head, tail] = ip.toLowerCase().split("::");
+  const groups = (s) => (s ? s.split(":") : []);
+  const size = (g) => g.length + (g.at(-1)?.includes(".") ? 1 : 0);
+  const h = groups(head), t = groups(tail);
+  const all = tail === undefined ? h : [...h, ...Array(8 - size(h) - size(t)).fill("0"), ...t];
+  return all.slice(0, 4).map((g) => parseInt(g, 16).toString(16)).join(":") + "::/64";
+}
+
+async function hmac(key, text) {
+  const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return [...new Uint8Array(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(text)))].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export default {
   async fetch(req, env) {
     if (new URL(req.url).pathname !== "/fix" || req.method !== "POST") return json(404, { error: "This address only takes Ask AI requests from Arcas." });
-    const code = (req.headers.get("Authorization") || "").replace(/^Bearer /, "");
-    let tokens;
-    try {
-      tokens = JSON.parse(env.TOKENS || "{}");
-    } catch { // a mistyped TOKENS upload: our own JSON, not Cloudflare's HTML error page
-      return json(500, { error: "The shared AI has a setup problem on John's side. Let John know, and try again later." });
+    // no header at all, never an empty one: a broken invite fails closed (401), it never falls into the public tier
+    const pub = !req.headers.has("Authorization");
+    let who;
+    if (!pub) {
+      const code = req.headers.get("Authorization").replace(/^Bearer /, "");
+      let tokens;
+      try {
+        tokens = JSON.parse(env.TOKENS || "{}");
+      } catch { // a mistyped TOKENS upload: our own JSON, not Cloudflare's HTML error page
+        return json(500, { error: "The shared AI has a setup problem on John's side. Let John know, and try again later." });
+      }
+      who = code && tokens[await sha256(code)];
+      if (!who) return json(401, { error: "This invite code isn't valid (or was switched off)." });
     }
-    const who = code && tokens[await sha256(code)];
-    if (!who) return json(401, { error: "This invite code isn't valid (or was switched off)." });
 
     const raw = await req.text();
     if (raw.length > MAX_BODY) return json(413, { error: "That request is too large for the shared AI. Try a smaller selection." });
@@ -49,24 +77,30 @@ export default {
     }
     const prompt = body?.messages?.[0]?.content;
     if (typeof prompt !== "string" || !prompt || body.messages.length !== 1 || !body.response_format) return json(400, { error: "The shared AI couldn't read that request. Update Arcas to the newest version, then try again." });
+    const ip = req.headers.get("CF-Connecting-IP"); // Cloudflare always sets it: without it there is no network to count
+    if (pub && !ip) return json(400, { error: "The free AI couldn't read that request. Try again later." });
 
     // count first: a request that would go over a cap never reaches Google
     // fallbacks = the real quota (if the [vars] are ever lost, never looser); switch the relay off by emptying TOKENS
     // again: a backup model's call (AH-145), counted against the day's total only: the invite's fix is already counted
+    // public: its own caps (fallbacks = the design's, never looser; PUBLIC_DAILY_TOTAL "0" switches the tier off)
+    const caps = pub ? { pub, perUser: cap(env.PUBLIC_DAILY_PER_NETWORK, 15), total: cap(env.PUBLIC_DAILY_TOTAL, 400) }
+      : { perUser: cap(env.DAILY_PER_INVITE, 10), total: cap(env.DAILY_TOTAL, 20) };
     const take = async (again) => (await (await env.COUNTER.get(env.COUNTER.idFromName("caps")).fetch("https://caps/take", {
-      method: "POST", body: JSON.stringify({ who, perUser: cap(env.DAILY_PER_INVITE, 10), total: cap(env.DAILY_TOTAL, 20), again }),
+      method: "POST", body: JSON.stringify({ who, ...caps, again }),
     })).json());
     let ok;
     try { // the counter down (a Durable Object outage): our own JSON, and Google is never called (AH-13 sweep)
+      if (pub) who = await hmac(env.GEMINI_KEY, dayKey() + network(ip)); // too many groups throws: refused, never counted
       ok = await take(false);
     } catch {
       return json(503, { error: "The shared AI can't count today's fixes right now. Try again in a minute." });
     }
-    if (!ok.allowed) return json(429, { error: ok.why });
+    if (!ok.allowed) return json(429, { error: ok.why, ...(pub ? { limit: "day" } : {}) });
 
     // AH-145: MODELS = the model, then backups (each has its own day's free quota and its own crowd); unset = MODEL alone
-    const listed = String(env.MODELS || "").split(",").map((m) => m.trim()).filter(Boolean);
-    const models = listed.length ? listed : [MODEL];
+    const listed = String((pub ? env.PUBLIC_MODELS : env.MODELS) || "").split(",").map((m) => m.trim()).filter(Boolean);
+    const models = listed.length ? listed : [pub ? PUBLIC_MODEL : MODEL];
     try {
       let out, said = "", m = 0;
       for (let k = 0; ; k++) { // Google busy for a moment: try again HERE, so the invite's fix is counted only once
@@ -106,20 +140,26 @@ export default {
 // The caps' day = Google's quota day: it resets at midnight US Pacific time (summer and winter time), not UTC
 export const dayKey = (d = new Date()) => d.toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
 
-// One counter object for all caps: day -> {total, per invite}. Single-threaded by design, so counts never race.
+// One counter object for all caps: day -> {total, per invite} and, once the public tier is used that day,
+// {pub, per network hash}. Single-threaded by design, so counts never race.
 export class Counter {
   constructor(state) {
     this.state = state;
   }
   async fetch(req) {
-    const { who, perUser, total, again } = await req.json();
+    const { who, perUser, total, again, pub } = await req.json();
     const day = dayKey();
     const c = (await this.state.storage.get("c")) || {};
     const today = c.day === day ? c : { day, total: 0, by: {} };
-    if (today.total >= total) return json(200, { allowed: false, why: "Today's shared AI limit is used up. It resets at midnight US Pacific time." });
-    if (!again && (today.by[who] || 0) >= perUser) return json(200, { allowed: false, why: "You've used today's AI fixes for this invite. They reset at midnight US Pacific time." });
-    today.total += 1;
-    if (!again) today.by[who] = (today.by[who] || 0) + 1;
+    const [n, by] = pub ? ["pub", "nets"] : ["total", "by"];
+    today[n] ||= 0;
+    today[by] ||= {};
+    if (today[n] >= total) return json(200, { allowed: false, why: pub ? "The free AI has used up today's requests for everyone. It resets at midnight US Pacific time."
+      : "Today's shared AI limit is used up. It resets at midnight US Pacific time." });
+    if (!again && (today[by][who] || 0) >= perUser) return json(200, { allowed: false, why: pub ? "The free AI has used today's requests for your network. They reset at midnight US Pacific time."
+      : "You've used today's AI fixes for this invite. They reset at midnight US Pacific time." });
+    today[n] += 1;
+    if (!again) today[by][who] = (today[by][who] || 0) + 1;
     await this.state.storage.put("c", today);
     return json(200, { allowed: true });
   }

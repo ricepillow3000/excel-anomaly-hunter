@@ -1,4 +1,5 @@
 """The real engine on https://127.0.0.1:5055 with a throwaway cert."""
+import os
 import sys
 from pathlib import Path
 from anomaly_hunter.ai import client
@@ -6,5 +7,7 @@ from anomaly_hunter.server import create_app, make_cert, tls_context
 d = Path(sys.argv[1]); make_cert(d)
 client.KEY_FILE = d / "gemini-key.txt"  # never the real key saved on this PC
 client.INVITE_FILE = d / "invite-code.txt"  # nor a real invite code
+# AH-151: with no key the engine asks John's live relay (the free AI): a test asks stub_claude.py's /fix instead
+client.RELAY_URL = os.environ.get("ANOMALY_HUNTER_RELAY") or "http://127.0.0.1:5099"
 # the Power BI copy goes beside the throwaway cert, as the installed engine puts it beside its own (run.mjs reads it)
 create_app(d / "latest-scan.csv").run(host="127.0.0.1", port=5055, ssl_context=tls_context(d / "cert.pem", d / "key.pem"))

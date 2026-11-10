@@ -9,6 +9,7 @@ export const UNDO_KEY = "anomalyHunterAutoUndo"; // what auto-fix changed, saved
 export const POWER_BI_KEY = "anomalyHunterPowerBi"; // keep each scan for Power BI: this PC (localStorage), off unless turned on
 export const DECISIONS_KEY = "anomalyHunterDecisions"; // rows fixed or dismissed, as codes, saved inside the workbook
 export const ACCEPT_UNDO_KEY = "anomalyHunterAcceptUndo"; // what Accept changed (the old values), saved inside the workbook for Undo
+export const HIGHLIGHT_KEY = "anomalyHunterHighlights"; // the fill each highlighted cell had before, saved inside the workbook
 export const MEMORY_KEY = "anomalyHunterAiMemory"; // fixes the user accepted, for Ask AI: this PC (localStorage), across workbooks
 
 // What each slider level does, in its own words (2, 4, 6, 8 and 10 once showed the level below's, so 6 opened
@@ -34,9 +35,9 @@ export const STRENGTH = [
 
 export const SEV = { High: "Very likely wrong", Medium: "Probably wrong", Low: "Worth a check" }; // Noted = fine, not shown
 
-// one step off Excel's own Bad / Neutral / Note fills (#FFC7CE, #FFEB9C, #FFFFCC), which look the same: a reopened pane
-// clears the cells wearing these and never a cell the user styled (AH-40: we colour single cells now, so the old
-// "a full row is ours" test cannot tell them apart). OLD_COLOR: what whole rows were painted in before
+// one step off Excel's own Bad / Neutral / Note fills (OLD_COLOR: #FFC7CE, #FFEB9C, #FFFFCC, which look the same), so a
+// cell the user styled in one of those is never taken for our highlight (AH-40). Only a cell the workbook's record of our
+// highlights names, still wearing one of these, is ours (features/highlight.js, AH-150)
 export const COLOR = { High: "#FFC7CF", Medium: "#FFEB9D", Low: "#FFFFCD" };
 export const OLD_COLOR = ["#FFC7CE", "#FFEB9C", "#FFFFCC"];
 
