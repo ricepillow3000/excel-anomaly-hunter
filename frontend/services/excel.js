@@ -69,13 +69,15 @@ export async function readRows(sheetName, spans) {
 }
 
 // Writes as if typed: "=..." becomes a formula, "42" a number. Old contents kept for Undo. A write with a `format`
-// puts that number format back too (typing "12%" makes a cell a percent; Undo must undo that as well).
+// puts that number format back too (typing "12%" makes a cell a percent; Undo must undo that as well). A write with
+// `r1c1` is a column's own formula (AH-152): Excel turns it into this cell's A1 form itself.
 export async function writeCells(sheetName, writes) {
   await Excel.run(async (ctx) => {
     const sheet = ctx.workbook.worksheets.getItem(sheetName);
     writes.forEach((w) => {
       const r = sheet.getRange(w.cell);
-      r.formulas = [[w.value]];
+      if (w.r1c1) r.formulasR1C1 = [[w.r1c1]];
+      else r.formulas = [[w.value]];
       if (w.format !== undefined) r.numberFormat = [[w.format]];
     });
     await ctx.sync();

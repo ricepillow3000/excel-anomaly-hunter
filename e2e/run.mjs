@@ -629,20 +629,31 @@ if (mode === "flow") {
   ok(scans.every((b) => b.formulas === null), "a sheet with no formulas sends formulas: null, the scan of before");
   { const calc = [["Item", "Qty", "Price", "Total"], ...Array.from({ length: 40 }, (_, k) => [`Item ${k}`, 2 + (k % 7), 5 + (k % 4), (2 + (k % 7)) * (5 + (k % 4))])];
     calc[20][3] = calc[20][1] * calc[21][2];
+    calc[30][3] = 250; // typed over: the card must offer the column's formula, never the worked-out Qty x Price
     await page.evaluate((calc) => { __load("Calc", calc); for (let n = 2; n <= 41; n++) if (n !== 31) __formula("Calc", `D${n}`, n === 21 ? "=B21*C22" : `=B${n}*C${n}`); }, calc);
     await find();
     const sent = scans.at(-1).formulas;
     ok(sent?.length === 40 && sent[0].join() === ",,,=RC[-2]*RC[-1]" && sent[29][3] === null && sent[19][3] === "=RC[-2]*R[1]C[-1]",
       "the scan sends each cell's R1C1 formula, null where none - " + JSON.stringify([sent?.[0], sent?.[19], sent?.[29]]));
     const listed = await text("#flagged-list");
-    ok(listed.includes("Row 31") && listed.includes("Row 21") && listed.includes("is a typed number where the column's other rows use a formula"),
+    ok(listed.includes("Row 31") && listed.includes("Row 21") && listed.includes("Total 250 is a typed number where the column's other rows use a formula"),
       "a typed Total among formulas and a formula one row off are both listed - " + listed.slice(0, 300));
     const fills = await page.evaluate(() => ["D31", "A31", "B31", "C31"].map((a) => __cell("Calc", a).fill));
-    ok(fills[0] && !fills[1] && !fills[2] && !fills[3], "only the typed Total's cell is coloured - " + fills);
+    ok(fills[0] && !fills[1], "the typed Total's cell is coloured, the row's label not - " + fills);
     for (const r of [31, 21]) {
       await openRow(r);
-      const said = await text("#fix-explanation");
-      ok(!said.includes("Fix the cells it uses") && /copy the formula from the row above|compare it with the row above/.test(said), `row ${r}'s card points at its formula - ` + said);
+      const said = await text("#fix-explanation"), offer = await text("#fix-changes");
+      ok(!said.includes("Fix the cells it uses") && /Accept puts the column's (?:own )?formula/.test(said) && offer === `D${r}: ${r === 31 ? 250 : "=B21*C22"} → =B${r}*C${r}`,
+        `row ${r}'s card offers the column's own formula - ${offer} / ${said}`);
+      if (r === 31) { // Accept writes the formula into that one cell, by its R1C1 text; Undo types the 250 back
+        const w = await page.evaluate(() => __log.length);
+        await page.click("#fix-apply"); await idle();
+        const wrote = await page.evaluate((n) => __log.slice(n).map((x) => `${x[2]}=${x[3]}`).join(), w), d31 = await page.evaluate(() => __cell("Calc", "D31"));
+        ok(wrote === "D31==B31*C31" && d31.f === "=B31*C31", `Accept writes the column's formula into D31 only - wrote ${wrote}, D31 ${JSON.stringify(d31)}`);
+        await page.click("#fix-undo"); await idle();
+        const back = await page.evaluate(() => __cell("Calc", "D31"));
+        ok(back.v === 250 && back.f === null, "Undo puts the typed 250 back - " + JSON.stringify(back));
+      }
       await page.click("#fix-back"); await idle();
     }
     await page.click("#clear-highlights"); await idle();

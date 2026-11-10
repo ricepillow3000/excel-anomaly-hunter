@@ -48,7 +48,7 @@ export async function openFix(i, selectInSheet) {
     f.calc = range.formulas[0]; // a cell holding a formula is never typed over
   });
   if (u) return showAccepted(f, u);
-  let rec = recommendFix(columns, rows, i, state.lastLimits, r.reason, startRow, startCol, r.likely, f.calc, r.maybe);
+  let rec = recommendFix(columns, rows, i, state.lastLimits, r.reason, startRow, startCol, r.likely, f.calc, r.maybe, r.formula);
   if (state.fix === f) rec = await suggestTypo(f, r, rec).catch(() => rec); // no typo found or engine busy: the advice stays
   const label = !rec.changes.length ? "What to check" : rec.typo ? "Possible typo: check it before you accept"
     : rec.guess ? "Best guess: check it before you accept" : "Suggested fix";

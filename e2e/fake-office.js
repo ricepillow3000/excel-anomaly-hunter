@@ -8,6 +8,12 @@
     const [rr, cc] = parse(col + row), rel = (d) => (d ? `[${d}]` : "");
     return `R${ra ? rr + 1 : rel(rr - r)}C${ca ? cc + 1 : rel(cc - c)}`;
   });
+  // and back, as Excel converts a formulasR1C1 write: "=RC[-2]*RC[-1]" in (30, 3) -> "=B31*C31"
+  const a1 = (f, r, c) => f.replace(/(?<![A-Za-z_\d])R(\[-?\d+\]|\d+)?C(\[-?\d+\]|\d+)?(?![A-Za-z_\d(])/g, (m, rr, cc) => {
+    const at = (x, here) => (!x ? ["", here] : x[0] === "[" ? ["", here + Number(x.slice(1, -1))] : ["$", Number(x) - 1]);
+    const [rd, rn] = at(rr, r), [cd, cn] = at(cc, c);
+    return `${cd}${L(cn)}${rd}${rn + 1}`;
+  });
   function makeSheet(name) {
     const cells = {}; const ws = { name, cells, changed: [], selected: [] };
     const cell = (r, c) => (cells[r + "," + c] ||= { v: "", f: null, nf: "General", fill: null });
@@ -27,6 +33,7 @@
         get values() { return grid((k) => k.v); }, set values(v) { set(v, false); },
         get formulas() { return grid((k) => k.f ?? k.v); }, set formulas(v) { set(v, true); },
         get formulasR1C1() { return grid((k, r, c) => (k.f ? r1c1(k.f, r, c) : k.v)); },
+        set formulasR1C1(v) { set(v.map((row, i) => row.map((f, j) => (typeof f === "string" && f.startsWith("=") ? a1(f, r0 + i, c0 + j) : f))), true); },
         getCellProperties() { return { value: grid((k) => ({ format: { fill: { color: k.fill || "#FFFFFF" } } })) }; },
         get numberFormat() { return grid((k) => k.nf); }, set numberFormat(v) { v.forEach((row, i) => row.forEach((f, j) => (cell(r0 + i, c0 + j).nf = f))); },
         format: { fill: { load() { return this; }, get color() { const all = grid((k) => k.fill ?? null).flat(); return all.every((x) => x === all[0]) ? all[0] ?? "#FFFFFF" : null; },

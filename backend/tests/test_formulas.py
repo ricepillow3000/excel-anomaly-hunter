@@ -33,6 +33,7 @@ def test_a_typed_number_among_a_columns_formulas_is_flagged_on_its_own_cell():
     out = scan(rows, formulas)
     assert flagged(out) == {29: f"Total {rows[29][3]} is a typed number where the column's other rows use a formula"}
     assert out[29]["severity"] == "Medium" and out[29]["cells"] == ["Total"]
+    assert out[29]["formula"] == {"Total": SAME}, "the card's fix: the column's own formula, known, never invented"
 
 
 def test_a_reference_one_row_off_is_flagged_as_a_different_formula():
@@ -43,6 +44,7 @@ def test_a_reference_one_row_off_is_flagged_as_a_different_formula():
     assert "Total uses a different formula from the other rows of its column" in out[29]["reason"]
     # the product check also says it does not add up (Qty x the next row's Price), naming its three cells
     assert out[29]["severity"] in ("Medium", "High") and "Total" in out[29]["cells"]
+    assert out[29]["formula"] == {"Total": SAME}
     assert set(flagged(out)) == {29}
 
 
@@ -82,7 +84,7 @@ def test_no_formulas_sent_is_the_scan_of_today():
     rows, _ = sheet()
     rows[29][3] = 9999  # a value slip: found from the values, the same with or without formulas
     without = APP.post("/scan", json={"columns": COLS, "rows": rows}).get_json()["rows"]
-    assert flagged(without)
+    assert flagged(without) and all(r["formula"] == {} for r in without if r["severity"])
     assert scan(rows, None) == without
     assert scan(rows, [[None] * 4 for _ in rows]) == without
 
