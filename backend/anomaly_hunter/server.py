@@ -295,9 +295,11 @@ def create_app(scan_csv=None):
         if formulas is not None and not (isinstance(formulas, list) and len(formulas) == len(body["columns"])):
             return {"error": "'formulas' must be a list as long as 'columns'"}, 400
         memory = body.get("memory")  # AH-143: fixes the user accepted before in this column, kept by the pane on this PC
-        if memory is not None and not (isinstance(memory, list) and len(memory) <= 5
-                                       and all(isinstance(m, str) and len(m) <= 200 for m in memory)):
-            return {"error": "'memory' must be a list of at most 5 texts, each at most 200 characters"}, 400
+        # AH-153: as {h, k, o, n}, so the engine can rank them; the old list of texts is refused (pane and engine ship together)
+        if memory is not None and not (isinstance(memory, list) and len(memory) <= 20 and all(
+                isinstance(m, dict) and set(m) == {"h", "k", "o", "n"} and all(isinstance(v, str) and len(v) <= 60 for v in m.values())
+                for m in memory)):
+            return {"error": "'memory' must be a list of at most 20 past fixes, each {h, k, o, n} texts of at most 60 characters"}, 400
         if care.distress(intent):  # AH-125: helpline numbers from the engine itself, before any key check or AI call
             return {"explanation": care.MESSAGE, "changes": [], "care": True}
         return ai(lambda: client.suggest_fix(body["columns"], body["rows"], body["row_index"], body["start_row"],

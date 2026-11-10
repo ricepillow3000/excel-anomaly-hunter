@@ -20,6 +20,7 @@ from pydantic import BaseModel, ValidationError
 
 from anomaly_hunter import sealed
 from anomaly_hunter.ai import bias_context
+from anomaly_hunter.ai import memory as past
 from anomaly_hunter.ai.memory import with_memory
 
 MODEL = "claude-opus-5"
@@ -523,7 +524,7 @@ def odd_text(values):
 
 def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent, formulas=None, memory=None):
     """-> {explanation, changes: [{cell, new}]}. Invalid cell addresses are dropped. Raises ValueError / anthropic errors.
-    memory = up to 5 fixes the user accepted before in this column, newest first (AH-143)."""
+    memory = up to 20 fixes the user accepted before in this column, newest first, as {h, k, o, n} (AH-143, AH-153)."""
     hits = [j for j, c in enumerate(columns) if str(c) and str(c) in (reason or "")]
     flagged = max(hits, key=lambda j: len(str(columns[j])), default=0)  # "Column 31" over "Column 3"
     nearest = sorted(range(len(columns)), key=lambda j: abs(j - flagged))
@@ -587,5 +588,11 @@ def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent, 
         (odd, "not a single cell of this table"), (twice, f"the AI gave {'each' if len(twice) > 1 else 'it'} two different values")) if cells) + (
         f" (Left out {more} more changes: one fix writes at most {MAX_CHANGES} cells.)" if more > 0 else "")
     drop = seen | set(others)
-    return {"explanation": fix.explanation + note, "changes": [c for c in changes if c["cell"] not in drop],
+    changes = [c for c in changes if c["cell"] not in drop]
+    # AH-153: a fix that repeats the step of a past fix the AI was shown says so on the card, so the user can tell a
+    # learned habit from a fresh reading of the sheet
+    here = f"{get_column_letter(1 + start_col + flagged)}{start_row + 2 + row_index}"
+    new = next((c["new"] for c in changes if c["cell"] == here), None)
+    return {"explanation": fix.explanation + note, "changes": changes,
+            **(past.attribute(prompt, memory, rows[row_index][flagged], new) if new is not None else {}),
             **({"model": _served.model} if _served.model != GEMINI_MODEL else {})}
