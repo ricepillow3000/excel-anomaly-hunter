@@ -6,7 +6,7 @@ import { $, show, only } from "./utils/dom.js";
 import { act, oneClickEach } from "./hooks/use-action.js";
 import { getHealth } from "./services/api.js";
 import { activeSheet, saveLimits } from "./services/excel.js";
-import { powerBiOn, runScan, setPowerBi } from "./features/scan.js";
+import { powerBiOn, runScan, sayLastScan, setPowerBi } from "./features/scan.js";
 import { clearHighlights } from "./features/highlight.js";
 import { applyFix, undoFix } from "./features/fix.js";
 import { setAi, askFix, checkWords } from "./features/ai.js";
@@ -30,7 +30,7 @@ if (typeof Office !== "undefined") {
     initMotion();
     oneClickEach();
     $("scan").onclick = act(() => runScan(true, true)); // held: the skeleton stays long enough to be seen
-    $("retry-health").onclick = checkHealth;
+    $("retry-health").onclick = () => checkHealth();
     $("clear-highlights").onclick = act(clearHighlights);
     $("edit-limits").onclick = openLimitsEditor;
     $("cancel-limits").onclick = () => only(state.lastScan ? "results" : "empty-state");
@@ -67,20 +67,35 @@ if (typeof Office !== "undefined") {
     show("undo-auto", !!autoUndo());
     activeSheet().then((name) => { $("sheet-name").textContent = name; }).catch(() => {}); // Excel refuses while a cell is being typed in: the name stays blank until the first scan (AH-58)
     only("empty-state");
+    sayLastScan(); // AH-157: the workbook's last check, there the moment the pane shows
     checkHealth();
   });
 }
 
-async function checkHealth() {
+// AH-157: while Arcas has stopped the pane asks again by itself every AGAIN ms for FOR ms, one request at a time, and opens
+// when the engine answers (it waited for a press). Try again asks at once, the start-up skeleton standing in while it
+// waits (global.css #skeleton): it showed nothing new for up to 10 s. Only the newest ask's answer counts
+const AGAIN = 5000, FOR = 120000;
+let asked = 0, again = 0, until = 0;
+async function checkHealth(auto = false) {
+  const me = ++asked;
+  clearTimeout(again);
+  if (!auto) {
+    until = Date.now() + FOR;
+    show("server-down", false);
+  }
   try {
     const h = await getHealth();
+    if (me !== asked) return;
     setAi(h.ai_available, h.ai_provider);
     // which engine answers: an old one gave 2 of 279 on a credit sheet and looked just like a new one (2026-10-15)
     $("engine-version").textContent = `Engine ${h.version || "from before 2026-10-15: update it"}`;
     show("main-ui");
     show("server-down", false);
   } catch {
+    if (me !== asked) return;
     show("main-ui", false);
     show("server-down");
+    if (Date.now() < until) again = setTimeout(() => checkHealth(true), AGAIN);
   }
 }

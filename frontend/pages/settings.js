@@ -3,6 +3,7 @@ import { keySaid, saveKey } from "../features/ai.js";
 import { forgetWorkbook } from "../features/forget.js";
 import { act } from "../hooks/use-action.js";
 import { clearAll } from "../features/memory.js";
+import { sayLastScan } from "../features/scan.js";
 
 // One /key at a time: a double click on Save sent two, and each Google key is tried with Google for up to 15 s (AH-87).
 // Not act(): it would put "AI help is on/off" over the words the engine sent back about the key
@@ -35,6 +36,7 @@ export function initSettings() {
     $("forget-state").textContent = "";
     const gone = await forgetWorkbook();
     show("undo-auto", false); // its list is gone with the rest
+    sayLastScan(); // AH-157: the last check's numbers went too
     $("forget-state").textContent = gone.length
       ? `Removed from this workbook: ${gone.join("; ")}. Your cells are as they were. Save the workbook to keep the change in the file; the next scan saves the setting that opens this pane again.`
       : "This workbook holds nothing Arcas saved.";

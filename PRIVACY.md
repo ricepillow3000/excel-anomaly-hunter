@@ -41,7 +41,9 @@ A scan runs on your PC and sends nothing to the internet. Your sheet's data leav
   Undo still works after the pane is closed and opened again), a short code for each row you fixed or dismissed (worked out
   from the row's values, never the values themselves, so the row is still Fixed or Dismissed when the pane opens
   again), the fill colour each highlighted cell had before (so Remove highlights puts it back after the pane is closed
-  and opened again), and a setting that opens the pane with that file. Highlights are fill colours in your cells.
+  and opened again), the numbers of the last check (the sheet's name, when it ran, the slider's level, and how many
+  rows it read and flagged, never a value or a reason, so the pane can say them when the file opens again), and a
+  setting that opens the pane with that file. Highlights are fill colours in your cells.
   A fix changes your cells only when you click **Accept**, or when auto-fix runs, if you turned it on.
 - The pane saves the auto-fix switch (`anomalyHunterAutoFix`) and the Power BI switch (`anomalyHunterPowerBi`) in
   Excel's storage for the pane (its localStorage) on this PC. Ask AI's memory (`anomalyHunterAiMemory`) is saved there
@@ -111,7 +113,7 @@ can be charged by Google for what AI help uses; without billing, the free tier c
 - **Forget what this workbook saved** (in the pane, under Options > Saved in this workbook) removes everything the pane
   saved in the open workbook: the limits, the strength slider, the auto-fix list with its old values, the old values
   Accept keeps for Undo, the code of each row you fixed or dismissed, the colours your highlighted cells had before,
-  and the setting that opens the pane with the file. It changes no cell. Save the workbook
+  the numbers of the last check, and the setting that opens the pane with the file. It changes no cell. Save the workbook
   afterwards to keep the change in the file.
 - **Forget what the AI learned** is in the pane, under Options > AI help. It removes every fix Ask AI remembers on this
   PC, for every workbook. Forget what this workbook saved leaves them, as they are not in the workbook. Uninstalling

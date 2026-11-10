@@ -67,6 +67,7 @@
 
       <section id="empty-state" data-enter="left">
         <p>Click <b>Find problems</b> to check the sheet that is open.</p>
+        <p id="last-scan" hidden></p>
         <p class="hint">Your data needs a top row of column names (like Date, Amount), with one record per row below it.</p>
       </section>
 
@@ -130,6 +131,7 @@
           <h2 id="fix-title"></h2>
           <p id="fix-reason" class="reason-box"></p>
           <div class="fix-body">
+            <div class="fix-sk" aria-hidden="true"><span class="sk-bar sk-title">&nbsp;</span><span class="sk-bar sk-long">&nbsp;</span><span class="sk-bar sk-mid">&nbsp;</span></div>
             <h3 id="fix-label">Suggested fix</h3>
             <ul id="fix-changes" class="fix-changes"></ul>
             <p id="fix-explanation"></p>
@@ -197,7 +199,7 @@
 
       <details class="more">
         <summary>Saved in this workbook</summary>
-        <p class="hint">This workbook keeps the limits you changed, the strength slider, the last auto-fixes with their old values (for Undo auto-fixes), the old values and number formats of the cells you changed with Accept, and what Accept wrote (for Undo), a short code for each row you fixed or dismissed, and a setting that opens this pane with the file. They stay in the file after you uninstall. Forgetting them never changes a cell.</p>
+        <p class="hint">This workbook keeps the limits you changed, the strength slider, the last auto-fixes with their old values (for Undo auto-fixes), the old values and number formats of the cells you changed with Accept, and what Accept wrote (for Undo), a short code for each row you fixed or dismissed, the numbers of the last check (how many rows it read and flagged, never a value), and a setting that opens this pane with the file. They stay in the file after you uninstall. Forgetting them never changes a cell.</p>
         <button id="forget-book" class="secondary">Forget what this workbook saved</button>
         <p id="forget-state" class="hint" role="status" aria-live="polite"></p>
       </details>

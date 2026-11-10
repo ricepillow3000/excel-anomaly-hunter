@@ -22,7 +22,19 @@ export function onSelect(e) {
   if (i !== null && open && !(state.fix && state.fix.i === i)) act(() => openFix(i, false))();
 }
 
-export async function openFix(i, selectInSheet, from = null) { // from: the list's button pressed, if one was
+// AH-157: while a row opens (Excel reads it, the engine may look for a typo) its fix area shows still bars, not an empty
+// held box (taskpane.html .fix-sk). The newest opening takes them off when it ends, however it ends
+let opening = 0;
+export async function openFix(i, selectInSheet, from = null) {
+  const me = ++opening;
+  try {
+    await openRow(i, selectInSheet, from);
+  } finally {
+    if (me === opening) $("fix-view").toggleAttribute("data-opening", false);
+  }
+}
+
+async function openRow(i, selectInSheet, from) { // from: the list's button pressed, if one was
   const { columns, rows, startRow, startCol, sheet } = state.lastScan;
   const r = state.lastRows[i], u = state.undos[i]; // u: its fix was accepted - the card offers Undo
   if (r && !SEV[r.severity] && !u && state.decided[i] === "fixed") return selectFixed(i); // fixed before: nothing to undo here
@@ -45,6 +57,7 @@ export async function openFix(i, selectInSheet, from = null) { // from: the list
     busy("Opening row…"); // over the card, in the space it holds: said over the list, it pushed the list down as it left
     // the card turns in like a page, here and on Next row; from a row of the list, hinged at that row's height
     const view = $("fix-view");
+    view.toggleAttribute("data-opening", true);
     turnIn(view, at ? at.top + at.height / 2 - view.getBoundingClientRect().top : null);
   }, () => $("fix-title"));
   if (state.fix !== f) return;

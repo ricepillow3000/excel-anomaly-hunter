@@ -3,6 +3,7 @@ import { $, show, turnOn } from "../utils/dom.js";
 import { post } from "../services/api.js";
 import { showFix } from "../components/fix-preview.js";
 import { checkFix } from "./fix.js";
+import { busy, counting } from "../components/progress.js";
 import { plainReason } from "./scan.js";
 import { colLetter } from "../utils/sheet.js";
 import { isOurs, plainError } from "../utils/errors.js";
@@ -31,6 +32,8 @@ export function keySaid(words, failed = false) {
 }
 
 export async function saveKey(key) {
+  // AH-157: said at once; Google is asked about a key for up to 15 s, and the line kept saying "AI help is on" meanwhile
+  keySaid(!key.trim() ? "Removing the key…" : key.trim().startsWith("inv_") ? "Saving the invite code…" : "Testing the key with Google…");
   try {
     const out = await post("/key", { key: key.trim() });
     $("ai-key").value = ""; // the key never stays on screen
@@ -126,6 +129,8 @@ export async function checkWords() {
   // engine's name for a repeated header ("Item.1") or a blank one ("") is not one the user can find
   const at = (o) => `Row ${startRow + o.row + 2}, column ${colLetter(startCol + o.col)}${String(columns[o.col] ?? "").trim() ? ` (${columns[o.col]})` : ""}`;
   const item = (text) => Object.assign(document.createElement("li"), { textContent: text }); // AI text is never HTML
+  busy("Asking the AI about your words…"); // AH-157: with its seconds; act() takes it off. The pane sat silent up to 300 s
+  counting();
   try {
     const { odd, partial } = await post("/odd-text", { columns, rows }, 300);
     $("odd-list").replaceChildren(...(odd.length ? odd.map((o) => item(`${at(o)}: "${o.value}". The AI says: ${o.why}`))

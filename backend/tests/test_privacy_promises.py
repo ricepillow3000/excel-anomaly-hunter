@@ -259,3 +259,16 @@ def test_every_privacy_page_says_where_the_free_ai_sends_what_it_counts_and_its_
         said = words(page)
         assert [p for p in promises if p not in said] == [], page
         assert "AI help works only after you paste" not in said and "To turn off AI help, click" not in said, page
+
+
+def test_every_privacy_page_says_the_workbook_keeps_the_numbers_of_the_last_check_and_forget_removes_them():
+    """AH-157: the pane says the last check when a workbook opens again, from a record it keeps in the workbook: its
+    numbers only, never a value or a reason. The three privacy pages, the pane's own hint and Forget name it."""
+    kept = ("the numbers of the last check (the sheet's name, when it ran, the slider's level, and how many rows it read "
+            "and flagged, never a value or a reason, so the pane can say them when the file opens again)")
+    for page in PAGES:
+        said = words(page)
+        assert kept in said, page
+        assert "the colours your highlighted cells had before, the numbers of the last check, and the setting that opens the pane with the file" in said, page
+    assert '"anomalyHunterLastScan"' in (ROOT / "frontend/constants/index.js").read_text(encoding="utf-8")
+    assert "the numbers of the last check (how many rows it read and flagged, never a value)" in words("frontend/taskpane.html")

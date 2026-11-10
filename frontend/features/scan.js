@@ -1,4 +1,4 @@
-import { CAP, POWER_BI_KEY, SEV, RANK } from "../constants/index.js";
+import { CAP, LAST_SCAN_KEY, POWER_BI_KEY, SEV, RANK } from "../constants/index.js";
 import { state } from "../hooks/use-state.js";
 import { $, only, show } from "../utils/dom.js";
 import { n } from "../utils/text.js";
@@ -76,6 +76,13 @@ async function scan(auto, held, t0) {
     $("level-change").textContent = said;
     show("level-change", !!said);
   }
+  // AH-157: this check's numbers, never a value or a reason, for the empty state when the file opens again. Saved only by
+  // the saves a scan makes anyway (its highlights' old fills just below, the opening setting): a save of its own made
+  // Excel ask to save a workbook nothing had changed (AH-150)
+  const count = (sev) => body.rows.filter((r) => r.severity === sev).length;
+  Office.context.document.settings.set(LAST_SCAN_KEY, { sheet: String(s.sheet).slice(0, 31), at: Date.now(), level,
+    rows: body.rows.length, high: count("High"), medium: count("Medium"), low: count("Low") });
+  sayLastScan();
   await paint(body.rows, s, decided); // a decided row is not highlighted again
   await watchSelection(s.sheet, onSelect);
   const secs = Math.max(1, Math.round((Date.now() - t0) / 1000));
@@ -107,6 +114,32 @@ export const flaggedRows = (rows) => rows.map((r, i) => ({ ...r, i })).filter((r
 // row looks right now: it is listed as Fixed instead of vanishing), in sheet order
 export const listOrder = (rows, decided = {}) => [...flaggedRows(rows).map((r) => r.i),
   ...Object.keys(decided).map(Number).filter((i) => rows[i] && !SEV[rows[i].severity]).sort((a, b) => a - b)];
+
+// Pure: whatever the workbook holds -> the last check's numbers, or null. A crafted .xlsx can carry anything here: only a
+// sheet's name and whole numbers
+export function asLastScan(v) {
+  const whole = (x) => Number.isInteger(x) && x >= 0;
+  if (!v || typeof v !== "object" || typeof v.sheet !== "string" || !whole(v.at) || ![v.level, v.rows, v.high, v.medium, v.low].every(whole)) return null;
+  return { sheet: v.sheet.slice(0, 31), at: v.at, level: v.level, rows: v.rows, high: v.high, medium: v.medium, low: v.low };
+}
+
+// Pure: the last check in words, as the summary says a scan ("Last check on Sales, 9 Nov: 12 of 300 rows looked wrong")
+export function lastScanSaid(r, now = Date.now()) {
+  if (!r) return "";
+  const when = new Date(r.at), year = when.getFullYear() !== new Date(now).getFullYear();
+  const day = when.toLocaleDateString("en-GB", { day: "numeric", month: "short", ...(year ? { year: "numeric" } : {}) });
+  const sure = r.high + r.medium, of = `of ${n(r.rows)} row${r.rows === 1 ? "" : "s"}`, were = (k) => (k === 1 ? "was" : "were");
+  const found = sure ? `${n(sure)} ${of} looked wrong${r.low ? ` and ${n(r.low)} more ${were(r.low)} worth a quick check` : ""}`
+    : r.low ? `${n(r.low)} ${of} ${were(r.low)} worth a quick check` : `no problems found in ${n(r.rows)} row${r.rows === 1 ? "" : "s"}`;
+  return `Last check on ${r.sheet}, ${day}: ${found}.`;
+}
+
+// The empty state says the workbook's last check, at once when the pane opens: no scan runs by itself (a scan paints)
+export function sayLastScan() {
+  const said = lastScanSaid(asLastScan(Office.context.document.settings.get(LAST_SCAN_KEY)));
+  $("last-scan").textContent = said;
+  show("last-scan", !!said);
+}
 
 // Pure: what a new slider level changed, counted from the two scans' own rows (AH-15: John moved 5 to 10 and saw the
 // same list, so he read the slider as just for show). Said only when the same sheet, unchanged, was checked at another

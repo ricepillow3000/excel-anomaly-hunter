@@ -279,7 +279,8 @@ for (const m of css.matchAll(/letter-spacing\s*:\s*([^;}]+)/g)) assert.ok(!/^-/.
 // AH-120: everything that acts as a button shows it is pressed; a hover alone said nothing to a finger on a phone
 {
   const selectors = [...css.matchAll(/([^{}]+)\{/g)].flatMap((m) => m[1].split(",").map((x) => x.trim().replace(/\s+/g, " ")));
-  for (const sel of [".btn", ".links .btn-trim", ".typology button", ".tabs button", ".rowbtn", ".m-close", ".faq summary", ".menu-btn", ".copy-btn"])
+  // AH-157: a text link too (its line thickens), the header's links (their line takes the wine colour) and the footer's
+  for (const sel of [".btn", ".links .btn-trim", ".typology button", ".tabs button", ".rowbtn", ".m-close", ".faq summary", ".menu-btn", ".copy-btn", "a", ".links a"])
     assert.ok(selectors.includes(sel + ":active"), `styles.css: no pressed (:active) look for ${sel}`);
 }
 // AH-119: each page names itself to search engines and to a shared link: its own title (Arcas first, then what the page

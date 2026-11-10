@@ -221,7 +221,11 @@ details.more[open] summary { margin-bottom: var(--s3); }
 #scan-skeleton li:nth-child(2) .row-why .sk-mid { width: 44%; }
 #scan-skeleton li:nth-child(3) .row-why .sk-mid { width: 76%; }
 #scan-skeleton li:nth-child(4) .row-why .sk-mid { width: 52%; }
-#scan-skeleton::after { content: ""; position: absolute; inset: 0; z-index: 3; pointer-events: none; transform: translateX(-100%);
+/* AH-157: a row's card while it opens: the shape of a fix in the same bars where the fix lands (.fix-body holds its space) */
+.fix-sk { display: none; position: relative; clip-path: inset(0); --sk: var(--tint-2); }
+#fix-view[data-opening] .fix-sk { display: block; }
+#fix-view[data-opening] .fix-body > :not(.fix-sk) { display: none; }
+#scan-skeleton::after, .fix-sk::after { content: ""; position: absolute; inset: 0; z-index: 3; pointer-events: none; transform: translateX(-100%);
   background: linear-gradient(105deg, transparent 30%, color-mix(in oklch, var(--field) 75%, transparent) 50%, transparent 70%);
   animation: sk-pass 1.2s cubic-bezier(.45, 0, .25, 1) 25; } /* finite (AH-149): 25 passes, 30 s; it goes with the skeleton */
 @keyframes sk-pass { to { transform: translateX(100%); } }
@@ -230,7 +234,7 @@ details.more[open] summary { margin-bottom: var(--s3); }
 @media (prefers-reduced-motion: reduce) {
   .flagged-list button, .flagged-list button::before, .flagged-list button::after { transition: none; }
   .flagged-list button:is(:hover, :focus-visible):not(:disabled), .flagged-list button:active:not(:disabled) { transform: none; box-shadow: none; }
-  #scan-skeleton::after { animation: none; display: none; }
+  #scan-skeleton::after, .fix-sk::after { animation: none; display: none; }
   .tick::after { animation: none; }
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none; }
 }
