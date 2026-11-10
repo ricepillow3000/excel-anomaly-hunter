@@ -82,9 +82,13 @@ def test_what_the_pane_says_ask_ai_sends_is_what_the_engine_sends(monkeypatch):
     rows[19][1] = "y" * 1000  # a long cell in the row above the flagged one
     c = create_app().test_client()
     body = {"columns": COLS, "rows": rows, "row_index": 20, "start_row": 0, "start_col": 0, "reason": "Units odd", "intent": "fix"}
-    for k in (fixes, fixes + 1):
-        r = c.post("/fix", json={**body, "memory": ["Units: 1 -> 2"] * k})
-        assert r.status_code == (200 if k == fixes else 400), (k, r.get_json())
+    # AH-153: the pane offers up to memory.OFFERED past fixes and the engine sends at most memory.SENT of them
+    from anomaly_hunter.ai import memory
+    past = [{"h": "Units", "k": "Units odd", "o": str(k), "n": str(k * 10)} for k in range(1, 41)]
+    for k in (memory.OFFERED, memory.OFFERED + 1):
+        r = c.post("/fix", json={**body, "memory": past[:k]})
+        assert r.status_code == (200 if k == memory.OFFERED else 400), (k, r.get_json())
+    assert fixes == memory.SENT and len(memory.select(memory.rank(past, "Units odd", 7), "Units odd", 7)) == fixes
     shown = [int(n) for n in re.findall(r"^row (\d+): ", sent[0], re.M)]
     assert sum(n < 22 for n in shown) == near and sum(n > 22 for n in shown) == near, shown  # rows[20] is sheet row 22
     assert repr("y" * cap + "...") in sent[0] and "y" * (cap + 1) not in sent[0]
