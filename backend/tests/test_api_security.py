@@ -502,14 +502,15 @@ def test_a_key_an_older_version_saved_in_plain_text_still_works_and_is_sealed_at
 
 
 def test_a_sealed_key_this_account_cannot_open_reads_as_no_key_never_an_engine_error(monkeypatch):
-    # a file copied from another account or PC, or a damaged one: AI help reads as off, and the pane can save a new key
+    # a file copied from another account or PC, or a damaged one: no key and no invite (AI help is the free tier,
+    # AH-151), and the pane can save a new key
     sealed = _fake_dpapi(monkeypatch)
     monkeypatch.setattr(client, "RELAY_URL", "https://relay.example")
     for junk in (b"other-account:yek", b"not base64 at all \xff", b"", b"\x00" * 9):
         client.KEY_FILE.write_bytes(sealed.PREFIX + junk)
         client.INVITE_FILE.write_bytes(sealed.PREFIX + junk)
         r = create_app().test_client().get("/health")
-        assert r.status_code == 200 and r.get_json()["ai_available"] is False, junk
+        assert r.status_code == 200 and r.get_json()["ai_provider"] == "free", junk
     assert client.KEY_FILE.read_bytes() == sealed.PREFIX + b"\x00" * 9  # never rewritten: it may be the user's to recover
 
 

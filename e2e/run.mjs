@@ -820,10 +820,20 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
   }
 }
 
-if (mode === "nokey") {
+if (mode === "nokey") { // engine started with no key: John's free AI through the relay, here stub_claude.py's /fix (e2e/engine.py)
   await find();
   await openRow(11);
-  ok(!(await page.isVisible("#ai-box")) && (await page.isVisible("#ai-off")), "without a key: no Ask AI, a pointer to the free setup");
+  // AH-151: a fresh pane with no key has the free AI on, says so in AI help, and Ask AI works with nothing secret sent
+  const FREE = "AI help is on, using a free shared AI with a few requests a day for each internet connection. For more, paste your own free Google key below.";
+  const free = JSON.parse(await page.evaluate(() => fetch("/health").then((r) => r.text())));
+  ok(free.ai_available && free.ai_provider === "free" && (await page.isVisible("#ai-box")) && !(await page.isVisible("#ai-off"))
+    && (await text("#ai-state")) === FREE && !(await page.isDisabled("#fix-ask")),
+    "without a key: the free AI is on, said in AI help, and Ask AI is there - " + JSON.stringify(free) + " " + (await text("#ai-state")));
+  await page.click("#fix-ask");
+  await page.waitForFunction(() => document.getElementById("fix-label").textContent === "AI's fix", null, { timeout: 30000 });
+  const relayed = fs.readFileSync(DIR + "claude.log", "utf8").trim().split("\n").map(JSON.parse).at(-1);
+  ok(relayed.path === "/fix" && relayed.auth === false && (await text("#fix-changes")).startsWith("C11: -5 → =AVERAGEIFS("),
+    "Ask AI with no key: the free AI's fix, through the relay's /fix with no Authorization header - " + JSON.stringify({ path: relayed.path, auth: relayed.auth }));
   await page.click("#settings summary");
   await page.fill("#ai-key", "<script>"); await page.click("#save-key");
   await page.waitForFunction(() => document.getElementById("ai-state").textContent.includes("doesn't look like an API key"));
@@ -850,11 +860,11 @@ if (mode === "nokey") {
     && fs.readFileSync(DIR + "cert/invite-code.txt", "utf8") === code, "the code is kept on this PC only: never on screen, never in an answer");
   const c5 = calls.length;
   await page.dblclick("#remove-key");
-  await page.waitForFunction(() => document.getElementById("ai-state").textContent === "Key removed. AI help is off.");
+  await page.waitForFunction(() => document.getElementById("ai-state").textContent === "Key removed. AI help uses the free shared AI again.");
   await page.waitForTimeout(500);
   ok(since(c5) === "/key" && calls[c5][1].key === "", "Remove key, double-clicked, sends exactly one /key, with an empty key - " + since(c5));
-  ok(!(await page.isVisible("#ai-box")) && (await page.isVisible("#ai-off")) && !fs.existsSync(DIR + "cert/invite-code.txt"),
-    "Remove key: AI help off, the code deleted from this PC");
+  ok((await page.isVisible("#ai-box")) && !(await page.isVisible("#ai-off")) && !fs.existsSync(DIR + "cert/invite-code.txt"),
+    "Remove key: back to the free AI, the code deleted from this PC");
   // saving fails: the PC can't keep the file (the engine's 503, AH-13), or the engine is gone. Said where the key goes,
   // and the key stays in its box to try again (cleared after a save, or when the engine refuses the key itself)
   const disk = `Couldn't save that on this PC. The disk may be full or the file in use: close other programs and try again. The details are in ${LOG_AT}.`;
@@ -865,8 +875,8 @@ if (mode === "nokey") {
       await page.route("**/key", fail, { times: 1 }); await page.fill("#ai-key", code); await page.click("#save-key");
       await page.waitForFunction((w) => document.getElementById("ai-state").textContent === w, words, { timeout: 10000 }).catch(() => {});
     });
-    ok((await text("#ai-state")) === words && !(await page.isVisible("#ai-box")) && (await page.inputValue("#ai-key")) === code,
-      `Save key when ${how}: said in plain words, AI help stays off, the key kept in its box to try again - ` + (await text("#ai-state")));
+    ok((await text("#ai-state")) === words && (await page.isVisible("#ai-box")) && (await page.inputValue("#ai-key")) === code,
+      `Save key when ${how}: said in plain words, AI help stays on the free AI, the key kept in its box to try again - ` + (await text("#ai-state")));
   }
   await page.fill("#ai-key", "");
 }
