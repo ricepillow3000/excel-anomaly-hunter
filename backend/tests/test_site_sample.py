@@ -117,12 +117,12 @@ def js(v):
     return str(int(v)) if isinstance(v, float) and v.is_integer() else str(v)
 
 
-def plain_reason(reason):  # frontend/features/scan.js plainReason
+def plain_reason(reason):  # frontend/features/scan.js plainReason, with its default separator: each reason on its own line (AH-149)
     s = re.sub(r"^Flagged by \d+ of \d+: ", "", reason or "")
     s = re.sub(r"(\S[^;]*?) weird limit is ([^;\s]+); this is ([^;\s]+)",
                lambda m: f"{m[1]} is {m[3]}, {'below' if float(m[3]) < float(m[2]) else 'above'} its usual limit of {m[2]}", s)
     s = re.sub(r"Unusual combination of values, mainly (.+?)(?=;|$)", r"Unusual mix of values, mostly in \1", s)
-    return s.replace(" is unusual relative to its local trend near", " breaks its usual pattern near").replace(" 00:00:00", "").replace("; ", " · ")
+    return s.replace(" is unusual relative to its local trend near", " breaks its usual pattern near").replace(" 00:00:00", "").replace("; ", "\n")
 
 
 def add_ups(reason):  # frontend/features/fix.js addUps

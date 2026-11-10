@@ -348,7 +348,9 @@ table.grid { width: 100%; border-collapse: collapse; font: 500 var(--fs--1)/1.3 
 :is(.matrix, [data-pop-copy]) dd, .stages li, .case-scope { font-variant-numeric: tabular-nums; }
 :is(.matrix, [data-pop-copy]) dt { color: var(--ink-2); font-weight: 700; border-right: 1px solid var(--rule); }
 :is(.matrix, [data-pop-copy]) dl > :nth-last-child(-n+2) { border-bottom: 0; }
-.m-said { padding: 8px 12px; border-top: 1px solid var(--ink); background: var(--paper-2); color: var(--ink-2); }
+/* each of the pane's reasons on its own line, as the pane shows them (AH-149: it joins them with a line break, under
+   white-space: pre-line); index.html writes the break as a newline in the quote */
+.m-said { padding: 8px 12px; border-top: 1px solid var(--ink); background: var(--paper-2); color: var(--ink-2); white-space: pre-line; }
 /* the scanning state, in the pane's own words; the after-fixes state is the sheet itself, corrected */
 .busy { min-height: 440px; display: grid; align-content: center; justify-items: start; gap: var(--s2); padding: var(--s5); }
 .meter { width: min(360px, 100%); height: 12px; border: 1px solid var(--ink); }

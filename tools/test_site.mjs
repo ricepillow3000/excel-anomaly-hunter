@@ -2826,7 +2826,9 @@ for (const file of PAGES.filter((f) => /<header[\s\S]*aria-current="page"[\s\S]*
     const r = await t.page.evaluate(() => { const p = document.querySelector(".notice-bar p"), a = p.querySelector("a"), top = (x) => Math.round(x.getBoundingClientRect().top);
       const w = document.createTreeWalker(p, NodeFilter.SHOW_TEXT); let dot = null; for (let n = w.nextNode(); n; n = w.nextNode()) if (!a.contains(n) && n.textContent.includes("·")) dot = n;
       const q = document.createRange(), i = dot.textContent.lastIndexOf("·"); q.setStart(dot, i); q.setEnd(dot, i + 1);
-      return { dot: Math.round(q.getBoundingClientRect().top), link: top(a), lines: new Set([...(() => { const all = document.createRange(); all.selectNodeContents(p); return all.getClientRects(); })()].map((x) => Math.round(x.top))).size }; });
+      // the link's words, not its box: on a phone its box reaches 12 px above them (a 44 px target, AH-148)
+      const words = document.createRange(); words.selectNodeContents(a);
+      return { dot: Math.round(q.getBoundingClientRect().top), link: top(words), lines: new Set([...(() => { const all = document.createRange(); all.selectNodeContents(p); return all.getClientRects(); })()].map((x) => Math.round(x.top))).size }; });
     want(Math.abs(r.dot - r.link) <= 6, `S6 ${file} at 390 px: "Download" alone on the notice line's last line ${JSON.stringify(r)}`);
     await done(t, `S6 notice line on ${file}`, file === MISSING ? [] : [API]);
   }
