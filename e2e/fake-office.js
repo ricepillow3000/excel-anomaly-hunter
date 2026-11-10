@@ -3,12 +3,17 @@
   const L = (c) => { let s = ""; c++; while (c) { const r = (c - 1) % 26; s = String.fromCharCode(65 + r) + s; c = Math.floor((c - 1) / 26); } return s; };
   const parse = (a) => { const m = /^(?:.*!)?\$?([A-Z]+)\$?(\d+)$/.exec(a); let c = 0; for (const ch of m[1]) c = c * 26 + ch.charCodeAt(0) - 64; return [Number(m[2]) - 1, c - 1]; };
   const sheets = {}; let active = "Sheet1"; const log = [];
+  // "=B2*C3" in cell (r, c) -> "=RC[-2]*R[1]C[-1]", as Excel's formulasR1C1 gives it (AH-152); "$B$2" -> "R2C2"
+  const r1c1 = (f, r, c) => f.replace(/(?<![A-Za-z_\d])(\$?)([A-Z]{1,3})(\$?)(\d+)(?![\d(A-Za-z_])/g, (m, ca, col, ra, row) => {
+    const [rr, cc] = parse(col + row), rel = (d) => (d ? `[${d}]` : "");
+    return `R${ra ? rr + 1 : rel(rr - r)}C${ca ? cc + 1 : rel(cc - c)}`;
+  });
   function makeSheet(name) {
     const cells = {}; const ws = { name, cells, changed: [], selected: [] };
     const cell = (r, c) => (cells[r + "," + c] ||= { v: "", f: null, nf: "General", fill: null });
     const range = (r0, c0, nr, nc) => {
       window.__ranges = (window.__ranges || 0) + 1; // Excel objects made: highlights must only touch flagged rows
-      const grid = (fn) => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => fn(cell(r0 + i, c0 + j))));
+      const grid = (fn) => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => fn(cell(r0 + i, c0 + j), r0 + i, c0 + j)));
       const set = (vals, asFormula) => vals.forEach((row, i) => row.forEach((v, j) => {
         const k = cell(r0 + i, c0 + j);
         if (asFormula && typeof v === "string" && v.startsWith("=")) { k.f = v; k.v = v; }
@@ -21,6 +26,7 @@
         load() { return this; }, select() { ws.selected.forEach((h) => h({ address: L(c0) + (r0 + 1) + ":" + L(c0 + nc - 1) + (r0 + nr) })); },
         get values() { return grid((k) => k.v); }, set values(v) { set(v, false); },
         get formulas() { return grid((k) => k.f ?? k.v); }, set formulas(v) { set(v, true); },
+        get formulasR1C1() { return grid((k, r, c) => (k.f ? r1c1(k.f, r, c) : k.v)); },
         getCellProperties() { return { value: grid((k) => ({ format: { fill: { color: k.fill || "#FFFFFF" } } })) }; },
         get numberFormat() { return grid((k) => k.nf); }, set numberFormat(v) { v.forEach((row, i) => row.forEach((f, j) => (cell(r0 + i, c0 + j).nf = f))); },
         format: { fill: { load() { return this; }, get color() { const all = grid((k) => k.fill ?? null).flat(); return all.every((x) => x === all[0]) ? all[0] ?? "#FFFFFF" : null; },

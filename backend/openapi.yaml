@@ -26,6 +26,12 @@ paths:
                       type: array
                       nullable: true
                       items: {type: string, enum: [fixed, dismissed], nullable: true}
+                    # AH-152: each cell's formula (Excel's R1C1 text) or null; the route also checks it is shaped
+                    # exactly like rows
+                    formulas:
+                      type: array
+                      nullable: true
+                      items: {type: array, items: {type: string, pattern: "^=", maxLength: 8192, nullable: true}}
       responses: {"200": {$ref: "#/components/responses/Json"}, "400": {$ref: "#/components/responses/Error"}}
   /fix:
     post:

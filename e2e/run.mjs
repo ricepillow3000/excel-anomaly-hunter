@@ -624,6 +624,30 @@ if (mode === "flow") {
   await page.evaluate(() => __activate("Sales")); await find();
   ok((await listBits()) === "list-hint,flagged-list,clear-highlights,list-title", "the next scan that flags rows shows the list again - " + (await listBits()));
 
+  // 8b2) AH-152: the scan sends each cell's formula, so a Total typed over its column's formula (D31: the right number
+  // today, wrong the day Qty changes) and one row off (D21 =B21*C22) are listed, and neither card says "fix the cells it uses"
+  ok(scans.every((b) => b.formulas === null), "a sheet with no formulas sends formulas: null, the scan of before");
+  { const calc = [["Item", "Qty", "Price", "Total"], ...Array.from({ length: 40 }, (_, k) => [`Item ${k}`, 2 + (k % 7), 5 + (k % 4), (2 + (k % 7)) * (5 + (k % 4))])];
+    calc[20][3] = calc[20][1] * calc[21][2];
+    await page.evaluate((calc) => { __load("Calc", calc); for (let n = 2; n <= 41; n++) if (n !== 31) __formula("Calc", `D${n}`, n === 21 ? "=B21*C22" : `=B${n}*C${n}`); }, calc);
+    await find();
+    const sent = scans.at(-1).formulas;
+    ok(sent?.length === 40 && sent[0].join() === ",,,=RC[-2]*RC[-1]" && sent[29][3] === null && sent[19][3] === "=RC[-2]*R[1]C[-1]",
+      "the scan sends each cell's R1C1 formula, null where none - " + JSON.stringify([sent?.[0], sent?.[19], sent?.[29]]));
+    const listed = await text("#flagged-list");
+    ok(listed.includes("Row 31") && listed.includes("Row 21") && listed.includes("is a typed number where the column's other rows use a formula"),
+      "a typed Total among formulas and a formula one row off are both listed - " + listed.slice(0, 300));
+    const fills = await page.evaluate(() => ["D31", "A31", "B31", "C31"].map((a) => __cell("Calc", a).fill));
+    ok(fills[0] && !fills[1] && !fills[2] && !fills[3], "only the typed Total's cell is coloured - " + fills);
+    for (const r of [31, 21]) {
+      await openRow(r);
+      const said = await text("#fix-explanation");
+      ok(!said.includes("Fix the cells it uses") && /copy the formula from the row above|compare it with the row above/.test(said), `row ${r}'s card points at its formula - ` + said);
+      await page.click("#fix-back"); await idle();
+    }
+    await page.click("#clear-highlights"); await idle();
+    await page.evaluate(() => __activate("Sales")); await find(); }
+
   // 8c) AH-124: a double-click on Find problems, and two clicks on Accept faster than the pane can redraw, each do the
   // work once: one /scan, one cell written and one /check. A sheet of its own, so no decision from above is in the way
   await page.evaluate((rows) => __load("Twice", rows, [0]), rows);

@@ -44,6 +44,8 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
   let guessed = false; // a misspelling's fix is a guess too
   reason = reason || "";
   const sums = addUps(reason), solved = new Set(); // solved: columns the row's own arithmetic fixed
+  // AH-152: a cell whose own formula differs from its column's: the formula is what's wrong, not the cells it uses
+  const odd = new Set(issuesOf(reason).map(({ text }) => /^(.+) uses a different formula from the other rows of its column$/.exec(text)?.[1]));
   columns.forEach((c, j) => {
     const v = rows[i][j], cell = `${colLetter(startCol + j)}${row}`;
     const lim = limits && limits[c], lo = lim && lim[2], hi = lim && lim[3];
@@ -64,7 +66,7 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
     const sum = typeof v === "number" && likely && likely[c] != null && likely[c] !== -v ? sums.find((s) => s.cols.includes(c)) : null;
     if (!(variant || miss || weak || blank || outside || sum)) return;
     seen.add(c);
-    if (calc && String(calc[j]).startsWith("=")) return void calcCells.push(cell); // never type over a formula
+    if (calc && String(calc[j]).startsWith("=")) return void (odd.has(c) || calcCells.push(cell)); // never type over a formula
     if (variant) {
       changes.push({ cell, new: likely[c] });
       return void typos.push(`${c} says "${v}" where the rest of the column says "${likely[c]}": same word, different capitals/spaces`);
@@ -151,6 +153,11 @@ const HINTS = [
   [/ is above 100% - /, "it may be a whole percent typed where a fraction belongs (85 for 0.85)"],
   [/ looks like an? .+ value$/, "it may have been typed into the wrong column"],
   [/ is not a whole number - /, "check the decimal point"],
+  // AH-152: a typed value or another formula among a column's formulas; the card never says "fix the cells it uses"
+  [/ is (?:a typed number|typed text) where the column's other rows use a formula$/, "a value typed over the column's formula " +
+    "stays the same when its inputs change; copy the formula from the row above into this cell"],
+  [/ uses a different formula from the other rows of its column$/, "a formula that differs from its neighbours often points " +
+    "at the wrong row or cell; compare it with the row above (click the cell and read the formula bar), then copy the right one in"],
   // AH-55: a Birth month of 13 and a share of 200 got "the values are just unusual together", the cross-column check's words
   [/ is outside what .+ can be \(-?[\d.]+ to -?[\d.]+\)$/, "its column's name allows no such value, so a typing slip is the usual cause"],
   [/ is over 100, and every other .+ is a share between 0 and 100$/, "a share of a whole over 100 is usually a slip (an extra digit, " +

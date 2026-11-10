@@ -21,8 +21,10 @@ export async function activeSheet() {
   });
 }
 
-// Values only, in slices (formulas are read per row when a fix opens; number formats only for the top rows,
-// where the header and first data row are). This was 3x the data in one call - the freeze on big sheets.
+// Values and formulas, in slices (number formats only for the top rows, where the header and first data row are).
+// This was 3x the data in one call - the freeze on big sheets. AH-152: each cell's R1C1 formula (null where it holds
+// none) goes to the engine too, so a typed 250 among a column's =RC[-2]*RC[-1] is seen; half the rows a slice keep
+// each call the size it was.
 export async function readSheet(onSlice) {
   return Excel.run(async (ctx) => {
     const sheet = ctx.workbook.worksheets.getActiveWorksheet().load("name");
@@ -31,15 +33,16 @@ export async function readSheet(onSlice) {
     const { rowIndex: r0, columnIndex: c0, columnCount: w } = used;
     const total = Math.min(used.rowCount, Math.floor(maxCells() / w));
     const top = sheet.getRangeByIndexes(r0, c0, Math.min(total, 12), w).load("numberFormat");
-    const step = Math.max(1, Math.floor(READ_CELLS / w)), values = [];
+    const step = Math.max(1, Math.floor(READ_CELLS / (2 * w))), values = [], formulas = [];
     for (let k = 0; k < total; k += step) {
-      const part = sheet.getRangeByIndexes(r0 + k, c0, Math.min(step, total - k), w).load("values");
+      const part = sheet.getRangeByIndexes(r0 + k, c0, Math.min(step, total - k), w).load("values, formulasR1C1");
       await ctx.sync();
       for (const row of part.values) values.push(row);
+      for (const row of part.formulasR1C1) formulas.push(row.map((f) => (typeof f === "string" && f.startsWith("=") ? f : null)));
       onSlice(values.length / total);
     }
     await ctx.sync();
-    const t = tableFromGrid(values, top.numberFormat, r0, c0, null);
+    const t = tableFromGrid(values, top.numberFormat, r0, c0, formulas);
     return t && { ...t, sheet: sheet.name, cut: total < used.rowCount && [r0 + total, r0 + used.rowCount] };
   });
 }

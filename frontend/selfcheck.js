@@ -308,6 +308,15 @@ assert.equal(rec.guess, false);
 assert.equal(recommendFix(cols, data, 1, lim, "Units weird limit is 0; this is -5 (likely 5)", 0, 0, { Units: 5 }).guess, false, "an obvious typo (-5 for 5) is not a guess");
 // a value past the limits that the engine did NOT flag (a regular repeated toll; the row is flagged as a duplicate) stays
 assert.deepEqual(recommendFix(cols, data, 1, lim, "Flagged by 1 of 3: Duplicate of row 2", 0, 0).changes, [], "only columns the engine flagged");
+// AH-152: a Total whose own formula is one row off: its formula is wrong, so the card never says "fix the cells it uses"
+{ const odd = recommendFix(["Qty", "Price", "Total"], [[2, 5, 10], [3, 6, 21]], 1, { Total: [0, 50, 0, 90] },
+    "Total 21 does not add up: Qty × Price = 18; Total uses a different formula from the other rows of its column", 0, 0,
+    { Total: 18 }, [null, null, "=RC[-2]*R[1]C[-1]"]);
+  assert.deepEqual(odd.changes, [], "a formula cell is never typed over");
+  assert.ok(!odd.explanation.includes("Fix the cells it uses") && odd.explanation.includes("compare it with the row above"), odd.explanation);
+  const typed = recommendFix(["Qty", "Price", "Total"], [[2, 5, 10], [3, 6, 18]], 1, {},
+    "Total 18 is a typed number where the column's other rows use a formula", 0, 0, {}, [null, null, 18]);
+  assert.ok(typed.explanation.includes("copy the formula from the row above"), typed.explanation); }
 rec = recommendFix(cols, data, 0, lim, "x", 0, 0);
 assert.deepEqual(rec.changes, [], "inside limits: no change");
 assert.ok(rec.explanation.includes("Nothing here is clearly broken"));

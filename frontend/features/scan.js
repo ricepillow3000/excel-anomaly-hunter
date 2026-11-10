@@ -57,7 +57,8 @@ async function scan(auto, held, t0) {
   // decisions: its Status (Open, Fixed, Dismissed)
   const body = await post("/scan", { columns: s.columns, rows: s.rows, limits, order_by: null, strength: level,
     power_bi: powerBiOn(), start_row: s.startRow, sheet: String(s.sheet).slice(0, 31),
-    decisions: Object.keys(decided).length ? s.rows.map((_, i) => decided[i] || null) : null }, 300);
+    decisions: Object.keys(decided).length ? s.rows.map((_, i) => decided[i] || null) : null,
+    formulas: s.calc.some((r) => r.some(Boolean)) ? s.calc : null }, 300); // AH-152: each cell's formula, only if any
   if (held) await new Promise((go) => setTimeout(go, Math.max(0, HOLD - (Date.now() - t0))));
   scanning(false); // the results take the skeleton's place
   state.lastStrength = level; // Agent 3 judges fixes at the level this scan used
