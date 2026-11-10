@@ -4,6 +4,8 @@ local median is the value itself, so the gaps from it are ~0 and every bend of t
 first and last months were read against a one-sided window. A jump moves a value further than the series usually
 moves in one row; the trend window shrinks evenly at both ends. Real jumps, spikes and level shifts, from one to a
 fifth of the months, are found as before (try 1 capped the votes instead and lost them, AH-31 review). Synthetic only."""
+from datetime import date, timedelta
+
 import numpy as np
 import pytest
 
@@ -107,3 +109,34 @@ def test_a_jump_in_the_first_or_last_rows_is_still_found(level, at):
     rows = [[f"{1900 + k // 12}-{k % 12 + 1:02d}-01", round(float(x), 2)] for k, x in enumerate(v)]
     out = scan(["Month", "Value"], rows, fair=False, strength=level)[1]
     assert out[at]["severity"] in ("Low", "Medium", "High"), (at, level, out[at])
+
+
+def business_days(seed, n=120):
+    # sales on weekdays only, every Friday 2.5x the other days: a 5-row cycle, Monday 3 days after Friday
+    rng, rows, d = np.random.default_rng(seed), [], date(2026, 1, 5)
+    while len(rows) < n:
+        if d.weekday() < 5:
+            rows.append([d.isoformat(), (500 if d.weekday() == 4 else 200) + int(rng.integers(-20, 21))])
+        d += timedelta(days=1)
+    return rows
+
+
+@pytest.mark.parametrize("seed", [3, 4, 5])
+def test_an_honest_friday_peak_on_business_days_is_neither_a_jump_nor_past_a_limit(seed):
+    # AH-150: 25 of 120 rows flagged, 6 Medium. The cycles were calendar ones (7, 12, 24, 52, 168), and the lowest
+    # Fridays, with nothing between them and halfway back to the median, voted past the weird limit though 23 other
+    # Fridays sat just above them
+    rows = business_days(seed)
+    out = scan(["Date", "Sales"], rows, fair=False, strength=5)[1]
+    assert not [i for i, o in enumerate(out) if o["severity"] in ("Medium", "High")], seed
+    inside = [i for i in listed(out) if 15 <= i < len(rows) - 15]  # 3 whole weeks on each side: the cycle is proven
+    assert not inside, (seed, inside)
+
+
+@pytest.mark.parametrize("level", [5, 10])
+@pytest.mark.parametrize("at, by", [(52, 150), (53, -120), (60, 400), (64, 300)])
+def test_a_real_jump_among_business_days_is_still_found(level, at, by):
+    rows = business_days(3)
+    rows[at][1] += by
+    out = scan(["Date", "Sales"], rows, fair=False, strength=level)[1]
+    assert at in listed(out), (level, at, out[at])

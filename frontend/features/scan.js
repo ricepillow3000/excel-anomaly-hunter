@@ -57,7 +57,8 @@ async function scan(auto, held, t0) {
   // decisions: its Status (Open, Fixed, Dismissed)
   const body = await post("/scan", { columns: s.columns, rows: s.rows, limits, order_by: null, strength: level,
     power_bi: powerBiOn(), start_row: s.startRow, sheet: String(s.sheet).slice(0, 31),
-    decisions: Object.keys(decided).length ? s.rows.map((_, i) => decided[i] || null) : null }, 300);
+    decisions: Object.keys(decided).length ? s.rows.map((_, i) => decided[i] || null) : null,
+    formulas: s.calc.some((r) => r.some(Boolean)) ? s.calc : null }, 300); // AH-152: each cell's formula, only if any
   if (held) await new Promise((go) => setTimeout(go, Math.max(0, HOLD - (Date.now() - t0))));
   scanning(false); // the results take the skeleton's place
   state.lastStrength = level; // Agent 3 judges fixes at the level this scan used
@@ -78,9 +79,13 @@ async function scan(auto, held, t0) {
   const secs = Math.max(1, Math.round((Date.now() - t0) / 1000));
   notice(`Done in ${secs} second${secs === 1 ? "" : "s"}.` + (body.power_bi_saved === false
     ? " The Power BI copy couldn't be saved (is latest-scan.csv open in another program?). Details are in server.log." : ""));
-  // a checked workbook reopens with this pane open (Office autoopen; manifest TaskpaneId)
-  Office.context.document.settings.set("Office.AutoShowTaskpaneWithDocument", true);
-  Office.context.document.settings.saveAsync();
+  // a checked workbook reopens with this pane open (Office autoopen; manifest TaskpaneId). Set once: written on every
+  // scan it made Excel ask to save a workbook nothing had changed, and opened the pane for everyone it went to (AH-150)
+  const settings = Office.context.document.settings;
+  if (!settings.get("Office.AutoShowTaskpaneWithDocument")) {
+    settings.set("Office.AutoShowTaskpaneWithDocument", true);
+    settings.saveAsync();
+  }
   if (auto !== false && autoOn()) { // step 3: exact slips fixed, then the sheet checked again so the list is current
     busy("Fixing exact mistakes…");
     const fixed = await autoFix();

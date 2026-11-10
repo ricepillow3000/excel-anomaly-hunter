@@ -683,20 +683,31 @@ def _totals(df, cols, skip, out, held=None):
     Adds its reasons to out, and the rows each held on to held (see confirm); -> the totals it explained, so least squares
     does not judge them again (AH-55)."""
     done, order, nums = set(), list(df.columns), {c: k for k, c in enumerate(cols)}
-    heads = [c for c in cols if len(h := " ".join(re.sub(r"[_.]+", " ", str(c)).split()).lower()) <= 200 and TOTAL_HEAD.search(h)]
+    named = [c for c in cols if len(h := " ".join(re.sub(r"[_.]+", " ", str(c)).split()).lower()) <= 200 and TOTAL_HEAD.search(h)]
+    # ...and any other number column, as the sum of 3+ beside it: a "Budget" or a "Field4" that adds up Salaries + Rent +
+    # Travel was judged only by least squares, 20 rows a column, so on 60 rows its slip was missed and a real Travel -123
+    # whose row adds up got "likely 123" (AH-150). Same flags under other headers (test_schema_agnostic)
+    heads = named + [c for c in cols if c not in named]
     rows = df.index[~skip]
-    a = df.loc[rows, cols].to_numpy(dtype=float) if heads else None
+    a = df.loc[rows, cols].to_numpy(dtype=float) if len(cols) > 3 else None
     halves = {}  # as pairs: a column of whole numbers is exact, one written to d decimals off by up to half its last digit
     half = lambda c: halves.setdefault(c, 0.0 if (d := _decimals(a[:, nums[c]])) == 0 else 0.5 * 10.0 ** -d)
-    for col in heads[:20]:
-        y, at, tries = a[:, nums[col]], order.index(col), [[c for c in cols if c != col]]
+    for col in heads[:20] if a is not None else ():
+        y, at, tries = a[:, nums[col]], order.index(col), [[c for c in cols if c != col]] if col in named else []
+        own = 0.5 * 10.0 ** -_decimals(y)
         for step in (-1, 1):  # the number columns right beside it, nearest first, up to the first other column
             run, j = [], at + step
             while 0 <= j < len(order) and order[j] in nums and len(run) < 40:
                 run.append(order[j])
                 j += step
-            tries += [run[:k] for k in range(3, len(run) + 1)]
-        best, own = None, 0.5 * 10.0 ** -_decimals(y)
+            ks = range(3, len(run) + 1)
+            if col not in named and len(run) >= 3:  # a running sum that meets the column on under 10 rows is no try: every
+                # column of 30,000 rows x 45 tried every run in full took 100 s (AH-150)
+                tol = np.maximum(0.011, 1e-6 * np.abs(y))[:, None] + np.cumsum([half(c) for c in run]) + own
+                hit = (np.abs(y[:, None] - np.cumsum(a[:, [nums[c] for c in run]], axis=1)) <= tol).sum(axis=0)
+                ks = [k for k in ks if hit[k - 1] >= 10]
+            tries += [run[:k] for k in ks]
+        best = None
         # the exact cent first; then, where it fails, what the rounding of the parts and the total explains, never looser:
         # ten parts written to 1 decimal and a total rounded from the unrounded ones miss by up to 0.55 (round 38, AH-64)
         for loose in (False, True):
@@ -1193,6 +1204,37 @@ def shifted(df, column_types, skip):
     return out
 
 
+SAME_FORMULA = 0.8  # Excel's own "inconsistent formula" check, read down a column: this share of its filled cells
+
+
+def formulas(df, column_types, skip, grid=None):
+    """AH-152: a column worked out by one formula (Total =RC[-2]*RC[-1] in R1C1, the same text on every row) where a row
+    holds a typed value, or another formula (=RC[-2]*R[1]C[-1], one row off). The values alone never show it: a typed
+    250 that equals Qty x Price today is wrong the day Qty changes. grid = each cell's R1C1 formula or None, as the pane
+    reads it; 80%+ of the column's filled cells, and 5+, must share one formula. A totals row's SUM is left out (skip).
+    -> (reasons, fix): fix[i] = {column: the shared formula}, the card's fix, known from the column, never invented."""
+    out, fix = [[] for _ in range(len(df))], [{} for _ in range(len(df))]
+    if not grid:
+        return out, fix
+    for j, col in enumerate(df.columns):
+        f, blank = [row[j] for row in grid], _blank(df[col]).to_numpy()
+        filled = [i for i in range(len(df)) if not skip[i] and (f[i] is not None or not blank[i])]
+        top = collections.Counter(f[i] for i in filled if f[i] is not None).most_common(1)
+        if not top or top[0][1] < 5 or top[0][1] < SAME_FORMULA * len(filled):
+            continue
+        for i in filled:
+            if f[i] is None:
+                v = df[col].iat[i]
+                said = f"{say(v)} is a typed number" if pd.api.types.is_number(v) and not isinstance(v, (bool, np.bool_)) \
+                    else f'"{_short(v)}" is typed text'
+                out[i].append(Why(f"{col} {said} where the column's other rows use a formula", col))
+            elif f[i] != top[0][0]:
+                out[i].append(Why(f"{col} uses a different formula from the other rows of its column", col))
+            if f[i] != top[0][0]:
+                fix[i][col] = top[0][0]
+    return out, fix
+
+
 def knobs(strength=5):
     """How hard to look, 0-10 -> (level, k). k = how many robust spreads out a value must be to count as weird.
     5 = the tuned default (k 6, bench 51/51). Each step up lowers the bar ~10% and may add a check, so a row flagged
@@ -1207,7 +1249,7 @@ def knobs(strength=5):
 ALONE = 7  # from this level, a value past its usual limit that few others pass is listed (Low), not only noted
 
 
-def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
+def score(df, column_types, errors_log, limits, order_by, strength=5, saved=(), grid=None):
     """-> (rows, status). Severity = votes: 1 Low, 2 Medium, 3+ High. Weird limit or hygiene hit = at least Medium.
     Totals/summary rows are left out of every check (their numbers would distort the rest) and say so."""
     n, skip = len(df), summary_rows(df)
@@ -1251,6 +1293,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
     (dup, repeats), (typ, typ_coded), (blank, spread) = duplicates(df, errors_log, column_types), type_errors(n, errors_log, column_types), blanks(df, column_types, skip, errors_log)
     (hole, coded), far = placeholders(df, column_types, skip), far_dates(df, column_types, skip)
     zeros = lost_zeros(df, column_types, skip)
+    calc, calc_fix = formulas(df, column_types, skip, grid)  # AH-152: a typed value or another formula among a column's formulas
     forms, many_forms = date_forms(df, column_types, skip)
     code, coded_top = codes(df, column_types, skip)
     spell, spell_fix, missed, spell_maybe, spell_exact = spellings(df, column_types, skip)
@@ -1290,7 +1333,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
                          "magnitude": 0.0})
             continue
         voted = [d for d in ran if d["votes"][i]]
-        hygiene = dup[i] + typ[i] + blank[i] + hole[i] + code[i] + far[i] + add[i] + spell[i] + zeros[i] + forms[i]
+        hygiene = dup[i] + typ[i] + blank[i] + hole[i] + code[i] + far[i] + add[i] + spell[i] + zeros[i] + forms[i] + calc[i]
         if not voted and not hygiene and not missed[i]:
             noted = as_typed(lim["noted_reasons"][i], i)
             rows.append({"severity": "Noted" if noted else None, "bucket": None,
@@ -1307,6 +1350,7 @@ def score(df, column_types, errors_log, limits, order_by, strength=5, saved=()):
             "likely": {**lim["likely"][i], **solved[i], **spell_fix[i]},  # the row's own arithmetic beats a typo pattern
             "maybe": {**lim["maybe"][i], **spell_maybe[i]},  # misspelling, or a typo the numbers cannot prove: a guess the user confirms
             "exact": spell_exact[i],  # capitals/spaces where the usual spelling is 5x as common: safe to auto-fix
+            "formula": calc_fix[i],  # AH-152: the column's own R1C1 formula for a cell that broke it: the card writes it back
         })
     status = {k: "ran" if d["ran"] else f"sat out: {d['sit_out_reason']}" for k, d in dets.items()}
     return rows, status

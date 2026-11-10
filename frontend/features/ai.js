@@ -9,24 +9,29 @@ import { isOurs, plainError } from "../utils/errors.js";
 import { recall } from "./memory.js";
 
 // Ask AI: the API client in the workflow (the engine forwards to Gemini). Optional; fixes work without it.
-export function setAi(on) {
+// AH-151: with no key or invite of its own the engine uses John's relay ("free"), and the options say so
+const FREE_ON = "AI help is on, using a free shared AI with a few requests a day for each internet connection. For more, paste your own free Google key below.";
+
+export function setAi(on, provider = state.aiProvider) {
   state.aiAvailable = !!on;
+  state.aiProvider = provider ?? null;
   show("ai-box", state.aiAvailable);
   show("ai-off", !state.aiAvailable);
   show("odd-box", state.aiAvailable);
   $("fix-ask").disabled = !state.aiAvailable || !!state.fix?.asking;
-  $("ai-state").textContent = state.aiAvailable ? "AI help is on." : "AI help is off. It's optional; fixes work without it.";
+  $("ai-state").textContent = !state.aiAvailable ? "AI help is off. It's optional; fixes work without it."
+    : state.aiProvider === "free" ? FREE_ON : "AI help is on.";
 }
 
 export async function saveKey(key) {
   try {
     const out = await post("/key", { key: key.trim() });
     $("ai-key").value = ""; // the key never stays on screen
-    setAi(out.ai_available);
+    setAi(out.ai_available, out.ai_provider);
     // the engine tested the key with Google: "Key works", or why it was saved untested
     // only Remove reaches here without a message (Save sends a key); a Claude key set in Windows can keep AI on
-    $("ai-state").textContent = out.message || (out.ai_available ? "Key removed. AI help still uses the paid Claude key set on this PC."
-      : "Key removed. AI help is off.");
+    $("ai-state").textContent = out.message || (out.ai_provider === "free" ? "Key removed. AI help uses the free shared AI again."
+      : out.ai_available ? "Key removed. AI help still uses the paid Claude key set on this PC." : "Key removed. AI help is off.");
   } catch (e) {
     // a key the engine refused (Google said no, or it is not a key) is no use to retry: it leaves the screen like a
     // saved one (AH-15); a save that failed (the disk, the engine gone) keeps it in the box to try again
@@ -47,7 +52,7 @@ export async function askFix() { // talks to the engine only; the sheet is touch
   try {
     const { columns, rows, startRow, startCol } = state.lastScan, reason = state.lastRows[f.i].reason;
     // AH-143: the fixes the user accepted before in the flagged column, the one the engine reads from the reason (the
-    // longest header it names: "Column 31" over "Column 3")
+    // longest header it names: "Column 31" over "Column 3"); the engine ranks them and picks which go (AH-153)
     const flagged = columns.map(String).filter((c) => c.trim() && String(reason ?? "").includes(c)).sort((a, b) => b.length - a.length)[0];
     const memory = flagged ? recall(flagged) : [];
     const out = await post("/fix", {
@@ -64,13 +69,18 @@ export async function askFix() { // talks to the engine only; the sheet is touch
     if (v) out.explanation += v.clean ? " Checked: with this fix the row looks right."
       : ` Checked: with this fix the row would still look unusual: ${plainReason(v.reason)}.`;
     if (state.fix !== f) return; // the user moved to another row meanwhile
+    // AH-153: the engine's own sentence when the AI's fix repeats a past fix of the user's, so a learned habit is told
+    // apart from a fresh reading of the sheet (showFix sets the explanation as text)
+    if (typeof out.memory_note === "string") out.explanation += ` ${out.memory_note}`;
     await showFix(f, "AI's fix", out);
     // AH-145: Google's main model was busy or used up for today and a backup Gemini model answered (the engine names it
-    // only then)
-    if (out.model) notice("Google's main AI was busy, so a backup Gemini model answered. Check its change before you accept.");
+    // only then). AH-150: the notice names it too, as the card's words said only "a backup"
+    if (out.model) notice(`Google's main AI was busy, so the backup model ${out.model} answered. Check its change before you accept.`);
   } catch (e) {
     if (state.fix !== f) return;
-    if (Object.hasOwn(LIMITS, String(e.limit))) notice(LIMITS[e.limit]); // every model used up for today, or busy: John's words, in the notice box
+    // every model used up for today, or busy: John's words, in the notice box. The free AI's used-up day is the engine's
+    // own words (AH-151), which name your own Google key as the way to more
+    if (Object.hasOwn(LIMITS, String(e.limit))) notice(e.limit === "day" && state.aiProvider === "free" ? e.message : LIMITS[e.limit]);
     else $("fix-status").textContent = plainError(e, "AI could not help");
   } finally {
     f.asking = false;

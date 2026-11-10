@@ -36,6 +36,14 @@ def test_spreadsheet_talk_is_never_taken_for_a_crisis(text):
     assert not care.distress(text), text
 
 
+@pytest.mark.parametrize("mark", ["\u200b", "\u200c", "\u200d", "\u2060", "\ufeff", "\u00ad"])
+def test_words_of_someone_in_crisis_with_invisible_characters_in_them_are_still_recognised(mark):
+    # AH-150: an invisible format character (a zero-width space, a joiner, a soft hyphen) inside or between the words
+    # left the request unrecognised, and it went to the AI instead of getting the helpline message
+    for text in (f"i want to kill{mark}myself", f"i want to kill {mark}myself", f"I feel sui{mark}cidal", f"I want to d{mark}ie"):
+        assert care.distress(text), repr(text)
+
+
 def test_the_care_message_names_the_lifeline_and_says_nothing_was_sent():
     assert "988" in care.MESSAGE and "findahelpline.com" in care.MESSAGE and "emergency" in care.MESSAGE
     assert "was not sent to the AI" in care.MESSAGE
@@ -65,7 +73,7 @@ def test_a_crisis_request_sends_none_of_the_users_past_fixes_and_caches_nothing(
     # AH-143: the past fixes the pane remembers ride along with Ask AI; a care answer still sends nothing at all
     calls = _no_network(monkeypatch)
     client.KEY_FILE.write_text("AIzaFakeKeyForTheTest_123")
-    r = create_app().test_client().post("/fix", json={**BODY, "intent": "I want to die", "memory": ["Units: x: -5 -> 5"]})
+    r = create_app().test_client().post("/fix", json={**BODY, "intent": "I want to die", "memory": [{"h": "Units", "k": "x", "o": "-5", "n": "5"}]})
     assert r.status_code == 200 and r.get_json() == {"explanation": care.MESSAGE, "changes": [], "care": True}
     assert calls == []
     assert not client._cache_dir().exists() or list(client._cache_dir().iterdir()) == []

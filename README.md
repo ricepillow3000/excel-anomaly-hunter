@@ -67,9 +67,10 @@ itself after each check. It never changes numbers and never guesses. **Undo auto
 them back (kept in the workbook).
 
 ## AI help (optional, free)
-Under "AI help" in the pane, paste a free Google Gemini key from
-https://aistudio.google.com/apikey (Google account, no credit card). Then **Ask AI** writes a different fix from a
-plain-English request. Only the row asked about and a few rows around it go to Google (its free tier may use them to
+AI help works out of the box: with no key, **Ask AI** uses a free shared AI (John's relay on Cloudflare, a few requests
+a day for each internet connection) and writes a different fix from a plain-English request. For more, paste your own
+free Google Gemini key from https://aistudio.google.com/apikey (Google account, no credit card) under "AI help" in the
+pane. Only the row asked about and a few rows around it go to Google (its free tier may use them to
 improve its products, so don't use it on private data). A Claude key (`ANTHROPIC_API_KEY`) also works.
 An invite kit (a zip from the author) needs no key: its `install.bat` switches AI help on by itself.
 Making kits: `node relay/new-invite.mjs "Name"` (see `relay/wrangler.toml` for the shared relay and its daily caps).

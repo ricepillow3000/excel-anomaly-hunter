@@ -317,15 +317,34 @@ if (mode === "flow") {
   ok(after[0] === "#00B050" && after[1] === null && after[2] === "#00B0F0" && after[3] === null, "Remove highlights restores the old fills, cell by cell on a two-color row - " + after);
   ok((await text("#notice")).startsWith("Highlights removed"), "and says so");
 
-  // 5) ...also after the pane was closed and reopened (no memory of what it painted)
+  // 5) ...also after the pane was closed and opened again (a reload: the fake workbook keeps its cells, fills and saved
+  // settings). AH-150: the old fills lived only in the pane's memory, so a reopened pane cleared every cell in our colours
+  // to no fill (row 11's green was lost, and a whole row in Excel's own Neutral style went too), and Find problems after a
+  // reopen took our own colour for each cell's fill, so no button could ever take those highlights off again.
+  // The scan also sets the opening setting only once: written on every scan, it made Excel ask to save a workbook nothing
+  // had changed, and opened the pane for everyone the file went to
+  ok(await page.evaluate(() => __settings["Office.AutoShowTaskpaneWithDocument"] === true), "a scanned workbook opens with this pane");
+  await page.evaluate(() => { const s = Office.context.document.settings, set = s.set; window.__sets = []; s.set = (k, v) => (__sets.push(k), set(k, v)); });
   await find();
-  // ...and a whole row painted by a pane from before AH-40, in Excel's very colors
-  await page.evaluate(() => { __state.painted = null; __fill("Sales", "A30", "#00B050"); __fill("Sales", "D40", "#FFC7CE"); for (const c of "ABCDE") __fill("Sales", c + "60", "#FFEB9C"); });
+  ok(await page.evaluate(() => !__sets.includes("Office.AutoShowTaskpaneWithDocument")), "a scan of a workbook that already opens with the pane does not set it again - " + (await page.evaluate(() => __sets)));
+  await page.reload(); await page.waitForSelector("#main-ui", { state: "visible" });
+  // the user's own fills: a cell, and a cell and a whole row in Excel's own Bad and Neutral styles (one step off ours)
+  await page.evaluate(() => { __fill("Sales", "A30", "#00B050"); __fill("Sales", "D40", "#FFC7CE"); for (const c of "ABCDE") __fill("Sales", c + "60", "#FFEB9C"); });
+  const fillsAt = () => page.evaluate(() => ["C11", "E11", "A51", "B81", "C121", "B22", "A30", "D40", "A60", "E60"].map((a) => __cell("Sales", a).fill).join());
+  const OWN = "#00B050,#00B050,,,,#00B0F0,#00B050,#FFC7CE,#FFEB9C,#FFEB9C";
+  await find();
+  ok((await cell("C11")).fill === "#FFEB9D" && (await cell("A51")).fill === "#FFEB9D", "reopened, then Find problems: the rows are highlighted again");
   await page.click("#clear-highlights"); await idle();
-  const cleared = await page.evaluate(() => ["C11", "A51", "B81", "A30", "D40", "A60", "E60"].map((a) => __cell("Sales", a).fill));
-  ok(cleared.slice(0, 3).every((f) => f === null) && cleared[3] === "#00B050", "reopened pane: only OUR colors are removed - " + cleared);
-  ok(cleared[4] === "#FFC7CE", "a single cell in Excel's own 'Bad' style (same pink) is the user's, and stays");
-  ok(cleared[5] === null && cleared[6] === null, "a whole row an older pane painted is ours too, and goes");
+  ok((await fillsAt()) === OWN, "and Remove highlights puts back each cell's own fill, row 11's green too - " + (await fillsAt()));
+  await page.click("#clear-highlights"); await idle();
+  ok((await fillsAt()) === OWN, "a second Remove highlights changes nothing: the user's Bad and Neutral styles, a whole row too, stay - " + (await fillsAt()));
+  // the workbook no longer holds the old fills (Forget, or a pane from before AH-150): a cell in our colour that a scan
+  // flags again is our highlight, never the user's fill, so Remove highlights takes it off
+  await find(); await page.reload(); await page.waitForSelector("#main-ui", { state: "visible" });
+  await page.evaluate(() => delete __settings.anomalyHunterHighlights); await find();
+  await page.click("#clear-highlights"); await idle();
+  ok(await page.evaluate(() => ["C11", "A51", "B81", "C121"].every((a) => __cell("Sales", a).fill === null)), "with no old fills kept, a scan then Remove highlights still takes every highlight off");
+  await page.evaluate(() => { __fill("Sales", "A30", null); __fill("Sales", "D40", null); for (const c of "ABCDE") __fill("Sales", c + "60", null); });
 
   // 6) limits: plain words, bad input refused, saving rescans, "Back to automatic" resets
   const openStrict = () => page.locator("details.more:has(#edit-limits)").evaluate((d) => (d.open = true));
@@ -519,7 +538,7 @@ if (mode === "flow") {
   // (row 22 dismissed, row 11 fixed) are there first
   await openStrict(); await page.click("#edit-limits");
   await page.locator('#limits-rows .limits-row[data-column="Units"] input').nth(1).fill("10000"); await page.click("#save-limits"); await idle();
-  const BOOK = ["anomalyHunterLimits", "anomalyHunterStrength", "anomalyHunterAutoUndo", "anomalyHunterAcceptUndo", "anomalyHunterDecisions", "Office.AutoShowTaskpaneWithDocument"];
+  const BOOK = ["anomalyHunterLimits", "anomalyHunterStrength", "anomalyHunterAutoUndo", "anomalyHunterAcceptUndo", "anomalyHunterDecisions", "Office.AutoShowTaskpaneWithDocument", "anomalyHunterHighlights"];
   const held = () => page.evaluate((ks) => ks.filter((k) => __settings[k] !== undefined && __settings[k] !== null), BOOK);
   const sheetNow = () => page.evaluate(() => { const out = []; for (let r = 1; r <= 301; r++) for (const c of "ABCDE") out.push(__cell("Sales", c + r)); return JSON.stringify(out); });
   const heldBefore = await held(), cellsBefore = await sheetNow(), wrote0 = await page.evaluate(() => __log.length);
@@ -536,8 +555,8 @@ if (mode === "flow") {
   ok((await tag(22)) === "Probably wrong" && (await text("#strength-val")) === "5 of 10" && (await text("#flagged-list")).includes("Units is 7777"),
     `the next scan: row 22 is no longer Dismissed, the slider is back at 5, the automatic limits are used - ${await tag(22)}`);
   await page.locator("details.more:has(#forget-book)").evaluate((d) => (d.open = true));
-  await page.click("#forget-book"); await idle(); // the scan saved the pane's opening setting again: only that goes now
-  ok((await text("#forget-state")) === "Removed from this workbook: the setting that opens this pane with the file. Your cells are as they were. Save the workbook to keep the change in the file; the next scan saves the setting that opens this pane again.",
+  await page.click("#forget-book"); await idle(); // the scan saved the pane's opening setting and its highlights' old fills again: only those go now
+  ok((await text("#forget-state")) === "Removed from this workbook: the setting that opens this pane with the file; the colours your highlighted cells had before. Your cells are as they were. Save the workbook to keep the change in the file; the next scan saves the setting that opens this pane again.",
     "a second Forget names only what was there - " + (await text("#forget-state")));
 
   // 7a) 30 scans and re-checks: what the pane keeps (listeners, page nodes) stays what is on screen (AH-13). Counted by
@@ -636,6 +655,14 @@ if (mode === "flow") {
   await page.click("#scan"); await idle();
   ok((await text("#notice")).startsWith("Not enough data here."), "empty sheet explained");
 
+  // 8a) AH-150: a column holds dates when most of its first cells say so: a sort that put a text in row 2 sent the whole
+  // OrderDate column as serial numbers
+  await page.evaluate((rows) => { __load("Sorted", [rows[0], ["unknown", ...rows[1].slice(1)], ...rows.slice(2, 60)], [0]);
+    return Excel.run(async (ctx) => { ctx.workbook.worksheets.getItem("Sorted").getRange("A2").numberFormat = [["General"]]; }); }, rows);
+  await find();
+  { const sent = scans.at(-1).rows.map((r) => r[0]);
+    ok(sent[0] === "unknown" && sent.slice(1).every((d) => /^\d{4}-\d\d-\d\d$/.test(d)), "a date column with a text in row 2 is still sent as dates - " + sent.slice(0, 3)); }
+
   // 8b) AH-111: a sheet with nothing wrong says so and shows no list. Under "No problems found in 60 rows." it showed
   // "Worst first. Click a row to see what's wrong...", an empty framed list and Remove highlights. The next scan that
   // flags rows brings them back
@@ -645,6 +672,41 @@ if (mode === "flow") {
   ok((await text("#summary")) === "No problems found in 60 rows." && (await listBits()) === "", "a clean sheet: the summary alone, no hint, no empty list, no Remove highlights - " + (await listBits()));
   await page.evaluate(() => __activate("Sales")); await find();
   ok((await listBits()) === "list-hint,flagged-list,clear-highlights,list-title", "the next scan that flags rows shows the list again - " + (await listBits()));
+
+  // 8b2) AH-152: the scan sends each cell's formula, so a Total typed over its column's formula (D31: the right number
+  // today, wrong the day Qty changes) and one row off (D21 =B21*C22) are listed, and neither card says "fix the cells it uses"
+  ok(scans.every((b) => b.formulas === null), "a sheet with no formulas sends formulas: null, the scan of before");
+  { const calc = [["Item", "Qty", "Price", "Total"], ...Array.from({ length: 40 }, (_, k) => [`Item ${k}`, 2 + (k % 7), 5 + (k % 4), (2 + (k % 7)) * (5 + (k % 4))])];
+    calc[20][3] = calc[20][1] * calc[21][2];
+    calc[30][3] = 250; // typed over: the card must offer the column's formula, never the worked-out Qty x Price
+    await page.evaluate((calc) => { __load("Calc", calc); for (let n = 2; n <= 41; n++) if (n !== 31) __formula("Calc", `D${n}`, n === 21 ? "=B21*C22" : `=B${n}*C${n}`); }, calc);
+    await find();
+    const sent = scans.at(-1).formulas;
+    ok(sent?.length === 40 && sent[0].join() === ",,,=RC[-2]*RC[-1]" && sent[29][3] === null && sent[19][3] === "=RC[-2]*R[1]C[-1]",
+      "the scan sends each cell's R1C1 formula, null where none - " + JSON.stringify([sent?.[0], sent?.[19], sent?.[29]]));
+    const listed = await text("#flagged-list");
+    ok(listed.includes("Row 31") && listed.includes("Row 21") && listed.includes("Total 250 is a typed number where the column's other rows use a formula"),
+      "a typed Total among formulas and a formula one row off are both listed - " + listed.slice(0, 300));
+    const fills = await page.evaluate(() => ["D31", "A31", "B31", "C31"].map((a) => __cell("Calc", a).fill));
+    ok(fills[0] && !fills[1], "the typed Total's cell is coloured, the row's label not - " + fills);
+    for (const r of [31, 21]) {
+      await openRow(r);
+      const said = await text("#fix-explanation"), offer = await text("#fix-changes");
+      ok(!said.includes("Fix the cells it uses") && /Accept puts the column's (?:own )?formula/.test(said) && offer === `D${r}: ${r === 31 ? 250 : "=B21*C22"} → =B${r}*C${r}`,
+        `row ${r}'s card offers the column's own formula - ${offer} / ${said}`);
+      if (r === 31) { // Accept writes the formula into that one cell, by its R1C1 text; Undo types the 250 back
+        const w = await page.evaluate(() => __log.length);
+        await page.click("#fix-apply"); await idle();
+        const wrote = await page.evaluate((n) => __log.slice(n).map((x) => `${x[2]}=${x[3]}`).join(), w), d31 = await page.evaluate(() => __cell("Calc", "D31"));
+        ok(wrote === "D31==B31*C31" && d31.f === "=B31*C31", `Accept writes the column's formula into D31 only - wrote ${wrote}, D31 ${JSON.stringify(d31)}`);
+        await page.click("#fix-undo"); await idle();
+        const back = await page.evaluate(() => __cell("Calc", "D31"));
+        ok(back.v === 250 && back.f === null, "Undo puts the typed 250 back - " + JSON.stringify(back));
+      }
+      await page.click("#fix-back"); await idle();
+    }
+    await page.click("#clear-highlights"); await idle();
+    await page.evaluate(() => __activate("Sales")); await find(); }
 
   // 8c) AH-124: a double-click on Find problems, and two clicks on Accept faster than the pane can redraw, each do the
   // work once: one /scan, one cell written and one /check. A sheet of its own, so no decision from above is in the way
@@ -798,6 +860,17 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
   await page.click("#fix-ask");
   await page.waitForFunction(() => document.getElementById("fix-ask").textContent === "Ask AI" && !document.getElementById("fix-ask").disabled, null, { timeout: 30000 });
   ok(!(await page.isVisible("#fix-care")) && (await page.isVisible("#fix-apply")), "the next ask clears the helpline message and offers Accept again");
+  // AH-150: a backup model answered (the engine adds `model` only then): the notice names it, as plain text
+  const BACKUP = "gemini-3.5-flash-lite";
+  await page.route("**/fix", async (r) => {
+    const res = await r.fetch();
+    await r.fulfill({ status: res.status(), contentType: "application/json", body: JSON.stringify({ ...(await res.json()), model: BACKUP }) });
+  }, { times: 1 });
+  await page.click("#fix-ask");
+  await page.waitForFunction(() => document.getElementById("fix-ask").textContent === "Ask AI" && !document.getElementById("fix-ask").disabled, null, { timeout: 30000 });
+  ok((await text("#fix-care")) === `Google's main AI was busy, so the backup model ${BACKUP} answered. Check its change before you accept.`
+    && (await page.$eval("#fix-care", (p) => p.children.length)) === 0 && (await page.isVisible("#fix-apply")),
+  "a backup model answered: the notice names it, and Accept stays - " + JSON.stringify(await text("#fix-care")));
   // the AI call fails: the engine's own words for a provider error, or the engine gone mid-call. Said on the card, the
   // button comes back, the typed request stays
   for (const [how, fail, words] of [
@@ -842,10 +915,20 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
   }
 }
 
-if (mode === "nokey") {
+if (mode === "nokey") { // engine started with no key: John's free AI through the relay, here stub_claude.py's /fix (e2e/engine.py)
   await find();
   await openRow(11);
-  ok(!(await page.isVisible("#ai-box")) && (await page.isVisible("#ai-off")), "without a key: no Ask AI, a pointer to the free setup");
+  // AH-151: a fresh pane with no key has the free AI on, says so in AI help, and Ask AI works with nothing secret sent
+  const FREE = "AI help is on, using a free shared AI with a few requests a day for each internet connection. For more, paste your own free Google key below.";
+  const free = JSON.parse(await page.evaluate(() => fetch("/health").then((r) => r.text())));
+  ok(free.ai_available && free.ai_provider === "free" && (await page.isVisible("#ai-box")) && !(await page.isVisible("#ai-off"))
+    && (await text("#ai-state")) === FREE && !(await page.isDisabled("#fix-ask")),
+    "without a key: the free AI is on, said in AI help, and Ask AI is there - " + JSON.stringify(free) + " " + (await text("#ai-state")));
+  await page.click("#fix-ask");
+  await page.waitForFunction(() => document.getElementById("fix-label").textContent === "AI's fix", null, { timeout: 30000 });
+  const relayed = fs.readFileSync(DIR + "claude.log", "utf8").trim().split("\n").map(JSON.parse).at(-1);
+  ok(relayed.path === "/fix" && relayed.auth === false && (await text("#fix-changes")).startsWith("C11: -5 → =AVERAGEIFS("),
+    "Ask AI with no key: the free AI's fix, through the relay's /fix with no Authorization header - " + JSON.stringify({ path: relayed.path, auth: relayed.auth }));
   await page.click("#settings summary");
   await page.fill("#ai-key", "<script>"); await page.click("#save-key");
   await page.waitForFunction(() => document.getElementById("ai-state").textContent.includes("doesn't look like an API key"));
@@ -872,11 +955,11 @@ if (mode === "nokey") {
     && fs.readFileSync(DIR + "cert/invite-code.txt", "utf8") === code, "the code is kept on this PC only: never on screen, never in an answer");
   const c5 = calls.length;
   await page.dblclick("#remove-key");
-  await page.waitForFunction(() => document.getElementById("ai-state").textContent === "Key removed. AI help is off.");
+  await page.waitForFunction(() => document.getElementById("ai-state").textContent === "Key removed. AI help uses the free shared AI again.");
   await page.waitForTimeout(500);
   ok(since(c5) === "/key" && calls[c5][1].key === "", "Remove key, double-clicked, sends exactly one /key, with an empty key - " + since(c5));
-  ok(!(await page.isVisible("#ai-box")) && (await page.isVisible("#ai-off")) && !fs.existsSync(DIR + "cert/invite-code.txt"),
-    "Remove key: AI help off, the code deleted from this PC");
+  ok((await page.isVisible("#ai-box")) && !(await page.isVisible("#ai-off")) && !fs.existsSync(DIR + "cert/invite-code.txt"),
+    "Remove key: back to the free AI, the code deleted from this PC");
   // saving fails: the PC can't keep the file (the engine's 503, AH-13), or the engine is gone. Said where the key goes,
   // and the key stays in its box to try again (cleared after a save, or when the engine refuses the key itself)
   const disk = `Couldn't save that on this PC. The disk may be full or the file in use: close other programs and try again. The details are in ${LOG_AT}.`;
@@ -887,8 +970,8 @@ if (mode === "nokey") {
       await page.route("**/key", fail, { times: 1 }); await page.fill("#ai-key", code); await page.click("#save-key");
       await page.waitForFunction((w) => document.getElementById("ai-state").textContent === w, words, { timeout: 10000 }).catch(() => {});
     });
-    ok((await text("#ai-state")) === words && !(await page.isVisible("#ai-box")) && (await page.inputValue("#ai-key")) === code,
-      `Save key when ${how}: said in plain words, AI help stays off, the key kept in its box to try again - ` + (await text("#ai-state")));
+    ok((await text("#ai-state")) === words && (await page.isVisible("#ai-box")) && (await page.inputValue("#ai-key")) === code,
+      `Save key when ${how}: said in plain words, AI help stays on the free AI, the key kept in its box to try again - ` + (await text("#ai-state")));
   }
   await page.fill("#ai-key", "");
 }

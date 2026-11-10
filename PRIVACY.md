@@ -40,7 +40,8 @@ A scan runs on your PC and sends nothing to the internet. Your sheet's data leav
   values and a copy of each fixed row (so Undo works), the old values and number formats of the cells you changed with **Accept**, and what Accept wrote in them (so
   Undo still works after the pane is closed and opened again), a short code for each row you fixed or dismissed (worked out
   from the row's values, never the values themselves, so the row is still Fixed or Dismissed when the pane opens
-  again), and a setting that opens the pane with that file. Highlights are fill colours in your cells.
+  again), the fill colour each highlighted cell had before (so Remove highlights puts it back after the pane is closed
+  and opened again), and a setting that opens the pane with that file. Highlights are fill colours in your cells.
   A fix changes your cells only when you click **Accept**, or when auto-fix runs, if you turned it on.
 - The pane saves the auto-fix switch (`anomalyHunterAutoFix`) and the Power BI switch (`anomalyHunterPowerBi`) in
   Excel's storage for the pane (its localStorage) on this PC. Ask AI's memory (`anomalyHunterAiMemory`) is saved there
@@ -50,9 +51,9 @@ A scan runs on your PC and sends nothing to the internet. Your sheet's data leav
   that works only for `localhost` and `127.0.0.1` (the key that made it is never saved).
 
 ## Only if you use AI help
-AI help works only after you paste a Google AI key or an invite code, or install an invite kit from John (or a
-developer sets `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` on the PC). Even then,
-nothing from your sheet is sent until you click a button. When you save a Google key, the engine asks Google once
+With no key or invite code of your own, AI help uses John's free AI (below). You can also paste a Google AI key or an
+invite code, or install an invite kit from John (or a developer sets `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` on the
+PC). In every case, nothing from your sheet is sent until you click a button. When you save a Google key, the engine asks Google once
 whether the key works; that call carries the key and no sheet data. A key from a Google project with billing turned on
 can be charged by Google for what AI help uses; without billing, the free tier costs nothing.
 - **Ask AI** (fix a row) sends the column names, the row you asked about, up to 5 rows above and 5 below it, the
@@ -67,23 +68,28 @@ can be charged by Google for what AI help uses; without billing, the free tier c
   sends nothing to the AI.
 - Where it goes:
   - With your own Google key: straight to Google's Gemini API.
-  - Either way, Google's main Gemini model (gemini-3.8-flash) answers. With your own Google key, if that model is
-    busy or its free requests for the day are used up, the same request goes to a backup Gemini model
-    (gemini-3.5-flash-lite), also Google's, and the pane says so. With an invite code, only the main model answers.
+  - With your own key or an invite code, Google's main Gemini model (gemini-3.8-flash) answers. With your own Google
+    key, if that model is busy or its free requests for the day are used up, the same request goes to a backup Gemini
+    model (gemini-3.5-flash-lite), also Google's, and the pane says so. With an invite code, only the main model answers.
   - With an invite code: to John's relay on Cloudflare, which passes it to Google with John's key. A developer setting
     on the PC, `ANOMALY_HUNTER_RELAY`, sends invite calls to another relay's https address instead.
     - The relay keeps one counter: for the last day anyone used it, how many AI calls each invite made, under the
-      name John gave that invite, plus the total. The first call of a new day replaces it. It saves no request and no
-      answer; its saved logs are switched off.
+      name John gave that invite, plus the total, and for the free AI how many each network made under its daily
+      code, plus their total. The first call of a new day replaces it. It saves no request and no answer; its saved
+      logs are switched off.
     - The list of invites (a scrambled copy of each code and a name) stays until John removes it.
     - Cloudflare sees your IP address as the request passes. The relay's key never reaches your PC.
   - With neither, but with `ANTHROPIC_API_KEY` set on your PC (a developer setting): to Anthropic's Claude.
-- **Google's free tier may use what you send to improve its products.** Invite codes always use John's free key; with
+  - With no key or invite code of your own: to John's relay on Cloudflare, which passes it to Google's
+    gemini-3.5-flash-lite with John's key. The relay counts each network's AI calls for the day under a code made from
+    the day and your IP address with the relay's secret key, so the code changes every day. It never stores your IP
+    address or the request. It allows 15 AI calls per network and 400 for every free user together a day.
+- **Google's free tier may use what you send to improve its products.** The free AI and invite codes always use John's free key; with
   your own key it depends on your Google plan. Don't ask AI about private or personal data.
 
 ## Who else sees something
 - Google receives what AI help sends, under Google's own terms.
-- With an invite code, each AI request passes through John's relay on Cloudflare (see above).
+- With an invite code or the free AI, each AI request passes through John's relay on Cloudflare (see above).
 - Anthropic receives what AI help sends only in the developer case above.
 - PyPI sees your IP address only if you install an invite kit, when `install.bat` downloads Python packages from it.
 - GitHub hosts the download, so it sees your IP address when you download. Anything you post in an issue is public.
@@ -98,12 +104,14 @@ can be charged by Google for what AI help uses; without billing, the free tier c
 
 ## Your control
 - **Remove key** (in the pane) deletes the key and invite code saved in `%LOCALAPPDATA%\AnomalyHunter`. Scans and
-  fixes keep working. An invite kit keeps its own copy, and running its install.bat again turns AI help back on, so
+  fixes keep working, and AI help goes back to John's free AI, which sends nothing until you click Ask AI or Check
+  words with AI. An invite kit keeps its own copy, and running its install.bat again turns AI help back on, so
   also delete `invite-code.txt` from the kit folder. A `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` setting keeps AI help on.
 - You can delete `ai-cache`, `server.log` or `server.log.1` in the folder above whenever you like.
 - **Forget what this workbook saved** (in the pane, under Options > Saved in this workbook) removes everything the pane
   saved in the open workbook: the limits, the strength slider, the auto-fix list with its old values, the old values
-  Accept keeps for Undo, the code of each row you fixed or dismissed, and the setting that opens the pane with the file. It changes no cell. Save the workbook
+  Accept keeps for Undo, the code of each row you fixed or dismissed, the colours your highlighted cells had before,
+  and the setting that opens the pane with the file. It changes no cell. Save the workbook
   afterwards to keep the change in the file.
 - **Forget what the AI learned** is in the pane, under Options > AI help. It removes every fix Ask AI remembers on this
   PC, for every workbook. Forget what this workbook saved leaves them, as they are not in the workbook. Uninstalling
@@ -124,6 +132,7 @@ Arcas is free and comes with no warranty. It can miss mistakes and flag correct 
 yourself. Its code is open source under the MIT License ([LICENSE](LICENSE)). When this file changes, its history is on GitHub.
 The invite relay is for help with Excel fixes only. John can turn off any invite at any time, each invite has a daily
 cap (as set today: 10 AI calls per invite and 20 for everyone together a day), and there is no promise it is up.
+The same goes for the free AI, and John can turn it off at any time.
 Questions or problems: the pane's Support page, or
 https://github.com/ricepillow3000/excel-anomaly-hunter/issues (public, needs a free GitHub account; never post your AI
 key, your invite code or real data).

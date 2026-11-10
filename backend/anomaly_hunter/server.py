@@ -57,6 +57,7 @@ logging.getLogger("werkzeug").setLevel(logging.WARNING)
 WSGIRequestHandler.timeout = 60
 MAX_CELLS = 2_000_000  # same as the pane's maxCells (frontend/utils/sheet.js): it never sends more in one scan
 EXCEL_ROWS = 1_048_576  # a sheet's rows: the header can't sit lower
+EXCEL_FORMULA = 8_192  # Excel's longest formula: a cell's formula sent with /scan is at most this long (AH-152)
 EXCEL_COLUMNS = 16_384  # a sheet's columns. AH-140: rows [] made the cell cap 0, and 500,000 names held a thread for hours
 # two workbooks scanning at once shared one temp file: a replace found it gone and a file could mix both (2026-10-16)
 _CSV_LOCK = threading.Lock()
@@ -193,8 +194,16 @@ def create_app(scan_csv=None):
         if decisions is not None and not (isinstance(decisions, list) and len(decisions) == len(rows) and all(
                 d is None or type(d) is str and d in powerbi.DECISIONS for d in decisions)):
             return {"error": "'decisions' must give each row null, \"fixed\" or \"dismissed\""}, 400
+        # AH-152: each cell's formula (Excel's R1C1 text) or null, shaped like rows, so a typed number among a column's
+        # formulas is seen
+        formulas = body.get("formulas")
+        if formulas is not None and not (isinstance(formulas, list) and len(formulas) == len(rows) and all(
+                isinstance(r, list) and len(r) == len(cols) and all(
+                    f is None or type(f) is str and f.startswith("=") and len(f) <= EXCEL_FORMULA for f in r) for r in formulas)):
+            return {"error": f"'formulas' must be shaped like 'rows', each cell null or its formula (\"=...\", at most "
+                             f"{EXCEL_FORMULA:,} characters)"}, 400
         try:  # Agent 1, one scan, no stop
-            df, out, suggested, used, status, fair = scan_agent.scan(cols, rows, limits, order_by, _strength(body))
+            df, out, suggested, used, status, fair = scan_agent.scan(cols, rows, limits, order_by, _strength(body), formulas=formulas)
         except Exception:  # a bug in the engine: full detail to the log, not pandas internals to the user
             app.logger.exception("scan failed")
             return {"error": BROKE}, 500
@@ -286,9 +295,11 @@ def create_app(scan_csv=None):
         if formulas is not None and not (isinstance(formulas, list) and len(formulas) == len(body["columns"])):
             return {"error": "'formulas' must be a list as long as 'columns'"}, 400
         memory = body.get("memory")  # AH-143: fixes the user accepted before in this column, kept by the pane on this PC
-        if memory is not None and not (isinstance(memory, list) and len(memory) <= 5
-                                       and all(isinstance(m, str) and len(m) <= 200 for m in memory)):
-            return {"error": "'memory' must be a list of at most 5 texts, each at most 200 characters"}, 400
+        # AH-153: as {h, k, o, n}, so the engine can rank them; the old list of texts is refused (pane and engine ship together)
+        if memory is not None and not (isinstance(memory, list) and len(memory) <= 20 and all(
+                isinstance(m, dict) and set(m) == {"h", "k", "o", "n"} and all(isinstance(v, str) and len(v) <= 60 for v in m.values())
+                for m in memory)):
+            return {"error": "'memory' must be a list of at most 20 past fixes, each {h, k, o, n} texts of at most 60 characters"}, 400
         if care.distress(intent):  # AH-125: helpline numbers from the engine itself, before any key check or AI call
             return {"explanation": care.MESSAGE, "changes": [], "care": True}
         return ai(lambda: client.suggest_fix(body["columns"], body["rows"], body["row_index"], body["start_row"],
