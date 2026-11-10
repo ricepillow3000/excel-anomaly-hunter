@@ -219,7 +219,7 @@ own sideways overflow.
 
 At 1440 x 900 (`tools/test_site.mjs`): before scrolling, a row of the checks table below the fold has opacity 0,
 `translateY` equal to `--reveal-rise` and `will-change: transform, opacity`; after it is scrolled into view the table's 8
-rows (all 8 on one screen: rows padded 16 and 20 px, AH-98) rest at opacity 1
+rows (all 8 on one screen: rows padded 16 and 20 px, AH-98; 12 and 16 since AH-148, whose measure gave them more lines) rest at opacity 1
 with no transform, with transition delays 0, 30, 60, 90, 120, 150, 180, 180 ms (list rows, AH-138; the headline, fact
 and lede above them 0, 90, 180); once landed `will-change` is `auto`;
 the observer has unobserved them and a trip away and back does not hide them; a Chromium trace of the reveal has no
@@ -495,7 +495,7 @@ the font's own numbers from the woff2; its browser AH-148 block measures the res
 | Widow | `text-wrap: pretty` on paragraphs, list items, a list's values and the questions; `balance` on `h3` and the checks' names |
 | Safe area | the notice line's text, the skip link and every page's footer keep clear of a notch and the home bar |
 | Stagger | already: blocks 90 ms apart, list rows 30 |
-| Line length | `--measure: 40ch` on the questions' answers, the steps' aside and the privacy and terms text: this font's zero is 1.58 average letters wide, so 40ch is about 63 letters and no line passes 75 (counted per rendered line at 1440). A table cell cannot take a max-width, so the checks' second column and privacy's middle one grow their right padding instead (a cell's percentage padding is of the table) |
+| Line length | `--measure: 40ch` on the questions' answers, the steps' aside and the privacy and terms text: this font's zero is 1.58 average letters wide, so 40ch is about 63 letters and no line passes 75 (counted per rendered line at 1440). A table cell cannot take a max-width, so the checks' second column (to 44ch, about 69 letters, so its eight rows, now padded 12 and 16 px, still rise together on one 1440 x 900 screen) and privacy's middle one grow their right padding instead (a cell's percentage padding is of the table) |
 | Affordance | a link thickens its underline on hover and on keyboard focus, the contents' links are underlined then, the header keeps its bar; the whole finding's row takes the hover, its flagged cells too; the filters' label says "Show findings by type" |
 | Combo box | the two forms' choices are the browser's own `select`: nothing to build |
 | Interruptible animation | the phone's menu closed while it grows, or opened again while it shrinks, goes on from its pose: its opacity is its progress on `--ease-out`, so `transition.js` moves the new CSS animation to the moment of its own curve with that pose (`AH.ease.when`). A detail box closed while it grows leaves from the pose it reached (its lines frozen as they were, the exit that share of `--pop-out`), and opened again while its copy leaves, grows from the copy's pose |

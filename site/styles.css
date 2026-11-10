@@ -388,7 +388,9 @@ td.why i.ok { display: inline-block; width: 10px; height: 10px; margin-right: 8p
 .checks-table thead th:nth-child(1) { width: 25.47%; }
 .checks-table thead th:nth-child(2) { width: 42.45%; }
 .checks-table tbody tr { position: relative; }
-.checks-table tbody th, .checks-table tbody td { padding: var(--s2) var(--gutter) 20px 0; vertical-align: top; border-bottom: 1px solid var(--rule-dark); }
+/* rows padded 12 and 16 px (16 and 20 before AH-148): the second column at --measure takes more lines, and all eight rows
+   still fit one 1440 x 900 screen (AH-98) */
+.checks-table tbody th, .checks-table tbody td { padding: 12px var(--gutter) 16px 0; vertical-align: top; border-bottom: 1px solid var(--rule-dark); }
 .checks-table tbody th { font: 700 var(--fs-1)/1.25 var(--sans); letter-spacing: normal; color: var(--on-dark); text-wrap: balance; }
 .checks-table tbody td { color: var(--on-dark-2); }
 .checks-table tbody :is(th, td):last-child { padding-right: 0; }
@@ -869,9 +871,11 @@ html[data-moving] #field { z-index: 2; }
 @media (min-width: 761px) { .dock { display: none; } }
 /* the measure in the two tables of running text (AH-148): a cell cannot take a max-width, so its right padding grows to
    leave the text --measure wide. A cell's percentage padding is of the table's width: the checks' second column is 42.45%
-   of it, privacy's middle one 50% (its first and last are 25%). Their columns stay where they are */
+   of it, privacy's middle one 50% (its first and last are 25%). Their columns stay where they are. The checks' text runs
+   to 44ch (about 69 letters, at most 71): at 40ch its Fairness row took another line, and the eighth row's top no longer
+   came on screen at 1440 x 900, where all eight rise together (AH-98) */
 @media (min-width: 761px) {
-  .checks-table tbody td:not(.in-sample) { padding-right: max(var(--gutter), 42.45% - var(--measure)); }
+  .checks-table tbody td:not(.in-sample) { padding-right: max(var(--gutter), 42.45% - 44ch); }
   .card td:not(.eg) { padding-right: max(var(--s3), 50% - var(--measure)); }
 }
 /* a short laptop screen (1280 x 720): the hero's download was 27 px below the first screen, so the hero starts higher */
