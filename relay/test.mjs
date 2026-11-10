@@ -1,6 +1,6 @@
 // Abuse tests for the relay, run on this PC with a stand-in Google and an in-memory counter: node relay/test.mjs
 import assert from "node:assert";
-import worker, { Counter, dayKey } from "./worker.js";
+import worker, { Counter, dayKey, network } from "./worker.js";
 import { canary } from "./canary.mjs";
 
 const hash = async (t) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)))]
@@ -29,9 +29,10 @@ const env = { GEMINI_KEY: "AQ.the-secret", TOKENS: JSON.stringify({ [await hash(
   COUNTER: namespace(), DAILY_PER_INVITE: "3", DAILY_TOTAL: "5" };
 const good = { messages: [{ role: "user", content: "Fix row 7" }], response_format: { type: "json_schema" } };
 const call = (body, code = "inv_ana", path = "/fix") => worker.fetch(new Request(`https://relay.example${path}`, {
-  method: "POST", headers: code ? { Authorization: `Bearer ${code}` } : {}, body: typeof body === "string" ? body : JSON.stringify(body) }), env);
+  method: "POST", headers: code !== null ? { Authorization: code && `Bearer ${code}` } : {}, body: typeof body === "string" ? body : JSON.stringify(body) }), env);
 
-assert.equal((await call(good, null)).status, 401, "no invite code");
+// AH-151: no Authorization header at all is the public tier (below); an empty one is a missing invite code, never that
+assert.equal((await call(good, "")).status, 401, "an empty Authorization header");
 assert.equal((await call(good, "inv_guess")).status, 401, "unknown invite code");
 assert.equal((await call(good, "inv_ana", "/v1/anything")).status, 404, "only /fix");
 assert.equal((await call("x".repeat(9000))).status, 413, "over 8 KB");
@@ -279,6 +280,102 @@ assert.equal(sent.length, before, "and never reaches Google");
   assert.equal(r.status, 502);
   assert.deepEqual(models(from), ["gemini-3.8-flash", "gemini-3.8-flash", "gemini-3.8-flash"], "busy: 3 tries of the one model, as before");
   googleBody = JSON.stringify({ error: { message: "project 1234 key AQ.secret" } });
+}
+// AH-151 (John, 2026-11-09): every user gets the free AI with no key and no invite. A request with no Authorization
+// header is the public tier: its own model (PUBLIC_MODELS), its own caps per network and for everyone, counted before
+// Google under a keyed hash of the day and the network (never the IP itself), apart from the invites' caps
+{
+  const PUB = "gemini-3.5-flash-lite";
+  const penv = (extra) => ({ ...env, COUNTER: namespace(), DAILY_PER_INVITE: "3", DAILY_TOTAL: "5",
+    PUBLIC_DAILY_PER_NETWORK: "15", PUBLIC_DAILY_TOTAL: "400", PUBLIC_MODELS: PUB, ...extra });
+  const free = (e, ip = "203.0.113.7", body = good) => worker.fetch(new Request("https://relay.example/fix", {
+    method: "POST", headers: ip ? { "CF-Connecting-IP": ip } : {}, body: JSON.stringify(body) }), e);
+  const invite = (e) => worker.fetch(new Request("https://relay.example/fix", {
+    method: "POST", headers: { Authorization: "Bearer inv_ana" }, body: JSON.stringify(good) }), e);
+  googleStatus = 200;
+  let e = penv({});
+  let from = sent.length;
+  const r = await free(e, "203.0.113.7", { ...good, model: "gemini-3.8-flash", max_tokens: 99999 });
+  assert.equal(r.status, 200, "no Authorization: served");
+  assert.equal(sent.at(-1).body.model, PUB, "on the public model, whatever the request names");
+  assert.equal(sent.at(-1).body.max_tokens, 4096, "the relay caps the answer's length itself");
+  assert.equal(sent.at(-1).headers.Authorization, "Bearer AQ.the-secret", "the relay adds its key");
+  assert.equal(sent.length - from, 1);
+  for (const [what, body] of [["over 8 KB", "x".repeat(9000)], ["not JSON", "{not json"],
+    ["two messages", JSON.stringify({ messages: [{ role: "user", content: "a" }, { role: "user", content: "b" }], response_format: {} })],
+    ["no response_format", JSON.stringify({ messages: [{ role: "user", content: "a" }] })]]) {
+    const bad = await worker.fetch(new Request("https://relay.example/fix", { method: "POST", headers: { "CF-Connecting-IP": "203.0.113.9" }, body }), e);
+    assert.ok([400, 413].includes(bad.status), `the public tier keeps the body checks: ${what}`);
+  }
+  assert.equal((await free(e, null)).status, 400, "no network to count it under: refused");
+  assert.equal(sent.length - from, 1, "nothing refused reached Google");
+  // the per-network cap: 15 a day from one network, the 16th refused in our words; another network still served
+  e = penv({});
+  for (let i = 0; i < 15; i++) assert.equal((await free(e)).status, 200, `network call ${i + 1} of 15`);
+  from = sent.length;
+  const over = await free(e);
+  assert.equal(over.status, 429, "the 16th call from one network");
+  const said = await over.json();
+  assert.equal(said.limit, "day", "a used-up day, tagged like the engine reads it");
+  assert.match(said.error, /today/, "in our own words");
+  assert.equal(sent.length, from, "never reached Google");
+  assert.equal((await free(e, "198.51.100.4")).status, 200, "another network still has its own share");
+  // the public total for everyone together, apart from the invites' DAILY_TOTAL
+  e = penv({ PUBLIC_DAILY_TOTAL: "3" });
+  for (const ip of ["192.0.2.1", "192.0.2.2", "192.0.2.3"]) assert.equal((await free(e, ip)).status, 200);
+  const full = await free(e, "192.0.2.4");
+  assert.equal(full.status, 429, "the public total reached");
+  assert.equal((await full.json()).limit, "day");
+  assert.equal((await invite(e)).status, 200, "an invite is not held back by public use");
+  e = penv({ DAILY_TOTAL: "1" });
+  assert.equal((await invite(e)).status, 200);
+  assert.equal((await invite(e)).status, 429, "the invites' total reached");
+  assert.equal((await free(e)).status, 200, "the public tier is not held back by the invites' use");
+  e = penv({ PUBLIC_DAILY_TOTAL: "0" });
+  from = sent.length;
+  assert.equal((await free(e)).status, 429, "a public total of 0 switches the public tier off");
+  assert.equal(sent.length, from);
+  // if the [vars] are ever lost: the design's caps and model, never looser
+  e = { GEMINI_KEY: env.GEMINI_KEY, TOKENS: env.TOKENS, COUNTER: namespace() };
+  for (let i = 0; i < 15; i++) assert.equal((await free(e)).status, 200, `fallback per-network cap: call ${i + 1} of 15`);
+  assert.equal((await free(e)).status, 429, "fallback per-network cap is 15");
+  assert.equal(sent.at(-1).body.model, PUB, "fallback model");
+  // what is stored: the day's counts, each network under HMAC-SHA-256(GEMINI_KEY, day + IP), never the IP or the request
+  const puts = [], store = new Map(), obj = new Counter({ storage: { get: async (k) => store.get(k), put: async (k, v) => (puts.push([k, JSON.stringify(v)]), store.set(k, v)) } });
+  const counted = [];
+  e = penv({ COUNTER: { idFromName: () => "caps", get: () => ({ fetch: async (u, init) => (counted.push(init.body), obj.fetch(new Request(u, init))) }) } });
+  const ip = "203.0.113.77", marker = "MARKER-" + crypto.randomUUID();
+  assert.equal((await free(e, ip, { messages: [{ role: "user", content: `Fix row 7: '${marker}'` }], response_format: { type: "json_schema" } })).status, 200);
+  for (const kept of [...puts.map(([, v]) => v), ...counted]) {
+    assert.ok(!kept.includes(ip) && !kept.includes("203.0.113") && !kept.includes(marker), "no IP and no request stored - " + kept);
+  }
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.GEMINI_KEY), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = [...new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(dayKey() + ip)))].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const c = JSON.parse(puts.at(-1)[1]);
+  assert.deepEqual(c.nets, { [mac]: 1 }, "counted under the keyed hash of the day and the network");
+  assert.ok(c.pub === 1 && c.total === 0 && Object.keys(c.by).length === 0, "apart from the invites' counts - " + puts.at(-1)[1]);
+}
+// AH-151 follow-up: one IPv6 subscriber gets a whole /64 (billions of addresses), so an IPv6 address is counted by its
+// /64 prefix, written out in full first (an address may drop zeros with "::"); an IPv4 address is counted as it is
+{
+  assert.equal(network("203.0.113.7"), "203.0.113.7", "IPv4 as it is");
+  assert.equal(network("2001:db8:0:1::1"), "2001:db8:0:1::/64");
+  assert.equal(network("2001:0DB8:0000:0001:ffff:1:2:3"), "2001:db8:0:1::/64", "leading zeros and capitals, the same /64");
+  assert.equal(network("2001:db8::1"), "2001:db8:0:0::/64", ":: in the middle fills the missing groups with 0");
+  assert.equal(network("::1"), "0:0:0:0::/64");
+  assert.equal(network("fe80::"), "fe80:0:0:0::/64");
+  assert.equal(network("::ffff:192.0.2.1"), "0:0:0:0::/64", "a dotted IPv4 tail counts as two groups");
+  assert.equal(network("2001:db8:aa:bb::"), "2001:db8:aa:bb::/64");
+  const penv = { ...env, COUNTER: namespace(), PUBLIC_DAILY_PER_NETWORK: "2", PUBLIC_DAILY_TOTAL: "400", PUBLIC_MODELS: "gemini-3.5-flash-lite" };
+  const free = (ip) => worker.fetch(new Request("https://relay.example/fix", { method: "POST", headers: { "CF-Connecting-IP": ip },
+    body: JSON.stringify(good) }), penv);
+  googleStatus = 200;
+  assert.equal((await free("2001:db8:0:1::1")).status, 200);
+  assert.equal((await free("2001:db8:0:1:ffff::2")).status, 200, "another address of the same /64");
+  assert.equal((await free("2001:0db8:0:1:9::3")).status, 429, "the same /64 shares the cap, however the address is written");
+  assert.equal((await free("2001:db8:0:2::1")).status, 200, "another /64 has its own share");
+  assert.equal((await free("198.51.100.1")).status, 200);
+  assert.equal((await free("198.51.100.2")).status, 200, "IPv4: each address its own share, as before");
 }
 console.log("relay abuse tests passed");
 

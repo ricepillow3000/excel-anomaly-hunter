@@ -206,9 +206,15 @@ def test_every_privacy_page_says_what_ask_ai_remembers_how_much_of_it_goes_and_h
     off = "with_memory(_fix_prompt, _fits, on=False)" in (ROOT / "backend/anomaly_hunter/ai/client.py").read_text(encoding="utf-8")
     assert off, "Ask AI's memory is on: say in the three privacy pages and #fix-sends that the fixes are sent, then here"
     src = (ROOT / "frontend/features/memory.js").read_text(encoding="utf-8")
-    kept, sent = map(int, re.search(r"MAX_KEPT = (\d+), SENT = (\d+)", src).groups())
+    kept, sent, offered = map(int, re.search(r"MAX_KEPT = (\d+), SENT = (\d+), OFFERED = (\d+)", src).groups())
     body = {"columns": ["Units"], "rows": [[1], [500]], "row_index": 1, "start_row": 0, "start_col": 0}
-    assert create_app().test_client().post("/fix", json={**body, "memory": ["x"] * (sent + 1)}).status_code == 400
+    one = {"h": "Units", "k": "fix", "o": "1", "n": "2"}
+    assert create_app().test_client().post("/fix", json={**body, "memory": [one] * (offered + 1)}).status_code == 400
+    # AH-153: the pane hands the engine up to 20; the engine picks which go to the AI, never more than the pages say
+    from anomaly_hunter.ai import memory
+    assert (memory.SENT, memory.OFFERED) == (sent, offered)
+    many = [{**one, "o": str(k), "n": str(k + 1)} for k in range(offered)]
+    assert len(memory.select(memory.rank(many, "Units weird limit is 90; this is 500", 500), "Units weird limit is 90; this is 500", 500)) == sent
     assert '"anomalyHunterAiMemory"' in (ROOT / "frontend/constants/index.js").read_text(encoding="utf-8")
     promises = (
         f"Ask AI's memory (anomalyHunterAiMemory) is saved there too: up to {kept} fixes you accepted",
@@ -230,8 +236,26 @@ def test_every_privacy_page_says_what_ask_ai_remembers_how_much_of_it_goes_and_h
     relay = tomllib.loads((ROOT / "relay" / "wrangler.toml").read_text(encoding="utf-8"))["vars"]["MODELS"]
     assert relay == client.GEMINI_MODEL, "the relay asks a backup: say so in the three privacy pages, then here"
     for page in PAGES:
-        assert (f"Either way, Google's main Gemini model ({client.GEMINI_MODEL}) answers. With your own Google key, if that "
+        assert (f"With your own key or an invite code, Google's main Gemini model ({client.GEMINI_MODEL}) answers. With your own Google key, if that "
                 "model is busy or its free requests for the day are used up, the same request goes to a backup Gemini model "
                 f"({client.GEMINI_FALLBACKS[0]}), also Google's, and the pane says so. With an invite code, only the main "
                 "model answers") in words(page), page
     assert f"Ask AI remembers up to {kept} fixes you accepted, on this PC and for every workbook" in hint
+
+
+def test_every_privacy_page_says_where_the_free_ai_sends_what_it_counts_and_its_caps_as_configured():
+    # AH-151 (John, 2026-11-09): with no key or invite of its own, Ask AI goes to the relay's public tier. The pages name
+    # its model and caps from relay/wrangler.toml, and what the relay keeps of a network: a keyed hash, never the IP
+    caps = tomllib.loads((ROOT / "relay" / "wrangler.toml").read_text(encoding="utf-8"))["vars"]
+    assert "," not in caps["PUBLIC_MODELS"], "the free AI asks a backup: name every model in the three privacy pages, then here"
+    promises = (
+        "With no key or invite code of your own, AI help uses John's free AI",
+        f"to John's relay on Cloudflare, which passes it to Google's {caps['PUBLIC_MODELS']} with John's key",
+        "counts each network's AI calls for the day under a code made from the day and your IP address with the relay's secret key",
+        "It never stores your IP address or the request",
+        f"{caps['PUBLIC_DAILY_PER_NETWORK']} AI calls per network and {caps['PUBLIC_DAILY_TOTAL']} for every free user together a day",
+    )
+    for page in PAGES:
+        said = words(page)
+        assert [p for p in promises if p not in said] == [], page
+        assert "AI help works only after you paste" not in said and "To turn off AI help, click" not in said, page

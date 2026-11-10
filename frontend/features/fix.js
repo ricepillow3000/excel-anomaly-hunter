@@ -1,7 +1,7 @@
 import { EXCEL_ERRORS } from "../constants/index.js";
 import { state } from "../hooks/use-state.js";
-import { $ } from "../utils/dom.js";
-import { cellAt, colLetter, readAs, sameRow } from "../utils/sheet.js";
+import { $, show } from "../utils/dom.js";
+import { cellAt, colLetter, r1c1ToA1, readAs, sameRow } from "../utils/sheet.js";
 import { setApplied } from "../components/fix-preview.js";
 import { busy } from "../components/progress.js";
 import { post } from "../services/api.js";
@@ -38,7 +38,8 @@ const addUps = (reason) => String(reason || "").replace(/^Flagged by \d+ of \d+:
 // ~24 bench medians happened to land near the truth. A blank or an unexplained extreme value gets advice only.
 // limits = {col: [baseLo, baseHi, weirdLo, weirdHi]}.
 // calc = this row's formulas: a cell holding a formula is never overwritten - its inputs are what's wrong.
-export function recommendFix(columns, rows, i, limits, reason, startRow, startCol, likely, calc, maybe) {
+// formula = {column: R1C1}: the column's own formula for a cell that broke it (AH-152), written back ahead of anything else.
+export function recommendFix(columns, rows, i, limits, reason, startRow, startCol, likely, calc, maybe, formula) {
   const row = startRow + 2 + i;
   const changes = [], typos = [], slips = [], calcCells = [], seen = new Set(); // seen: columns already explained
   let guessed = false; // a misspelling's fix is a guess too
@@ -46,6 +47,10 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
   const sums = addUps(reason), solved = new Set(); // solved: columns the row's own arithmetic fixed
   columns.forEach((c, j) => {
     const v = rows[i][j], cell = `${colLetter(startCol + j)}${row}`;
+    if (typeof formula?.[c] === "string") { // known from the column, so it beats the "does not add up" number (AH-152)
+      seen.add(c), solved.add(c);
+      return void changes.push({ cell, new: r1c1ToA1(formula[c], row, startCol + j), r1c1: formula[c] });
+    }
     const lim = limits && limits[c], lo = lim && lim[2], hi = lim && lim[3];
     const past = (a, b) => typeof v === "number" && ((a != null && v < a) || (b != null && v > b));
     const variant = likely && typeof likely[c] === "string" && typeof v === "string"; // "sales" where the column says "Sales"
@@ -151,6 +156,11 @@ const HINTS = [
   [/ is above 100% - /, "it may be a whole percent typed where a fraction belongs (85 for 0.85)"],
   [/ looks like an? .+ value$/, "it may have been typed into the wrong column"],
   [/ is not a whole number - /, "check the decimal point"],
+  // AH-152: a typed value or another formula among a column's formulas; the card never says "fix the cells it uses"
+  [/ is (?:a typed number|typed text) where the column's other rows use a formula$/, "a value typed over the column's formula " +
+    "stays the same when its inputs change; Accept puts the column's formula back in this cell"],
+  [/ uses a different formula from the other rows of its column$/, "a formula that differs from its neighbours often points " +
+    "at the wrong row or cell; Accept puts the column's own formula in its place"],
   // AH-55: a Birth month of 13 and a share of 200 got "the values are just unusual together", the cross-column check's words
   [/ is outside what .+ can be \(-?[\d.]+ to -?[\d.]+\)$/, "its column's name allows no such value, so a typing slip is the usual cause"],
   [/ is over 100, and every other .+ is a share between 0 and 100$/, "a share of a whole over 100 is usually a slip (an extra digit, " +
@@ -246,8 +256,21 @@ export async function checkFix(f, changes) {
 const remembered = (u, columns, startCol) => u.changes.map((c, k) => [columns[cellAt(c.cell).col - startCol], u.writes[k].value, c.new])
   .filter(([h]) => String(h ?? "").trim());
 
+// AH-149 review: a failed Accept or Undo is said once, in the card's notice box (a hairline box and a square). It was
+// said on the status line and, thrown on to act(), again in #notice; act() still puts the buttons back. The next try
+// clears only this failure, never a helpline message (AH-125) that sits beside an Undo
+function failed(f, e, lead) {
+  const words = plainError(e, lead);
+  if (state.fix !== f) return;
+  $("fix-status").textContent = "";
+  $("fix-care").textContent = f.failed = words;
+  show("fix-care");
+}
+const tryAgain = (f) => $("fix-care").textContent === f.failed && show("fix-care", false);
+
 export async function applyFix(f, changes, sheet) { // the fix, its changes and sheet as they were when Accept was clicked
   if (state.undos[f.i]) return;
+  tryAgain(f);
   $("fix-apply").disabled = true;
   const status = (t, ok = false) => { if (state.fix === f) ($("fix-status").textContent = t), $("fix-status").classList.toggle("tick", ok); };
   // AH-149: said on the card at once, in the same frame as the press; what follows says what the sheet really holds
@@ -262,7 +285,7 @@ export async function applyFix(f, changes, sheet) { // the fix, its changes and 
       return status(`Nothing written: row ${startRow + moved + 2} changed since the scan (edited, sorted or rows added). Click Find problems, then try again.`);
     const cells = changes.map((c) => c.cell);
     const olds = await readCells(sheet, cells), formats = await readCells(sheet, cells, "numberFormat");
-    await writeCells(sheet, changes.map((c) => ({ cell: c.cell, value: c.new })));
+    await writeCells(sheet, changes.map((c) => ({ cell: c.cell, value: c.new, r1c1: c.r1c1 })));
     const after = await readCells(sheet, cells); // exactly what Excel made of it ("12%" -> 0.12): Undo checks against this
     // the row as the next scan will read it: its code is what "fixed" is kept under in the workbook
     const [fixed] = await readRows(sheet, [{ row: startRow + 1 + f.i, col: startCol, width: columns.length }]);
@@ -279,8 +302,7 @@ export async function applyFix(f, changes, sheet) { // the fix, its changes and 
     if (state.fix === f) setApplied(true);
   } catch (e) {
     if (state.fix === f) $("fix-apply").disabled = false;
-    status(plainError(e, "Accept failed"));
-    throw e;
+    return failed(f, e, "Accept failed");
   }
   status("Accepted. Checking the row again…");
   let v;
@@ -304,6 +326,7 @@ export async function undoFix(f) {
   const u = state.undos[f.i];
   if (!u) return;
   if (state.fix === f) $("fix-status").classList.remove("tick");
+  tryAgain(f);
   try {
     // Undo only types into the same record it fixed: the row's other cells must still be what the scan read (a sort or
     // an inserted row moves another record under these addresses), and each fixed cell must still hold exactly what
@@ -339,7 +362,6 @@ export async function undoFix(f) {
       $("fix-status").textContent = "Undone. The cells are back to what they were.";
     }
   } catch (e) {
-    if (state.fix === f) $("fix-status").textContent = plainError(e, "Undo failed");
-    throw e;
+    failed(f, e, "Undo failed");
   }
 }

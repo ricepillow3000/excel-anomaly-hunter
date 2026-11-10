@@ -6,13 +6,14 @@ export const state = {
   lastRows: null, // the engine's verdict per row
   lastLimits: {}, // the limits that scan used: {col: [noteLo, noteHi, flagLo, flagHi]}
   lastStrength: 5, // the slider level that scan used (0-10)
-  painted: null, // {sheet, startRow, startCol, width, colors: {row: old fill}} - what Remove highlights puts back
+  painted: null, // {sheet, cells: {A1: old fill}, rows: {row: [A1]}} - what Remove highlights puts back (kept in the workbook too: features/highlight.js)
   picker: null, // {sheet, handle}: clicking a highlighted row in the sheet opens its fix
   fix: null, // the row open in the fix view: {i, sheet, calc, changes}
   undos: {}, // row -> cells to put back, while an applied fix isn't undone
   decided: {}, // row -> "fixed" | "dismissed": kept in the workbook (features/decisions.js), so it outlives the pane; "Next row" skips them
   order: [], // the flagged rows, worst first, as the last scan listed them
   aiAvailable: false,
+  aiProvider: null, // the engine's /health ai_provider: "gemini", "relay", "claude", "free" (AH-151) or null
   working: false, // one sheet action at a time; while one runs the buttons are disabled, never silently queued
   view: null, // which page is showing
 };

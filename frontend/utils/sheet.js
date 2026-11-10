@@ -13,8 +13,13 @@ export function tableFromGrid(values, formats, rowIndex, colIndex, formulas) {
   const widest = Math.max(0, ...values.slice(0, 20).map(filled));
   const h = values.findIndex((r, k) => k < 10 && filled(r) >= Math.max(Math.min(2, widest), 0.6 * widest));
   if (h < 0 || h + 1 >= values.length) return null; // need header + 1 row
-  // Excel hands dates over as serial numbers; send real dates so the engine finds its time axis
-  const isDate = formats ? formats[h + 1].map(isDateFormat) : [];
+  // Excel hands dates over as serial numbers; send real dates so the engine finds its time axis. A column holds dates
+  // when most of its first 20 filled cells wear a date format (AH-150: row 2 alone decided, so a sort that put a blank or
+  // a text there sent the whole column as serial numbers)
+  const isDate = formats ? values[h].map((_, j) => {
+    const seen = values.slice(h + 1, formats.length).flatMap((r, k) => (r[j] === "" || r[j] === null ? [] : [formats[h + 1 + k][j]])).slice(0, 20);
+    return seen.length ? 2 * seen.filter(isDateFormat).length > seen.length : isDateFormat(formats[h + 1]?.[j]);
+  }) : [];
   const rows = values.slice(h + 1).map((r) => readAs(r, isDate));
   const calc = formulas && formulas.slice(h + 1); // each data row's formulas ("=B2-C2"), so a fix never types over one
   const columns = []; // name duplicate headers like the engine does ("Dept", "Dept.1", skipping taken names): limits and fixes are keyed by these
@@ -67,6 +72,14 @@ export function rowFromAddress(address, startRow) {
   const i = Number(m[1]) - startRow - 2;
   return i >= 0 ? i : null;
 }
+
+// Pure: an R1C1 formula as Excel shows it in A1 form in sheet row `row` (1-based), column `col` (0-based): "=RC[-2]*RC[-1]"
+// in D31 -> "=B31*C31" (AH-152: what the card shows; Excel itself converts what Accept writes, through formulasR1C1)
+export const r1c1ToA1 = (f, row, col) => f.replace(/(?<![A-Za-z_\d])R(\[-?\d+\]|\d+)?C(\[-?\d+\]|\d+)?(?![A-Za-z_\d(])/g, (m, r, c) => {
+  const rel = (x) => Number(x.slice(1, -1)); // "[-2]" -> -2; a bare number is absolute ("R2C1" = $A$2)
+  const rn = !r ? row : r[0] === "[" ? row + rel(r) : Number(r), cn = !c ? col : c[0] === "[" ? col + rel(c) : Number(c) - 1;
+  return `${c && c[0] !== "[" ? "$" : ""}${colLetter(cn)}${r && r[0] !== "[" ? "$" : ""}${rn}`;
+});
 
 // Pure: 0-based column index -> Excel letters (0 -> A, 26 -> AA)
 export function colLetter(n) {

@@ -229,11 +229,13 @@ def limits_detector(df, column_types, limits, typos_only=False, listing=False, q
             """Other values crowd the way back to the median (hours 1-99 around a usual 40, survey weights up to 8x
             the median): the column's own long tail, not a slip. A slip stands alone; copies of itself don't count.
             Halfway back is the nearer of the two midpoints: a low positive one on the ratio scale (Sq Ft 19 for 1915
-            is 100x small - the 600 sq ft flats between don't make it normal)."""
+            is 100x small - the 600 sq ft flats between don't make it normal). Counted as far again on the other side:
+            the lowest of 24 honest Friday peaks (480 of 480-520, every other day 200) had none between it and halfway
+            back, and 5-7 of them were Medium; a slip past the column's top has none beyond it either (AH-150)."""
             if v < 0 and rare_minus:  # On Hand -26 by stock of 0-21 (median 69): no column's tail crosses zero
                 return False
             mid = np.sqrt(v * med) if 0 < v < med else (v + med) / 2
-            a, b = sorted((v, mid))
+            a, b = sorted((mid, v * v / mid if 0 < v < med else 2 * v - mid))
             return np.searchsorted(sv, b, "right") - np.searchsorted(sv, a, "left") - cnt[np.searchsorted(vals, v)] >= crowd
 
         for i, v in enumerate(x):
@@ -346,7 +348,8 @@ CYCLE_STEP = 3
 # period on: Seattle's hourly bike counts, small and noisy, reach 0.63 by the day and 0.65 by the week (0.8 found none,
 # and 233 Medium+ hours stayed); noise or a trend is near 0
 CYCLE_FIT = 0.6
-CYCLES = (7, 12, 24, 52, 168)  # days of a week, months, hours of a day, weeks of a year, hours of a week: no other
+CYCLES = (5, 7, 12, 24, 52, 168)  # business days of a week (AH-150), days of a week, months, hours of a day, weeks of a
+# year, hours of a week: no other
 
 
 def _centred_median(a, half=3):
@@ -475,12 +478,15 @@ def sequence_detector(df, column_types, order_by=None, k=K):
             # 1958-1964 put March 12 rows after a May, and 21 honest early months were called jumps (AH-64 try 1 review)
             # (a month's usual gap is its mean, 30.4 days, over the even steps: their median, 31, put 3 years 20 days off)
             rest, at, usual_gap = fits[per][1], np.arange(len(s)), gap[abs(gap - gap.median()) <= 0.1 * gap.median()].mean()
+            # ...one period being its usual time (5 business days are 7 days: per x the usual 1-day step read all 120
+            # rows of a 5-day week as broken, AH-150)
+            span = np.nanmedian(when[per:] - when[:-per])
             inside = np.ones(len(s), dtype=bool)
             shifted = []
             for j in range(-3, 4):
                 there = np.clip(at + j * per, 0, len(s) - 1)
                 inside &= (at + j * per >= 0) & (at + j * per < len(s))
-                inside &= np.abs(when[there] - when - j * per * usual_gap) <= 0.5 * usual_gap
+                inside &= np.abs(when[there] - when - j * span) <= 0.5 * usual_gap
                 shifted.append(rest[there])
             shifted = np.stack(shifted)
             inside &= (~np.isnan(shifted)).sum(axis=0) >= 5  # a moving average has no value half a period from either end

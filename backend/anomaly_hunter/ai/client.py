@@ -20,6 +20,7 @@ from pydantic import BaseModel, ValidationError
 
 from anomaly_hunter import sealed
 from anomaly_hunter.ai import bias_context
+from anomaly_hunter.ai import memory as past
 from anomaly_hunter.ai.memory import with_memory
 
 MODEL = "claude-opus-5"
@@ -30,7 +31,7 @@ GEMINI_MODEL = "gemini-3.8-flash"  # free tier, no credit card (aistudio.google.
 GEMINI_FALLBACKS = ("gemini-3.5-flash-lite",)
 KEY_FILE = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local") / "AnomalyHunter" / "gemini-key.txt"
 # John's relay (relay/worker.js): invited users send an invite code there and never hold his Gemini key.
-# Not a secret: without a valid invite code the relay refuses everything (401). Deployed 2026-10-12.
+# Not a secret: with no invite code it is the public tier (AH-151), the relay's own model and caps. Deployed 2026-10-12.
 RELAY_URL = os.environ.get("ANOMALY_HUNTER_RELAY", "https://anomaly-hunter-relay.john4000-nguyen.workers.dev")
 INVITE_FILE = KEY_FILE.with_name("invite-code.txt")
 
@@ -44,11 +45,12 @@ def invite_code():
 
 
 def provider():
-    """Which AI answers: your own free Gemini key first, then John's relay with an invite code, then Claude, else None."""
-    # the invite code is a password: only over https (plain http only to this PC, for the test stub)
+    """Which AI answers: your own free Gemini key first, then John's relay with an invite code, then Claude, then the
+    relay's free public tier (AH-151: every user has AI help with no key), else None."""
+    # the invite code is a password and the sheet is private: only over https (plain http only to this PC, for the test stub)
     relay_ok = RELAY_URL.startswith(("https://", "http://127.0.0.1:"))
     return ("gemini" if gemini_key() else "relay" if relay_ok and invite_code() else
-            "claude" if os.environ.get("ANTHROPIC_API_KEY") else None)
+            "claude" if os.environ.get("ANTHROPIC_API_KEY") else "free" if relay_ok else None)
 
 
 def secrets():
@@ -120,17 +122,49 @@ SUMIF SUMIFS SUMPRODUCT SUMSQ SWITCH T TAKE TAN TANH TEXT TEXTAFTER TEXTBEFORE T
 TOCOL TODAY TOROW TRANSPOSE TRIM TRIMMEAN TRUE TRUNC TYPE UNICHAR UNICODE UNIQUE UPPER VALUE VAR VAR.P VAR.S VLOOKUP
 VSTACK WEEKDAY WEEKNUM WORKDAY WORKDAY.INTL WRAPCOLS WRAPROWS XLOOKUP XMATCH XOR YEAR YEARFRAC
 """.split())
-CALLS = re.compile(r"([A-Z_][A-Z0-9_.]*)\s*\(")
+# AH-150: Excel 365 takes a bare function name as a LAMBDA (=MAP(A2,IMAGE) calls IMAGE on A2), so every name counts,
+# not only NAME( calls: a name may be a SAFE function, a cell or range, a table or sheet, or a LET/LAMBDA's own name
+NAMES = re.compile(r"(?<![\w.])[^\W\d][\w.]*|[(){},]")
+CELLS = re.compile(r"[A-Z]{1,3}\d+|R\d*C?\d*|C\d*")  # A1, R1C1 (R[-1]C[2] is R and C once [-1] is set aside)
+SPACES = re.compile(r"\s*")
 
 
 def unsafe_call(text):
-    """Does this cell text, typed into Excel, call a function off the SAFE list? NFKC first, so the full-width "＝"
-    and look-alike letters are read the way the check needs to see them."""
+    """Does this cell text, typed into Excel, call or name a function off the SAFE list? NFKC first, so the full-width
+    "＝" and look-alike letters are read the way the check needs to see them."""
     text = unicodedata.normalize("NFKC", text).lstrip()
     if text[:1] not in "=+-@":
         return False  # a plain value is never a call
-    names = CALLS.findall(re.sub(r'"[^"]*"', '""', text.upper()))  # ignore "text in quotes"
-    return any(n.removeprefix("_XLFN.").removeprefix("_XLWS.") not in SAFE for n in names)
+    s = re.sub(r"'[^']*'", "''", re.sub(r'"[^"]*"', '""', text.upper())).replace("$", "")  # "text", 'a sheet', $A$1
+    while (t := re.sub(r"\[[^\[\]]*\]", "\0", s)) != s:  # Table1[[#This Row],[Units]] -> Table1 and a mark
+        s = t
+    s = re.sub(r"#[A-Z_/0]+[!?]?", "0", s)  # #N/A, #DIV/0!
+    s = re.sub(r"(?<![\w.])[A-Z]{1,3}:[A-Z]{1,3}(?![\w.(])", "0", s)  # whole columns, A:C
+    # each open ( or {: the function it calls, where each argument starts, the names in it not yet known
+    frames, called, after = [("", [0], [])], "", -1
+    for m in NAMES.finditer(s):
+        tok, (fn, starts, unknown) = m.group(), frames[-1]
+        if tok in "({":
+            frames.append((called if tok == "(" and m.start() == after else "", [m.end()], []))
+        elif tok == ",":
+            starts.append(m.end())
+        elif tok in ")}":
+            if len(frames) == 1:
+                continue
+            frames.pop()
+            args = [s[a:b - 1].strip() for a, b in zip(starts, starts[1:] + [m.end()])]
+            # LET(name, value, ..., result) and LAMBDA(name, ..., body): a name counts from where it is given on
+            given = [(k, a) for k, a in enumerate(args[:-1])
+                     if NAMES.fullmatch(a) and (fn == "LAMBDA" or fn == "LET" and k % 2 == 0)]
+            frames[-1][2].extend((n, len(frames[-1][1]) - 1) for n, k in unknown
+                                 if not any(a == n and j <= k for j, a in given))
+        else:
+            called, after = tok.removeprefix("_XLFN.").removeprefix("_XLWS."), SPACES.match(s, m.end()).end()
+            if called in SAFE or s[m.end():m.end() + 1] in ("\0", "!") or (
+                    s[after:after + 1] != "(" and CELLS.fullmatch(called)):
+                continue  # a SAFE function, a table or sheet, a cell or range
+            unknown.append((called, len(starts) - 1))
+    return any(unknown for _, _, unknown in frames)
 
 
 def refers_to_itself(cell, text):
@@ -306,7 +340,7 @@ TOO_LONG = "The AI's answer was too long to come back whole. Ask for fewer cells
 
 def _call(prompt, out, schema, name, deadline):
     """-> (the answer, the Gemini model it is kept under: GEMINI_MODEL unless a backup answered)."""
-    if provider() not in ("gemini", "relay"):
+    if provider() not in ("gemini", "relay", "free"):
         try:
             # SDK defaults (10 min timeout, 2 retries) would hold the one-call lock long after the pane gave up
             sdk = anthropic.Anthropic(timeout=max(1, deadline - time.monotonic()), max_retries=0)
@@ -322,11 +356,14 @@ def _call(prompt, out, schema, name, deadline):
     data = _wire(prompt, schema, name)
     if len(data) > BUDGET:  # the callers trim to fit; this is the last guard (the relay refuses over 8 KB)
         raise ValueError("That request was too large for the AI. Try a smaller selection.")
-    relay = provider() == "relay"  # same prompt; the relay rebuilds the body (John's key, its model, max_tokens 4096) and counts the caps
+    # same prompt; the relay rebuilds the body (John's key, its model, max_tokens 4096) and counts the caps
+    free = provider() == "free"  # the public tier: no Authorization header at all, so nothing secret leaves this PC
+    relay = free or provider() == "relay"
     models, m = (GEMINI_MODEL, *GEMINI_FALLBACKS), 0  # the relay picks its own models (relay/worker.js MODELS)
     tries, slow = 0, False  # slow: a try timed out - the next may wait until the deadline (a 100 s answer never came back)
     while True:  # Google's busy spells come and go within minutes: wait and try again, up to the deadline
         req = urllib.request.Request(RELAY_URL.rstrip("/") + "/fix" if relay else GEMINI_URL, data,  # noqa: S310 - https only, see provider()
+                                     {"Content-Type": "application/json"} if free else
                                      {"Content-Type": "application/json", "Authorization": f"Bearer {invite_code() if relay else gemini_key()}"})
         try:
             # the relay tries Google 3 times itself and its call is already counted: let it run to the deadline
@@ -353,11 +390,22 @@ def _call(prompt, out, schema, name, deadline):
                 try:  # every relay call counts against the invite's daily fixes, so the relay retries Google itself
                     words = json.loads(said)["error"]
                 except (ValueError, KeyError, TypeError):
-                    words = f"The AI relay answered with error {e.code}. Try again later."
-                words += " Ask John for a new invite code." if e.code == 401 else ""
+                    words = None
+                # AH-150: they went to the pane as they came: a dict was a crash, and any length, any line, any key
+                # (blanked as server.log blanks it) was said on the card
+                words = " ".join(words.split()) if isinstance(words, str) else ""
+                for secret in secrets():
+                    words = words.replace(secret, "[the AI key]")
+                words = words[:200] or f"The AI relay answered with error {e.code}. Try again later."
+                words += " Ask John for a new invite code." if e.code == 401 and not free else ""
                 # the relay's 429 is its caps or Google's quota; its 502 names Google's own error (relay/worker.js)
                 limit = ("day" if "today" in words else "busy") if e.code == 429 else "busy" if e.code == 502 and re.search(
                     r"error 50[234]\b", words) else None
+                if free and limit == "day":  # the network's or everyone's share, or Google's day on the relay's project
+                    words = ("The free AI has used today's share for your network. It works again tomorrow, or add your "
+                             "own free Google key in Options, AI help.")
+                elif free and e.code == 401:  # a relay from before the public tier (John redeploys it by hand)
+                    words = "The free AI isn't switched on yet. Add your own free Google key in Options, AI help."
                 raise (Limit(words, limit) if limit else ValueError(words)) from None
             daily = e.code == 429 and "perday" in said.replace(" ", "").lower()  # waiting minutes won't bring today's quota back
             # AH-145: another model has its own day's quota and its own crowd: ask it now, never back to one that failed
@@ -476,7 +524,7 @@ def odd_text(values):
 
 def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent, formulas=None, memory=None):
     """-> {explanation, changes: [{cell, new}]}. Invalid cell addresses are dropped. Raises ValueError / anthropic errors.
-    memory = up to 5 fixes the user accepted before in this column, newest first (AH-143)."""
+    memory = up to 20 fixes the user accepted before in this column, newest first, as {h, k, o, n} (AH-143, AH-153)."""
     hits = [j for j, c in enumerate(columns) if str(c) and str(c) in (reason or "")]
     flagged = max(hits, key=lambda j: len(str(columns[j])), default=0)  # "Column 31" over "Column 3"
     nearest = sorted(range(len(columns)), key=lambda j: abs(j - flagged))
@@ -540,5 +588,11 @@ def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent, 
         (odd, "not a single cell of this table"), (twice, f"the AI gave {'each' if len(twice) > 1 else 'it'} two different values")) if cells) + (
         f" (Left out {more} more changes: one fix writes at most {MAX_CHANGES} cells.)" if more > 0 else "")
     drop = seen | set(others)
-    return {"explanation": fix.explanation + note, "changes": [c for c in changes if c["cell"] not in drop],
+    changes = [c for c in changes if c["cell"] not in drop]
+    # AH-153: a fix that repeats the step of a past fix the AI was shown says so on the card, so the user can tell a
+    # learned habit from a fresh reading of the sheet
+    here = f"{get_column_letter(1 + start_col + flagged)}{start_row + 2 + row_index}"
+    new = next((c["new"] for c in changes if c["cell"] == here), None)
+    return {"explanation": fix.explanation + note, "changes": changes,
+            **(past.attribute(prompt, memory, rows[row_index][flagged], new) if new is not None else {}),
             **({"model": _served.model} if _served.model != GEMINI_MODEL else {})}

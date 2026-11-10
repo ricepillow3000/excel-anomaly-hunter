@@ -1,7 +1,7 @@
 // Pane pure-logic check, no Office/fetch. Run: node frontend/selfcheck.js
 import assert from "node:assert";
 import { esc, asNumber } from "./utils/text.js";
-import { cutNote, tableFromGrid, isDateFormat, excelDate, rowFromAddress, colLetter, cellAt, sameRow, readAs, spots } from "./utils/sheet.js";
+import { cutNote, r1c1ToA1, tableFromGrid, isDateFormat, excelDate, rowFromAddress, colLetter, cellAt, sameRow, readAs, spots } from "./utils/sheet.js";
 import { issuesOf, recommendFix, typoKind, afterFix, unusualColumn } from "./features/fix.js";
 import { plainReason, summaryOf, flaggedRows, fairnessNote, fairnessTests, listOrder, levelChange } from "./features/scan.js";
 import { MEASURED, COLOR, OLD_COLOR } from "./constants/index.js";
@@ -10,8 +10,9 @@ import { exactFixes, safeUndo } from "./features/autofix.js";
 import { readdirSync, readFileSync } from "node:fs";
 import { hash, rowHash, codes, codeAt, asBook, decide, PER_SHEET, SHEETS } from "./features/decisions.js";
 import { WORKBOOK_KEYS } from "./features/forget.js";
+import { asHighlights, KEPT } from "./features/highlight.js";
 import * as K from "./constants/index.js";
-import { remember, forget, recall, clearAll, MAX_KEPT, SENT } from "./features/memory.js";
+import { remember, forget, recall, clearAll, MAX_KEPT, OFFERED } from "./features/memory.js";
 
 // Fixed / Dismissed are kept in the workbook under a code per row, so they outlive the pane (2026-10-20: a dismissed
 // row came back flagged after a reload, an accepted fix vanished). Same values = same code, on any PC, every time.
@@ -28,6 +29,10 @@ assert.equal(codeAt(hs, 1, "a"), "a.1");
 // the scan's dates are text: a fixed row read back from Excel must be read the same way to keep its code
 assert.deepEqual(readAs([46028, 46028, "x"], [true, false, false]), ["2026-01-06", 46028, "x"]);
 assert.deepEqual(tableFromGrid([["When", "N"], [46028, 1]], [["General", "General"], ["m/d/yyyy", "General"]], 0, 0).dates, [true, false]);
+// AH-150: a column holds dates when most of its first non-empty cells wear a date format, never by row 2 alone: a sort
+// that put a blank or a text there sent the whole column as serial numbers, and one date-formatted cell made a count dates
+assert.deepEqual(tableFromGrid([["When", "N"], ["", 5], ["unknown", 6], [46028, 7], [46029, 8], [46030, 9]],
+  [["General", "General"], ["General", "m/d/yyyy"], ["General", "0"], ["m/d/yyyy", "0"], ["m/d/yyyy", "0"], ["m/d/yyyy", "0"]], 0, 0).dates, [true, false]);
 // a crafted workbook can put anything under the key: only codes and our two words survive, and "__proto__" is a sheet
 const tampered = JSON.parse('{"__proto__": {"a1.0": "fixed"}, "S": {"a1.0": "dismissed", "b.0": "admin", "<img>": "fixed", "c.12": "fixed"}, "T": [1], "U": "x"}');
 const book = asBook(tampered);
@@ -58,20 +63,20 @@ assert.deepEqual(listOrder([{ severity: null }, { severity: "Low", magnitude: 1 
 {
   const box = new Map();
   globalThis.localStorage = { getItem: (k) => box.get(k) ?? null, setItem: (k, v) => box.set(k, String(v)), removeItem: (k) => box.delete(k) };
-  for (let k = 0; k < 7; k++) remember("Units", "Units weird limit is 90; this is 500 (likely 50)", 500 + k, 50);
+  for (let k = 0; k < 25; k++) remember("Units", "Units weird limit is 90; this is 500 (likely 50)", 500 + k, 50);
   remember("Region", 'Region "east " looks like "East"', "east ", "East");
-  assert.equal(recall(" units ").length, SENT, "a header matches case and space blind, and only 5 go");
-  assert.equal(recall("Units")[0], "Units: Units weird limit is 90; this is 500 (likely 50): 506 -> 50", "newest first");
-  assert.deepEqual(recall("Region"), ['Region: Region "east " looks like "East": east -> East']);
+  assert.equal(recall(" units ").length, OFFERED, "a header matches case and space blind, and only 20 go to the engine");
+  assert.deepEqual(recall("Units")[0], { h: "Units", k: "Units weird limit is 90; this is 500 (likely 50)", o: "524", n: "50" }, "newest first");
+  assert.deepEqual(recall("Region"), [{ h: "Region", k: 'Region "east " looks like "East"', o: "east", n: "East" }]);
   assert.deepEqual(recall("Price"), [], "no fix of this column: nothing");
-  forget("Units", 506, 50);
-  assert.equal(recall("Units")[0].endsWith("505 -> 50"), true, "Undo takes its own fix back out");
+  forget("Units", 524, 50);
+  assert.equal(recall("Units")[0].o, "523", "Undo takes its own fix back out");
   remember("x".repeat(99), "y".repeat(999), "z".repeat(999), "\n".repeat(9) + "w".repeat(999));
-  assert.ok(recall("x".repeat(99))[0].length <= 160, "a long value is cut");
+  assert.ok(Object.values(recall("x".repeat(99))[0]).every((v) => v.length <= 60), "a long value is cut to what the engine takes");
   for (let k = 0; k < MAX_KEPT + 5; k++) remember("Units", "fix", k, k);
   assert.equal(JSON.parse(box.get(K.MEMORY_KEY)).length, MAX_KEPT, "at most 200 kept, the oldest go first");
-  box.set(K.MEMORY_KEY, '[{"h": "Units", "k": "<img>", "o": 1}, "x", null, {"h":"Units","k":"fix","o":"1","n":"2"}]');
-  assert.deepEqual(recall("Units"), ["Units: fix: 1 -> 2"], "only whole entries survive what another page wrote");
+  box.set(K.MEMORY_KEY, '[{"h": "Units", "k": "<img>", "o": 1}, "x", null, {"h":"Units","k":"fix","o":"1","n":"2","x":"3"}]');
+  assert.deepEqual(recall("Units"), [{ h: "Units", k: "fix", o: "1", n: "2" }], "only whole entries survive what another page wrote, and only their fields");
   clearAll();
   assert.ok(!box.has(K.MEMORY_KEY) && recall("Units").length === 0, "Forget what the AI learned forgets all of it");
   globalThis.localStorage = { getItem() { throw new Error("off"); }, setItem() { throw new Error("off"); }, removeItem() { throw new Error("off"); } };
@@ -312,6 +317,20 @@ assert.equal(rec.guess, false);
 assert.equal(recommendFix(cols, data, 1, lim, "Units weird limit is 0; this is -5 (likely 5)", 0, 0, { Units: 5 }).guess, false, "an obvious typo (-5 for 5) is not a guess");
 // a value past the limits that the engine did NOT flag (a regular repeated toll; the row is flagged as a duplicate) stays
 assert.deepEqual(recommendFix(cols, data, 1, lim, "Flagged by 1 of 3: Duplicate of row 2", 0, 0).changes, [], "only columns the engine flagged");
+// AH-152: a Total whose own formula is one row off, or typed over: the card writes the column's own formula (known, sent
+// by the engine as R1C1), shown as Excel shows it for that row, ahead of the "does not add up" number
+{ const odd = recommendFix(["Qty", "Price", "Total"], [[2, 5, 10], [3, 6, 21]], 1, { Total: [0, 50, 0, 90] },
+    "Total 21 does not add up: Qty × Price = 18; Total uses a different formula from the other rows of its column", 0, 0,
+    { Total: 18 }, [null, null, "=RC[-2]*R[1]C[-1]"], {}, { Total: "=RC[-2]*RC[-1]" });
+  assert.deepEqual(odd.changes, [{ cell: "C3", new: "=A3*B3", r1c1: "=RC[-2]*RC[-1]" }], JSON.stringify(odd.changes));
+  assert.ok(!odd.explanation.includes("Fix the cells it uses") && !odd.explanation.includes("one of these numbers is wrong")
+    && odd.explanation.includes("Accept puts the column's own formula in its place"), odd.explanation);
+  const typed = recommendFix(["Qty", "Price", "Total"], [[2, 5, 10], [3, 6, 250]], 1, {},
+    "Total 250 does not add up: Qty × Price = 18; Total 250 is a typed number where the column's other rows use a formula", 0, 0,
+    { Total: 18 }, [null, null, 250], {}, { Total: "=RC[-2]*RC[-1]" });
+  assert.deepEqual(typed.changes, [{ cell: "C3", new: "=A3*B3", r1c1: "=RC[-2]*RC[-1]" }], "the formula, never the worked-out 18");
+  assert.ok(typed.explanation.includes("Accept puts the column's formula back"), typed.explanation);
+  assert.equal(r1c1ToA1("=SUM(R2C1:R[-1]C)+RC[-27]*R[1]C[1]+ROUND(RC[1],2)", 10, 27), "=SUM($A$2:AB9)+A10*AC11+ROUND(AC10,2)"); }
 rec = recommendFix(cols, data, 0, lim, "x", 0, 0);
 assert.deepEqual(rec.changes, [], "inside limits: no change");
 assert.ok(rec.explanation.includes("Nothing here is clearly broken"));
@@ -510,6 +529,11 @@ assert.deepEqual(spots({ cells: ["Gone"] }, ["A", "B"]), [0, 1], "a name the tab
 assert.deepEqual(spots({}, ["A", "B"]), [0, 1]);
 // our colors are never Excel's own Bad / Neutral / Note fills, so a reopened pane never clears a cell the user styled
 assert.ok(Object.values(COLOR).every((c) => !OLD_COLOR.includes(c)) && OLD_COLOR.length === 3);
+// AH-150: the fills kept under highlights come from the workbook, which a crafted .xlsx can fill with anything: only A1
+// cells and #RRGGBB fills (or none) go back into a cell, at most KEPT of them
+assert.deepEqual({ ...asHighlights({ sheet: "S", cells: { C11: "#00B050", D2: null, "A1:B2": "#000000", E3: "red", F4: 1, Sheet2: "#000000" } }).cells }, { C11: "#00B050", D2: null });
+for (const v of [null, "x", [], { sheet: 1, cells: {} }, { sheet: "S" }]) assert.equal(asHighlights(v), null);
+assert.equal(Object.keys(asHighlights({ sheet: "S", cells: Object.fromEntries(Array.from({ length: KEPT + 5 }, (_, k) => [`A${k + 1}`, null])) }).cells).length, KEPT);
 // AH-48: the note for many repeated rows gets its own advice, never "the values are just unusual together"
 assert.match(recommendFix(["hotel", "adr"], [["City", 90]], 0, {}, "600 of 3000 rows repeat an earlier row exactly, all through the sheet - the first is this one, a copy of row 5", 0, 0).explanation,
   /^600 of 3000 rows repeat an earlier row exactly, all through the sheet - the first is this one, a copy of row 5: this many, spread out, are usually separate real records/);

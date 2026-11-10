@@ -307,3 +307,19 @@ def test_an_uninstall_from_installed_apps_removes_the_running_app_file_too(tmp_p
     started.clear()
     monkeypatch.setattr(sys, "executable", str(tmp_path / "Downloads" / "Arcas.exe"))
     assert app.uninstall() == 0 and started == []
+
+
+def test_the_running_app_file_is_deleted_only_after_the_user_closes_the_uninstalled_message(tmp_path, monkeypatch):
+    # AH-150 (CI new-user, 2026-11-10): the 3 s delete timer started before "Arcas is uninstalled." was said, so a person
+    # (or the CI's clicker) who took over 3 s to press OK left Arcas.exe behind: del failed on a file still running
+    home, _ = fake_pc(tmp_path, monkeypatch)
+    me = home / "Arcas.exe"
+    me.write_bytes(b"new")
+    monkeypatch.setattr(sys, "executable", str(me))
+    monkeypatch.setattr(app, "reg_delete", lambda *a, **k: None)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    events = []
+    monkeypatch.setattr(app.subprocess, "Popen", lambda args, **k: events.append("delete timer"))
+    monkeypatch.setattr(app, "say", lambda *a, **k: events.append("message closed"))
+    assert app.uninstall() == 0
+    assert events == ["message closed", "delete timer"], events

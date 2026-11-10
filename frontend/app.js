@@ -74,7 +74,7 @@ if (typeof Office !== "undefined") {
 async function checkHealth() {
   try {
     const h = await getHealth();
-    setAi(h.ai_available);
+    setAi(h.ai_available, h.ai_provider);
     // which engine answers: an old one gave 2 of 279 on a credit sheet and looked just like a new one (2026-10-15)
     $("engine-version").textContent = `Engine ${h.version || "from before 2026-10-15: update it"}`;
     show("main-ui");
