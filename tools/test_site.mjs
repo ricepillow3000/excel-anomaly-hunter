@@ -2691,7 +2691,7 @@ for (const file of PAGES.filter((f) => /<header[\s\S]*aria-current="page"[\s\S]*
   for (const width of [390, 1440]) {
     const t = await open("index.html", { width, height: 844, motion: "reduce" });
     const r = await t.page.evaluate(() => { const e = document.querySelector(".swipe"); return e ? { text: e.textContent.trim(), shown: e.getClientRects().length > 0, display: getComputedStyle(e).display } : null; });
-    want(r && r.text === "Swipe the table sideways to see the flagged cells." && (width <= 760 ? r.shown : r.display === "none"), `R9 the swipe hint at ${width} px: ${JSON.stringify(r)}`);
+    want(r && r.text === "Swipe the table sideways to see each order's date and region." && (width <= 760 ? r.shown : r.display === "none"), `R9 the swipe hint at ${width} px: ${JSON.stringify(r)}`);
     await done(t, `R9 swipe hint at ${width}px`, [API]);
   }
   // 10. a short page fills the screen to its footer; the home page keeps its height. thanks.html is 1,136 px tall at
@@ -3270,6 +3270,138 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
   }
   assert.deepEqual(miss, [], `AH-148 fix round 1:\n${miss.join("\n")}`);
   console.log("AH-148 fix round 1: the case cards end on one line; each question a full-width row with a turning chevron, the form beside the heading; row 11's Finding on a 390 px phone's screen");
+}
+// ---- AH-148 fix round 2, a second blind design review: row 22's detail box lay on its flagged cells at 1440 px and
+// opened above a phone's screen; at 390 px the pinned Finding cut Region to "Ce" and pushed the flagged cells a swipe
+// away; "Want to check the file first?" had no sign it opens; the privacy summary's values lost their column heads on a
+// phone; the download bar came back over code signing and the footer; the checksum left "e85c2d" alone on a line and
+// "SHA-256" broke at its hyphen; and After fixes changed the sheet's height and columns, moving "See every check" ----
+{
+  const miss = [];
+  const want = (ok, what) => { if (!ok) miss.push(what); };
+  // 1. a row's detail box never covers its row's flagged cells, and its head is on screen when it opens
+  for (const [width, height] of [[1440, 900], [390, 844]]) {
+    const t = await open("index.html", { width, height, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate(() => document.fonts.ready);
+    for (const m of ["m22", "m11"]) {
+      await p.click(`.rowbtn[aria-controls="${m}"]`);
+      const r = await p.evaluate((m) => { const box = document.getElementById(m), b = box.getBoundingClientRect(), h = box.querySelector(".m-head").getBoundingClientRect();
+        const cells = [...document.querySelector(`[aria-controls="${m}"]`).closest("tr").querySelectorAll("td.flag, td.q")].map((c) => c.getBoundingClientRect());
+        return { open: !box.hidden, covers: cells.filter((c) => c.left < b.right - 0.5 && c.right > b.left + 0.5 && c.top < b.bottom - 0.5 && c.bottom > b.top + 0.5).length,
+          head: [h.top, h.bottom].map(Math.round), screen: innerHeight, box: [b.left, b.top, b.right, b.bottom].map(Math.round) }; }, m);
+      want(r.open && r.covers === 0, `${m} at ${width} x ${height}: the detail box covers ${r.covers} of its row's flagged cells ${JSON.stringify(r)}`);
+      want(r.head[0] >= 0 && r.head[1] <= r.screen, `${m} at ${width} x ${height}: the detail box's head is off screen ${JSON.stringify(r)}`);
+      await p.keyboard.press("Escape");
+    }
+    await done(t, `AH-148 fix round 2 detail boxes at ${width}`, [API]);
+  }
+  // 3. the phone's sample at rest: (a) no cell's text cut by the screen, the box or a pinned cell, (b) row 11's Finding
+  // whole, (c) row 11's flagged cells on screen, no swipe
+  {
+    const t = await open("index.html", { width: 390, height: 844, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate(() => document.fonts.ready);
+    await p.evaluate(() => scrollTo(0, document.getElementById("r11").getBoundingClientRect().top + scrollY - 300));
+    const r = await p.evaluate(() => {
+      const sc = document.querySelector("#p-found .scroll"), box = sc.getBoundingClientRect(), pin = sc.querySelector("thead th").getBoundingClientRect().right;
+      const whole = (b, from) => b.left >= from - 0.5 && b.right <= Math.min(box.right, innerWidth) + 0.5;
+      const cut = [];
+      for (const el of sc.querySelectorAll("th, td")) {
+        if (!el.getClientRects().length || el.closest("thead") && el === el.parentElement.lastElementChild) continue; // the Finding's unseen head
+        const rg = document.createRange(); rg.selectNodeContents(el);
+        const b = rg.getBoundingClientRect(), pinned = getComputedStyle(el).position === "sticky" && el.getBoundingClientRect().left < pin;
+        if (!b.width) continue;
+        const from = pinned ? box.left : pin, seen = b.right > from + 0.5 && b.left < box.right - 0.5;
+        if (seen && !whole(b, from)) cut.push(`${el.closest("tr").id || el.closest("tr").rowIndex}:${el.textContent.trim().slice(0, 12)} [${Math.round(b.left)}, ${Math.round(b.right)}]`);
+        if (seen && el.scrollWidth > el.clientWidth + 1) cut.push(`${el.textContent.trim().slice(0, 12)} overflows its cell`);
+        // ... nor a sliver of a cell showing beside a pinned one (a "⋯" row's one wide cell spans the hidden columns)
+        const c = el.getBoundingClientRect();
+        if (!pinned && !el.closest("tr.skip") && c.right > from + 0.5 && c.left < box.right - 0.5 && !whole(c, from)) cut.push(`${el.closest("tr").id || el.closest("tr").rowIndex}:${el.textContent.trim().slice(0, 12)} cell [${Math.round(c.left)}, ${Math.round(c.right)}]`);
+      }
+      const td = document.querySelector("#r11 td.why"), rg = document.createRange(); rg.selectNodeContents(td);
+      const w = rg.getBoundingClientRect(), at = document.elementFromPoint(w.left + 2, w.top + w.height / 2);
+      const flags = [...document.querySelectorAll("#r11 td.flag")].map((c) => { const b = c.getBoundingClientRect(), hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+        return { text: c.textContent, inside: whole(b, pin) && b.top >= 0 && b.bottom <= innerHeight, hit: !!hit && c.contains(hit) }; });
+      return { cut, finding: { words: [w.left, w.right, w.top, w.bottom].map(Math.round), inside: whole(w, pin) && w.top >= 0 && w.bottom <= innerHeight, seen: !!at && td.contains(at) }, flags };
+    });
+    want(!r.cut.length, `3a the phone's sample cuts or covers cells at rest: ${r.cut.join("; ")}`);
+    want(r.finding.inside && r.finding.seen, `3b row 11's Finding at 390 px is not whole on screen: ${JSON.stringify(r.finding)}`);
+    want(r.flags.length === 3 && r.flags.every((f) => f.inside && f.hit), `3c row 11's flagged cells at 390 px are not on screen without a swipe: ${JSON.stringify(r.flags)}`);
+    await done(t, "AH-148 fix round 2 phone sample", [API]);
+  }
+  // 4. "Want to check the file first?" wears the questions' chevron, turns it as it opens, and is a 44 px target; the
+  // aside's rule beside it reaches the grid's right edge
+  {
+    const t = await open("index.html", { width: 1440, height: 900, motion: "reduce" });
+    const p = t.page;
+    const r = await p.evaluate(() => { const d = document.querySelector(".check-file"), s = d.querySelector("summary"), mark = () => getComputedStyle(s, "::after");
+      const shut = [mark().content, mark().transform, mark().borderRightWidth, mark().borderBottomWidth]; d.open = true; const opened = mark().transform; d.open = false;
+      const a = document.querySelector(".steps .aside").getBoundingClientRect(), g = document.querySelector(".steps"), gs = getComputedStyle(g);
+      return { shut, opened, height: s.getBoundingClientRect().height, aside: Math.round(a.right), grid: Math.round(g.getBoundingClientRect().right - parseFloat(gs.paddingRight)) }; });
+    want(r.shut[0] === '""' && r.shut[1] !== "none" && r.shut[2] === "2px" && r.shut[3] === "2px" && r.opened !== r.shut[1] && r.height >= 44, `4 the check-file summary has no drawn chevron that turns: ${JSON.stringify(r)}`);
+    want(Math.abs(r.aside - r.grid) <= 1, `4 the aside's rule stops short of the grid's edge: ${JSON.stringify(r)}`);
+    await done(t, "AH-148 fix round 2 check-file", [API]);
+  }
+  // 5. the privacy summary on a phone: each value under its column's head, a label no reader hears twice
+  {
+    const t = await open("privacy.html", { width: 390, height: 844, motion: "reduce" });
+    const p = t.page;
+    const heads = await p.$$eval(".card thead th", (ths) => ths.map((th) => th.textContent.trim()));
+    const r = await p.$$eval(".card tbody td", (tds) => tds.map((td) => { const b = getComputedStyle(td, "::before"); return { text: td.getAttribute("data-label"), col: td.cellIndex, shown: b.display !== "none" && b.content !== "none" && b.content !== "normal", up: b.textTransform }; }));
+    want(r.length === 8 && r.every((x) => x.shown && x.text === heads[x.col]), `5 the privacy summary's values on a phone have no column labels: ${JSON.stringify(r)} vs ${JSON.stringify(heads)}`);
+    const said = await p.locator(".card tbody td").first().ariaSnapshot();
+    want(!/where it runs/i.test(said), `5 a reader hears the privacy summary's label twice: ${said}`);
+    await done(t, "AH-148 fix round 2 privacy labels", [API]);
+  }
+  // 6. the download bar stays down past the download section: scrolled to the footer it is hidden
+  for (const [width, height] of [[390, 844], [1440, 900]]) {
+    const t = await open("index.html", { width, height, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate(() => scrollTo(0, document.getElementById("checks").offsetTop)); await p.waitForTimeout(400);
+    const mid = await p.evaluate(() => document.getElementById("dock").hidden);
+    await p.evaluate(() => document.getElementById("code-signing").scrollIntoView()); await p.waitForTimeout(400);
+    const signing = await p.evaluate(() => document.getElementById("dock").hidden);
+    await p.evaluate(() => scrollTo(0, document.documentElement.scrollHeight)); await p.waitForTimeout(400);
+    const foot = await p.evaluate(() => { const d = document.getElementById("dock"); return { hidden: d.hidden, drawn: d.getClientRects().length > 0 }; });
+    want(foot.hidden && !foot.drawn && signing, `6 the download bar at ${width} px shows past the download section: ${JSON.stringify({ signing, foot })}`);
+    if (width <= 760) want(!mid, `6 the download bar at ${width} px no longer shows between the hero and the download`);
+    await done(t, `AH-148 fix round 2 dock at ${width}`, [API]);
+  }
+  // 7. the checksum in two even halves (four on a phone), copied whole; SHA-256 on one line wherever it is written; "See every check" and
+  // the sheet's columns the same on every tab
+  for (const [width, size] of [[1440, "100%"], [390, "100%"], [320, "200%"]]) {
+    const t = await open("index.html", { width, height: 900, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate((size) => { document.documentElement.style.fontSize = size; document.querySelector(".check-file").open = true; }, size);
+    const r = await p.evaluate(() => { const c = document.getElementById("sha"), rg = document.createRange(); rg.selectNodeContents(c);
+      const lines = [...rg.getClientRects()].filter((x) => x.width > 1).map((x) => Math.round(x.width));
+      getSelection().removeAllRanges(); getSelection().addRange(rg); const copied = getSelection().toString(); getSelection().removeAllRanges();
+      return { lines, copied, sha: [...document.querySelectorAll(".nb")].filter((e) => e.textContent === "SHA-256").map((e) => e.getClientRects().length) }; });
+    if (size === "100%") want(r.lines.length === (width > 760 ? 2 : 4) && r.lines.every((w) => Math.abs(w - r.lines[0]) <= 1), `7 the checksum at ${width} px is not ${width > 760 ? "two" : "four"} even lines: ${JSON.stringify(r.lines)}`);
+    want(r.copied === "ab".repeat(32), `7 the checksum at ${width} px copies as ${JSON.stringify(r.copied)}`);
+    want(r.sha.length === 2 && r.sha.every((n) => n === 1), `7 "SHA-256" at ${width} px (${size}) breaks over lines: ${JSON.stringify(r.sha)}`);
+    await done(t, `AH-148 fix round 2 checksum at ${width}`, [API]);
+  }
+  for (const [width, height] of [[1440, 900], [390, 844]]) {
+    const t = await open("index.html", { width, height, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate(() => document.fonts.ready);
+    const at = () => p.evaluate(() => ({ next: Math.round((document.querySelector(".next-up a").getBoundingClientRect().top + scrollY) * 10) / 10,
+      cols: [...document.querySelectorAll(".ws-main > .panel:not([hidden]) .grid thead th")].map((th) => Math.round(th.getBoundingClientRect().width * 10) / 10) }));
+    const seen = {};
+    for (const tab of ["found", "clean", "busy", "found"]) { await p.click(`#t-${tab}`); seen[tab] = await at(); if (tab === "busy") await p.click("#t-found"); }
+    want(seen.clean.next === seen.found.next && seen.busy.next === seen.found.next, `7 "See every check" moves between tabs at ${width} px: ${JSON.stringify(seen)}`);
+    want(JSON.stringify(seen.clean.cols) === JSON.stringify(seen.found.cols), `7 the sheet's columns change between Findings and After fixes at ${width} px: ${JSON.stringify(seen)}`);
+    // ... and on a wide screen the verdict and its note, in the filters' column, lie under the key, never over it
+    await p.click("#t-clean");
+    const sum = await p.evaluate(() => { const k = document.querySelector(".typology .key").getBoundingClientRect(), c = document.querySelector(".clean-sum").getBoundingClientRect(), n = document.querySelector(".typology").getBoundingClientRect();
+      return { key: k.bottom, top: c.top, inside: c.left >= n.left - 0.5 && c.right <= n.right + 0.5 && c.bottom <= n.bottom + 0.5, wide: innerWidth > 1100 }; });
+    if (sum.wide) want(sum.top >= sum.key && sum.inside, `7 the verdict and its note at ${width} px lie over the key or outside the filters' column: ${JSON.stringify(sum)}`);
+    await done(t, `AH-148 fix round 2 tabs at ${width}`, [API]);
+  }
+  assert.deepEqual(miss, [], `AH-148 fix round 2:\n${miss.join("\n")}`);
+  console.log("AH-148 fix round 2: a detail box beside or off its row's flagged cells with its head on screen (1440 and 390); the phone's sample whole at rest, row 11's Finding and flagged cells on screen; the check-file chevron and the aside's rule; the privacy summary's labels on a phone, heard once; the download bar down past the download; the checksum in two even halves, copied whole, SHA-256 unbroken; one height and one set of columns across the tabs");
 }
 await browser.close();
 server.close();

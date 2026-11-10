@@ -123,8 +123,8 @@
     return end;
   }
 
-  // The phone's download bar (AH-126): on a phone only, once the hero's download has scrolled off the top and before the
-  // download section comes on screen, its hidden goes and it rises in from the bottom edge (transform and opacity, by
+  // The phone's download bar (AH-126): on a phone only, once the hero's download has scrolled off the top and while the
+  // download section is not on screen, its hidden goes and it rises in from the bottom edge (transform and opacity, by
   // the clock, nothing under reduced motion); it hides at once. Two IntersectionObservers, never a scroll listener, so
   // nothing runs while the page is still. Returns what lets it go.
   function dock(root) {
@@ -133,27 +133,28 @@
     const phone = matchMedia("(max-width: 760px)");
     // the contact form and every form on the page count as "near" too, and so does focus inside a form: the bar lay over
     // the contact form's own button (AH-138 review)
+    // ... and past the download section (code signing, the footer) it stays down: it came back there over the last
+    // screens (AH-148 fix round 2), where the download it points to is behind the reader. Watched as the sections and
+    // footer after it, not as its top passing the screen's: a jump (a footer link, End) crosses no threshold of its own
     const nears = new Set([dl, ...root.querySelectorAll("#contact, form")]), seen = new Set();
-    let past = false, near = false, beyond = false, typing = false, rise = null;
+    const afters = new Set([...root.querySelectorAll("#download ~ section"), document.querySelector(".foot")].filter(Boolean)), beyond = new Set();
+    let past = false, near = false, typing = false, rise = null;
     const set = () => {
-      const on = phone.matches && past && !near && !beyond && !typing;
+      const on = phone.matches && past && !near && !beyond.size && !typing;
       if (on === !bar.hidden) return;
       bar.hidden = !on;
       if (rise) { rise.cancel(); rise = null; }
       if (on && !still && bar.animate) rise = bar.animate([{ transform: "translate3d(0, 100%, 0)", opacity: 0 }, { transform: "translate3d(0, 0, 0)", opacity: 1 }], { duration: ms("--fill-dur", 350), easing: tokens.getPropertyValue("--ease-out").trim() || "ease-out" });
     };
     const io = new IntersectionObserver((entries) => {
-      // past the download section (code signing, the footer) it stays down: it came back there over the last screens
-      // (AH-148 fix round 2), where the download it points to is behind the reader
       for (const e of entries) {
-        if (e.target === cta) past = !e.isIntersecting && e.boundingClientRect.top < 0;
-        else if (e.isIntersecting) seen.add(e.target); else seen.delete(e.target);
-        if (e.target === dl) beyond = !e.isIntersecting && e.boundingClientRect.top < 0;
+        const bag = afters.has(e.target) ? beyond : seen;
+        if (e.target === cta) past = !e.isIntersecting && e.boundingClientRect.top < 0; else if (e.isIntersecting) bag.add(e.target); else bag.delete(e.target);
       }
       near = seen.size > 0;
       set();
     });
-    io.observe(cta); for (const el of nears) io.observe(el);
+    io.observe(cta); for (const el of [...nears, ...afters]) io.observe(el);
     const focus = () => { const a = document.activeElement; typing = !!(a && a.closest && root.contains(a) && a.closest("form")); set(); };
     const later = () => setTimeout(focus);
     root.addEventListener("focusin", focus); root.addEventListener("focusout", later);

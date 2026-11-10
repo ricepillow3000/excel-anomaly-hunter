@@ -527,3 +527,20 @@ Alive, and still plain to read:
 - Nothing else moves: the case studies' cards stretch to one height in CSS, the home page's form starts beside the
   section's heading on a wide screen, and on a phone the sample's Finding column is pinned to the table's right edge
   (`position: sticky`), the values sliding under it as the table is swiped.
+
+### Fix round 2 (a second blind design review, 2026-11-10)
+
+- **A detail box never covers its row.** It opens under its row, above it where it would pass the findings' bottom, or,
+  with room on neither side (row 22 at 1440 px), beside the row's flagged cells, level with the row, in the widest
+  stretch of the findings they leave. The pop-in from the button at 0.95, its stagger and its interruptible exit are as
+  they were. When it opens, the page moves by the least that shows it (its head first where it is taller than the
+  screen, clear of the sticky bar and of the phone's download bar), gliding with motion and jumping under reduced
+  motion; focus moves to Close without a scroll of its own.
+- **The phone's sample** no longer pins the Finding to the right: each row is a grid of fixed columns, its Finding a
+  full-width line under it, the Row number pinned at the left beside both. The table starts scrolled to its end, so Row,
+  Units, UnitCost and Total show whole and OrderDate and Region are a swipe away; the page turn's copy keeps that scroll.
+- **Every tab keeps the sheet's height and columns:** each panel is held at the tallest tab's height (measured once, again
+  when the width changes or the font arrives), and on a wide screen every column but the Finding is as narrow as its
+  widest cell. "See every check" stays where it is.
+- **"Want to check the file first?"** wears the questions' chevron and turns it the same way.
+- **The phone's download bar** stays down past the download section, over code signing and the footer.

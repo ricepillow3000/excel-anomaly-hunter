@@ -200,7 +200,12 @@ Units jumped sharply near 2026-01-26"</p>
 
             <!-- the same 13 rows once the three suggested fixes are accepted, scanned again (test_site_sample.py) -->
             <div class="panel" id="p-clean" role="tabpanel" aria-labelledby="t-clean" hidden>
-              <p class="verdict">Scan complete: 0 probably wrong, 4 worth a check</p>
+              <!-- the verdict and what it means: beside the table on a wide screen, in the filters' column under the key, so
+                   the panel is the findings' height and nothing below moves (AH-148 fix round 2); above it on a phone -->
+              <div class="clean-sum">
+                <p class="verdict">Scan complete: 0 probably wrong, 4 worth a check</p>
+                <p class="after-note">With the three fixes accepted, the pane reads "Nothing clearly wrong in 60 rows. 4 are worth a quick check." Those are rows 5, 21, 41 and 57, the jumps in Total: a real order can jump, so they stay for you to judge.</p>
+              </div>
               <div class="scroll" tabindex="0" role="region" aria-label="The sheet after fixes, scrolls sideways">
                 <table class="grid" aria-label="Sample sales sheet after the three fixes, with four rows worth a check">
                   <thead><tr><th scope="col">Row</th><th scope="col">OrderDate</th><th scope="col">Region</th><th scope="col">Units</th><th scope="col">UnitCost</th><th scope="col">Total</th><th scope="col">Finding</th></tr></thead>
@@ -226,7 +231,6 @@ Units jumped sharply near 2026-01-26"</p>
                   </tbody>
                 </table>
               </div>
-              <p class="after-note">With the three fixes accepted, the pane reads "Nothing clearly wrong in 60 rows. 4 are worth a quick check." Those are rows 5, 21, 41 and 57, the jumps in Total: a real order can jump, so they stay for you to judge.</p>
             </div>
           </div>
         </div>
