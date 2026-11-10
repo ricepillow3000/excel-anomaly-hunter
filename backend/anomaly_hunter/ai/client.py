@@ -121,17 +121,49 @@ SUMIF SUMIFS SUMPRODUCT SUMSQ SWITCH T TAKE TAN TANH TEXT TEXTAFTER TEXTBEFORE T
 TOCOL TODAY TOROW TRANSPOSE TRIM TRIMMEAN TRUE TRUNC TYPE UNICHAR UNICODE UNIQUE UPPER VALUE VAR VAR.P VAR.S VLOOKUP
 VSTACK WEEKDAY WEEKNUM WORKDAY WORKDAY.INTL WRAPCOLS WRAPROWS XLOOKUP XMATCH XOR YEAR YEARFRAC
 """.split())
-CALLS = re.compile(r"([A-Z_][A-Z0-9_.]*)\s*\(")
+# AH-150: Excel 365 takes a bare function name as a LAMBDA (=MAP(A2,IMAGE) calls IMAGE on A2), so every name counts,
+# not only NAME( calls: a name may be a SAFE function, a cell or range, a table or sheet, or a LET/LAMBDA's own name
+NAMES = re.compile(r"(?<![\w.])[^\W\d][\w.]*|[(){},]")
+CELLS = re.compile(r"[A-Z]{1,3}\d+|R\d*C?\d*|C\d*")  # A1, R1C1 (R[-1]C[2] is R and C once [-1] is set aside)
+SPACES = re.compile(r"\s*")
 
 
 def unsafe_call(text):
-    """Does this cell text, typed into Excel, call a function off the SAFE list? NFKC first, so the full-width "＝"
-    and look-alike letters are read the way the check needs to see them."""
+    """Does this cell text, typed into Excel, call or name a function off the SAFE list? NFKC first, so the full-width
+    "＝" and look-alike letters are read the way the check needs to see them."""
     text = unicodedata.normalize("NFKC", text).lstrip()
     if text[:1] not in "=+-@":
         return False  # a plain value is never a call
-    names = CALLS.findall(re.sub(r'"[^"]*"', '""', text.upper()))  # ignore "text in quotes"
-    return any(n.removeprefix("_XLFN.").removeprefix("_XLWS.") not in SAFE for n in names)
+    s = re.sub(r"'[^']*'", "''", re.sub(r'"[^"]*"', '""', text.upper())).replace("$", "")  # "text", 'a sheet', $A$1
+    while (t := re.sub(r"\[[^\[\]]*\]", "\0", s)) != s:  # Table1[[#This Row],[Units]] -> Table1 and a mark
+        s = t
+    s = re.sub(r"#[A-Z_/0]+[!?]?", "0", s)  # #N/A, #DIV/0!
+    s = re.sub(r"(?<![\w.])[A-Z]{1,3}:[A-Z]{1,3}(?![\w.(])", "0", s)  # whole columns, A:C
+    # each open ( or {: the function it calls, where each argument starts, the names in it not yet known
+    frames, called, after = [("", [0], [])], "", -1
+    for m in NAMES.finditer(s):
+        tok, (fn, starts, unknown) = m.group(), frames[-1]
+        if tok in "({":
+            frames.append((called if tok == "(" and m.start() == after else "", [m.end()], []))
+        elif tok == ",":
+            starts.append(m.end())
+        elif tok in ")}":
+            if len(frames) == 1:
+                continue
+            frames.pop()
+            args = [s[a:b - 1].strip() for a, b in zip(starts, starts[1:] + [m.end()])]
+            # LET(name, value, ..., result) and LAMBDA(name, ..., body): a name counts from where it is given on
+            given = [(k, a) for k, a in enumerate(args[:-1])
+                     if NAMES.fullmatch(a) and (fn == "LAMBDA" or fn == "LET" and k % 2 == 0)]
+            frames[-1][2].extend((n, len(frames[-1][1]) - 1) for n, k in unknown
+                                 if not any(a == n and j <= k for j, a in given))
+        else:
+            called, after = tok.removeprefix("_XLFN.").removeprefix("_XLWS."), SPACES.match(s, m.end()).end()
+            if called in SAFE or s[m.end():m.end() + 1] in ("\0", "!") or (
+                    s[after:after + 1] != "(" and CELLS.fullmatch(called)):
+                continue  # a SAFE function, a table or sheet, a cell or range
+            unknown.append((called, len(starts) - 1))
+    return any(unknown for _, _, unknown in frames)
 
 
 def refers_to_itself(cell, text):
@@ -357,7 +389,13 @@ def _call(prompt, out, schema, name, deadline):
                 try:  # every relay call counts against the invite's daily fixes, so the relay retries Google itself
                     words = json.loads(said)["error"]
                 except (ValueError, KeyError, TypeError):
-                    words = f"The AI relay answered with error {e.code}. Try again later."
+                    words = None
+                # AH-150: they went to the pane as they came: a dict was a crash, and any length, any line, any key
+                # (blanked as server.log blanks it) was said on the card
+                words = " ".join(words.split()) if isinstance(words, str) else ""
+                for secret in secrets():
+                    words = words.replace(secret, "[the AI key]")
+                words = words[:200] or f"The AI relay answered with error {e.code}. Try again later."
                 words += " Ask John for a new invite code." if e.code == 401 and not free else ""
                 # the relay's 429 is its caps or Google's quota; its 502 names Google's own error (relay/worker.js)
                 limit = ("day" if "today" in words else "busy") if e.code == 429 else "busy" if e.code == 502 and re.search(

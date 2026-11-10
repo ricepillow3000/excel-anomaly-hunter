@@ -71,8 +71,8 @@ export async function askFix() { // talks to the engine only; the sheet is touch
     if (state.fix !== f) return; // the user moved to another row meanwhile
     await showFix(f, "AI's fix", out);
     // AH-145: Google's main model was busy or used up for today and a backup Gemini model answered (the engine names it
-    // only then)
-    if (out.model) notice("Google's main AI was busy, so a backup Gemini model answered. Check its change before you accept.");
+    // only then). AH-150: the notice names it too, as the card's words said only "a backup"
+    if (out.model) notice(`Google's main AI was busy, so the backup model ${out.model} answered. Check its change before you accept.`);
   } catch (e) {
     if (state.fix !== f) return;
     // every model used up for today, or busy: John's words, in the notice box. The free AI's used-up day is the engine's

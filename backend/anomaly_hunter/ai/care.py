@@ -38,11 +38,15 @@ _CRISIS = re.compile("|".join(_PHRASES))
 _APOSTROPHES = str.maketrans({c: "'" for c in "‘’ʼ′`´"})
 
 
-def _plain(text):
-    """NFKC (full-width letters), casefold, curly apostrophes made straight, every run of spaces or breaks one space."""
-    return " ".join(unicodedata.normalize("NFKC", text).casefold().translate(_APOSTROPHES).split())
+def _plain(text, invisible=""):
+    """NFKC (full-width letters), every invisible format character (Unicode Cf) made `invisible`, casefold, curly
+    apostrophes made straight, every run of spaces or breaks one space."""
+    text = "".join(invisible if unicodedata.category(c) == "Cf" else c for c in unicodedata.normalize("NFKC", text))
+    return " ".join(text.casefold().translate(_APOSTROPHES).split())
 
 
 def distress(text):
     """True when the typed request reads as someone thinking of suicide or self-harm."""
-    return isinstance(text, str) and bool(_CRISIS.search(_plain(text)))
+    # AH-150: a zero-width space, joiner or soft hyphen hid "kill<U+200B>myself" and "sui<U+00AD>cidal" from every phrase.
+    # Read both ways: dropped inside a word, a space between two (a zero-width space is where a line may break)
+    return isinstance(text, str) and any(_CRISIS.search(_plain(text, gap)) for gap in ("", " "))

