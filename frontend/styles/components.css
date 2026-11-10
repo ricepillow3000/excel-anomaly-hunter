@@ -134,7 +134,6 @@ details.more { margin-top: var(--s5); border-top: 1px solid var(--rule); }
 /* rows of options follow one another, each a hairline and a 44 px summary: a 24 px gap and 12 px padding over each made
    them 80 px tall (AH-149 review) */
 details.more + details.more { margin-top: 0; }
-.band-label + details.more { margin-top: var(--s2); }
 /* a finger's height, a target a shaky hand can hit too (it was 18, then 28: WCAG 2.5.8, AH-115, AH-149) */
 details.more summary { list-style: none; display: flex; justify-content: space-between; align-items: center; gap: var(--gutter); cursor: pointer;
   min-height: 44px; font: 700 13px/1.4 var(--sans); color: var(--navy); }

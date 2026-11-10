@@ -167,8 +167,10 @@ button:disabled { cursor: default; }
 /* ---- the options: a paper panel under a navy hairline ---- */
 .settings-band { margin: var(--s6) calc(-1 * var(--margin)) 0; padding: var(--s5) var(--margin) var(--s5); border-top: 1px solid var(--navy);
   background: var(--tex), var(--paper-2); }
-.band-label { margin: 0; font: 700 13px/1.4 var(--sans); color: var(--navy); }
 .settings-band details.more:first-of-type { margin-top: var(--s3); }
+/* "Options" is the band's heading, never a label over one (AH-156): the band's navy edge is its hairline */
+.settings-band > h2 { margin-top: 0; padding-top: 0; }
+.settings-band > h2::before { display: none; }
 
 /* ---- the footer: a navy band, the lockup flush left, the links as framed rectangles over 2 columns each ---- */
 #pane-footer { margin: 0 calc(-1 * var(--margin)); padding: var(--s5) var(--margin) var(--s4); background: var(--tex-navy), var(--navy); color: var(--on-navy);
