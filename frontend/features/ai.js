@@ -62,7 +62,7 @@ export async function askFix() { // talks to the engine only; the sheet is touch
     }
     const v = await checkFix(f, out.changes).catch(() => null); // Agent 3 looks first; null = a formula, judged after Accept
     if (v) out.explanation += v.clean ? " Checked: with this fix the row looks right."
-      : ` Checked: with this fix the row would still look unusual: ${plainReason(v.reason)}.`;
+      : ` Checked: with this fix the row would still look unusual: ${plainReason(v.reason, undefined, "; ")}.`;
     if (state.fix !== f) return; // the user moved to another row meanwhile
     await showFix(f, "AI's fix", out);
     // AH-145: Google's main model was busy or used up for today and a backup Gemini model answered (the engine names it

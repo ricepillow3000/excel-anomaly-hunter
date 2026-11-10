@@ -2,7 +2,7 @@ import { CAP, POWER_BI_KEY, SEV, RANK } from "../constants/index.js";
 import { state } from "../hooks/use-state.js";
 import { $, only, show } from "../utils/dom.js";
 import { n } from "../utils/text.js";
-import { busy, notice } from "../components/progress.js";
+import { busy, counting, notice } from "../components/progress.js";
 import { post } from "../services/api.js";
 import { getLimits, readSheet, watchSelection } from "../services/excel.js";
 import { shownAs } from "../utils/sheet.js";
@@ -47,6 +47,7 @@ async function scan(auto, held, t0) {
     return notice("Not enough data here. Put a row of column names on top, with at least one row of data below it.");
   }
   busy(`Step 2 of 3: checking ${n(s.rows.length)} rows…`);
+  counting(); // the seconds it has taken: the only true measure while the engine checks (AH-149)
   const level = strength(), limits = await getLimits(); // getLimits re-reads the workbook's settings first
   // the scan before this one, to say what a new level changed (not after auto-fix's own re-check: the level is the same)
   const before = auto !== false && state.lastRows ? { level: state.lastStrength, rows: state.lastRows, hashes: state.hashes, sheet: state.lastScan?.sheet } : null;
@@ -77,7 +78,7 @@ async function scan(auto, held, t0) {
   await watchSelection(s.sheet, onSelect);
   const secs = Math.max(1, Math.round((Date.now() - t0) / 1000));
   notice(`Done in ${secs} second${secs === 1 ? "" : "s"}.` + (body.power_bi_saved === false
-    ? " The Power BI copy couldn't be saved (is latest-scan.csv open in another program?). Details are in server.log." : ""));
+    ? " The files for Power BI could not be saved. If latest-scan.csv is open in another program, close it, then click Find problems again." : ""));
   // a checked workbook reopens with this pane open (Office autoopen; manifest TaskpaneId)
   Office.context.document.settings.set("Office.AutoShowTaskpaneWithDocument", true);
   Office.context.document.settings.saveAsync();
@@ -116,11 +117,11 @@ export function levelChange(before, after) {
   const [s0, s1, l0, l1] = [ids(before.rows, sure), ids(after.rows, sure), ids(before.rows, low), ids(after.rows, low)];
   const gone = (a, b) => [...a].filter((i) => !b.has(i)).length;
   const some = (k, word) => `${n(k)} ${word} row${k === 1 ? "" : "s"}`; // "3 more rows", "1 fewer row"
-  const head = `Level ${after.level} (was ${before.level}):`;
+  const head = `Slider moved from ${before.level} to ${after.level}:`;
   if (!gone(s0, s1) && !gone(s1, s0) && !gone(l0, l1) && !gone(l1, l0))
-    return `${head} the same rows as at ${before.level}; nothing on this sheet sits between the two levels.`;
+    return `${head} the same rows as at ${before.level}. Nothing on this sheet falls between the two levels.`;
   const parts = [], d = l1.size - l0.size;
-  if (d) parts.push(`${some(Math.abs(d), d > 0 ? "more" : "fewer")} worth a check${d > 0 && after.level > before.level ? " (borderline values)" : ""}`);
+  if (d) parts.push(`${some(Math.abs(d), d > 0 ? "more" : "fewer")} worth a check${d > 0 && after.level > before.level ? " (values close to the edge of usual)" : ""}`);
   else if (gone(l0, l1)) parts.push(`${some(gone(l0, l1), "other")} worth a check`);
   const up = gone(s1, s0), down = gone(s0, s1), look = (k) => (k === 1 ? "looks" : "look");
   parts.push(!up && !down ? "the rows that look wrong are the same"
@@ -128,7 +129,7 @@ export function levelChange(before, after) {
   // the list puts every row that looks wrong before the ones worth a check: with CAP or more of those, a new row worth a
   // check is past the first CAP, out of sight
   const hidden = s1.size >= CAP && d > 0
-    ? ` The list shows the ${CAP} surest first, so the new ones are under "+ more" (all highlighted in the sheet).` : "";
+    ? ` The list shows the ${CAP} surest rows first, so the new ones are in the "+ more" line at its end. Your sheet colours them all.` : "";
   return `${head} ${parts.join("; ")}.${hidden}`;
 }
 
@@ -148,19 +149,20 @@ export function fairnessNote(fair) {
   const cols = Object.keys(fair?.protected || {});
   if (!cols.length) return "";
   const gaps = fairnessTests(fair).filter((t) => t.verdict === "gap");
-  const kept = `Fairness: ${cols.join(", ")} ${cols.length === 1 ? "is" : "are"} never used to decide which rows are unusual.`;
+  const named = cols.length > 1 ? `${cols.slice(0, -1).join(", ")} or ${cols.at(-1)}` : cols[0];
+  const kept = `To be fair to people, Arcas never uses ${named} to pick which rows look wrong.`;
   const more = gaps.length > 3 ? `, and ${gaps.length - 3} more under "All fairness checks"` : "";
   const context = [...new Set(gaps.slice(0, 3).map((t) => t.context).filter((c) => typeof c === "string" && c))];
-  if (gaps.length) return `${kept} Check these gaps between groups: ${gaps.slice(0, 3).map((t) => t.text).join("; ")}${more}.${context.map((c) => ` ${c}`).join("")}`;
+  if (gaps.length) return `${kept} Groups that differ: ${gaps.slice(0, 3).map((t) => t.text).join("; ")}${more}.${context.map((c) => ` ${c}`).join("")}`;
   // no gap: name only the checks that ran ("Flags, blanks and outcomes are even" was said on a sheet that ran one
   // flag-rate check, AH-17), then the ones too few rows could prove, never "even" for them
   const tests = fair.tests || [], ran = ["flag", "missing", "outcome", "amount"].filter((m) => tests.some((t) => t.verdict === "even" && t.measure === m));
   const unclear = tests.filter((t) => t.verdict === "unclear").slice(0, 3).map((t) => t.text);
-  const kinds = ran.map((m) => ({ flag: "flags", missing: "blanks", outcome: "outcomes", amount: "amounts" })[m]);
+  const kinds = ran.map((m) => ({ flag: "flagged rows", missing: "blank cells", outcome: "yes/no answers", amount: "amounts" })[m]);
   const list = kinds.length > 1 ? `${kinds.slice(0, -1).join(", ")} and ${kinds.at(-1)}` : kinds[0] || "";
-  const said = (list ? ` ${list[0].toUpperCase()}${list.slice(1)} are even across ${cols.length === 1 ? "its" : "their"} groups.` : "") +
+  const said = (list ? ` ${list[0].toUpperCase()}${list.slice(1)} come out about the same in each group.` : "") +
     (unclear.length ? ` Not enough rows to tell: ${unclear.join("; ")}.` : "");
-  return `${kept}${said || ` Nothing to compare between ${cols.length === 1 ? "its" : "their"} groups: no flags, blanks or yes/no results in groups of 20 rows or more.`}`;
+  return `${kept}${said || " Nothing to compare: no group of 20 rows or more has flagged rows, blank cells or yes/no answers."}`;
 }
 
 // Pure: every fairness test, gaps first, the widest gap (in rate points) first
@@ -171,13 +173,14 @@ export function fairnessTests(fair) {
   return [...(fair?.tests || [])].sort((a, b) => (b.verdict === "gap") - (a.verdict === "gap") || width(b) - width(a));
 }
 
-// Pure: the engine's reason in plain words, for the list and the fix view (names: tableFromGrid's, a repeated header)
-export function plainReason(reason, names = state.lastScan?.names) {
+// Pure: the engine's reason in plain words, for the list and the fix view (names: tableFromGrid's, a repeated header).
+// Each reason on its own line (AH-149: joined by " · " they read as one long sentence); sep "; " inside a sentence
+export function plainReason(reason, names = state.lastScan?.names, sep = "\n") {
   return shownAs(String(reason || "")
     .replace(/^Flagged by \d+ of \d+: /, "")
     .replace(/(\S[^;]*?) weird limit is ([^;\s]+); this is ([^;\s]+)/g, (_, c, lim, v) => `${c} is ${v}, ${+v < +lim ? "below" : "above"} its usual limit of ${lim}`)
     .replace(/Unusual combination of values, mainly (.+?)(?=;|$)/g, "Unusual mix of values, mostly in $1")
     .replace(/ is unusual relative to its local trend near/g, " breaks its usual pattern near")
     .replace(/ 00:00:00/g, "")
-    .split("; ").join(" · "), names);
+    .split("; ").join(sep), names);
 }

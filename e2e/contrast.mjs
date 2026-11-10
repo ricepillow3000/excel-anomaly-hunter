@@ -8,7 +8,17 @@
 //
 // contrastProblems is passed to page.evaluate, so it must hold everything it uses.
 export function contrastProblems() {
-  const rgba = (s) => { const m = /rgba?\(([^)]+)\)/.exec(s); if (!m) return [0, 0, 0, 0]; const v = m[1].split(/[\s,/]+/).filter(Boolean).map(Number); return [v[0], v[1], v[2], v.length > 3 ? v[3] : 1]; };
+  // any CSS colour, as the browser itself draws it: through a 1x1 canvas. AH-149 mixes the pane's tints in OKLCH, and a
+  // computed colour of color-mix() reads "oklch(...)", which a rgb() parser took for transparent
+  const pen = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+  const rgba = (s) => {
+    pen.clearRect(0, 0, 1, 1);
+    pen.fillStyle = "rgb(0 0 0 / 0)";
+    pen.fillStyle = s;
+    pen.fillRect(0, 0, 1, 1);
+    const [r, g, b, a] = pen.getImageData(0, 0, 1, 1).data;
+    return [r, g, b, a / 255];
+  };
   const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
   const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
   // colours as premultiplied RGBA, so an opacity fades a whole element (its background and its text together) over

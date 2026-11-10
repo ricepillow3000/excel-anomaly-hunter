@@ -10,7 +10,8 @@ import { recommendFix, suggestTypo } from "../features/fix.js";
 import { fillRow } from "../features/highlight.js";
 import { listRows } from "./results.js";
 import { saveDecisions } from "../features/decisions.js";
-import { turnIn } from "../components/motion.js";
+import { fadeIn, morph, turnIn } from "../components/motion.js";
+import { plainError } from "../utils/errors.js";
 
 // One row's card: what's wrong, the suggested fix (Accept / Dismiss, then Undo / Next row), and Ask AI.
 export function onSelect(e) {
@@ -21,25 +22,32 @@ export function onSelect(e) {
   if (i !== null && open && !(state.fix && state.fix.i === i)) act(() => openFix(i, false))();
 }
 
-export async function openFix(i, selectInSheet) {
+export async function openFix(i, selectInSheet, from = null) { // from: the list's button pressed, if one was
   const { columns, rows, startRow, startCol, sheet } = state.lastScan;
   const r = state.lastRows[i], u = state.undos[i]; // u: its fix was accepted - the card offers Undo
   if (r && !SEV[r.severity] && !u && state.decided[i] === "fixed") return selectFixed(i); // fixed before: nothing to undo here
   if (!r || (!SEV[r.severity] && !u)) return;
   busy("Opening row…");
   const f = (state.fix = { i, sheet, changes: [], calc: null });
-  $("fix-title").textContent = `Row ${startRow + i + 2}: ${SEV[r.severity]?.toLowerCase() ?? "fixed"}`;
-  $("fix-reason").textContent = plainReason(r.reason) || (u ? "Checked again after your fix: it looks right." : "Flagged by the checker.");
-  $("fix-intent").value = "";
-  $("fix-status").textContent = "";
-  $("fix-care").textContent = "";
-  show("fix-care", false);
-  show("fix-label");
-  $("fix-ask").textContent = "Ask AI";
-  $("fix-changes").innerHTML = "";
-  $("fix-explanation").textContent = "";
-  only("fix-view");
-  turnIn($("fix-view")); // the card turns in like a page, here and on Next row
+  const at = from?.getBoundingClientRect();
+  await morph(from?.querySelector(".row-head"), () => {
+    $("fix-title").textContent = `Row ${startRow + i + 2}: ${SEV[r.severity]?.toLowerCase() ?? "fixed"}`;
+    $("fix-reason").textContent = plainReason(r.reason) || (u ? "Checked again after your fix: it looks right." : "Flagged by the checker.");
+    $("fix-intent").value = "";
+    $("fix-status").textContent = "";
+    $("fix-status").classList.remove("tick");
+    $("fix-care").textContent = "";
+    show("fix-care", false);
+    show("fix-label");
+    $("fix-ask").textContent = "Ask AI";
+    $("fix-changes").innerHTML = "";
+    $("fix-explanation").textContent = "";
+    only("fix-view");
+    // the card turns in like a page, here and on Next row; from a row of the list, hinged at that row's height
+    const view = $("fix-view");
+    turnIn(view, at ? at.top + at.height / 2 - view.getBoundingClientRect().top : null);
+  }, () => $("fix-title"));
+  if (state.fix !== f) return;
   await Excel.run(async (ctx) => {
     const ws = ctx.workbook.worksheets.getItem(sheet);
     const range = ws.getRangeByIndexes(startRow + 1 + i, startCol, 1, columns.length).load("formulas");
@@ -70,13 +78,38 @@ async function selectFixed(i) {
 
 // Dismiss = leave this row as it is: its highlight goes, like a dismissed Grammarly underline. Then the next row.
 // Kept in the workbook under the row's code, so the row stays dismissed after a reload or a re-scan.
+// AH-149: the pane answers at once: the row is Dismissed and the next card turns in while Excel takes the highlight off
+// (it waited for Excel first, a beat on every Dismiss). If keeping it or taking the highlight off fails, the row is put
+// back as it was, its card with it, and the card says so
 export async function dismissFix() {
   const f = state.fix;
   if (!f) return;
+  const was = state.decided[f.i] || null, code = state.codes[f.i];
   state.decided[f.i] = "dismissed";
-  saveDecisions(f.sheet, [[state.codes[f.i], "dismissed"]]);
-  await fillRow(f.i, false);
-  await nextFix();
+  const kept = (async () => {
+    saveDecisions(f.sheet, [[code, "dismissed"]]);
+    await fillRow(f.i, false);
+  })();
+  const [saved, moved] = await Promise.allSettled([kept, nextFix()]);
+  if (saved.status === "rejected") return putBack(f, was, code, saved.reason);
+  if (moved.status === "rejected") throw moved.reason;
+}
+
+async function putBack(f, was, code, e) {
+  if (was) state.decided[f.i] = was;
+  else delete state.decided[f.i];
+  saveDecisions(f.sheet, [[code, was]]);
+  await fillRow(f.i, true).catch(() => {}); // whatever came off goes back on
+  await openFix(f.i, false);
+  $("fix-status").textContent = `Row ${state.lastScan.startRow + f.i + 2} was not dismissed, so it is back on your list. ${plainError(e)}`;
+}
+
+// Back to the list: the card's title flies home to its row (AH-149), or the list fades in where that can't be
+export function backToList() {
+  const i = state.fix?.i;
+  state.fix = null;
+  return morph($("fix-title"), () => { listRows(); fadeIn($("results")); },
+    () => $("flagged-list").children[state.order.indexOf(i)]?.querySelector(".row-head"));
 }
 
 // The next row in the list (worst first) nobody accepted or dismissed yet - selected in the sheet, card open.

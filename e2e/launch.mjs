@@ -159,4 +159,25 @@ async function open(ctx, file, { scan = false, limits = false } = {}) {
   }
   await ctx.close();
 }
+
+// AH-149: a finger's height. In the pane, at its narrowest (320 px) and a wide one (500 px), every control a person
+// presses is at least 44 px tall (24 is WCAG's floor, not a size to aim for): the slider was 28, the options' summaries
+// 28, a checkbox's label 24, the plain buttons 40. A link inside a sentence is exempt, a checkbox goes by its label
+for (const width of [320, 500]) {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width, height: 700 }, reducedMotion: "reduce" });
+  for (const how of [{}, { scan: true }, { scan: true, limits: true }]) {
+    const page = await open(ctx, "taskpane.html", how);
+    const short = await page.evaluate(() => {
+      const name = (e) => e.tagName.toLowerCase() + (e.id ? "#" + e.id : "") + (e.classList.length ? "." + [...e.classList].join(".") : "") + ` "${(e.textContent || e.getAttribute("aria-label") || "").trim().slice(0, 24)}"`;
+      const inSentence = (a) => getComputedStyle(a).display === "inline" && a.parentElement.textContent.trim().length > a.textContent.trim().length + 2;
+      return [...document.querySelectorAll("button, summary, input:not([type=hidden]), select, textarea, a[href], [role=slider]")]
+        .filter((e) => e.checkVisibility() && !e.closest("[aria-hidden='true']") && !(e.tagName === "A" && inSentence(e)))
+        .map((e) => [e, ((e.type === "checkbox" || e.type === "radio") && e.closest("label") ? e.closest("label") : e).getBoundingClientRect().height])
+        .filter(([, h]) => h < 44 - 0.5).map(([e, h]) => `${name(e)} ${Math.round(h)}px`);
+    });
+    ok(!short.length, `${width}px${how.limits ? " (limits editor)" : how.scan ? " (after a scan)" : ""}: every control is at least 44 px tall - ${short}`);
+    await page.close();
+  }
+  await ctx.close();
+}
 await browser.close();
