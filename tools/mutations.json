@@ -919,8 +919,8 @@
   "id": "relay-body-loosen",
   "guard": "relay body cap 8 KB",
   "file": "relay/worker.js",
-  "old": "if (raw.length > MAX_BODY)",
-  "new": "if (raw.length > MAX_BODY * 4)",
+  "old": "if (new TextEncoder().encode(raw).length > MAX_BODY)",
+  "new": "if (new TextEncoder().encode(raw).length > MAX_BODY * 4)",
   "kind": "loosen",
   "tests": [
    "node relay/test.mjs"
@@ -941,8 +941,8 @@
   "id": "relay-body-offbyone",
   "guard": "relay body cap 8 KB (exactly 8 KB fits)",
   "file": "relay/worker.js",
-  "old": "if (raw.length > MAX_BODY)",
-  "new": "if (raw.length >= MAX_BODY)",
+  "old": "if (new TextEncoder().encode(raw).length > MAX_BODY)",
+  "new": "if (new TextEncoder().encode(raw).length >= MAX_BODY)",
   "kind": "tighten",
   "tests": [
    "node relay/test.mjs"
@@ -1029,8 +1029,8 @@
   "id": "relay-v6-loosen",
   "guard": "IPv6 counted by its /64",
   "file": "relay/worker.js",
-  "old": "all.slice(0, 4).map((g) => parseInt(g, 16).toString(16)).join(\":\") + \"::/64\"",
-  "new": "all.slice(0, 8).map((g) => parseInt(g, 16).toString(16)).join(\":\") + \"::/64\"",
+  "old": "all.slice(0, bits / 16).map((g) => parseInt(g, 16).toString(16)).join(\":\") + \"::/\" + bits",
+  "new": "all.slice(0, 8).map((g) => parseInt(g, 16).toString(16)).join(\":\") + \"::/\" + bits",
   "kind": "loosen",
   "tests": [
    "node relay/test.mjs"
@@ -1040,8 +1040,8 @@
   "id": "relay-v6-tighten",
   "guard": "another /64 has its own share",
   "file": "relay/worker.js",
-  "old": "all.slice(0, 4).map((g) => parseInt(g, 16).toString(16)).join(\":\") + \"::/64\"",
-  "new": "all.slice(0, 3).map((g) => parseInt(g, 16).toString(16)).join(\":\") + \"::/64\"",
+  "old": "all.slice(0, bits / 16).map((g) => parseInt(g, 16).toString(16)).join(\":\") + \"::/\" + bits",
+  "new": "all.slice(0, bits / 16 - 1).map((g) => parseInt(g, 16).toString(16)).join(\":\") + \"::/\" + bits",
   "kind": "tighten",
   "tests": [
    "node relay/test.mjs"
@@ -1317,6 +1317,226 @@
   "tests": [
    "backend/tests/test_row_arithmetic_confirms.py",
    "backend/tests/test_likely_guesses.py"
+  ]
+ },
+ {
+  "id": "relay-body-bytes-loosen",
+  "guard": "relay body cap counts bytes, not characters (AH-158)",
+  "file": "relay/worker.js",
+  "old": "if (new TextEncoder().encode(raw).length > MAX_BODY)",
+  "new": "if (raw.length > MAX_BODY)",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-body-declared-loosen",
+  "guard": "a declared body over 8 KB is refused unread (AH-158)",
+  "file": "relay/worker.js",
+  "old": "if (+req.headers.get(\"Content-Length\") > MAX_BODY) return big();",
+  "new": "",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-body-declared-tighten",
+  "guard": "a declared 8 KB body is read and served (AH-158)",
+  "file": "relay/worker.js",
+  "old": "if (+req.headers.get(\"Content-Length\") > MAX_BODY)",
+  "new": "if (+req.headers.get(\"Content-Length\") >= MAX_BODY)",
+  "kind": "tighten",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-refund-loosen",
+  "guard": "a Google per-minute 429 gives its counts back (AH-158)",
+  "file": "relay/worker.js",
+  "old": "if (!daily) await counter(\"give\"",
+  "new": "if (false) await counter(\"give\"",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-refund-daily-tighten",
+  "guard": "a per-day 429 keeps its count (AH-158)",
+  "file": "relay/worker.js",
+  "old": "if (!daily) await counter(\"give\"",
+  "new": "if (true) await counter(\"give\"",
+  "kind": "tighten",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-refund-backup-loosen",
+  "guard": "a backup model's count is given back too (AH-158)",
+  "file": "relay/worker.js",
+  "old": "          taken++;\n",
+  "new": "",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-refund-day-loosen",
+  "guard": "a count is given back only on the day it was counted (AH-158)",
+  "file": "relay/worker.js",
+  "old": "if (c.day === on) {",
+  "new": "if (c.day) {",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-refund-floor-loosen",
+  "guard": "a count given back never goes below 0 (AH-158)",
+  "file": "relay/worker.js",
+  "old": "if (o?.[k] > 0) o[k] = Math.max(0, o[k] - d);",
+  "new": "if (k !== undefined) o[k] = (o[k] || 0) - d;",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-refund-user-loosen",
+  "guard": "the request's own count is given back, not only the total (AH-158)",
+  "file": "relay/worker.js",
+  "old": "        down(c[by], who, 1);\n",
+  "new": "",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-burst-loosen",
+  "guard": "a network's minute limit, before the counter and Google (AH-158)",
+  "file": "relay/worker.js",
+  "old": "if (env.BURST && !(await env.BURST.limit({ key: who })).success)",
+  "new": "if (false)",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-burst-key-loosen",
+  "guard": "the minute limit's key is the network's hash, never the IP (AH-158)",
+  "file": "relay/worker.js",
+  "old": "env.BURST.limit({ key: who })",
+  "new": "env.BURST.limit({ key: pub ? network(ip) : who })",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-burst-key-tighten",
+  "guard": "each network has its own minute (AH-158)",
+  "file": "relay/worker.js",
+  "old": "env.BURST.limit({ key: who })",
+  "new": "env.BURST.limit({ key: \"all\" })",
+  "kind": "tighten",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-burst-missing-tighten",
+  "guard": "no BURST binding (an older deploy): still served (AH-158)",
+  "file": "relay/worker.js",
+  "old": "if (env.BURST && !(await",
+  "new": "if (!(await",
+  "kind": "tighten",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-burst-limit-tighten",
+  "guard": "a word check's 6 calls fit in the minute (AH-158)",
+  "file": "relay/wrangler.toml",
+  "old": "simple = { limit = 15, period = 60 }",
+  "new": "simple = { limit = 5, period = 60 }",
+  "kind": "tighten",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-burst-limit-loosen",
+  "guard": "the minute limit is never looser than a network's day (AH-158)",
+  "file": "relay/wrangler.toml",
+  "old": "simple = { limit = 15, period = 60 }",
+  "new": "simple = { limit = 100, period = 60 }",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-48-loosen",
+  "guard": "an IPv6 /48's day (off by one) (AH-158)",
+  "file": "relay/worker.js",
+  "old": "(today.n48?.[who48] || 0) >= per48)",
+  "new": "(today.n48?.[who48] || 0) > per48)",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-48-tighten",
+  "guard": "an IPv6 /48 gets its full 45 (AH-158)",
+  "file": "relay/worker.js",
+  "old": "(today.n48?.[who48] || 0) >= per48)",
+  "new": "(today.n48?.[who48] || 0) >= per48 - 1)",
+  "kind": "tighten",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-48-fallback-loosen",
+  "guard": "a lost PUBLIC_DAILY_PER_48 falls back to 45, never looser (AH-158)",
+  "file": "relay/worker.js",
+  "old": "per48: cap(env.PUBLIC_DAILY_PER_48, 45)",
+  "new": "per48: cap(env.PUBLIC_DAILY_PER_48, 90)",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-48-count-loosen",
+  "guard": "each IPv6 /48 is counted (AH-158)",
+  "file": "relay/worker.js",
+  "old": "if (!again && who48) (today.n48 ||= {})[who48] = (today.n48[who48] || 0) + 1;",
+  "new": "",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-48-prefix-tighten",
+  "guard": "another /48 has its own day (AH-158)",
+  "file": "relay/worker.js",
+  "old": "network(ip, 48)",
+  "new": "network(ip, 32)",
+  "kind": "tighten",
+  "tests": [
+   "node relay/test.mjs"
   ]
  }
 ]

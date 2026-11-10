@@ -23,6 +23,16 @@ new_sqlite_classes = ["Counter"] # the free plan's Durable Objects are SQLite-ba
 # to the Generative Language API. Rotate a leaked key: Cloud Console > Credentials > new key, same restriction;
 # npx wrangler@4.151.1 secret put GEMINI_KEY (deploys at once); THEN delete the old key (re-uploading alone leaves it working).
 
+# AH-158: a flood from one network (or one invite) is refused for the minute before the counter and Google: Cloudflare's
+# Workers Rate Limiting, free, keyed in worker.js by the network's keyed hash (never the IP) or the invite's name. 15 a
+# minute = a network's whole day: a word check (about 6 calls in a row) or several PCs behind one office router never
+# meet it, and Ask AI is one call at a time per PC. Its count is Cloudflare's, per location, and only roughly exact;
+# the daily caps stay the exact ones. period may only be 10 or 60. namespace_id: any number unique to this account
+[[ratelimits]]
+name = "BURST"
+namespace_id = "1001"
+simple = { limit = 15, period = 60 }
+
 # Keep the promise in worker.js: no request or answer is stored (saved Workers logs are on by default). Live
 # debugging still works with: npx wrangler@4.151.1 tail
 [observability]
@@ -40,4 +50,6 @@ MODELS = "gemini-3.8-flash"
 # a keyed hash of the day and its IP, never the IP. PUBLIC_DAILY_TOTAL = "0" switches the public tier off
 PUBLIC_DAILY_PER_NETWORK = "15" # AI calls per network (one IP address) per day
 PUBLIC_DAILY_TOTAL = "400"      # for every public user together per day
+# AH-158: one IPv6 /48 (65,536 networks, what a cheap VPS hands out) may use 3 networks' worth a day, beside each /64's 15
+PUBLIC_DAILY_PER_48 = "45"
 PUBLIC_MODELS = "gemini-3.5-flash-lite"

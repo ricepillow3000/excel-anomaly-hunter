@@ -84,8 +84,8 @@ protection on `main` so nothing reaches the release job without John's review.
   0600/0700 files stop it reading the key and the scans, not calling the engine. If shared PCs matter, the fix is to
   check the caller's account on every request (AH-140).
 - **The relay's public tier (AH-151) is open to anyone**, with no invite. An IPv6 address is counted by its /64, so
-  one subscriber's billions of addresses share the 15 a day, but a stranger with many /64s (a /48 holds 65,536 of
-  them, and some hosts hand out more) or many IPv4 addresses still gets past it. The public total (400 a day of
+  one subscriber's billions of addresses share the 15 a day, and each /48 by itself too (45 a day, AH-158), but a
+  stranger with many /48s (some hosts hand out a /32) or many IPv4 addresses still gets past it. The public total (400 a day of
   gemini-3.5-flash-lite, counted before Google) bounds it; the relay's project has no billing, so it costs nothing;
   the invites keep their own share; PUBLIC_DAILY_TOTAL "0" switches it off. A network's counter key is an HMAC of the day and the IP (or /64) under the
   Worker's key: no IP is stored, though whoever holds the key could test every IPv4 address against a day's codes.
@@ -177,3 +177,15 @@ held only by an exact hash, has a test of its own.
 
 Lesson: **green checks from AI-written tests prove nothing until a planted bug turns them red.** A new or changed
 guard adds its loosen and tighten mutants to `tools/mutations.json` in the same commit.
+
+### 2026-11-10: hold up under real use (AH-158)
+John asked that Arcas not break or be abused once people use it. The relay is its only server, and three of its own
+answers let one stranger spend everyone's day: a Google "busy this minute" 429 did no work but still used a count, so
+400 parallel requests from 400 IPv6 /64s (one cheap VPS has 65,536) could use up the public tier's 400 in a minute,
+mostly as busy answers; a /48 was 65,536 networks; and the 8 KB cap counted characters after reading the whole body.
+Now a busy answer gives its counts back, a /48 has its own day, a network or invite has 15 calls a minute (Cloudflare's
+free Workers Rate Limiting, before the counter and Google), and the cap counts bytes and refuses a declared size unread.
+`relay/load.mjs` fires 2,200 requests at once through a counter fed one at a time: exactly the caps through, no 5xx.
+
+Lesson: **a refusal must not cost the day.** A count spent on an answer that did no work is a count an attacker can
+spend for everyone. Count before the work, and give back what the work never used.
