@@ -215,8 +215,9 @@ if (mode === "flow") {
   { const count = await page.evaluate(() => [...document.querySelectorAll("#summary .count")].map((c) => c.textContent));
     ok(count.join() === "5", "AH-149: the summary's flagged number is its own, to count up, and its text is the result all along - " + count);
     const frames = await page.evaluate(() => __counted);
-    ok(frames.length >= 5 && frames.every((f) => / of 300 rows look wrong\.$/.test(f.drawn) && !f.wider.length),
-      `AH-149 review: while the summary counts up, the total is the sheet's 300 rows in every frame, and no drawn number is wider than the one it becomes - ${frames.length} frames, ${JSON.stringify(frames.slice(0, 3))}`); }
+    const said = await page.evaluate(() => document.getElementById("summary").textContent.trim());
+    ok(frames.length === 0 && said.startsWith("5 of 300 rows look wrong."),
+      `AH-149 review r1: a flagged number under 10 is drawn as itself from the first frame, never counted from 0 ("0 of 300 rows look wrong." above 5 flagged rows) - ${frames.length} counting frames, ${JSON.stringify(frames.slice(0, 3))}, "${said}"`); }
   { const h = await page.evaluate(() => ({ hint: document.getElementById("strength-hint").textContent, tested: document.getElementById("strength-measured")?.textContent,
       open: document.getElementById("strength-tested")?.open, summary: document.querySelector("#strength-tested summary")?.textContent })); // null-safe: a pane without them fails by name
     ok(h.hint === "Recommended. Plus unusual mixes of values across columns." && !h.open && h.summary === "How we tested this level"

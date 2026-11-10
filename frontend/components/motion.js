@@ -103,7 +103,8 @@ export function countUp(el) {
   if (still()) return;
   for (const c of el.querySelectorAll(".count")) {
     const to = Number(c.textContent.replace(/,/g, ""));
-    if (!Number.isSafeInteger(to) || to < 1 || !c.animate) continue;
+    // under 10 it is shown as itself: counting 5 from 0 drew "0 of 300 rows look wrong." above 5 flagged rows (review r1)
+    if (!Number.isSafeInteger(to) || to < 10 || !c.animate) continue;
     c.classList.add("counting");
     const run = c.animate([{ "--n": 0 }, { "--n": to }], { duration: 700, easing: EASE, fill: "forwards" });
     run.finished.catch(() => {}).then(() => { c.classList.remove("counting"); run.cancel(); });
