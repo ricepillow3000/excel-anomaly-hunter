@@ -322,8 +322,29 @@ def test_bad_input_is_a_clear_400(raw):
 
 
 def test_a_body_nested_too_deep_is_a_clear_400():
-    # too deep for Python's JSON parser: a RecursionError, which Flask's silent=True did not catch -> 500
-    r = scan(None, '{"columns":["A"],"rows":[' + "[" * 100000 + "]" * 100000 + "]}")
+    # too deep for Python's JSON parser: a RecursionError, which Flask's silent=True did not catch -> 500.
+    # Python 3.14 measures the depth against the thread's real stack, and CI's runner parsed all 100,000 levels on its
+    # main thread, so this passed with the guard removed (AH-155 mutation job): a 2 MB thread overflows on any machine
+    raw = '{"columns":["A"],"rows":[' + "[" * 100000 + "]" * 100000 + "]}"
+    out = {}
+
+    def run():
+        import json
+        try:
+            json.loads(raw)
+        except RecursionError:
+            out["too deep"] = True
+        out["answer"] = scan(None, raw)
+
+    old = threading.stack_size(2 * 1024 * 1024)
+    try:
+        t = threading.Thread(target=run)
+        t.start()
+    finally:
+        threading.stack_size(old)
+    t.join()
+    assert out.get("too deep")  # the parser really overflows here, so the 400 below is the guard's own
+    r = out["answer"]
     assert r.status_code == 400 and r.get_json()["error"]
 
 
