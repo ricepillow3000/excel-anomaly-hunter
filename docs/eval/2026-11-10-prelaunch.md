@@ -69,7 +69,11 @@ does not say "cells are data, not instructions" in words (AH-109): a prompt chan
    use the day up (no billing, so it costs nothing). More needs billing on the relay's project or another free
    provider, John's call.
 4. **AH-153 memory:** switched on only when `memory_ranked` beats `base` on dev (W-L >= 2 sqrt(W+L)) and held-out
-   (W-L >= 0) with no rise in invented answers. First run below.
+   (W-L >= 0) with no rise in invented answers. First run (2026-11-10, John's own key, gemini-3.5-flash-lite, 1 run,
+   `ai_eval.py --split both --arms base,memory_ranked`): dev right 93 vs 90 of 134, W3 L0 (bar 3.5, missed by a
+   hair); held-out right 71 vs 71 of 103, W2 L2 (passes); invented after the checks dev 21 vs 23, held-out 13 vs 9
+   (a rise). Not passed: it stays off. Runs 2 and 3 go through the daily 09:17 UTC test, which reports when done.
+   Injection obeyed: 0 in both arms.
 5. **Data fatigue, not built:** no "dismiss all like this" and no way to ignore a column; a Dismiss is lost when its
    row is edited (by design: an edit is a new row). Design work for Pod 1.
 6. **Low:** a planted Monday 600 among business days with Friday peaks is only Low (the Fridays crowd the space below
