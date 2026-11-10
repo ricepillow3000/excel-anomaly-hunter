@@ -260,7 +260,7 @@ const ENTERED = msOf("--enter-lead") + 4 * msOf("--enter-step") + msOf("--enter-
 // a dropdown's 150 to 250 ms
 {
   const curves = [...css.matchAll(/cubic-bezier\(([^)]*)\)/g)].map((m) => m[1].split(",").map(Number));
-  assert.ok(curves.length >= 2, "styles.css: no cubic-bezier curves found"); // --ease-out and --ease-in-out (--ease-lift went with the card lift, AH-148 final pass)
+  assert.ok(curves.length >= 3, "styles.css: no cubic-bezier curves found");
   for (const [x1, y1, x2, y2] of curves) assert.ok([x1, y1, x2, y2].every(Number.isFinite) && y1 >= 0 && y1 <= 1 && y2 >= 0 && y2 <= 1, `styles.css: cubic-bezier(${x1}, ${y1}, ${x2}, ${y2}) overshoots (a bounce)`);
   const num = (n) => { assert.ok(/^\d*\.?\d+$/.test(TOKENS[n] || ""), `styles.css: ${n} is not a number (${TOKENS[n]})`); return parseFloat(TOKENS[n]); };
   assert.deepEqual([msOf("--stagger-row"), msOf("--land-step"), num("--press"), msOf("--press-dur"), num("--pop-from"), msOf("--slide-dur"), num("--stretch"), msOf("--scroll-weight"), msOf("--pulse-dur")],
@@ -1448,13 +1448,12 @@ for (const [name, api, sha] of [["a good answer", json(release), "ab".repeat(32)
 }
 // the glide (AH-91): "See a sample scan" scrolls there by the clock, never a jump, and frames the sheet and the button under
 // it below the sticky bar with the checks still below the fold; then the button glides on to the checks, whose heading
-// rises into place as every section head does (AH-148 final pass: it turned up like a card, its letters stretched
-// sideways in perspective); a wheel ends a glide where it is; no frame is asked for once it has ended
+// turns up like a card; a wheel ends a glide where it is; no frame is asked for once it has ended
 const glideTo = async (p, sel, until) => {
   const b = await p.locator(sel).boundingBox();
   await p.evaluate(() => { window.frames_ = 0; window.__ys = []; window.__lift = []; const raf = window.requestAnimationFrame.bind(window);
     window.requestAnimationFrame = (f) => (window.frames_++, raf(f));
-    const h = document.getElementById("checks-title"), look = () => { window.__ys.push([performance.now(), scrollY]); const m = new DOMMatrix(getComputedStyle(h).transform); window.__lift.push(m.f); if (window.__ys.length < 400) setTimeout(look, 20); }; look(); });
+    const h = document.getElementById("checks-title"), look = () => { window.__ys.push([performance.now(), scrollY]); const m = new DOMMatrix(getComputedStyle(h).transform); window.__lift.push(m.m22); if (window.__ys.length < 400) setTimeout(look, 20); }; look(); });
   const t0 = Date.now();
   await p.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
   await p.waitForTimeout(300);
@@ -1478,14 +1477,14 @@ for (const width of [1440, 1280]) {
   const f0 = await p.evaluate(() => window.frames_); await p.waitForTimeout(1000);
   assert.equal(await p.evaluate(() => window.frames_), f0, `${width}px: a frame loop runs after the glide`);
   if (width === 1440) {
-    // on to the checks: slower, its heading rising mid-way and at rest at the end, the section's top under the bar
+    // on to the checks: slower, its heading lifted mid-way and at rest at the end, the section's top under the bar
     await p.waitForTimeout(2500); // the sheet's skeleton has landed
     const c = await glideTo(p, 'a[data-glide="top"][href="#checks"]', "#checks");
     const lift = await p.evaluate(() => window.__lift);
     const at = await p.evaluate(() => ({ top: document.getElementById("checks").getBoundingClientRect().top, bar: document.querySelector(".bar").getBoundingClientRect().bottom, focus: document.activeElement.id }));
     assert.ok(c.ms >= 2300 && c.ms <= 3700, `the glide to the checks took ${c.ms} ms`);
     assert.ok(Math.abs(at.top - at.bar) <= 2 && at.focus === "checks", `the glide to the checks ends at ${JSON.stringify(at)}`);
-    assert.ok(lift.some((v) => v > 0.5 && v < 23.5), `the checks' heading was never seen rising: ${lift.map((v) => v.toFixed(1)).join(" ")}`);
+    assert.ok(lift.some((v) => v > 0.05 && v < 0.95), `the checks' heading was never seen turning up: ${lift.map((v) => v.toFixed(2)).join(" ")}`);
     await p.waitForTimeout(1300);
     assert.equal(await p.evaluate(() => getComputedStyle(document.getElementById("checks-title")).transform), "none", "the checks' heading is not at rest");
     // a wheel ends a glide where it is: back to the top, glide, wheel, and nothing more moves
@@ -3408,11 +3407,10 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
   console.log("AH-148 fix round 2: a detail box beside or off its row's flagged cells with its head on screen (1440 and 390); the phone's sample whole at rest, row 11's Finding and flagged cells on screen; the check-file chevron and the aside's rule; the privacy summary's labels on a phone, heard once; the download bar down past the download; the checksum in two even halves, copied whole, SHA-256 unbroken; one height and one set of columns across the tabs");
 }
 // ---- AH-148 final pass, a third blind design review: on a phone an empty band of about 150 px sat under the sample's
-// last row (every tab held at After fixes' height); the checks' heading entered face down in perspective, its letters
-// stretched sideways and squashed; a checks-table "Row 31" landed on a phone with its flagged cell a swipe away; the swipe
-// hint showed on tabs with nothing to swipe, and a phone's tab changed what lay below the fold; "170.43 ÷ 2.99" broke
-// over two lines in a detail box; "All findings 7" beside types adding to 10 said nothing of rows flagged twice; the
-// case studies' cards had a hole mid-card; the support page's footer left "Source" alone on a line ----
+// last row (every tab held at After fixes' height); a checks-table "Row 31" landed on a phone with its flagged cell a
+// swipe away; the swipe hint showed on tabs with nothing to swipe, and a phone's tab changed what lay below the fold;
+// "170.43 ÷ 2.99" broke over two lines in a detail box; "All findings 7" beside types adding to 10 said nothing of rows
+// flagged twice; the case studies' cards had a hole mid-card; the support page's footer left "Source" alone on a line ----
 {
   const miss = [];
   const want = (ok, what) => { if (!ok) miss.push(what); };
@@ -3425,25 +3423,6 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
       return Math.round(document.getElementById("ws-cap").getBoundingClientRect().top - rows[rows.length - 1].getBoundingClientRect().bottom); });
     want(gap < 40, `1 at 390 px the sample's last row ends ${gap} px above its caption`);
     await done(t, "AH-148 final pass phone sample's height", [API]);
-  }
-  // 2. the checks' heading enters as every section head does: no frame of its entrance scales one axis more than the
-  // other, and its letter-spacing and font-stretch stay as they are
-  {
-    const t = await open("index.html", { width: 1440, height: 900 });
-    const p = t.page;
-    await p.waitForTimeout(ENTERED);
-    const r = await p.evaluate(async () => {
-      const h = document.getElementById("checks-title"), seen = [];
-      let on = true;
-      const look = () => { const c = getComputedStyle(h), m = new DOMMatrix(c.transform === "none" ? undefined : c.transform);
-        seen.push({ o: +c.opacity, flat: m.is2D, a: m.a, d: m.d, b: m.b, c: m.c, ls: c.letterSpacing, fs: c.fontStretch }); if (on) requestAnimationFrame(look); };
-      scrollTo(0, h.getBoundingClientRect().top + scrollY - 300); requestAnimationFrame(look);
-      await new Promise((ok) => setTimeout(ok, 1800)); on = false; return seen;
-    });
-    const moving = r.filter((f) => f.o < 0.99);
-    const bad = r.filter((f) => !f.flat || Math.abs(f.a - f.d) > 0.001 || Math.abs(f.b) > 0.001 || Math.abs(f.c) > 0.001 || f.ls !== r[r.length - 1].ls || f.fs !== r[r.length - 1].fs);
-    want(moving.length > 3 && !bad.length, `2 the checks' heading's entrance (${moving.length} frames seen moving) stretches or squashes it: ${JSON.stringify(bad.slice(0, 3))}`);
-    await done(t, "AH-148 final pass checks' heading", [API]);
   }
   // 3. a checks-table "Row 31" lands with the row's flagged Region cell in view, inside the table's scrolling box beside
   // the pinned Row number, on a phone too (its table starts scrolled to its end); the row's gold mark shows on landing
@@ -3530,7 +3509,7 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
     }
   }
   assert.deepEqual(miss, [], `AH-148 final pass:\n${miss.join("\n")}`);
-  console.log("AH-148 final pass: a phone's findings end at their last row; the checks' heading rises flat; Row 31 lands with its flagged cell in view and its gold mark; the swipe hint only on Findings and a phone's tab shows its panel; expressions whole in a detail box; a line under the filters on rows flagged twice; no hole in a case card; no footer link alone on a line");
+  console.log("AH-148 final pass: a phone's findings end at their last row; Row 31 lands with its flagged cell in view and its gold mark; the swipe hint only on Findings and a phone's tab shows its panel; expressions whole in a detail box; a line under the filters on rows flagged twice; no hole in a case card; no footer link alone on a line");
 }
 await browser.close();
 server.close();

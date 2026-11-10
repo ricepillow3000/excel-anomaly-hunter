@@ -57,6 +57,7 @@
   --enter-bar-step: 75ms; --enter-lead: 120ms; /* the bar's blocks start this far apart, the hero this long after them:
      350 ms put a slow phone's headline (4x CPU, slow 4G) past AH-87's 2.5 s budget; 120 ms keeps the bar first */
   --reveal-dur: 1100ms; --reveal-rise: 24px; --stagger: 90ms; --stagger-cap: 6;
+  --lift-dur: 1200ms; --ease-lift: cubic-bezier(.33, 1, .68, 1); /* the checks' heading turned face up (AH-91) */
   --skeleton-dur: 1300ms; --land-step: 30ms; --land-fade: 280ms; /* the sample sheet loading (AH-89); its rows land on the
      list rows' 30 ms rhythm (AH-138, was 32) */
   --turn-dur: 700ms; --fill-dur: 350ms; --podium-dur: 250ms; /* the sample sheet's page turn, button fill, raised cell (AH-92) */
@@ -222,7 +223,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .sec-lede { grid-column: 7 / span 5; margin-top: var(--s4); font-size: var(--fs-1); line-height: 1.45; color: var(--ink-2); }
 
 /* the dark band */
-.band-dark { background: var(--grain-dark), var(--grid-dark), var(--dark); color: var(--on-dark-2); border-top-color: var(--dark); overflow-x: clip; } /* never a sideways scroll from the band (it held AH-91's face-down heading, gone in AH-148's final pass) */
+.band-dark { background: var(--grain-dark), var(--grid-dark), var(--dark); color: var(--on-dark-2); border-top-color: var(--dark); overflow-x: clip; } /* a heading lying face down (.lift) reaches past the screen's edge in perspective: never a sideways scroll */
 .band-dark h2, .band-dark h3 { color: var(--on-dark); }
 .band-dark .label, .band-dark .fact { color: var(--gold-hi); }
 .band-dark .sec-lede { color: var(--on-dark-2); }
@@ -679,6 +680,15 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
   /* seen (motion.js): it rises into place after its group delay --d; settled, its layer is let go */
   html[data-js] .reveal-item[data-revealed] { transition: opacity var(--reveal-dur) var(--ease-out) var(--d, 0ms), transform var(--reveal-dur) var(--ease-out) var(--d, 0ms); }
   html[data-js] .reveal-item[data-revealed]:not([data-settled]) { will-change: transform, opacity; }
+  /* John, 2026-11-02: the checks' heading "has that premium animation... as if it was face down and then it is being
+     lifted up like a deck of cards" (AH-91): a .lift item waits lying face down, hinged on its bottom edge and tipped
+     just past flat (its back is hidden), and turns up to face the reader. It uses transform only, so the data-depth
+     drift keeps the translate property */
+  html[data-js] .reveal-item.lift { transform-origin: 50% 100%; backface-visibility: hidden; }
+  html[data-js] .reveal-item.lift:not([data-revealed]) { transform: perspective(900px) rotateX(-95deg); }
+  /* on --ease-out the card was 80% turned in its first 300 ms, which read as a snap, not a presentation: a cubic
+     ease-out spreads the turn over the whole --lift-dur */
+  html[data-js] .reveal-item.lift[data-revealed] { transition-duration: var(--lift-dur), var(--lift-dur); transition-timing-function: var(--ease-lift), var(--ease-lift); }
   .typology button::before { transition: transform var(--fill-dur) var(--ease-out); }
   .tabs button::after { transition: transform var(--fill-dur) var(--ease-out), opacity var(--fill-dur) var(--ease-out); }
   .grid td:is(.flag, .q) { transition: transform var(--podium-dur) var(--ease-out); }

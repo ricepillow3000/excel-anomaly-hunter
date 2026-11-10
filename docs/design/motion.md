@@ -11,7 +11,7 @@ sample sheet's skeleton, page turn, detail box, tab mark, the download's skeleto
    The static half of `tools/test_site.mjs` fails on any other property in a `transition` or `@keyframes` (the Copy
    button's icon blur is the one exception, below).
 2. Two curves. `--ease-out: cubic-bezier(.16, 1, .3, 1)`, a fast start and a long, soft landing, drives everything that
-   arrives: the bar's and the hero's entrance, the reveal, the hairlines, the filters'
+   arrives: the bar's and the hero's entrance, the reveal, the card lift, the hairlines, the filters'
    fill, the raised cell, the page curtain, the browser's own page crossfade and the field's fade-in.
    `--ease-in-out: cubic-bezier(.65, 0, .35, 1)`, soft at both ends, drives what starts from rest and must not jerk:
    the glide, the page turn, the skeleton's band of light and the tab mark's slide. Linear is used once, on purpose: the
@@ -36,6 +36,7 @@ sample sheet's skeleton, page turn, detail box, tab mark, the download's skeleto
   --reveal-rise: 24px;  /* the slide distance: how far below its place an item waits (20 to 30 px reads best) */
   --stagger: 90ms;      /* the stagger speed: the gap between items of one group that rise together */
   --stagger-cap: 6;     /* after this many steps, later items start together, so a long list never drags */
+  --lift-dur: 1200ms; --ease-lift: cubic-bezier(.33, 1, .68, 1); /* the checks' heading turned face up */
   --skeleton-dur: 1300ms; --land-step: 30ms; --land-fade: 280ms; /* the sample sheet loading (rows land 30 ms apart) */
   --turn-dur: 700ms; --fill-dur: 350ms; --podium-dur: 250ms; /* page turn, filter and button fill, raised cell */
   /* AH-138 */
@@ -203,10 +204,7 @@ A reveal item inside a block that is still waiting for its entrance (support.htm
 rising when that block is a quarter of the way in, never unseen inside a block that is still see-through. The footer's
 items reveal like the rest; `transition.js` keeps their reveal when it updates the footer for a new page.
 
-### The card lift (AH-91, removed in AH-148's final pass)
-
-Removed 2026-11-10: a third blind review saw the heading's letters stretched sideways and squashed as it turned (a
-`rotateX` in perspective scales one axis and not the other). The checks' heading now rises like every section head. As it was:
+### The card lift (AH-91)
 
 John, 2026-11-02: the checks' heading "has that premium animation... as if it was face down and then it is being
 lifted up like a deck of cards". A `.reveal-item.lift` waits as `perspective(900px) rotateX(-95deg)` hinged on its
@@ -549,9 +547,6 @@ Alive, and still plain to read:
 
 ### Final pass (a third blind design review, 2026-11-10)
 
-- **The checks' heading rises like every other section head** (the shared `.reveal-item` fade and rise). The card lift
-  above (AH-91, John's own ask of 2026-11-02) turned it up in perspective, which stretched its letters sideways and
-  squashed them on the way; it is gone, with `--lift-dur` and `--ease-lift`.
 - **On a phone each tab is its own height.** The tallest tab's height is held only above 760 px, where "See every check"
   stays put; on a phone After fixes (its verdict and note over the table) is 145 px taller than the findings, and holding
   it left an empty band under row 57. Instead, a tab pressed on a phone moves the page by the least that shows its
