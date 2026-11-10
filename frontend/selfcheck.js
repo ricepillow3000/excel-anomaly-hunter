@@ -3,7 +3,7 @@ import assert from "node:assert";
 import { esc, asNumber } from "./utils/text.js";
 import { cutNote, r1c1ToA1, tableFromGrid, isDateFormat, excelDate, rowFromAddress, colLetter, cellAt, sameRow, readAs, spots } from "./utils/sheet.js";
 import { issuesOf, recommendFix, typoKind, afterFix, unusualColumn } from "./features/fix.js";
-import { plainReason, summaryOf, flaggedRows, fairnessNote, fairnessTests, listOrder, levelChange } from "./features/scan.js";
+import { plainReason, summaryOf, flaggedRows, fairnessNote, fairnessTests, listOrder, levelChange, asLastScan, lastScanSaid } from "./features/scan.js";
 import { MEASURED, COLOR, OLD_COLOR } from "./constants/index.js";
 import { strengthHint, asStrength, levelAt, levelWord } from "./pages/strength.js";
 import { exactFixes, safeUndo } from "./features/autofix.js";
@@ -184,6 +184,21 @@ assert.deepEqual(fairnessTests(undefined), []);
 assert.equal(summaryOf([{ severity: null }, { severity: "Noted" }, { severity: null }]), "No problems found in 3 rows.");
 assert.equal(summaryOf([{ severity: "High" }, { severity: "Low" }, ...Array(1998).fill({ severity: null })]), "1 of 2,000 rows look wrong. 1 more is worth a quick check.");
 assert.equal(summaryOf([{ severity: "Low" }, { severity: "Low" }]), "Nothing clearly wrong in 2 rows. 2 are worth a quick check.");
+// AH-157: a reopened workbook says its last check at once, from numbers only (never a value or a reason). A crafted
+// workbook can carry anything under the key: only a sheet name and whole numbers survive
+{
+  const at = Date.UTC(2026, 10, 9, 12), now = Date.UTC(2026, 10, 10, 12);
+  const rec = { sheet: "Sales", at, level: 5, rows: 300, high: 2, medium: 10, low: 4 };
+  assert.deepEqual(asLastScan({ ...rec, cells: ["x"], reason: "y" }), rec, "only the numbers are kept");
+  for (const junk of [null, "x", 5, [], { ...rec, rows: -1 }, { ...rec, high: 1.5 }, { ...rec, sheet: 7 }, { ...rec, at: "today" }, { ...rec, level: "5" }])
+    assert.equal(asLastScan(junk), null, JSON.stringify(junk));
+  assert.equal(asLastScan({ ...rec, sheet: "x".repeat(99) }).sheet.length, 31);
+  assert.equal(lastScanSaid(rec, now), "Last check on Sales, 9 Nov: 12 of 300 rows looked wrong and 4 more were worth a quick check.");
+  assert.equal(lastScanSaid({ ...rec, high: 0, medium: 1, low: 0 }, now), "Last check on Sales, 9 Nov: 1 of 300 rows looked wrong.");
+  assert.equal(lastScanSaid({ ...rec, high: 0, medium: 0, low: 1 }, now), "Last check on Sales, 9 Nov: 1 of 300 rows was worth a quick check.");
+  assert.equal(lastScanSaid({ ...rec, rows: 1, high: 0, medium: 0, low: 0 }, Date.UTC(2027, 0, 2)), "Last check on Sales, 9 Nov 2026: no problems found in 1 row.");
+  assert.equal(lastScanSaid(null), "");
+}
 assert.deepEqual(flaggedRows([{ severity: "Low", magnitude: 99 }, { severity: "Medium", magnitude: 1 }, { severity: "High", magnitude: 0 }]).map((r) => r.i), [2, 1, 0], "surest first, not biggest");
 
 assert.equal(excelDate(45658), "2025-01-01");
@@ -558,6 +573,14 @@ const rowClasses = [...readFileSync(new URL("components/row-item.js", import.met
 assert.deepEqual([...new Set(rowClasses)].sort(), ["row-head", "row-why", "sev", "swatch"]);
 for (const r of skRows) for (const c of rowClasses) assert.ok(r.includes(`class="${c}"`), `a skeleton row lacks .${c}`);
 assert.ok(/class="summary"/.test(skel) && /class="legend"/.test(skel) && /class="flagged-list"/.test(skel) && !/\bid=/.test(skel), "the skeleton: summary, legend, list, and no id a test or script could mistake for the real one");
+// AH-157: while a row opens, its card's fix area is the same still bars, never an empty held box: one static block in the
+// page with no id, shown by an attribute on the card (pages/fix.js)
+const fixSk = /<div class="fix-sk" aria-hidden="true">([\s\S]*?)<\/div>/.exec(html)?.[1] || "";
+assert.ok((fixSk.match(/class="sk-bar /g) || []).length >= 2 && !/\bid=/.test(fixSk) && /<div class="fix-body">\s*<div class="fix-sk"/.test(html),
+  "the fix card's skeleton: still bars at the top of its fix area, no id");
+// AH-157: the last check's line sits under the empty state's heading, never before it (#empty-state p:first-child)
+assert.ok(/<section id="empty-state"[^>]*>\s*<p>Click <b>Find problems<\/b>[^<]*<\/p>\s*<p id="last-scan" hidden><\/p>/.test(html), "the empty state's heading stays first, the last check under it");
+assert.ok(/toggleAttribute\("data-opening"/.test(readFileSync(new URL("pages/fix.js", import.meta.url), "utf8")), "a row's card shows its skeleton by data-opening while it opens");
 assert.ok(!/\bstyle=|<style/.test(html), "the pane CSP refuses inline styles");
 // the entrance is unhurried (John: "it seems like I'm rushing the user") and still at rest well inside launch's 2 s
 const motion = readFileSync(new URL("components/motion.js", import.meta.url), "utf8");
@@ -566,7 +589,7 @@ assert.ok(DUR >= 900 && STEP >= 100 && MAX_DELAY + DUR <= 1600, `entrance ${DUR}
 // every new movement has its reduced-motion twin
 const css = readFileSync(new URL("styles/components.css", import.meta.url), "utf8");
 const calmCss = css.slice(css.lastIndexOf("@media (prefers-reduced-motion: reduce)"));
-for (const sel of [".flagged-list button::before", ".flagged-list button:is(:hover, :focus-visible):not(:disabled)", "#scan-skeleton::after", ".tick::after", "::view-transition-group(*)"])
+for (const sel of [".flagged-list button::before", ".flagged-list button:is(:hover, :focus-visible):not(:disabled)", "#scan-skeleton::after", ".fix-sk::after", ".tick::after", "::view-transition-group(*)"])
   assert.ok(calmCss.includes(sel), `no reduced-motion rule for ${sel}`);
 assert.ok(/turnIn\(el, y = null\) \{\s*if \(!el \|\| still\(\)/.test(motion) && /fadeIn\(el\) \{\s*if \(!el \|\| still\(\)/.test(motion), "the page turn and the fade skip reduced motion");
 assert.ok(/function morph\([^)]*\) \{\s*if \(!from \|\| still\(\)/.test(motion) && /function stagger\([^)]*\) \{\s*if \(still\(\)\)/.test(motion) && /function countUp\([^)]*\) \{\s*if \(still\(\)\)/.test(motion), "the morph, the rows' arrival and the count skip reduced motion");
@@ -658,6 +681,9 @@ for (const f of readdirSync(new URL(".", import.meta.url)).filter((f) => f.endsW
   classes.delete("btn"); // the shared frame: its colours live on btn-red / btn-line
   for (const c of [...classes].map((x) => "." + x).concat([".flagged-list button", "#pane-footer .pf-links a"]))
     assert.ok(pressed.some((s) => s.includes(c)), `no :active rule for ${c}: a press shows nothing`);
+  // AH-157: a text link shows its press too (a thicker line), in the pane and on its Privacy and Support pages
+  for (const [f, src] of sheetsCss.filter(([f]) => f !== "styles/components.css"))
+    assert.ok([...src.matchAll(/(^|\})\s*([^{}]*:active)\s*\{/g)].some((m) => m[2].trim() === "a:active"), `${f}: no :active rule for a text link`);
   for (const [f, src] of sheetsCss) if (/summary\s*\{/.test(src))
     assert.ok([...src.matchAll(/[^{}]*:active[^{}]*\{/g)].some((m) => m[0].includes("summary")), `${f}: no :active rule for summary`);
 }

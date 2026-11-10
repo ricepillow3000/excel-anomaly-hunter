@@ -326,6 +326,9 @@ export async function undoFix(f) {
   const u = state.undos[f.i];
   if (!u) return;
   if (state.fix === f) $("fix-status").classList.remove("tick");
+  // AH-157: said on the card in the frame of the press, as Accept's "Writing to your sheet…"; what follows says what the
+  // sheet really holds
+  if (state.fix === f) $("fix-status").textContent = "Putting the old values back…";
   tryAgain(f);
   try {
     // Undo only types into the same record it fixed: the row's other cells must still be what the scan read (a sort or

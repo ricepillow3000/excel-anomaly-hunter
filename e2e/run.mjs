@@ -590,10 +590,22 @@ if (mode === "flow") {
   ok((await tag(22)) === "Dismissed", "row 22, dismissed in step 3, is still Dismissed after every re-scan since - " + (await tag(22)));
   await openRow(11); await page.click("#fix-apply"); await idle();
   ok((await kept()) === "dismissed,fixed", "the workbook keeps one code per decision, never the values - " + (await kept()));
+  const s6 = scans.length;
   const book = await page.evaluate(() => JSON.stringify(__settings.anomalyHunterDecisions));
   ok(/^\{"Sales":\{("[0-9a-z]{1,11}\.\d+":"(fixed|dismissed)",?){2}\}\}$/.test(book), "only codes, never a cell value - " + book);
   await page.reload(); await page.waitForSelector("#main-ui", { state: "visible" });
   ok((await cell("C11")).v !== -5, "the reloaded pane sees the same workbook (the fix is in the cell)");
+  // AH-157: the reopened pane says its last check at once, with no scan: from the numbers the workbook keeps, never a
+  // value or a reason (it opened on "Click Find problems" as if the sheet had never been checked)
+  { const last = await page.evaluate(() => ({ said: document.getElementById("last-scan")?.checkVisibility() && document.getElementById("last-scan").textContent,
+      keys: Object.keys(__settings.anomalyHunterLastScan || {}).sort().join() }));
+    const r = replies.at(-1).rows, sure = r.filter((x) => x.severity === "High" || x.severity === "Medium").length;
+    ok(last.keys === "at,high,level,low,medium,rows,sheet" && new RegExp(`^Last check on Sales, \\d+ [A-Z][a-z]{2}: ${sure} of 300 rows looked wrong`).test(last.said) && scans.length === s6,
+      `AH-157: reopened, the pane says the last check before any scan, from its numbers only - ${JSON.stringify(last)}, ${scans.length - s6} scans`);
+    // its picture at rest: once the entrance has played (only when pictures are asked for)
+    if (process.env.SHOTS) await page.waitForFunction(() => [...document.querySelectorAll("[data-enter]")].every((e) => !e.style.opacity && !e.style.transform)
+      && document.getAnimations().every((a) => a.playState !== "running"), null, { timeout: 5000 }).catch(() => {});
+    await shot("last-scan"); }
   await find();
   ok((await tag(11)) === "Fixed" && (await tag(22)) === "Dismissed", `after a reload: row 11 Fixed, row 22 Dismissed - ${await tag(11)}, ${await tag(22)}`);
   ok((await cell("C22")).fill === null && (await cell("C11")).fill === null && (await cell("A51")).fill === "#FFEB9D",
@@ -649,7 +661,7 @@ if (mode === "flow") {
   // (row 22 dismissed, row 11 fixed) are there first
   await openStrict(); await page.click("#edit-limits");
   await page.locator('#limits-rows .limits-row[data-column="Units"] input').nth(1).fill("10000"); await page.click("#save-limits"); await idle();
-  const BOOK = ["anomalyHunterLimits", "anomalyHunterStrength", "anomalyHunterAutoUndo", "anomalyHunterAcceptUndo", "anomalyHunterDecisions", "Office.AutoShowTaskpaneWithDocument", "anomalyHunterHighlights"];
+  const BOOK = ["anomalyHunterLimits", "anomalyHunterStrength", "anomalyHunterAutoUndo", "anomalyHunterAcceptUndo", "anomalyHunterDecisions", "Office.AutoShowTaskpaneWithDocument", "anomalyHunterHighlights", "anomalyHunterLastScan"];
   const held = () => page.evaluate((ks) => ks.filter((k) => __settings[k] !== undefined && __settings[k] !== null), BOOK);
   const sheetNow = () => page.evaluate(() => { const out = []; for (let r = 1; r <= 301; r++) for (const c of "ABCDE") out.push(__cell("Sales", c + r)); return JSON.stringify(out); });
   const heldBefore = await held(), cellsBefore = await sheetNow(), wrote0 = await page.evaluate(() => __log.length);
@@ -661,13 +673,13 @@ if (mode === "flow") {
   ok((await held()).length === 0 && forgot.startsWith("Removed from this workbook: the limits you changed;") && forgot.includes("the codes of the rows you fixed or dismissed")
     && (await page.evaluate((n) => __log.length === n, wrote0)), "Forget, double-clicked, runs once: removes every key the pane saved, says which, and writes no cell - " + forgot);
   await page.reload(); await page.waitForSelector("#main-ui", { state: "visible" });
-  ok((await held()).length === 0 && (await sheetNow()) === cellsBefore, "after a reload the workbook holds none of them, and every cell is as it was");
+  ok((await held()).length === 0 && (await sheetNow()) === cellsBefore && !(await page.isVisible("#last-scan")), "after a reload the workbook holds none of them, says no last check, and every cell is as it was");
   await find();
   ok((await tag(22)) === "Probably wrong" && (await text("#strength-val")) === "5 of 10" && (await text("#flagged-list")).includes("Units is 7777"),
     `the next scan: row 22 is no longer Dismissed, the slider is back at 5, the automatic limits are used - ${await tag(22)}`);
   await page.locator("details.more:has(#forget-book)").evaluate((d) => (d.open = true));
   await page.click("#forget-book"); await idle(); // the scan saved the pane's opening setting and its highlights' old fills again: only those go now
-  ok((await text("#forget-state")) === "Removed from this workbook: the setting that opens this pane with the file; the colours your highlighted cells had before. Your cells are as they were. Save the workbook to keep the change in the file; the next scan saves the setting that opens this pane again.",
+  ok((await text("#forget-state")) === "Removed from this workbook: the setting that opens this pane with the file; the colours your highlighted cells had before; the numbers of the last check. Your cells are as they were. Save the workbook to keep the change in the file; the next scan saves the setting that opens this pane again.",
     "a second Forget names only what was there - " + (await text("#forget-state")));
 
   // 7a) 30 scans and re-checks: what the pane keeps (listeners, page nodes) stays what is on screen (AH-13). Counted by
@@ -862,7 +874,8 @@ if (mode === "flow") {
   // buttons go off; Dismiss marks the row and turns the next card in at once; a Dismiss Excel refuses is put back
   { const pressed = (sel, check) => page.evaluate(([sel, check]) => new Promise((done) => {
       const seen = { writing: () => document.getElementById("fix-status").textContent === "Writing to your sheet…" && document.getElementById("fix-apply").disabled,
-        dismissed: () => !document.getElementById("fix-title").textContent.startsWith("Row 22:") && __state.decided[20] === "dismissed" }[check];
+        dismissed: () => !document.getElementById("fix-title").textContent.startsWith("Row 22:") && __state.decided[20] === "dismissed",
+        undoing: () => document.getElementById("fix-status").textContent === "Putting the old values back…" && document.getElementById("fix-undo").disabled }[check];
       let t0 = 0;
       document.addEventListener("click", () => (t0 = performance.now()), { capture: true, once: true });
       const f = () => (t0 && seen() ? done(performance.now() - t0) : t0 && performance.now() - t0 > 3000 ? done(Infinity) : requestAnimationFrame(f));
@@ -872,10 +885,19 @@ if (mode === "flow") {
     // the card's buttons stay where they are drawn when its fix arrives late
     await page.evaluate(() => (window.__slow = 300));
     await page.evaluate(() => { window.__btn = []; const f = () => { const b = document.getElementById("fix-dismiss"); if (b.checkVisibility() && document.getElementById("fix-view").checkVisibility()) __btn.push(b.offsetTop); if (!window.__btnStop) requestAnimationFrame(f); }; window.__btnStop = false; requestAnimationFrame(f); });
-    await page.click('#flagged-list button:has-text("Row 22 ")'); await idle();
+    // AH-157: while the row opens, its fix area shows still bars, never an empty box, and they go when the fix lands
+    await page.evaluate(() => { window.__fsk = []; const f = () => { if (document.getElementById("fix-view").checkVisibility()) __fsk.push(!!document.querySelector("#fix-view .fix-sk")?.checkVisibility()); if (!window.__btnStop) requestAnimationFrame(f); }; requestAnimationFrame(f); });
+    await page.click('#flagged-list button:has-text("Row 22 ")');
+    await page.waitForFunction(() => document.querySelector("#fix-view .fix-sk")?.checkVisibility(), null, { timeout: 3000 }).catch(() => {});
+    // its picture with the card's turn and the row's morph played to their end (only when pictures are asked for)
+    if (process.env.SHOTS) await page.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.id === "fix-view" || String(a.effect?.pseudoElement).startsWith("::view-transition")).forEach((a) => a.finish()));
+    await shot("fix-skeleton");
+    await idle();
     await page.waitForFunction(() => document.getElementById("fix-changes").children.length || document.getElementById("fix-explanation").textContent);
     await page.waitForTimeout(300);
     const at = await page.evaluate(() => { window.__btnStop = true; return __btn; });
+    { const fsk = await page.evaluate(() => __fsk), anim = await page.evaluate(() => { const e = document.querySelector("#fix-view .fix-sk"); return e && getComputedStyle(e, "::after").animationIterationCount; });
+      ok(fsk[0] === true && fsk.at(-1) === false && /^\d+$/.test(anim), `AH-157: a row's card shows still bars while it opens, gone once its fix is in, its light passing a set number of times - first ${fsk[0]}, last ${fsk.at(-1)}, ${anim}`); }
     ok(at.length > 10 && Math.max(...at) === Math.min(...at), `AH-149: the card's buttons stay where they are when its fix arrives ${300 * 2} ms late - ${at.length} frames, ${Math.min(...at)} to ${Math.max(...at)} px`);
     const w0 = await page.evaluate(() => __log.length);
     const ms = await pressed("#fix-apply", "writing");
@@ -883,7 +905,10 @@ if (mode === "flow") {
     ok(ms < 100 && !others.scan && !others.faded.length, `AH-149: Accept says "Writing to your sheet…" on its card in ${Math.round(ms)} ms, only the card's buttons off, nothing faded - ` + JSON.stringify(others));
     await idle();
     ok((await page.evaluate((n) => __log.length - n, w0)) === 1 && (await text("#fix-status")).startsWith("Accepted"), "and once Excel has it, the card says what the sheet holds - " + (await text("#fix-status")));
-    await page.click("#fix-undo"); await idle();
+    const ums = await pressed("#fix-undo", "undoing");
+    ok(ums < 100, `AH-157: Undo says "Putting the old values back…" on its card in ${Math.round(ums)} ms, before Excel has answered`);
+    await idle();
+    ok((await text("#fix-status")).startsWith("Undone."), "and once Excel has them, the card says they are back - " + (await text("#fix-status")));
     const k0 = await page.evaluate(() => Object.values(__settings.anomalyHunterDecisions?.Sales || {}).length);
     const title0 = await text("#fix-title");
     const dms = await pressed("#fix-dismiss", "dismissed");
@@ -919,16 +944,29 @@ if (mode === "flow") {
   // Try again meets the engine
   let refused = 0;
   const down = (r) => (refused++, r.abort("connectionrefused"));
+  const waiting = [], hold = (r) => { waiting.push(r); };
   await failing(DROPPED, async () => {
     await page.route("**/health", down);
     await page.reload(); await page.waitForSelector("#server-down", { state: "visible" }).catch(() => {});
+    const opened = await page.evaluate(() => ["app-body", "main-ui", "server-down"].map((id) => `${id} ${document.getElementById(id).hidden ? "hidden" : "shown"}`).join(", "));
+    ok(refused >= 1 && (await page.isVisible("#server-down")) && (await text("#server-down")).replace(/\s+/g, " ").trim() === DOWN_AT_START + " Try again" && !(await page.isVisible("#main-ui")),
+      `the engine down at start: said in plain words - ${refused} /health refused; ${opened}`);
+    // AH-157: Try again shows the start-up skeleton at once while it asks (nothing changed for up to 10 s), and a refusal
+    // brings the words back
+    await page.unroute("**/health", down); await page.route("**/health", hold);
+    await page.click("#retry-health");
+    const asking = await page.evaluate(() => ({ skeleton: document.getElementById("skeleton").checkVisibility(), down: document.getElementById("server-down").checkVisibility() }));
+    for (let t = 0; !waiting.length && t < 50; t++) await page.waitForTimeout(100);
+    await shot("health-retry");
+    ok(asking.skeleton && !asking.down && waiting.length === 1, "AH-157: Try again shows the start-up skeleton in the frame of the press while it asks - " + JSON.stringify({ ...asking, asked: waiting.length }));
+    for (const r of waiting.splice(0)) await r.abort("connectionrefused");
+    await page.waitForSelector("#server-down", { state: "visible", timeout: 5000 }).catch(() => {});
+    await page.unroute("**/health", hold);
   });
-  const opened = await page.evaluate(() => ["app-body", "main-ui", "server-down"].map((id) => `${id} ${document.getElementById(id).hidden ? "hidden" : "shown"}`).join(", "));
-  await page.unroute("**/health", down);
-  ok(refused >= 1 && (await page.isVisible("#server-down")) && (await text("#server-down")).replace(/\s+/g, " ").trim() === DOWN_AT_START + " Try again" && !(await page.isVisible("#main-ui")),
-    `the engine down at start: said in plain words - ${refused} /health refused; ${opened}`);
-  await page.click("#retry-health"); await page.waitForSelector("#main-ui", { state: "visible", timeout: 10000 }).catch(() => {});
-  ok(await page.isVisible("#main-ui"), "Try again opens the pane once the engine answers");
+  // AH-157: while Arcas has stopped the pane asks again on its own every 5 s, and opens once the engine answers, with no press
+  const t9a = Date.now();
+  await page.waitForSelector("#main-ui", { state: "visible", timeout: 9000 }).catch(() => {});
+  ok(await page.isVisible("#main-ui") && Date.now() - t9a < 8000, `AH-157: the pane opens by itself once the engine answers again, in ${Date.now() - t9a} ms`);
   // 9b) an engine that takes the call and never answers (hung, or another program on port 5055): the start-up check gave
   // up never, and the pane stayed on its skeleton for good (AH-87). It gives up after 10 s and says the checker isn't running
   let hung = 0;
@@ -1079,6 +1117,15 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
   // Check words with AI: only the text columns' distinct words go; the AI's answer is shown as text, never as markup,
   // and a word it makes up (not in the column) is dropped. The stub answers with markup in "why" and a made-up word.
   await back();
+  // AH-157: Check words says it is asking, and counts its seconds, while the AI reads (the pane sat silent, every button
+  // off, for up to 300 s)
+  await page.route("**/odd-text", async (r) => { await new Promise((go) => setTimeout(go, 1600)); await r.continue(); }, { times: 1 });
+  await page.click("#odd-check");
+  const asking = await page.evaluate(() => ({ shown: document.getElementById("busy").checkVisibility(), said: document.getElementById("busy-text").textContent }));
+  const counted = await page.waitForFunction(() => document.getElementById("busy-secs").textContent === " 1 s", null, { timeout: 3000 }).then(() => true, () => false);
+  await idle();
+  ok(asking.shown && asking.said === "Asking the AI about your words…" && counted && !(await page.isVisible("#busy")),
+    "AH-157: Check words says it is asking the AI, counts its seconds, and the line goes when the answer is in - " + JSON.stringify({ ...asking, counted }));
   posts.length = 0;
   await page.click("#odd-check"); await idle();
   ok(posts.join() === "/odd-text", "Check words with AI sends only /odd-text - " + posts);
@@ -1119,7 +1166,11 @@ if (mode === "nokey") { // engine started with no key: John's free AI through th
   ok(relayed.path === "/fix" && relayed.auth === false && (await text("#fix-changes")).startsWith("C11: -5 → =AVERAGEIFS("),
     "Ask AI with no key: the free AI's fix, through the relay's /fix with no Authorization header - " + JSON.stringify({ path: relayed.path, auth: relayed.auth }));
   await page.click("#settings summary");
+  // AH-157: Save key says at once that the key is being tested (the line kept "AI help is on" for up to 15 s)
+  await page.route("**/key", async (r) => { await new Promise((go) => setTimeout(go, 800)); await r.continue(); }, { times: 1 });
   await page.fill("#ai-key", "<script>"); await page.click("#save-key");
+  const testing = await text("#ai-state");
+  ok(testing === "Testing the key with Google…", "AH-157: Save key says at once that it is testing the key - " + testing);
   await page.waitForFunction(() => document.getElementById("ai-state").textContent.includes("doesn't look like an API key"));
   ok((await page.inputValue("#ai-key")) === "", "junk key refused, and cleared from the box: a refused key is no use to retry (AH-15)");
   // Save with an empty box (the paste didn't land) must say so - never "Saved", never a silent remove (John, 2026-10-12)

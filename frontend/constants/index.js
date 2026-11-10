@@ -10,6 +10,7 @@ export const POWER_BI_KEY = "anomalyHunterPowerBi"; // keep each scan for Power 
 export const DECISIONS_KEY = "anomalyHunterDecisions"; // rows fixed or dismissed, as codes, saved inside the workbook
 export const ACCEPT_UNDO_KEY = "anomalyHunterAcceptUndo"; // what Accept changed (the old values), saved inside the workbook for Undo
 export const HIGHLIGHT_KEY = "anomalyHunterHighlights"; // the fill each highlighted cell had before, saved inside the workbook
+export const LAST_SCAN_KEY = "anomalyHunterLastScan"; // the last check's numbers (never a value), saved inside the workbook
 export const MEMORY_KEY = "anomalyHunterAiMemory"; // fixes the user accepted, for Ask AI: this PC (localStorage), across workbooks
 
 // What each slider level does, in its own words (2, 4, 6, 8 and 10 once showed the level below's, so 6 opened

@@ -36,6 +36,7 @@ html{scroll-behavior:smooth;scroll-padding-top:20px}
 body{font-family:var(--sans);background:var(--tex),var(--paper);color:var(--ink);line-height:1.6;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
 a{color:var(--navy);font-weight:600;text-decoration-color:var(--wine);text-decoration-thickness:1px;text-underline-offset:3px;overflow-wrap:anywhere}
 a:hover{text-decoration-thickness:2px}
+a:active{text-decoration-thickness:3px}
 :focus-visible{outline:2px solid var(--navy);outline-offset:2px}
 h1,h2,h3{font-style:normal;overflow-wrap:anywhere;min-width:0;color:var(--navy)}
 code{overflow-wrap:anywhere;background:var(--paper-2);border:1px solid var(--rule);padding:0 5px;border-radius:0;font-size:.92em;color:var(--navy)}

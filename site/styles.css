@@ -106,6 +106,7 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 main { flex: 1 0 auto; }
 a { color: var(--ink); text-decoration-color: var(--gold); text-underline-offset: 3px; text-decoration-thickness: 1px; }
 a:is(:hover, :focus-visible) { text-decoration-thickness: 2px; }
+a:active { text-decoration-thickness: 3px; } /* pressed (AH-157): a link shows the press too, the footer's with it */
 /* Chromium's own placeholder grey is 4.2:1 on paper: the notes' colour, at full strength (AH-87) */
 ::placeholder { color: var(--muted); opacity: 1; }
 /* a tap shows our own pressed look (the gold line), never the browser's cyan box over it (AH-138 review) */
@@ -173,6 +174,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .links { grid-column: 5 / -1; display: flex; justify-content: flex-end; align-items: center; gap: var(--s3); flex-wrap: wrap; }
 .links a { color: var(--ink); text-decoration: none; font: 600 var(--fs--1)/1 var(--sans); padding: 10px 0; border-bottom: 2px solid transparent; }
 .links a:is(:hover, :focus-visible) { border-bottom-color: var(--ink); }
+.links a:active { border-bottom-color: var(--wine); }
 .links a[aria-current="page"] { border-bottom-color: var(--wine); }
 .links .btn-trim { padding: 12px 16px; background: var(--ink); color: var(--paper); border: 0; }
 .links .btn-trim:hover { background: var(--wine); color: var(--on-wine); }

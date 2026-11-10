@@ -69,6 +69,7 @@ body { font: 400 var(--fs-0)/1.5 var(--sans); color: var(--ink); background: var
 /* a long link or code breaks anywhere rather than run past a 160 px pane (a 320 px pane at 200% zoom, AH-112) */
 a { color: var(--navy); text-decoration-color: var(--wine); text-underline-offset: 3px; text-decoration-thickness: 1px; overflow-wrap: anywhere; }
 a:hover { text-decoration-thickness: 2px; }
+a:active { text-decoration-thickness: 3px; } /* pressed (AH-157): a link shows the press too */
 :focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
 code { overflow-wrap: anywhere; background: var(--paper-2); border: 1px solid var(--rule); padding: 0 4px; border-radius: 0; font-size: var(--fs--1); color: var(--navy); }
 h1, h2, h3 { color: var(--navy); }
