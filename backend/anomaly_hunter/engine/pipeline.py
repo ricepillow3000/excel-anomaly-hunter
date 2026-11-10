@@ -683,20 +683,31 @@ def _totals(df, cols, skip, out, held=None):
     Adds its reasons to out, and the rows each held on to held (see confirm); -> the totals it explained, so least squares
     does not judge them again (AH-55)."""
     done, order, nums = set(), list(df.columns), {c: k for k, c in enumerate(cols)}
-    heads = [c for c in cols if len(h := " ".join(re.sub(r"[_.]+", " ", str(c)).split()).lower()) <= 200 and TOTAL_HEAD.search(h)]
+    named = [c for c in cols if len(h := " ".join(re.sub(r"[_.]+", " ", str(c)).split()).lower()) <= 200 and TOTAL_HEAD.search(h)]
+    # ...and any other number column, as the sum of 3+ beside it: a "Budget" or a "Field4" that adds up Salaries + Rent +
+    # Travel was judged only by least squares, 20 rows a column, so on 60 rows its slip was missed and a real Travel -123
+    # whose row adds up got "likely 123" (AH-150). Same flags under other headers (test_schema_agnostic)
+    heads = named + [c for c in cols if c not in named]
     rows = df.index[~skip]
-    a = df.loc[rows, cols].to_numpy(dtype=float) if heads else None
+    a = df.loc[rows, cols].to_numpy(dtype=float) if len(cols) > 3 else None
     halves = {}  # as pairs: a column of whole numbers is exact, one written to d decimals off by up to half its last digit
     half = lambda c: halves.setdefault(c, 0.0 if (d := _decimals(a[:, nums[c]])) == 0 else 0.5 * 10.0 ** -d)
-    for col in heads[:20]:
-        y, at, tries = a[:, nums[col]], order.index(col), [[c for c in cols if c != col]]
+    for col in heads[:20] if a is not None else ():
+        y, at, tries = a[:, nums[col]], order.index(col), [[c for c in cols if c != col]] if col in named else []
+        own = 0.5 * 10.0 ** -_decimals(y)
         for step in (-1, 1):  # the number columns right beside it, nearest first, up to the first other column
             run, j = [], at + step
             while 0 <= j < len(order) and order[j] in nums and len(run) < 40:
                 run.append(order[j])
                 j += step
-            tries += [run[:k] for k in range(3, len(run) + 1)]
-        best, own = None, 0.5 * 10.0 ** -_decimals(y)
+            ks = range(3, len(run) + 1)
+            if col not in named and len(run) >= 3:  # a running sum that meets the column on under 10 rows is no try: every
+                # column of 30,000 rows x 45 tried every run in full took 100 s (AH-150)
+                tol = np.maximum(0.011, 1e-6 * np.abs(y))[:, None] + np.cumsum([half(c) for c in run]) + own
+                hit = (np.abs(y[:, None] - np.cumsum(a[:, [nums[c] for c in run]], axis=1)) <= tol).sum(axis=0)
+                ks = [k for k in ks if hit[k - 1] >= 10]
+            tries += [run[:k] for k in ks]
+        best = None
         # the exact cent first; then, where it fails, what the rounding of the parts and the total explains, never looser:
         # ten parts written to 1 decimal and a total rounded from the unrounded ones miss by up to 0.55 (round 38, AH-64)
         for loose in (False, True):

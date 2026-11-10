@@ -60,3 +60,32 @@ def test_an_outlier_its_rows_own_arithmetic_confirms_gets_no_fix_and_no_vote(she
     slip = cols[3] if sheet is hr else cols[2]
     assert p["likely"].get(slip) == (6000 if sheet is hr else round(rows[planted][2] / 100, 2)), p
     assert suggested_fix(cols, rows[planted], p), p
+
+
+def budget(n, head, seed=11):
+    """AH-150: a total the header does not name. Least squares needs 20 rows a column (80 here) and _totals read only a
+    header word, so at 60 rows a Budget off by 100 was missed and, at 60 and 100, a real Travel of -123 whose row adds up
+    got a Medium "likely 123" card that would break the row's own sum."""
+    g = np.random.default_rng(seed)
+    rows = []
+    for i in range(n):
+        a, b, c = int(g.integers(1000, 5001)), int(g.integers(500, 901)), int(g.integers(50, 301))
+        rows.append([["Sales", "Ops", "IT", "HR"][i % 4], a, b, c, a + b + c])
+    rows[12][4] += 100  # a planted slip: the total no longer adds up
+    rows[25][3] = -rows[25][3]  # a real refund, and the row adds up
+    rows[25][4] = rows[25][1] + rows[25][2] + rows[25][3]
+    return ["Dept", "Salaries", "Rent", "Travel", head], rows
+
+
+@pytest.mark.parametrize("n", [60, 100])
+@pytest.mark.parametrize("head", ["Total", "Budget", "Field4"])
+def test_a_total_the_header_does_not_name_is_found_by_its_arithmetic_and_confirms_its_rows(n, head):
+    cols, rows = budget(n, head)
+    out = run(cols, rows, 5)["rows"]
+    slip = out[12]
+    assert slip["severity"] in ("Medium", "High") and f"{head} {rows[12][4]} does not add up" in slip["reason"], slip
+    real = out[25]
+    assert real["severity"] == "Low" and "likely" not in real["reason"], real
+    assert f"but the row adds up ({head} = Salaries + Rent + Travel)" in real["reason"], real
+    assert real["likely"] == {} and real["maybe"] == {}, real
+    assert suggested_fix(cols, rows[25], real) == "", real
