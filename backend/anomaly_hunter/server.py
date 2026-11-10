@@ -57,6 +57,7 @@ logging.getLogger("werkzeug").setLevel(logging.WARNING)
 WSGIRequestHandler.timeout = 60
 MAX_CELLS = 2_000_000  # same as the pane's maxCells (frontend/utils/sheet.js): it never sends more in one scan
 EXCEL_ROWS = 1_048_576  # a sheet's rows: the header can't sit lower
+EXCEL_FORMULA = 8_192  # Excel's longest formula: a cell's formula sent with /scan is at most this long (AH-152)
 EXCEL_COLUMNS = 16_384  # a sheet's columns. AH-140: rows [] made the cell cap 0, and 500,000 names held a thread for hours
 # two workbooks scanning at once shared one temp file: a replace found it gone and a file could mix both (2026-10-16)
 _CSV_LOCK = threading.Lock()
@@ -193,8 +194,16 @@ def create_app(scan_csv=None):
         if decisions is not None and not (isinstance(decisions, list) and len(decisions) == len(rows) and all(
                 d is None or type(d) is str and d in powerbi.DECISIONS for d in decisions)):
             return {"error": "'decisions' must give each row null, \"fixed\" or \"dismissed\""}, 400
+        # AH-152: each cell's formula (Excel's R1C1 text) or null, shaped like rows, so a typed number among a column's
+        # formulas is seen
+        formulas = body.get("formulas")
+        if formulas is not None and not (isinstance(formulas, list) and len(formulas) == len(rows) and all(
+                isinstance(r, list) and len(r) == len(cols) and all(
+                    f is None or type(f) is str and f.startswith("=") and len(f) <= EXCEL_FORMULA for f in r) for r in formulas)):
+            return {"error": f"'formulas' must be shaped like 'rows', each cell null or its formula (\"=...\", at most "
+                             f"{EXCEL_FORMULA:,} characters)"}, 400
         try:  # Agent 1, one scan, no stop
-            df, out, suggested, used, status, fair = scan_agent.scan(cols, rows, limits, order_by, _strength(body))
+            df, out, suggested, used, status, fair = scan_agent.scan(cols, rows, limits, order_by, _strength(body), formulas=formulas)
         except Exception:  # a bug in the engine: full detail to the log, not pandas internals to the user
             app.logger.exception("scan failed")
             return {"error": BROKE}, 500

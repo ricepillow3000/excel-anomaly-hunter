@@ -73,6 +73,14 @@ export function rowFromAddress(address, startRow) {
   return i >= 0 ? i : null;
 }
 
+// Pure: an R1C1 formula as Excel shows it in A1 form in sheet row `row` (1-based), column `col` (0-based): "=RC[-2]*RC[-1]"
+// in D31 -> "=B31*C31" (AH-152: what the card shows; Excel itself converts what Accept writes, through formulasR1C1)
+export const r1c1ToA1 = (f, row, col) => f.replace(/(?<![A-Za-z_\d])R(\[-?\d+\]|\d+)?C(\[-?\d+\]|\d+)?(?![A-Za-z_\d(])/g, (m, r, c) => {
+  const rel = (x) => Number(x.slice(1, -1)); // "[-2]" -> -2; a bare number is absolute ("R2C1" = $A$2)
+  const rn = !r ? row : r[0] === "[" ? row + rel(r) : Number(r), cn = !c ? col : c[0] === "[" ? col + rel(c) : Number(c) - 1;
+  return `${c && c[0] !== "[" ? "$" : ""}${colLetter(cn)}${r && r[0] !== "[" ? "$" : ""}${rn}`;
+});
+
 // Pure: 0-based column index -> Excel letters (0 -> A, 26 -> AA)
 export function colLetter(n) {
   let s = "";

@@ -1,7 +1,7 @@
 // Pane pure-logic check, no Office/fetch. Run: node frontend/selfcheck.js
 import assert from "node:assert";
 import { esc, asNumber } from "./utils/text.js";
-import { cutNote, tableFromGrid, isDateFormat, excelDate, rowFromAddress, colLetter, cellAt, sameRow, readAs, spots } from "./utils/sheet.js";
+import { cutNote, r1c1ToA1, tableFromGrid, isDateFormat, excelDate, rowFromAddress, colLetter, cellAt, sameRow, readAs, spots } from "./utils/sheet.js";
 import { issuesOf, recommendFix, typoKind, afterFix, unusualColumn } from "./features/fix.js";
 import { plainReason, summaryOf, flaggedRows, fairnessNote, fairnessTests, listOrder, levelChange } from "./features/scan.js";
 import { MEASURED, COLOR, OLD_COLOR } from "./constants/index.js";
@@ -313,6 +313,20 @@ assert.equal(rec.guess, false);
 assert.equal(recommendFix(cols, data, 1, lim, "Units weird limit is 0; this is -5 (likely 5)", 0, 0, { Units: 5 }).guess, false, "an obvious typo (-5 for 5) is not a guess");
 // a value past the limits that the engine did NOT flag (a regular repeated toll; the row is flagged as a duplicate) stays
 assert.deepEqual(recommendFix(cols, data, 1, lim, "Flagged by 1 of 3: Duplicate of row 2", 0, 0).changes, [], "only columns the engine flagged");
+// AH-152: a Total whose own formula is one row off, or typed over: the card writes the column's own formula (known, sent
+// by the engine as R1C1), shown as Excel shows it for that row, ahead of the "does not add up" number
+{ const odd = recommendFix(["Qty", "Price", "Total"], [[2, 5, 10], [3, 6, 21]], 1, { Total: [0, 50, 0, 90] },
+    "Total 21 does not add up: Qty × Price = 18; Total uses a different formula from the other rows of its column", 0, 0,
+    { Total: 18 }, [null, null, "=RC[-2]*R[1]C[-1]"], {}, { Total: "=RC[-2]*RC[-1]" });
+  assert.deepEqual(odd.changes, [{ cell: "C3", new: "=A3*B3", r1c1: "=RC[-2]*RC[-1]" }], JSON.stringify(odd.changes));
+  assert.ok(!odd.explanation.includes("Fix the cells it uses") && !odd.explanation.includes("one of these numbers is wrong")
+    && odd.explanation.includes("Accept puts the column's own formula in its place"), odd.explanation);
+  const typed = recommendFix(["Qty", "Price", "Total"], [[2, 5, 10], [3, 6, 250]], 1, {},
+    "Total 250 does not add up: Qty × Price = 18; Total 250 is a typed number where the column's other rows use a formula", 0, 0,
+    { Total: 18 }, [null, null, 250], {}, { Total: "=RC[-2]*RC[-1]" });
+  assert.deepEqual(typed.changes, [{ cell: "C3", new: "=A3*B3", r1c1: "=RC[-2]*RC[-1]" }], "the formula, never the worked-out 18");
+  assert.ok(typed.explanation.includes("Accept puts the column's formula back"), typed.explanation);
+  assert.equal(r1c1ToA1("=SUM(R2C1:R[-1]C)+RC[-27]*R[1]C[1]+ROUND(RC[1],2)", 10, 27), "=SUM($A$2:AB9)+A10*AC11+ROUND(AC10,2)"); }
 rec = recommendFix(cols, data, 0, lim, "x", 0, 0);
 assert.deepEqual(rec.changes, [], "inside limits: no change");
 assert.ok(rec.explanation.includes("Nothing here is clearly broken"));
