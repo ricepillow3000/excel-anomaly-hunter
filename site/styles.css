@@ -398,6 +398,11 @@ td.why i.ok { display: inline-block; width: 10px; height: 10px; margin-right: 8p
 .ws-foot { padding: 12px var(--s3); border-top: 1px solid var(--ink); font-size: var(--fs--1); color: var(--ink-2); }
 /* the way on to the checks, right under the sheet (AH-91) */
 .next-up { grid-column: 1 / -1; margin-top: var(--s3); display: flex; justify-content: center; }
+/* the real pane after a scan (AH-156: a page with no picture of its product reads as made up), at its own 360 x 900 with
+   a hairline, its caption beside it, the two centred; the width and height on the img keep its box before it loads (CLS 0) */
+.shot { grid-column: 1 / -1; margin: var(--s7) 0 0; display: grid; grid-template-columns: auto minmax(0, 24rem); justify-content: center; align-items: center; gap: var(--s3) var(--s5); }
+.shot img { display: block; box-sizing: content-box; width: 360px; max-width: calc(100% - 2px); height: auto; border: 1px solid var(--ink); background: var(--paper-2); }
+.shot figcaption { max-width: var(--measure); font-size: var(--fs-0); color: var(--ink-2); }
 #preview:focus, #checks:focus { outline: none; } /* a glide's target takes focus for the keyboard and screen readers; the region itself shows no ring */
 
 /* the checks, on the navy band, as a ledger (AH-98): Check | What it catches | In the sample above, over 3, 5 and 4 of the
@@ -604,20 +609,28 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
 .form-note { font-size: var(--fs--1); color: var(--ink-2); }
 /* the home page's five questions and its contact form (AH-133): the support page's two cards, under the section's lede */
 .ask { margin-top: var(--s6); }
-/* measured results in place of reviews (AH-133): five figures in a row, each topped by a hairline, its source linked */
-.proof { grid-column: 1 / -1; margin: var(--s6) 0 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--s5) var(--gutter); }
+/* measured results in place of reviews (AH-133): three figures in a row, each topped by a hairline, its source linked;
+   "Free" and "On your PC" were no measurements, so they are one sentence under them (AH-156) */
+.proof { grid-column: 1 / -1; margin: var(--s6) 0 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s5) var(--gutter); }
 .proof > div { position: relative; padding-top: var(--s2); }
 .proof dt { font: 800 var(--fs-4)/1 var(--sans); color: var(--wine); font-variant-numeric: tabular-nums; margin-bottom: 12px; }
 .proof dd { margin: 0; font-size: var(--fs--1); color: var(--ink-2); }
 .proof > div:nth-child(2) .rule { --col: 1; }
 .proof > div:nth-child(3) .rule { --col: 2; }
-.proof > div:nth-child(4) .rule { --col: 3; }
-.proof > div:nth-child(5) .rule { --col: 4; }
-/* three public tables, scanned (AH-133): a card each, the pane's words quoted row by row, the source credited */
-/* the cards of a row one height, their credits on one line at the bottom (AH-148 fix round 1: their bottoms were 476, 446
-   and 561 px down) */
-.cases { grid-column: 1 / -1; margin-top: var(--s6); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gutter); }
-.case { display: grid; align-content: start; gap: 12px; padding: var(--s3); border: 1px solid var(--ink); background: var(--grain), var(--paper-2); font-size: var(--fs--1); color: var(--ink-2); }
+.proof-note { grid-column: 1 / -1; margin-top: var(--s5); max-width: var(--measure); font-size: var(--fs--1); color: var(--ink-2); }
+/* three public tables, scanned (AH-133): the pane's words quoted row by row, the source credited. No longer three boxes
+   alike (AH-156): each under a hairline, as the IT ledger's items, the first across the page and the other two side by
+   side under it, their text at the measure */
+.cases { grid-column: 1 / -1; margin-top: var(--s6); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s5) var(--gutter); }
+.case { display: grid; align-content: start; gap: 12px; padding-top: var(--s2); border-top: 1px solid var(--ink); font-size: var(--fs--1); color: var(--ink-2); }
+.case:first-child { grid-column: 1 / -1; }
+.case-said, .case > p:not(.case-credit) { max-width: var(--measure); }
+/* the first case's quotes and notes in two columns under its title, so its width holds text, not an empty half */
+@media (min-width: 1101px) {
+  .case:first-child { display: block; columns: 2; column-gap: var(--gutter); }
+  .case:first-child > * { break-inside: avoid; margin-bottom: 12px; }
+  .case:first-child > :is(h3, .case-scope) { column-span: all; }
+}
 .case h3 { font-size: var(--fs-1); line-height: 1.2; }
 .case-scope { color: var(--muted); }
 .case-said { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
@@ -844,6 +857,7 @@ html[data-moving] #field { z-index: 2; }
   .hero-copy, .sec-lede, .page-head p { margin-top: var(--s3); }
   .fact { grid-row: auto; }
   .ws { margin-top: var(--s6); }
+  .shot { margin-top: var(--s6); grid-template-columns: minmax(0, 1fr); }
   .tabs { margin-left: 0; width: 100%; min-height: 44px; }
   /* at 320 px the three tabs did not fit beside 24 px of padding, and "After fixes" wrapped onto a line of its own, each
      tab 22 px tall (AH-132): 16 px, the filters' own, and 12 px between the tabs leave them room on one line */

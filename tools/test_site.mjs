@@ -418,12 +418,15 @@ for (const f of SCRIPTS) {
     assert.ok(m, `docs/proof/2026-11-05-stress-test.md has no ${name} bench row`); return m.slice(2); };
   const [iSheets, iFound, iPlanted, iFalse, iClean] = bench("industry"), [bSheets, bFound, bPlanted, bFalse, bClean] = bench("blind");
   const items = [...proof.matchAll(/<div class="reveal-item">(?:<span class="rule" aria-hidden="true"><\/span>)?<dt>([\s\S]*?)<\/dt>\s*<dd>([\s\S]*?)<\/dd>\s*<\/div>/g)].map((m) => [text(m[1]), text(m[2]), m[2]]);
-  assert.deepEqual(items.map(([n]) => n), [`${iFound} of ${iPlanted}`, `${bFound} of ${bPlanted}`, `${Math.max(+iFalse, +bFalse)}`, "Free", "On your PC"], "the proof strip's figures");
+  assert.deepEqual(items.map(([n]) => n), [`${iFound} of ${iPlanted}`, `${bFound} of ${bPlanted}`, `${Math.max(+iFalse, +bFalse)}`], "the proof strip's figures");
   // in plain words since AH-148 ("bench" and "tuned on" were the engine room's words): the figures still the record's
   assert.ok(items[0][1].includes(`found in ${iSheets} test sheets`) && items[1][1].includes(`found in ${bSheets} more test sheets it had never seen`), "the proof strip's benches");
   assert.ok(items[2][1].includes(`${iClean} and ${bClean} clean rows`), "the proof strip's clean rows");
   const PROOF = REPO + "/blob/main/docs/proof/2026-11-05-stress-test.md";
-  for (const [i, href] of [[0, PROOF], [1, PROOF], [2, PROOF], [3, REPO + "/blob/main/LICENSE"], [4, "privacy.html"]]) assert.ok(items[i][2].includes(`href="${href}"`), `proof item ${i + 1} does not link ${href}`);
+  for (const [i, href] of [[0, PROOF], [1, PROOF], [2, PROOF]]) assert.ok(items[i][2].includes(`href="${href}"`), `proof item ${i + 1} does not link ${href}`);
+  // "Free" and "On your PC" measure nothing: one sentence under the strip says them, with the licence and the privacy page (AH-156)
+  const note = (/<p class="proof-note[^"]*">([\s\S]*?)<\/p>/.exec(proof) || ["", ""])[1];
+  assert.ok(/^Arcas is free\b/.test(text(note)) && /a scan runs on your PC and sends nothing to the internet/.test(text(note)) && note.includes(`href="${REPO}/blob/main/LICENSE"`) && note.includes('href="privacy.html"'), `the sentence under the proof strip: "${text(note)}"`);
 }
 // ---- AH-135, a usability review for a person with few computer skills: a way to reach John with no GitHub account,
 // the install in the order a person meets it, the IT section named for who reads it, and plain names for the checks ----
@@ -601,6 +604,35 @@ function woff2(file) {
   assert.ok(!/faq-head/.test(css), "styles.css: the questions' header bar is still styled");
   const after = [...css.matchAll(/([^{}]*\.faq[^{}]*summary::after[^{}]*)\{([^}]*)\}/g)];
   assert.ok(after.length && after.every((m) => !/content:\s*"[^"]/.test(m[2])), "styles.css: a question's marker is a word (Open, Close), not a chevron");
+}
+// ---- AH-156 (John, 2026-11-10): the tells of a page made by AI, taken out: no picture of the product, the template's
+// order (proof, cases, IT, then who makes it), headings that read as slogans, figures that measure nothing, three
+// cards alike ----
+{
+  const home = html["index.html"], words = (s) => s.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+  // a real screenshot of the pane, under the sample: a small WebP with no metadata, its box kept, loaded near the screen
+  const shot = (/<figure class="shot">([\s\S]*?)<\/figure>/.exec(home) || ["", ""])[1], img = (/<img\b[^>]*>/.exec(shot) || [""])[0];
+  for (const want of ['src="assets/pane-after-scan.webp"', 'width="360"', 'height="900"', 'loading="lazy"', 'decoding="async"']) assert.ok(img.includes(want), `the pane's screenshot lacks ${want}: ${img}`);
+  assert.ok(/alt="The Arcas pane after a scan: [^"]{20,}"/.test(img), `the pane's screenshot has no alt that says what it shows: ${img}`);
+  assert.ok(/^The Arcas pane after a scan of a 300-row sales sheet\b/.test(words((/<figcaption>([\s\S]*?)<\/figcaption>/.exec(shot) || ["", ""])[1])), "the pane's screenshot has no caption that says what sheet it is");
+  assert.ok(home.indexOf('class="shot"') > home.indexOf('id="preview"') && home.indexOf('class="shot"') < home.indexOf('id="checks"'), "the pane's screenshot is not between the sample and the checks");
+  const b = fs.readFileSync(path.join(SITE, "assets", "pane-after-scan.webp"));
+  assert.ok(b.toString("latin1", 0, 4) === "RIFF" && b.toString("latin1", 8, 12) === "WEBP" && b.toString("latin1", 12, 16) === "VP8 ", "assets/pane-after-scan.webp is not a plain lossy WebP (no metadata chunks)");
+  assert.deepEqual([b.readUInt16LE(26) & 0x3fff, b.readUInt16LE(28) & 0x3fff], [360, 900], "assets/pane-after-scan.webp is not 360 x 900");
+  // who makes it comes right after the checks
+  const order = [...home.matchAll(/<section class="section[^"]*" id="([\w-]+)"/g)].map((m) => m[1]);
+  assert.equal(order[order.indexOf("checks") + 1], "maker", `the maker's section does not follow the checks: ${order}`);
+  // headings that say what is there, never a slogan
+  const h2 = (id) => words(([...home.matchAll(/<h2\b[^>]*\sid="([\w-]+)"[^>]*>([\s\S]*?)<\/h2>/g)].find((m) => m[1] === id) || [])[2] || "");
+  assert.equal(h2("faq-title"), "Questions people ask before installing");
+  assert.equal(h2("cases-title"), "What it found in three FiveThirtyEight tables");
+  // three measured figures (the block above reads each from the record), and no card box around a case
+  assert.equal(((/<dl class="proof[\s\S]*?<\/dl>/.exec(home) || [""])[0].match(/<dt>/g) || []).length, 3, "the proof strip does not hold three figures");
+  const kase = (/(?:^|\})\s*\.case\s*\{([^}]*)\}/.exec(css) || ["", ""])[1];
+  assert.ok(kase && /border-top:\s*1px solid/.test(kase) && !/(^|;)\s*border:/.test(kase) && !/border-radius|box-shadow|background/.test(kase), `styles.css: .case is still a box: ${kase}`);
+  assert.ok(/\.case:first-child\s*\{\s*grid-column:\s*1 \/ -1;?\s*\}/.test(css), "styles.css: the first case does not run across the page");
+  const fig = (/(?:^|\})\s*\.shot img\s*\{([^}]*)\}/.exec(css) || ["", ""])[1];
+  assert.ok(/border:\s*1px solid/.test(fig) && /max-width/.test(fig) && /height:\s*auto/.test(fig) && !/border-radius|box-shadow/.test(fig), `styles.css: the pane's screenshot is not a hairline box that fits a phone: ${fig}`);
 }
 console.log(`website static check passed (${PAGES.length} pages, ${SCRIPTS.length} scripts)`);
 if (!process.argv.includes("--browser")) process.exit(0);
@@ -3209,7 +3241,7 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
     if (motion === "reduce") want(finals.every((_, i) => !ticks(i).length), `${label}: it counted`);
     else {
       const big = ticks(1);
-      want(big.some((x) => /^[ \d]{3} of 201$/.test(x) && parseInt(x.replace(/ /g, ""), 10) < 199) && big.every((x) => x.length === finals[1].length && x.endsWith(" of 201")) && !ticks(2).length && !ticks(3).length,
+      want(big.some((x) => /^[ \d]{3} of 201$/.test(x) && parseInt(x.replace(/ /g, ""), 10) < 199) && big.every((x) => x.length === finals[1].length && x.endsWith(" of 201")) && !ticks(2).length,
         `${label}: 199 of 201 counted ${JSON.stringify([...new Set(big)].slice(0, 12))}, 0 ${JSON.stringify(ticks(2).slice(0, 3))}`);
       want(/\/\s*""/.test(r.alt), `${label}: the counting figure has a text a screen reader reads (${r.alt})`);
     }
@@ -3235,8 +3267,10 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
     const t = await open("index.html", { width: 1440, height: 900, motion: "reduce" });
     const p = t.page;
     await p.evaluate(() => document.fonts.ready);
-    const bottoms = await p.$$eval(".cases .case", (cs) => cs.map((c) => Math.round(c.getBoundingClientRect().bottom * 10) / 10));
-    want(bottoms.length === 3 && Math.max(...bottoms) - Math.min(...bottoms) <= 1, `the case studies' cards end at ${bottoms} px, not on one line`);
+    // since AH-156 the first runs across the page and the two under it, side by side, end on one line
+    const boxes = await p.$$eval(".cases .case", (cs) => cs.map((c) => { const b = c.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.width), Math.round(b.bottom * 10) / 10]; }));
+    const wide = await p.$eval(".cases", (c) => Math.round(c.getBoundingClientRect().width));
+    want(boxes.length === 3 && boxes[0][1] === wide && boxes[1][0] < boxes[2][0] && Math.abs(boxes[1][2] - boxes[2][2]) <= 1, `the case studies: the first not across the page, or the two under it not side by side ending on one line: ${JSON.stringify(boxes)} in ${wide} px`);
     // the questions: each a full-width row whose marker is a drawn chevron (no word) that turns as it opens, its answer
     // under it
     const q = await p.evaluate(() => {
