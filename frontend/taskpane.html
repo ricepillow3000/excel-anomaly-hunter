@@ -53,11 +53,13 @@
       </div>
       <button id="undo-auto" class="secondary" hidden>Undo auto-fixes</button>
 
-      <div id="busy" role="status" aria-live="polite" hidden>
-        <div class="bar"><div id="busy-bar"></div></div>
-        <p id="busy-text"></p>
+      <div id="status">
+        <div id="busy" role="status" aria-live="polite" hidden>
+          <div class="bar"><div id="busy-bar"></div></div>
+          <p id="busy-line"><span id="busy-text"></span><span id="busy-secs" aria-hidden="true"></span></p>
+        </div>
+        <p id="notice" role="status" aria-live="polite"></p>
       </div>
-      <p id="notice" role="status" aria-live="polite"></p>
 
       <section id="empty-state" data-enter="left">
         <p>Click <b>Find problems</b> to check the sheet that is open.</p>
@@ -123,9 +125,11 @@
         <div class="fix-result">
           <h2 id="fix-title"></h2>
           <p id="fix-reason" class="reason-box"></p>
-          <h3 id="fix-label">Suggested fix</h3>
-          <ul id="fix-changes" class="fix-changes"></ul>
-          <p id="fix-explanation"></p>
+          <div class="fix-body">
+            <h3 id="fix-label">Suggested fix</h3>
+            <ul id="fix-changes" class="fix-changes"></ul>
+            <p id="fix-explanation"></p>
+          </div>
           <div class="row-buttons">
             <button id="fix-apply" class="primary">Accept</button>
             <button id="fix-dismiss" class="secondary">Dismiss</button>
@@ -138,6 +142,12 @@
         <div id="ai-box">
           <label for="fix-intent">For a different fix, describe it and AI will draft one.</label>
           <textarea id="fix-intent" rows="3" maxlength="2000" aria-describedby="fix-sends" placeholder="e.g. Use the average Units for the East region"></textarea>
+          <p id="fix-tries-label" class="hint">Or start from one of these. Picking one only fills the box: nothing is sent until you press Ask AI.</p>
+          <div id="fix-tries" class="tries" role="group" aria-labelledby="fix-tries-label">
+            <button type="button" class="try">Explain this row in simple words</button>
+            <button type="button" class="try">What should this value be?</button>
+            <button type="button" class="try">Is this a typo?</button>
+          </div>
           <button id="fix-ask" class="secondary">Ask AI</button>
           <p id="fix-sends" class="hint">Ask AI sends the column names, this row and up to 5 rows above and below it, the row's formulas, why it was flagged and what you type here, to Google (through John's relay if you use an invite code). Long cells are cut to 200 characters. Up to 5 fixes you accepted before in a column with this name (the name, the kind of fix, and the old and new values) are sent only once the AI memory is switched on in a later update.</p>
         </div>
@@ -155,7 +165,7 @@
       <details class="more">
         <summary>Power BI (optional)</summary>
         <label class="check"><input type="checkbox" id="power-bi" /> Save each scan for Power BI</label>
-        <p class="hint">Off: no copy of your sheet is kept. On: each scan saves a plain-text copy of the sheet and its results on this PC (latest-scan.csv, and latest-flags.csv with the flagged rows and the ones you fixed or dismissed, in your AnomalyHunter folder), which Power BI opens. Turning it off deletes both at the next scan.</p>
+        <p class="hint">Off: Arcas keeps no copy of your sheet. On: after each scan, Arcas saves two files on this PC for Power BI to open. One is a copy of your sheet (latest-scan.csv). The other lists the rows it flagged and the ones you fixed or dismissed (latest-flags.csv). To find them, type <code>%LOCALAPPDATA%\AnomalyHunter</code> in the address bar of File Explorer. Turn this off and the next scan deletes both.</p>
       </details>
 
       <details id="settings" class="more">
