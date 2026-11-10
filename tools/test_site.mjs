@@ -3018,6 +3018,7 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
       });
       for (const s of small) want(false, `AH-148 ${file} at 390 px${state ? " (" + state + ")" : ""}: a target under 44 px, ${s}`);
     }
+    await p.mouse.move(1, 1); // at rest: the pointer off the row it opened (a hovered row takes its OKLCH tint)
     const colours = await p.evaluate(() => { const out = new Set(); for (const e of document.querySelectorAll("body *")) { const c = getComputedStyle(e); for (const k of ["color", "backgroundColor", "borderTopColor"]) if (!/^rgba?\(/.test(c[k])) out.add(`${e.tagName.toLowerCase()} ${k} ${c[k]}`); } return [...out].slice(0, 5); });
     want(!colours.length, `AH-148 ${file}: a colour at rest the contrast check cannot read: ${colours}`);
     await done(t, `AH-148 targets on ${file}`, [API]);
