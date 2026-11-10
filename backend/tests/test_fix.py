@@ -383,6 +383,70 @@ def test_an_invite_code_uses_johns_relay_never_a_key(monkeypatch, tmp_path):
     assert not (tmp_path / "invite-code.txt").exists()  # Remove key removes an invite code too
 
 
+def free_relay(monkeypatch, tmp_path, status=200, error=None):
+    """AH-151: the stub stands in for John's relay, with no key, no invite and no Claude key on this PC."""
+    got = gemini_stub(monkeypatch, tmp_path, status=status, error=error,
+                      content=json.dumps({"explanation": "Use 50.", "changes": [{"cell": "C3", "new": "50"}]}))
+    monkeypatch.setattr(client, "RELAY_URL", client.GEMINI_URL.rsplit("/v1beta", 1)[0])
+    return got
+
+
+def test_with_nothing_set_on_this_pc_the_free_ai_on_johns_relay_is_on(monkeypatch, tmp_path):
+    # AH-151 (John, 2026-11-09): every user gets the free AI with no key; the Google key stays inside the relay
+    got = free_relay(monkeypatch, tmp_path)
+    c = create_app().test_client()
+    assert client.provider() == "free"
+    assert c.get("/health").get_json() | {"version": None} == {"status": "ok", "version": None, "ai_available": True, "ai_provider": "free"}
+    r = post(BODY)
+    assert r.status_code == 200 and r.get_json()["changes"] == [{"cell": "C3", "new": "50"}]
+    headers, _ = got[-1]
+    assert "Authorization" not in headers  # no header at all is the relay's public tier: nothing secret leaves this PC
+    assert c.post("/key", json={"key": ""}).get_json() == {"ai_available": True, "ai_provider": "free"}  # Remove key: back to it
+
+
+def test_an_own_key_an_invite_and_a_claude_key_each_win_over_the_free_ai(monkeypatch, tmp_path):
+    free_relay(monkeypatch, tmp_path)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-made-up")
+    assert client.provider() == "claude"
+    client.INVITE_FILE.write_text("inv_" + "a" * 24, encoding="utf-8")
+    assert client.provider() == "relay"
+    client.KEY_FILE.write_text("AIzaTest", encoding="utf-8")  # gitleaks:allow - made-up test key
+    assert client.provider() == "gemini"
+    monkeypatch.setattr(client, "RELAY_URL", "http://relay.example")  # never plain http off this PC, even with nothing secret
+    for f in (client.KEY_FILE, client.INVITE_FILE):
+        f.unlink()
+    monkeypatch.delenv("ANTHROPIC_API_KEY")
+    assert client.provider() is None
+
+
+def test_the_free_ais_used_up_day_says_so_in_plain_words(monkeypatch, tmp_path):
+    free_relay(monkeypatch, tmp_path)
+    # the relay's own cap (tagged "day"), and Google's day used up on the relay's project
+    for said in ({"error": "The free AI has used today's requests for your network. They reset at midnight US Pacific time.", "limit": "day"},
+                 {"error": "The shared free AI is used up for today. It resets at midnight US Pacific time."}):
+        assert _relay_says(monkeypatch, 429, said) == {"error": "The free AI has used today's share for your network. It works again tomorrow, or add your "
+                                "own free Google key in Options, AI help.", "limit": "day"}
+
+
+def test_a_refusal_from_the_free_ai_never_asks_for_an_invite_code(monkeypatch, tmp_path):
+    # a relay John has not yet redeployed answers a request with no invite code 401: the free AI is not on there yet
+    free_relay(monkeypatch, tmp_path)
+    out = _relay_says(monkeypatch, 401, {"error": "This invite code isn't valid (or was switched off)."})
+    assert "invite" not in out["error"] and "Google key" in out["error"]
+
+
+def _relay_says(monkeypatch, status, said):
+    import io
+
+    def urlopen(req, timeout=None, **kw):
+        assert req.get_header("Authorization") is None
+        raise urllib.error.HTTPError(req.full_url, status, "x", {}, io.BytesIO(json.dumps(said).encode()))
+    monkeypatch.setattr(client.urllib.request, "urlopen", urlopen)
+    r = post(BODY)
+    assert r.status_code == 502
+    return r.get_json()
+
+
 def test_gemini_unknown_model_says_so(monkeypatch, tmp_path):
     gemini_stub(monkeypatch, tmp_path, status=404, content="", error="models/gemini-3.8-flash is not found")
     (tmp_path / "gemini-key.txt").write_text("AIzaTest")

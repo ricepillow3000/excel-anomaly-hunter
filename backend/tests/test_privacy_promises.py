@@ -230,8 +230,26 @@ def test_every_privacy_page_says_what_ask_ai_remembers_how_much_of_it_goes_and_h
     relay = tomllib.loads((ROOT / "relay" / "wrangler.toml").read_text(encoding="utf-8"))["vars"]["MODELS"]
     assert relay == client.GEMINI_MODEL, "the relay asks a backup: say so in the three privacy pages, then here"
     for page in PAGES:
-        assert (f"Either way, Google's main Gemini model ({client.GEMINI_MODEL}) answers. With your own Google key, if that "
+        assert (f"With your own key or an invite code, Google's main Gemini model ({client.GEMINI_MODEL}) answers. With your own Google key, if that "
                 "model is busy or its free requests for the day are used up, the same request goes to a backup Gemini model "
                 f"({client.GEMINI_FALLBACKS[0]}), also Google's, and the pane says so. With an invite code, only the main "
                 "model answers") in words(page), page
     assert f"Ask AI remembers up to {kept} fixes you accepted, on this PC and for every workbook" in hint
+
+
+def test_every_privacy_page_says_where_the_free_ai_sends_what_it_counts_and_its_caps_as_configured():
+    # AH-151 (John, 2026-11-09): with no key or invite of its own, Ask AI goes to the relay's public tier. The pages name
+    # its model and caps from relay/wrangler.toml, and what the relay keeps of a network: a keyed hash, never the IP
+    caps = tomllib.loads((ROOT / "relay" / "wrangler.toml").read_text(encoding="utf-8"))["vars"]
+    assert "," not in caps["PUBLIC_MODELS"], "the free AI asks a backup: name every model in the three privacy pages, then here"
+    promises = (
+        "With no key or invite code of your own, AI help uses John's free AI",
+        f"to John's relay on Cloudflare, which passes it to Google's {caps['PUBLIC_MODELS']} with John's key",
+        "counts each network's AI calls for the day under a code made from the day and your IP address with the relay's secret key",
+        "It never stores your IP address or the request",
+        f"{caps['PUBLIC_DAILY_PER_NETWORK']} AI calls per network and {caps['PUBLIC_DAILY_TOTAL']} for every free user together a day",
+    )
+    for page in PAGES:
+        said = words(page)
+        assert [p for p in promises if p not in said] == [], page
+        assert "AI help works only after you paste" not in said and "To turn off AI help, click" not in said, page

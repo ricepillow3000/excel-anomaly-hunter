@@ -30,7 +30,7 @@ GEMINI_MODEL = "gemini-3.8-flash"  # free tier, no credit card (aistudio.google.
 GEMINI_FALLBACKS = ("gemini-3.5-flash-lite",)
 KEY_FILE = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local") / "AnomalyHunter" / "gemini-key.txt"
 # John's relay (relay/worker.js): invited users send an invite code there and never hold his Gemini key.
-# Not a secret: without a valid invite code the relay refuses everything (401). Deployed 2026-10-12.
+# Not a secret: with no invite code it is the public tier (AH-151), the relay's own model and caps. Deployed 2026-10-12.
 RELAY_URL = os.environ.get("ANOMALY_HUNTER_RELAY", "https://anomaly-hunter-relay.john4000-nguyen.workers.dev")
 INVITE_FILE = KEY_FILE.with_name("invite-code.txt")
 
@@ -44,11 +44,12 @@ def invite_code():
 
 
 def provider():
-    """Which AI answers: your own free Gemini key first, then John's relay with an invite code, then Claude, else None."""
-    # the invite code is a password: only over https (plain http only to this PC, for the test stub)
+    """Which AI answers: your own free Gemini key first, then John's relay with an invite code, then Claude, then the
+    relay's free public tier (AH-151: every user has AI help with no key), else None."""
+    # the invite code is a password and the sheet is private: only over https (plain http only to this PC, for the test stub)
     relay_ok = RELAY_URL.startswith(("https://", "http://127.0.0.1:"))
     return ("gemini" if gemini_key() else "relay" if relay_ok and invite_code() else
-            "claude" if os.environ.get("ANTHROPIC_API_KEY") else None)
+            "claude" if os.environ.get("ANTHROPIC_API_KEY") else "free" if relay_ok else None)
 
 
 def secrets():
@@ -306,7 +307,7 @@ TOO_LONG = "The AI's answer was too long to come back whole. Ask for fewer cells
 
 def _call(prompt, out, schema, name, deadline):
     """-> (the answer, the Gemini model it is kept under: GEMINI_MODEL unless a backup answered)."""
-    if provider() not in ("gemini", "relay"):
+    if provider() not in ("gemini", "relay", "free"):
         try:
             # SDK defaults (10 min timeout, 2 retries) would hold the one-call lock long after the pane gave up
             sdk = anthropic.Anthropic(timeout=max(1, deadline - time.monotonic()), max_retries=0)
@@ -322,11 +323,14 @@ def _call(prompt, out, schema, name, deadline):
     data = _wire(prompt, schema, name)
     if len(data) > BUDGET:  # the callers trim to fit; this is the last guard (the relay refuses over 8 KB)
         raise ValueError("That request was too large for the AI. Try a smaller selection.")
-    relay = provider() == "relay"  # same prompt; the relay rebuilds the body (John's key, its model, max_tokens 4096) and counts the caps
+    # same prompt; the relay rebuilds the body (John's key, its model, max_tokens 4096) and counts the caps
+    free = provider() == "free"  # the public tier: no Authorization header at all, so nothing secret leaves this PC
+    relay = free or provider() == "relay"
     models, m = (GEMINI_MODEL, *GEMINI_FALLBACKS), 0  # the relay picks its own models (relay/worker.js MODELS)
     tries, slow = 0, False  # slow: a try timed out - the next may wait until the deadline (a 100 s answer never came back)
     while True:  # Google's busy spells come and go within minutes: wait and try again, up to the deadline
         req = urllib.request.Request(RELAY_URL.rstrip("/") + "/fix" if relay else GEMINI_URL, data,  # noqa: S310 - https only, see provider()
+                                     {"Content-Type": "application/json"} if free else
                                      {"Content-Type": "application/json", "Authorization": f"Bearer {invite_code() if relay else gemini_key()}"})
         try:
             # the relay tries Google 3 times itself and its call is already counted: let it run to the deadline
@@ -354,10 +358,15 @@ def _call(prompt, out, schema, name, deadline):
                     words = json.loads(said)["error"]
                 except (ValueError, KeyError, TypeError):
                     words = f"The AI relay answered with error {e.code}. Try again later."
-                words += " Ask John for a new invite code." if e.code == 401 else ""
+                words += " Ask John for a new invite code." if e.code == 401 and not free else ""
                 # the relay's 429 is its caps or Google's quota; its 502 names Google's own error (relay/worker.js)
                 limit = ("day" if "today" in words else "busy") if e.code == 429 else "busy" if e.code == 502 and re.search(
                     r"error 50[234]\b", words) else None
+                if free and limit == "day":  # the network's or everyone's share, or Google's day on the relay's project
+                    words = ("The free AI has used today's share for your network. It works again tomorrow, or add your "
+                             "own free Google key in Options, AI help.")
+                elif free and e.code == 401:  # a relay from before the public tier (John redeploys it by hand)
+                    words = "The free AI isn't switched on yet. Add your own free Google key in Options, AI help."
                 raise (Limit(words, limit) if limit else ValueError(words)) from None
             daily = e.code == 429 and "perday" in said.replace(" ", "").lower()  # waiting minutes won't bring today's quota back
             # AH-145: another model has its own day's quota and its own crowd: ask it now, never back to one that failed
