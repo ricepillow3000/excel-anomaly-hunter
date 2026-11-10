@@ -184,6 +184,10 @@ Adding or removing a check: update this table in the same commit.
   Version, so an upgraded ribbon would keep the old icon. A new logo gets new file names (now `assets/crest2-*.png` since AH-121, drawn in
   `docs/design/logo/`) and a `<Version>` bump; never clear the
   Wef cache in install (it is where Excel remembers the Add, `install.bat`).
+- An icon URL is never retired: Excel kept drawing the 1.0.5.0 manifest it had cached ("Anomaly Hunter", `mark-*.png`)
+  on 1.0.8.0 installs, and the deleted files showed as Office's grey placeholder (AH-154). Every icon name a shipped
+  manifest gave answers with today's crest (`server.OLD_ICONS`; a new logo changes `CREST` and adds the old name):
+  `test_every_ribbon_icon_an_old_cached_manifest_names_is_still_our_crest`.
 - One package for one function is a download cost: pyod (for ECOD) brought numba, llvmlite, matplotlib and
   scikit-learn, half of a 146 MB exe (2026-10-19). Check what a new dependency pulls in (`uv pip tree --invert`).
 - The Privacy page once said "nothing is sent to any other third party" and "Remove key deletes every local file":

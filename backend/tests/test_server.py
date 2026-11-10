@@ -2,6 +2,7 @@ import ipaddress
 import re
 import socket
 import threading
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -95,6 +96,26 @@ def test_ribbon_icons_are_cacheable_but_panel_code_is_not():
     assert c.get("/taskpane.html").headers["Cache-Control"] == "no-store"
     assert c.get("/health").headers["Cache-Control"] == "no-store"
 
+
+# Every icon name a shipped manifest gave Office before today's (1.0.1.0 to 1.0.7.0). Excel keeps drawing the manifest
+# it cached first across upgrades: a 1.0.8.0 install showed 1.0.5.0's "Anomaly Hunter" with Office's grey placeholder,
+# because mark-*.png was deleted (AH-154). Typed here, never read from git: CI clones shallow.
+RETIRED_ICONS = ["icon", "logo", "banner", "mark", "crest"]
+
+
+def test_every_ribbon_icon_an_old_cached_manifest_names_is_still_our_crest():
+    frontend = Path(__file__).resolve().parents[2] / "frontend"
+    manifest = (frontend / "manifest.xml").read_text(encoding="utf-8")
+    now = {int(size): path for path, size in re.findall(r'"https://127\.0\.0\.1:5055/(assets/[\w-]+-(\d+)\.png)"', manifest)}
+    assert sorted(now) == [16, 32, 64, 80]
+    asked = [(f"assets/{old}-{size}.png", size) for old in RETIRED_ICONS for size in now]
+    asked += re.findall(r'"https://127\.0\.0\.1:5055/(assets/[^"]*-(\d+)\.png)"', manifest)
+    c = client()
+    for path, size in asked:
+        r = c.get("/" + path)
+        assert (r.status_code, r.mimetype) == (200, "image/png"), path
+        assert r.data == (frontend / now[int(size)]).read_bytes(), path
+        assert r.headers["Cache-Control"] == "public, max-age=86400", path
 
 def test_health():
     resp = client().get("/health")
