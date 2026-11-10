@@ -628,6 +628,28 @@ if (mode === "flow") {
   const gone7d = await text("#notice");
   ok(/^The sheet or cells this was about are gone\b.*Find problems/.test(gone7d) && !internal.test(gone7d), "a sheet deleted under its list: said in plain words - " + gone7d);
 
+  // 7e) AH-149 review: a failed Accept or Undo is said once, in the card's notice box. It was said on the card's status
+  // line and, thrown on to act(), in #notice above the list too. A sheet of its own: Other is gone and Sales holds decisions
+  await page.evaluate((rows) => __load("Busy", rows, [0]), rows);
+  await find(); await openRow(11);
+  const saidAt = () => page.evaluate(() => ["notice", "fix-status", "fix-care"].map((id) => { const p = document.getElementById(id); return p.checkVisibility() ? p.textContent : ""; }));
+  const c11 = () => page.evaluate(() => __cell("Busy", "C11").v);
+  await failing(/InvalidOperationInCellEditMode/, async () => { await page.evaluate(() => (window.__cellEdit = 1)); await page.click("#fix-apply"); await idle(); });
+  const accept7e = await saidAt();
+  ok(JSON.stringify(accept7e) === JSON.stringify(["", "", "Excel is busy editing a cell. Press Enter or Esc, then try again."]) && (await c11()) === -5
+    && (await page.isVisible("#fix-apply")) && (await page.isEnabled("#fix-apply")),
+    "a failed Accept: said once, in the card's notice box, nothing written, Accept ready again - " + JSON.stringify(accept7e));
+  await page.click("#fix-apply"); await idle();
+  ok((await c11()) !== -5 && !(await page.isVisible("#fix-care")) && (await page.isVisible("#fix-undo")), "Accept again: the fix is in and the failure leaves the card");
+  await failing(/Cannot read properties/, async () => { await page.evaluate(() => (window.__typeError = 1)); await page.click("#fix-undo"); await idle(); });
+  const undo7e = await saidAt();
+  ok(undo7e[0] === "" && undo7e[1] === "" && undo7e[2].startsWith("Undo failed. ") && !internal.test(undo7e[2]) && (await c11()) !== -5
+    && (await page.isVisible("#fix-undo")) && (await page.isEnabled("#fix-undo")),
+    "a failed Undo: said once, in the card's notice box, the fix still in, Undo ready again - " + JSON.stringify(undo7e));
+  await page.click("#fix-undo"); await idle();
+  ok((await c11()) === -5 && !(await page.isVisible("#fix-care")), "Undo again: the cells are back and the failure leaves the card");
+  await page.click("#fix-back");
+
   // 8) an empty sheet gets a plain message, not an error
   await page.evaluate(() => __load("Empty", [["only a header"]]));
   await page.click("#scan"); await idle();
