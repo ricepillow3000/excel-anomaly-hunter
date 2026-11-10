@@ -35,6 +35,12 @@ const call = (body, code = "inv_ana", path = "/fix") => worker.fetch(new Request
 assert.equal((await call(good, "")).status, 401, "an empty Authorization header");
 assert.equal((await call(good, "inv_guess")).status, 401, "unknown invite code");
 assert.equal((await call(good, "inv_ana", "/v1/anything")).status, 404, "only /fix");
+// AH-155: nothing sent another method, so the method check was held by no test
+for (const method of ["GET", "PUT"]) {
+  const r = await worker.fetch(new Request("https://relay.example/fix", { method, headers: { Authorization: "Bearer inv_ana" },
+    ...(method === "GET" ? {} : { body: JSON.stringify(good) }) }), env);
+  assert.equal(r.status, 404, `only POST: ${method} /fix`);
+}
 assert.equal((await call("x".repeat(9000))).status, 413, "over 8 KB");
 assert.equal((await call("{not json")).status, 400, "not JSON");
 assert.equal((await call({ messages: [{ role: "user", content: "a" }, { role: "user", content: "b" }], response_format: {} })).status, 400, "one message only");
@@ -376,6 +382,25 @@ assert.equal(sent.length, before, "and never reaches Google");
   assert.equal((await free("2001:db8:0:2::1")).status, 200, "another /64 has its own share");
   assert.equal((await free("198.51.100.1")).status, 200);
   assert.equal((await free("198.51.100.2")).status, 200, "IPv4: each address its own share, as before");
+  // AH-155: only the exact HMAC held this. Two addresses of one /24 are two networks, each with its whole cap of 2
+  assert.equal((await free("198.51.100.1")).status, 200, "IPv4: an address's 2nd call, beside another address of its /24");
+  assert.equal((await free("198.51.100.1")).status, 429, "and its 3rd is over its own cap");
+}
+// AH-155: every body served above was ~100 bytes, so a cap cut to 4 KB, or one byte short of 8 KB, passed. The engine
+// fills its requests up to BUDGET (7,000 bytes, ai/client.py): those must be served, and 8 KB is the line
+{
+  const e = { ...env, COUNTER: namespace(), DAILY_PER_INVITE: "10", DAILY_TOTAL: "10" };
+  const sized = (n) => {
+    const base = JSON.stringify({ ...good, messages: [{ role: "user", content: "" }] });
+    return JSON.stringify({ ...good, messages: [{ role: "user", content: "x".repeat(n - base.length) }] });
+  };
+  const post = (body) => worker.fetch(new Request("https://relay.example/fix", { method: "POST", headers: { Authorization: "Bearer inv_ana" }, body }), e);
+  googleStatus = 200;
+  for (const n of [7000, 8 * 1024]) {
+    assert.equal(sized(n).length, n);
+    assert.equal((await post(sized(n))).status, 200, `a ${n}-byte request is served`);
+  }
+  assert.equal((await post(sized(8 * 1024 + 1))).status, 413, "one byte over 8 KB is refused");
 }
 console.log("relay abuse tests passed");
 

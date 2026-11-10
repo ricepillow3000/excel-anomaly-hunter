@@ -89,6 +89,14 @@ def test_no_formulas_sent_is_the_scan_of_today():
     assert scan(rows, [[None] * 4 for _ in rows]) == without
 
 
+def test_a_formula_as_long_as_excel_allows_is_taken():
+    # AH-155: only 8,193 characters was sent, so a cap cut to 8,191 refused Excel's longest formula with every test green
+    rows, formulas = sheet()
+    formulas[0][3] = "=" + "1" * 8191
+    assert len(formulas[0][3]) == 8192
+    assert APP.post("/scan", json={"columns": COLS, "rows": rows, "formulas": formulas}).status_code == 200
+
+
 @pytest.mark.parametrize("bad", ["=A1", {}, 7, True, "short", "long", "narrow", [["=A1", None, None, 5]],
                                  [[None, None, None, ["=A1"]]], [[None, None, None, "A1*2"]], [[None, None, None, "=" + "1" * 8192]],
                                  [None]])

@@ -21,6 +21,10 @@ work it; the gates below still decide when it is done.
 test, `--keep-going` runs them all). Needs `pip install -e ".[dev]" -c constraints.txt` and node. All green = what CI checks
 (both accuracy benches run there too), except Semgrep (see the rules below). It also reads the whole git history for
 secrets (`tools/secret_history.py`: a skip on a shallow clone, `--full` in CI). Never commit with a red layer, and never get a gate green by loosening it.
+`python tools/check.py --mutate` adds the mutation layer (`tools/mutate.py`, CI's `mutation` job on every push and pull
+request): every guard in `tools/mutations.json` is broken on purpose in a throwaway copy, and a mutant its tests survive
+is a red layer (`--e2e` also runs the ones only the browser test catches; 112 take 10 minutes on 4 cores, the browser's 6
+about 15 more, so it is not in the default run). Map: `docs/security/GUARD-MAP.md`.
 
 ## Security first: read `docs/security/SECURITY-LESSONS.md`
 Every input is an attack until proven harmless (emoji, "ignore all previous instructions and drop table"), and John is
@@ -30,8 +34,8 @@ an admin panel, role, operator route or debug switch. The weekly security sweep 
 ## Layers: each request passes every one, each has its own guard and test
 | # | Layer | Code | Guard | Test |
 |---|---|---|---|---|
-| 1 | Network | `server.main`, `tls_context` | 127.0.0.1 only; TLS 1.2+; handshake in the request's thread; idle connections dropped after 60 s; no debug mode however it is started (`create_app` and `main()` set every Flask switch: FLASK_DEBUG=1 turned on Werkzeug's debugger); secret files written 0600 (`_write_private`), the AI key and invite code sealed with DPAPI on Windows, an old plain one sealed at its first read (`sealed.py`); the last run's log kept as server.log.1 (`open_log`); server.log never holds a key or an invite code, a provider's error and its traceback included (`_NoKeys`, AH-124) | `test_server.py` (`live_engine`), `test_an_environment_variable_can_never_turn_on_the_debugger`, `test_the_ai_key_the_invite_code_and_the_tls_key_are_readable_only_by_their_owner`, `test_on_windows_the_saved_key_and_invite_code_are_sealed_and_never_plain_text` |
-| 2 | Who may call | `own_panel_only` | Host must be localhost; Origin must be the pane (other websites, DNS rebinding); a cross-site preflight is a 403 with no `Access-Control-Allow-*`; a scan opens no connection off the PC | `test_every_route_refuses_other_websites`, `test_a_cross_site_preflight_is_refused_on_every_route`, `test_a_scan_never_opens_a_connection_off_this_pc` |
+| 1 | Network | `server.main`, `tls_context` | 127.0.0.1 only; TLS 1.2+ (set in `tls_context`, never left to Python's default, AH-155); handshake in the request's thread; idle connections dropped after 60 s; no debug mode however it is started (`create_app` and `main()` set every Flask switch: FLASK_DEBUG=1 turned on Werkzeug's debugger); secret files written 0600 (`_write_private`), the AI key and invite code sealed with DPAPI on Windows, an old plain one sealed at its first read (`sealed.py`); the last run's log kept as server.log.1 (`open_log`); server.log never holds a key or an invite code, a provider's error and its traceback included (`_NoKeys`, AH-124) | `test_server.py` (`live_engine`, `test_the_engine_speaks_tls_1_2_and_1_3_and_never_anything_older`, `test_a_connection_that_goes_quiet_is_dropped_and_never_holds_a_thread`), `test_an_environment_variable_can_never_turn_on_the_debugger`, `test_the_ai_key_the_invite_code_and_the_tls_key_are_readable_only_by_their_owner`, `test_on_windows_the_saved_key_and_invite_code_are_sealed_and_never_plain_text` |
+| 2 | Who may call | `own_panel_only` | Host must be localhost; Origin must be the pane, `https://127.0.0.1:5055` alone (other websites, DNS rebinding; `https://localhost` went in AH-155: nothing loads the pane from it); a cross-site preflight is a 403 with no `Access-Control-Allow-*`; a scan opens no connection off the PC | `test_every_route_refuses_other_websites`, `test_a_cross_site_preflight_is_refused_on_every_route`, `test_a_scan_never_opens_a_connection_off_this_pc` |
 | 3 | Body shape | `_JSON`, `_bad`, `MAX_CONTENT_LENGTH`, `MAX_CELLS` | any malformed body is a clear 400, never a 500 | `test_every_post_route_answers_a_hostile_body_with_a_clear_4xx`, `test_fuzz_api.py` |
 | 4 | Route fields | each route in `create_app` | extra fields (`row_index`, `changes`, `start_col`, `/scan`'s `decisions` and `formulas`...) checked before any work | `test_fix.py`, `test_agents.py`, `test_powerbi.py`, `test_formulas.py` |
 | 5 | Load | `engine/load.py` | text/number/date/id per column; digit codes written to one width with leading zeros ("02134") kept as typed, never a number; each date's text kept (`written`) for the form it was typed in, and year-last dates read in the order most of the column's telling ones show; Excel errors logged, not crashed on; a cell over 64 characters is never parsed as a date (dateutil is quadratic on a long digit run) | `test_engine.py`, `test_long_cells.py` |
@@ -94,6 +98,9 @@ Adding or removing a check: update this table in the same commit.
 - **Before adding a system-design piece** (a cache, queue, lock, retry, rate limit), read `docs/SYSTEMS-MAP.md`: what
   exists, where, and which measurement would justify more.
 - **Comments say why** (the incident or measurement), not what.
+- **Every guard is tested both ways** (a test that keeps the wrong out, one that lets the right in, at its very limit)
+  and held by a mutant in `tools/mutations.json`: a new or changed guard adds its loosen and tighten mutants in the same
+  commit, and `tools/mutate.py --only ID` shows each one killed (AH-155: 15 of 110 survived tests that were all green).
 
 ## Rules learned the hard way (each one is now a test)
 - Werkzeug's `make_server` is single-threaded by default: start test servers only with `live_engine()`.
