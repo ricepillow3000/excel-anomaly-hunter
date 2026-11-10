@@ -3,8 +3,9 @@
 // Layers that actually protect the key and the free quota (anything on a user's PC could be pulled off it, so
 // nothing secret is shipped there):
 //   1. invite codes: only their SHA-256 hashes are stored (secret TOKENS = {"<hash>": "name"}); revoke = remove one
-//   2. a daily cap per invite code AND one daily cap for everyone together, counted in a Durable Object
-//   3. one route, POST /fix, JSON only, at most 8 KB; the model, the answer format and its length are set HERE
+//   2. a daily cap per invite code AND one daily cap for everyone together, counted in a Durable Object; before it, a
+//      limit a minute per network or invite (BURST, AH-158); a Google "busy this minute" gives its count back
+//   3. one route, POST /fix, JSON only, at most 8 KB (bytes); the model, the answer format and its length are set HERE
 //   4. no request or answer is ever logged - only "who, how many today"
 // AH-151: a request with no Authorization header at all is the public tier, so every user has AI help with no key or
 // invite: its own model (PUBLIC_MODELS) and caps, per network and for everyone, counted apart from the invites'. A
@@ -33,15 +34,16 @@ async function sha256(text) {
 const cap = (v, fallback) => (v !== undefined && v !== "" && Number.isFinite(+v) ? +v : fallback);
 
 // One IPv6 subscriber gets a whole /64 (billions of addresses): an IPv6 address is counted by its /64 prefix, written
-// out in full first ("::" drops groups of 0; a dotted IPv4 tail is two groups); an IPv4 address as it is
-export function network(ip) {
+// out in full first ("::" drops groups of 0; a dotted IPv4 tail is two groups); an IPv4 address as it is.
+// bits = 48: the block a host hands one customer (a cheap VPS's /48 holds 65,536 /64s, AH-158)
+export function network(ip, bits = 64) {
   if (!ip.includes(":")) return ip;
   const [head, tail] = ip.toLowerCase().split("::");
   const groups = (s) => (s ? s.split(":") : []);
   const size = (g) => g.length + (g.at(-1)?.includes(".") ? 1 : 0);
   const h = groups(head), t = groups(tail);
   const all = tail === undefined ? h : [...h, ...Array(8 - size(h) - size(t)).fill("0"), ...t];
-  return all.slice(0, 4).map((g) => parseInt(g, 16).toString(16)).join(":") + "::/64";
+  return all.slice(0, bits / 16).map((g) => parseInt(g, 16).toString(16)).join(":") + "::/" + bits;
 }
 
 async function hmac(key, text) {
@@ -67,8 +69,11 @@ export default {
       if (!who) return json(401, { error: "This invite code isn't valid (or was switched off)." });
     }
 
+    // AH-158: bytes, never characters (8,192 "é" are 16 KB), and a declared size over the cap is refused unread
+    const big = () => json(413, { error: "That request is too large for the shared AI. Try a smaller selection." });
+    if (+req.headers.get("Content-Length") > MAX_BODY) return big();
     const raw = await req.text();
-    if (raw.length > MAX_BODY) return json(413, { error: "That request is too large for the shared AI. Try a smaller selection." });
+    if (new TextEncoder().encode(raw).length > MAX_BODY) return big();
     let body;
     try {
       body = JSON.parse(raw);
@@ -84,19 +89,29 @@ export default {
     // fallbacks = the real quota (if the [vars] are ever lost, never looser); switch the relay off by emptying TOKENS
     // again: a backup model's call (AH-145), counted against the day's total only: the invite's fix is already counted
     // public: its own caps (fallbacks = the design's, never looser; PUBLIC_DAILY_TOTAL "0" switches the tier off)
-    const caps = pub ? { pub, perUser: cap(env.PUBLIC_DAILY_PER_NETWORK, 15), total: cap(env.PUBLIC_DAILY_TOTAL, 400) }
+    // AH-158: an IPv6 /48 has its own day too (PUBLIC_DAILY_PER_48, 3 networks' worth), beside its /64's
+    const caps = pub ? { pub, perUser: cap(env.PUBLIC_DAILY_PER_NETWORK, 15), total: cap(env.PUBLIC_DAILY_TOTAL, 400), per48: cap(env.PUBLIC_DAILY_PER_48, 45) }
       : { perUser: cap(env.DAILY_PER_INVITE, 10), total: cap(env.DAILY_TOTAL, 20) };
-    const take = async (again) => (await (await env.COUNTER.get(env.COUNTER.idFromName("caps")).fetch("https://caps/take", {
-      method: "POST", body: JSON.stringify({ who, ...caps, again }),
-    })).json());
-    let ok;
+    let who48, ok;
+    const counter = (path, body) => env.COUNTER.get(env.COUNTER.idFromName("caps")).fetch(`https://caps/${path}`, { method: "POST", body: JSON.stringify(body) });
+    const take = async (again) => (await (await counter("take", { who, who48, ...caps, again })).json());
     try { // the counter down (a Durable Object outage): our own JSON, and Google is never called (AH-13 sweep)
-      if (pub) who = await hmac(env.GEMINI_KEY, dayKey() + network(ip)); // too many groups throws: refused, never counted
+      if (pub) { // too many groups throws: refused, never counted
+        who = await hmac(env.GEMINI_KEY, dayKey() + network(ip));
+        if (ip.includes(":")) who48 = await hmac(env.GEMINI_KEY, dayKey() + network(ip, 48));
+      }
+      // AH-158: a flood from one network, refused before the counter and Google (Workers Rate Limiting, BURST in
+      // wrangler.toml), keyed by the same hash as the day's count, never the IP. No BURST (a deploy from before it):
+      // go on, the daily caps still hold
+      if (env.BURST && !(await env.BURST.limit({ key: who })).success) {
+        return json(429, { error: "Too many AI requests in one minute. Try again in a minute.", limit: "minute" });
+      }
       ok = await take(false);
     } catch {
       return json(503, { error: "The shared AI can't count today's fixes right now. Try again in a minute." });
     }
     if (!ok.allowed) return json(429, { error: ok.why, ...(pub ? { limit: "day" } : {}) });
+    let taken = 1; // counts this request took from the total: its own, then each backup model's
 
     // AH-145: MODELS = the model, then backups (each has its own day's free quota and its own crowd); unset = MODEL alone
     const listed = String((pub ? env.PUBLIC_MODELS : env.MODELS) || "").split(",").map((m) => m.trim()).filter(Boolean);
@@ -115,6 +130,7 @@ export default {
         // the day's quota gone or overloaded: the next model at once, never back to this one, counted before Google
         if (m + 1 < models.length && ([502, 503].includes(out.status) || (out.status === 429 && /perday/i.test(said)))
           && (await take(true).catch(() => ({}))).allowed) {
+          taken++;
           m++;
           continue;
         }
@@ -127,6 +143,10 @@ export default {
       if (out.status !== 429) return json(502, { error: `Google AI answered with error ${out.status}. Try again in a few minutes.` });
       // a 429 is either "too many this minute" or "today's free quota is gone" - Google's text says which (read, never sent on)
       const daily = /perday/i.test(said);
+      // AH-158: Google refused it for the minute and did no work, so it costs nothing: 400 such answers used to spend
+      // the public tier's day for everyone in a minute. Safe to give back: to keep Google busy, someone must first
+      // have Google answer (and count) its calls for that minute. A per-day 429 keeps its count
+      if (!daily) await counter("give", { who, who48, pub, day: ok.day, n: taken }).catch(() => {});
       return json(429, { error: daily ? "The shared free AI is used up for today. It resets at midnight US Pacific time."
         : "The shared AI is busy right now. Try again in a minute." });
     } catch (e) { // Google unreachable (network, DNS) or silent: our own JSON, never an uncaught throw
@@ -141,26 +161,38 @@ export default {
 export const dayKey = (d = new Date()) => d.toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
 
 // One counter object for all caps: day -> {total, per invite} and, once the public tier is used that day,
-// {pub, per network hash}. Single-threaded by design, so counts never race.
+// {pub, per network hash, per IPv6 /48 hash}. Single-threaded by design, so counts never race.
 export class Counter {
   constructor(state) {
     this.state = state;
   }
   async fetch(req) {
-    const { who, perUser, total, again, pub } = await req.json();
+    const { who, who48, perUser, total, per48, again, pub, day: on, n: back } = await req.json();
     const day = dayKey();
     const c = (await this.state.storage.get("c")) || {};
-    const today = c.day === day ? c : { day, total: 0, by: {} };
     const [n, by] = pub ? ["pub", "nets"] : ["total", "by"];
+    if (new URL(req.url).pathname === "/give") { // AH-158: only on the day it was counted, and never below 0
+      if (c.day === on) {
+        const down = (o, k, d) => { if (o?.[k] > 0) o[k] = Math.max(0, o[k] - d); };
+        down(c, n, back);
+        down(c[by], who, 1);
+        down(c.n48, who48, 1);
+        await this.state.storage.put("c", c);
+      }
+      return json(200, {});
+    }
+    const today = c.day === day ? c : { day, total: 0, by: {} };
     today[n] ||= 0;
     today[by] ||= {};
     if (today[n] >= total) return json(200, { allowed: false, why: pub ? "The free AI has used up today's requests for everyone. It resets at midnight US Pacific time."
       : "Today's shared AI limit is used up. It resets at midnight US Pacific time." });
     if (!again && (today[by][who] || 0) >= perUser) return json(200, { allowed: false, why: pub ? "The free AI has used today's requests for your network. They reset at midnight US Pacific time."
       : "You've used today's AI fixes for this invite. They reset at midnight US Pacific time." });
+    if (!again && who48 && (today.n48?.[who48] || 0) >= per48) return json(200, { allowed: false, why: "The free AI has used today's requests for your network. They reset at midnight US Pacific time." });
     today[n] += 1;
     if (!again) today[by][who] = (today[by][who] || 0) + 1;
+    if (!again && who48) (today.n48 ||= {})[who48] = (today.n48[who48] || 0) + 1;
     await this.state.storage.put("c", today);
-    return json(200, { allowed: true });
+    return json(200, { allowed: true, day }); // the day it counted on: a count given back goes back to that day only
   }
 }

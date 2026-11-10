@@ -221,7 +221,7 @@ assert.equal(sent.length, before, "and never reaches Google");
   for (const kept of [...puts.map(([, v]) => v), ...counted]) {
     assert.ok(!kept.includes(marker) && !kept.includes("Fix row") && !kept.includes("inv_ana"), "nothing the request said is stored - " + kept);
   }
-  assert.deepEqual([...read].filter((k) => !["TOKENS", "COUNTER", "DAILY_PER_INVITE", "DAILY_TOTAL", "GEMINI_KEY", "MODELS"].includes(k)), [],
+  assert.deepEqual([...read].filter((k) => !["TOKENS", "COUNTER", "BURST", "DAILY_PER_INVITE", "DAILY_TOTAL", "GEMINI_KEY", "MODELS"].includes(k)), [],
     "the relay reads no other binding - " + [...read]);
 }
 // AH-145: one free model's day used up, or it overloaded for hours, while others answered (each model has its own
@@ -401,6 +401,178 @@ assert.equal(sent.length, before, "and never reaches Google");
     assert.equal((await post(sized(n))).status, 200, `a ${n}-byte request is served`);
   }
   assert.equal((await post(sized(8 * 1024 + 1))).status, 413, "one byte over 8 KB is refused");
+}
+// AH-158: the cap compared characters after reading the whole body, so 8,192 "é" (16 KB) passed, and a sender that
+// declared 1 MB was read to the end first. Bytes now, and a declared size over the cap is refused unread
+{
+  const e = { ...env, COUNTER: namespace(), DAILY_PER_INVITE: "10", DAILY_TOTAL: "10" };
+  const bytes = (s) => new TextEncoder().encode(s).length;
+  const wide = (n) => { // n bytes of JSON whose prompt is "é" (2 bytes, 1 character), one "x" to make an odd count
+    const base = bytes(JSON.stringify({ ...good, messages: [{ role: "user", content: "" }] }));
+    return JSON.stringify({ ...good, messages: [{ role: "user", content: "é".repeat((n - base) >> 1) + "x".repeat((n - base) & 1) }] });
+  };
+  const post = (body) => worker.fetch(new Request("https://relay.example/fix", { method: "POST", headers: { Authorization: "Bearer inv_ana" }, body }), e);
+  googleStatus = 200;
+  assert.equal(bytes(wide(8192)), 8192);
+  assert.equal((await post(wide(8192))).status, 200, "exactly 8,192 bytes of two-byte letters are served");
+  assert.ok(bytes(wide(8193)) === 8193 && wide(8193).length < 8192, "8,193 bytes, fewer than 8,192 characters");
+  assert.equal((await post(wide(8193))).status, 413, "8,193 bytes are refused, however few characters they are");
+  let read = false; // a request whose body is never read unless the relay asks for it
+  const declared = (size, body = JSON.stringify(good)) => ({ url: "https://relay.example/fix", method: "POST",
+    headers: new Headers({ Authorization: "Bearer inv_ana", "Content-Length": String(size) }), text: async () => ((read = true), body) });
+  const from = sent.length;
+  const huge = await worker.fetch(declared(1024 * 1024), e);
+  assert.equal(huge.status, 413, "a declared 1 MB is refused");
+  assert.ok(!read && sent.length === from, "without reading a byte of it, and nothing reached Google");
+  assert.equal((await worker.fetch(declared(8192, wide(8192)), e)).status, 200, "a declared 8,192 bytes is read and served");
+}
+// AH-158: a Google per-minute 429 did no work, yet it cost the day: 400 parallel no-auth calls from 400 IPv6 /64s
+// spent the public tier's 400 for everyone in a minute, mostly as "busy" answers. What such a request counted is given
+// back (its own count, the total, and each backup model's count); a per-day 429 keeps its count
+{
+  const perMinute = '{"error":{"message":"Quota exceeded for metric GenerateRequestsPerMinutePerProjectPerModel-FreeTier, project 1234"}}';
+  const perDay = '{"error":{"message":"Quota exceeded for metric GenerateRequestsPerDayPerProjectPerModel-FreeTier, project 1234"}}';
+  const ask = (e, who = "inv_ana") => worker.fetch(new Request("https://relay.example/fix", { method: "POST",
+    headers: { Authorization: `Bearer ${who}` }, body: JSON.stringify(good) }), e);
+  let e = { ...env, COUNTER: namespace(), DAILY_PER_INVITE: "3", DAILY_TOTAL: "5" };
+  googleStatus = 429;
+  googleBody = perMinute;
+  for (let i = 0; i < 5; i++) {
+    const r = await ask(e);
+    assert.equal(r.status, 429);
+    assert.match((await r.json()).error, /busy/, `busy answer ${i + 1} of 5 reached Google, never "used today's"`);
+  }
+  googleStatus = 200;
+  for (let i = 0; i < 3; i++) assert.equal((await ask(e)).status, 200, `Ana's full day after 5 busy answers: ${i + 1} of 3`);
+  assert.equal((await ask(e)).status, 429, "and her 4th is over her day");
+  assert.equal((await ask(e, "inv_ben")).status, 200, "the total was given back too: Ben has the other 2");
+  assert.equal((await ask(e, "inv_ben")).status, 200);
+  assert.equal((await ask(e, "inv_ben")).status, 429, "the total (5) reached");
+  // a per-day 429: Google's day is gone, the count stays used
+  e = { ...env, COUNTER: namespace(), DAILY_PER_INVITE: "3", DAILY_TOTAL: "5" };
+  googleStatus = 429;
+  googleBody = perDay;
+  for (let i = 0; i < 3; i++) assert.match((await (await ask(e)).json()).error, /used up for today/);
+  googleStatus = 200;
+  let from = sent.length;
+  const kept = await ask(e);
+  assert.equal(kept.status, 429, "three per-day 429s used Ana's 3");
+  assert.match((await kept.json()).error, /used today's AI fixes/);
+  assert.equal(sent.length, from, "never reached Google");
+  // a backup model's count is given back as well: the main model's day gone, then the backup busy for the minute
+  e = { ...env, COUNTER: namespace(), DAILY_PER_INVITE: "2", DAILY_TOTAL: "2", MODELS: "gemini-3.8-flash,gemini-3.6-flash" };
+  const realFetch = globalThis.fetch, answers = [perDay, perMinute];
+  globalThis.fetch = async (url, init) => (sent.push({ url, headers: init.headers, body: JSON.parse(init.body) }),
+    new Response(answers.shift(), { status: 429 }));
+  const half = await ask(e);
+  globalThis.fetch = realFetch;
+  assert.equal(half.status, 429);
+  assert.match((await half.json()).error, /busy/, "the main model's day gone, then the backup busy for the minute");
+  googleStatus = 200;
+  assert.equal((await ask(e)).status, 200, "both counts given back: Ana's 1st of 2");
+  assert.equal((await ask(e)).status, 200, "and her 2nd: the backup's count was given back to the total");
+  // the public tier: the network's count and the total come back
+  e = { ...env, COUNTER: namespace(), PUBLIC_DAILY_PER_NETWORK: "2", PUBLIC_DAILY_TOTAL: "3" };
+  const free = (ip) => worker.fetch(new Request("https://relay.example/fix", { method: "POST", headers: { "CF-Connecting-IP": ip },
+    body: JSON.stringify(good) }), e);
+  googleStatus = 429;
+  googleBody = perMinute;
+  for (let i = 0; i < 4; i++) assert.match((await (await free("203.0.113.5")).json()).error, /busy/);
+  googleStatus = 200;
+  assert.equal((await free("203.0.113.5")).status, 200, "the network's full day after 4 busy answers");
+  assert.equal((await free("203.0.113.5")).status, 200);
+  assert.equal((await free("203.0.113.5")).status, 429, "its 3rd is over its 2");
+  assert.equal((await free("203.0.113.6")).status, 200, "the public total given back: the 3rd of 3");
+  assert.equal((await free("203.0.113.7")).status, 429, "the public total (3) reached");
+  googleBody = JSON.stringify({ error: { message: "project 1234 key AQ.secret" } });
+  // never below 0, never another day's counts
+  const store = new Map(), counter = new Counter({ storage: { get: async (k) => store.get(k), put: async (k, v) => store.set(k, v) } });
+  const give = (body) => counter.fetch(new Request("https://caps/give", { method: "POST", body: JSON.stringify(body) }));
+  store.set("c", { day: dayKey(), total: 0, by: {} });
+  await give({ who: "Ana", day: dayKey(), n: 3 });
+  assert.deepEqual(store.get("c"), { day: dayKey(), total: 0, by: {} }, "nothing counted: nothing goes below 0");
+  store.set("c", { day: dayKey(), total: 2, by: { Ana: 2 } });
+  await give({ who: "Ana", day: "2026-01-01", n: 1 });
+  assert.deepEqual(store.get("c"), { day: dayKey(), total: 2, by: { Ana: 2 } }, "a count taken another day leaves today's alone");
+  await give({ who: "Ana", day: dayKey(), n: 1 });
+  assert.deepEqual(store.get("c"), { day: dayKey(), total: 1, by: { Ana: 1 } }, "today's: one back to Ana and the total");
+}
+// AH-158: a per-network burst limit (Cloudflare's Workers Rate Limiting, BURST in wrangler.toml), asked before the
+// counter and before Google, under the same keyed hash as the day's count (never the IP) or the invite's name
+{
+  const keys = [];
+  let allow = false;
+  const burst = { limit: async ({ key }) => (keys.push(key), { success: allow }) };
+  const e = { ...env, COUNTER: namespace(), BURST: burst, PUBLIC_DAILY_PER_NETWORK: "1", DAILY_PER_INVITE: "1" };
+  const free = (ip) => worker.fetch(new Request("https://relay.example/fix", { method: "POST", headers: { "CF-Connecting-IP": ip },
+    body: JSON.stringify(good) }), e);
+  const ask = () => worker.fetch(new Request("https://relay.example/fix", { method: "POST", headers: { Authorization: "Bearer inv_ana" },
+    body: JSON.stringify(good) }), e);
+  googleStatus = 200;
+  let from = sent.length;
+  for (const r of [await free("203.0.113.8"), await free("203.0.113.8"), await ask()]) {
+    assert.equal(r.status, 429, "the minute's limit reached");
+    const said = await r.json();
+    assert.equal(said.limit, "minute", "tagged as a minute's limit");
+    assert.match(said.error, /in one minute/, "in our own words");
+    assert.ok(!/today/.test(said.error), "never read as a used-up day by the engine");
+  }
+  assert.equal(sent.length, from, "Google never asked");
+  const mac = async (text) => {
+    const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.GEMINI_KEY), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    return [...new Uint8Array(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(text)))].map((b) => b.toString(16).padStart(2, "0")).join("");
+  };
+  assert.deepEqual(keys, [await mac(dayKey() + "203.0.113.8"), await mac(dayKey() + "203.0.113.8"), "Ana"],
+    "keyed by the network's hash (never its IP) and the invite's name");
+  allow = true;
+  assert.equal((await free("203.0.113.8")).status, 200, "allowed: served, and nothing the limit refused was counted (its day is 1)");
+  assert.equal((await ask()).status, 200, "the invite too");
+  keys.length = 0;
+  await free("2001:db8:5:6:7::1");
+  assert.deepEqual(keys, [await mac(dayKey() + "2001:db8:5:6::/64")], "an IPv6 address by its /64's hash");
+  // a counting stand-in at wrangler.toml's own limit: an honest word check (6 calls in a row) is never refused, and
+  // each network has its own minute
+  const toml = (await import("node:fs")).readFileSync(new URL("./wrangler.toml", import.meta.url), "utf8");
+  const [, limit, period] = toml.match(/name = "BURST"[^]*?simple = \{ limit = (\d+), period = (\d+) \}/).map(Number);
+  const day = +toml.match(/PUBLIC_DAILY_PER_NETWORK = "(\d+)"/)[1];
+  assert.equal(period, 60, "a minute");
+  assert.ok(limit >= 6, `a word check's 6 calls fit in the minute (${limit})`);
+  assert.ok(limit <= day, `never looser than a network's whole day (${limit} <= ${day})`);
+  const seen = new Map();
+  const counting = { limit: async ({ key }) => { seen.set(key, (seen.get(key) || 0) + 1); return { success: seen.get(key) <= limit }; } };
+  const c = { ...env, COUNTER: namespace(), BURST: counting, PUBLIC_DAILY_PER_NETWORK: "100" };
+  const at = (ip) => worker.fetch(new Request("https://relay.example/fix", { method: "POST", headers: { "CF-Connecting-IP": ip },
+    body: JSON.stringify(good) }), c);
+  for (let i = 0; i < limit; i++) assert.equal((await at("198.51.100.20")).status, 200, `call ${i + 1} of ${limit} in a minute`);
+  assert.equal((await at("198.51.100.20")).status, 429, "one more in the minute is refused");
+  assert.equal((await at("198.51.100.21")).status, 200, "another network has its own minute");
+  delete e.BURST;
+  assert.equal((await free("203.0.113.9")).status, 200, "no BURST binding (an older deploy): the daily caps still hold, served");
+}
+// AH-158: one /48 holds 65,536 /64s (a cheap VPS hands one out), so each IPv6 /48 has its own day too:
+// PUBLIC_DAILY_PER_48 (45 = 3 networks' 15), counted under its own keyed hash, beside its /64's 15. IPv4 is as before
+{
+  const e = { ...env, COUNTER: namespace(), PUBLIC_DAILY_PER_NETWORK: "15", PUBLIC_DAILY_TOTAL: "400" }; // PER_48 unset: 45
+  const free = (ip) => worker.fetch(new Request("https://relay.example/fix", { method: "POST", headers: { "CF-Connecting-IP": ip },
+    body: JSON.stringify(good) }), e);
+  googleStatus = 200;
+  for (const net of ["2001:db8:1:1", "2001:db8:1:2", "2001:db8:1:3"]) {
+    for (let i = 0; i < 15; i++) assert.equal((await free(`${net}::${i + 1}`)).status, 200, `${net}::/64 call ${i + 1} of 15`);
+  }
+  const from = sent.length;
+  const over = await free("2001:db8:1:4::1");
+  assert.equal(over.status, 429, "a 4th /64 of the same /48: its 45 are used");
+  assert.equal((await over.json()).limit, "day");
+  assert.equal(sent.length, from, "never reached Google");
+  assert.equal((await free("2001:db8:2:1::1")).status, 200, "a /64 in another /48 still served");
+  for (let i = 0; i < 16; i++) await free("198.51.100.30");
+  assert.equal((await free("198.51.100.31")).status, 200, "IPv4: each address its own share, as before");
+  const set = { ...e, COUNTER: namespace(), PUBLIC_DAILY_PER_48: "2" };
+  const at = (ip) => worker.fetch(new Request("https://relay.example/fix", { method: "POST", headers: { "CF-Connecting-IP": ip },
+    body: JSON.stringify(good) }), set);
+  assert.equal((await at("2001:db8:3:1::1")).status, 200);
+  assert.equal((await at("2001:db8:3:2::1")).status, 200, "the [vars] cap: the /48's 2nd");
+  assert.equal((await at("2001:db8:3:3::1")).status, 429, "and its 3rd refused");
 }
 console.log("relay abuse tests passed");
 

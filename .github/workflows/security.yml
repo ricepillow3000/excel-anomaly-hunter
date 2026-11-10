@@ -42,6 +42,8 @@ jobs:
           backend frontend relay e2e tools
       - name: Relay abuse tests (invite codes, daily caps, key never echoed)
         run: node relay/test.mjs
+      - name: Relay load test (2,200 requests at once, exactly the caps through, no 5xx)
+        run: node relay/load.mjs
       - name: Pane logic self-check
         run: node frontend/selfcheck.js
       - name: Website links and scripts (every link lands, nothing loads from outside, no HTML from data)

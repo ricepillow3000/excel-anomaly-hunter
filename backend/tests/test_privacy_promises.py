@@ -246,7 +246,8 @@ def test_every_privacy_page_says_what_ask_ai_remembers_how_much_of_it_goes_and_h
 def test_every_privacy_page_says_where_the_free_ai_sends_what_it_counts_and_its_caps_as_configured():
     # AH-151 (John, 2026-11-09): with no key or invite of its own, Ask AI goes to the relay's public tier. The pages name
     # its model and caps from relay/wrangler.toml, and what the relay keeps of a network: a keyed hash, never the IP
-    caps = tomllib.loads((ROOT / "relay" / "wrangler.toml").read_text(encoding="utf-8"))["vars"]
+    conf = tomllib.loads((ROOT / "relay" / "wrangler.toml").read_text(encoding="utf-8"))
+    caps, minute = conf["vars"], next(r["simple"]["limit"] for r in conf["ratelimits"] if r["name"] == "BURST")
     assert "," not in caps["PUBLIC_MODELS"], "the free AI asks a backup: name every model in the three privacy pages, then here"
     promises = (
         "With no key or invite code of your own, AI help uses John's free AI",
@@ -254,6 +255,8 @@ def test_every_privacy_page_says_where_the_free_ai_sends_what_it_counts_and_its_
         "counts each network's AI calls for the day under a code made from the day and your IP address with the relay's secret key",
         "It never stores your IP address or the request",
         f"{caps['PUBLIC_DAILY_PER_NETWORK']} AI calls per network and {caps['PUBLIC_DAILY_TOTAL']} for every free user together a day",
+        # AH-158: the minute's limit (BURST) and an IPv6 /48's day, as configured
+        f"at most {minute} calls a minute from one network, and {caps['PUBLIC_DAILY_PER_48']} a day from one IPv6 /48",
     )
     for page in PAGES:
         said = words(page)
