@@ -119,15 +119,14 @@ button:disabled { cursor: default; }
 .secondary:disabled, .link-btn:disabled { color: var(--off-navy); border-color: var(--off-navy); }
 .primary, .secondary { display: block; width: 100%; border-radius: 0;
   transition: background-color .3s var(--ease), color .3s var(--ease), border-color .3s var(--ease); }
-/* a button turned back on fades to its colours over the hover's .3s; under reduced motion it changes at once, as every
-   other state there does */
+/* a hover eases over .3s; under reduced motion it changes at once, as every other state there does. A button turned back
+   on shows its colours at once (utils/dom.js turnOn, AH-149 review r2): faded back in, Find problems read as still off */
 @media (prefers-reduced-motion: reduce) { .primary, .secondary { transition: none; } }
+:root[data-turning-on] button { transition: none; }
 .primary { margin: var(--s3) 0; min-height: 48px; padding: 0 var(--s4); background: var(--wine); color: var(--on-wine); border: 0;
   font: 700 var(--fs-0)/1.2 var(--sans); font-variant-numeric: tabular-nums; letter-spacing: .02em; text-align: left; }
 .primary:hover:not(:disabled) { background: var(--navy); }
 .primary:focus-visible { outline: 2px solid var(--navy); outline-offset: 3px; }
-#scan { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
-#scan::after { content: ""; flex: none; width: 10px; height: 10px; background: currentColor; } /* one cell: the flagged cell */
 .secondary { margin: var(--s2) 0; min-height: 44px; padding: var(--s2) var(--s3); background: transparent; color: var(--navy); border: 1px solid var(--navy);
   font: 700 13px/1.3 var(--sans); font-variant-numeric: tabular-nums; text-align: left; }
 .secondary:hover:not(:disabled) { background: var(--navy); color: var(--paper); }
@@ -191,5 +190,5 @@ button:disabled { cursor: default; }
    the text colour */
 @media (forced-colors: active) {
   .primary { border: 2px solid ButtonText; }
-  #scan::after, #notice::before, #server-down p:first-child::before, #fix-care::before, h2::before { forced-color-adjust: none; background: CanvasText; }
+  .notice::before, #notice::before, #server-down p:first-child::before, #fix-care::before, h2::before { forced-color-adjust: none; background: CanvasText; }
 }

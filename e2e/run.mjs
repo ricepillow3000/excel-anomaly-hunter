@@ -106,6 +106,13 @@ await failing(/e2e recorder probe/, async () => {
 ok(unhandled.length === 2 && unhandled.some((u) => u.startsWith("unhandledrejection")) && unhandled.some((u) => u.startsWith("error")), "the page's recorder hears an unhandled rejection and an uncaught error - " + JSON.stringify(unhandled));
 errors.splice(0, Infinity, ...errors.filter((e) => !/e2e recorder probe/.test(e))); unhandled.length = 0;
 const text = (sel) => page.textContent(sel);
+// AH-149 review r2: a notice as the pane draws one: at body size, in a hairline box with a square before its first word,
+// and said in that one place (never again in the notice line over the results). "Arcas has stopped" was set at 15 px
+// with no box under Check words with AI, and as a bare line in the AI help steps, and both read as a heading
+const looksLikeNotice = (sel) => page.$eval(sel, (e) => { const c = getComputedStyle(e), b = getComputedStyle(e, "::before"), body = getComputedStyle(document.body).fontSize;
+  const m = { size: c.fontSize, body, border: `${c.borderTopWidth} ${c.borderTopStyle}`, square: `${b.content} ${b.width} ${b.height} ${b.backgroundColor}`,
+    twice: !!e.textContent && document.getElementById("notice").textContent.includes(e.textContent) };
+  return { ...m, ok: m.size === body && m.border === "1px solid" && b.content === '""' && b.width === "10px" && b.height === "10px" && b.backgroundColor !== "rgba(0, 0, 0, 0)" && !m.twice }; });
 // AH-94 motion: a transform's scale, and each change of #main-ui's data-scanning (the scan skeleton) with its time
 const scaleOf = (m) => +(/^matrix\(([-\d.e]+)/.exec(m) || [0, 1])[1]; // "none" = 1
 const watchSkeleton = () => page.evaluate(() => { const m = document.getElementById("main-ui"), first = !window.__sk; window.__sk = [];
@@ -183,7 +190,9 @@ if (mode === "flow") {
       }
       if (__counted.length < 200 && !window.__stopTops) requestAnimationFrame(f); };
     requestAnimationFrame(f); });
+  const atRest = await page.evaluate(() => getComputedStyle(document.getElementById("scan")).backgroundColor); // before any scan
   await page.click("#scan");
+  await page.mouse.move(0, 0); // off the button, so its at-rest colour is the one to compare once the scan is over
   ok(await page.evaluate(() => document.getElementById("clear-highlights").disabled), "buttons are disabled while it works");
   // AH-94: from the click until the results render, the scan skeleton stands where they land (in place of the empty
   // state on a first scan), its rows built like a list row; a Find problems scan keeps it at least ~450 ms
@@ -195,6 +204,12 @@ if (mode === "flow") {
   ok(sk.on && !sk.empty && sk.rows === 5 && sk.light === "sk-pass", "the scan skeleton shows at once, in place of the empty state, 5 rows and one passing light - " + JSON.stringify(sk));
   ok(+sk.passes > 0 && +sk.passes < 100 && /^\d+$/.test(sk.passes) && /^\d+$/.test(sk.sliver), "AH-149: the skeleton's light and the progress sliver pass a set number of times, never forever - " + JSON.stringify([sk.passes, sk.sliver]));
   await shot("skeleton");
+  // AH-149 review r2: the first frame Find problems is on again, the results shown and nothing running, it is drawn in its
+  // full colour, as before any scan: it faded back from its off colour over .3 s, and the pictures caught it mauve
+  { const on = await (await page.waitForFunction(() => { const s = document.getElementById("scan");
+      return !s.disabled && !__state.working && { bg: getComputedStyle(s).backgroundColor, results: document.getElementById("results").checkVisibility(), mark: getComputedStyle(s, "::after").content }; })).jsonValue();
+    ok(on.results && on.bg === atRest, `AH-149 review r2: once the results are in and nothing runs, Find problems is on and in its full colour at once - ${on.bg} (before any scan ${atRest})`);
+    ok(on.mark === "none", "AH-149 review r2: no white square in Find problems (it read as a Stop icon) - " + on.mark); }
   await idle();
   ok(await page.isVisible("#results"), "results after ONE click");
   { const box = await page.evaluate(() => { const r = document.querySelector("#flagged-list button").getBoundingClientRect(); return [r.left, r.width, r.height]; });
@@ -941,8 +956,10 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
       await page.route("**/fix", fail, { times: 1 }); await page.click("#fix-ask");
       await page.waitForFunction(() => document.getElementById("fix-ask").textContent === "Ask AI" && !document.getElementById("fix-ask").disabled, null, { timeout: 30000 }).catch(() => {});
     });
-    ok((await text("#fix-status")) === "AI could not help: " + words && !(await page.isDisabled("#fix-ask")) && (await page.inputValue("#fix-intent")) === typed,
-      `Ask AI when ${how}: said on the card, Ask AI back, the request kept - ` + (await text("#fix-status")));
+    ok((await text("#fix-care")) === "AI could not help: " + words && (await page.isVisible("#fix-care")) && (await text("#fix-status")) === "" && !(await page.isDisabled("#fix-ask")) && (await page.inputValue("#fix-intent")) === typed,
+      `Ask AI when ${how}: said on the card in its notice box, Ask AI back, the request kept - ` + (await text("#fix-care")) + " | " + (await text("#fix-status")));
+    const look = await looksLikeNotice("#fix-care");
+    ok(look.ok, `AH-149 review r2: Ask AI when ${how}: why it could not help is a notice at body size, said once - ` + JSON.stringify(look));
   }
 
   // AH-149: three requests to start from, each one Ask AI already answers: a press fills the box and sends nothing
@@ -981,6 +998,8 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
     ["the engine goes down mid-call", dropMidway, DOWN]]) {
     await failing(DROPPED, async () => { await page.route("**/odd-text", fail, { times: 1 }); await page.click("#odd-check"); await idle(); });
     ok((await text("#odd-list")) === "AI could not check: " + words && !(await page.isDisabled("#odd-check")), `Check words when ${how}: said in plain words - ` + (await text("#odd-list")));
+    const look = await looksLikeNotice("#odd-list li");
+    ok(look.ok, `AH-149 review r2: Check words when ${how}: why it could not check is a notice at body size, said once - ` + JSON.stringify(look));
   }
   // AH-149 review: "AI could not check" was set at 15 px among 12 px hints and read as a heading; and the empty
   // progress-and-notice line held a band of space over the summary once Check words had cleared "Done"
@@ -1037,6 +1056,8 @@ if (mode === "nokey") {
     });
     ok((await text("#ai-state")) === words && !(await page.isVisible("#ai-box")) && (await page.inputValue("#ai-key")) === code,
       `Save key when ${how}: said in plain words, AI help stays off, the key kept in its box to try again - ` + (await text("#ai-state")));
+    const look = await looksLikeNotice("#ai-state");
+    ok(look.ok, `AH-149 review r2: Save key when ${how}: why it was not saved is a notice at body size, said once - ` + JSON.stringify(look));
   }
   await page.fill("#ai-key", "");
 }
@@ -1093,7 +1114,9 @@ if (mode === "flow") {
   await busy.close();
 }
 
-if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/pane-${mode}.png`, fullPage: true }); // proof for people
+// proof for people, at rest: the pointer off every button first (the full-page picture moved the page under it, and a
+// hover caught half-way read as a button turned off, AH-149 review r2)
+if (process.env.SHOTS) { await page.mouse.move(0, 0); await page.waitForTimeout(400); await page.screenshot({ path: `${process.env.SHOTS}/pane-${mode}.png`, fullPage: true }); }
 const real = errors.filter((e) => !(mode === "nokey" && e.includes("status of 400"))); // the junk key gets the engine's 400 on purpose
 ok(real.length === 0, "no page errors " + JSON.stringify(real));
 ok(unhandled.length === 0, "no unhandled promise rejection or uncaught error on the page in this mode - " + JSON.stringify(unhandled));

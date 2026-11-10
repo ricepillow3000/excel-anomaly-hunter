@@ -61,6 +61,9 @@ input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var
 #notice { margin: 0; padding: var(--s2) var(--s3); border: 1px solid var(--rule); background: var(--field); font-size: 13px; color: var(--ink); text-wrap: pretty; }
 #notice::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: var(--s2); vertical-align: -1px; background: var(--wine); }
 #notice:empty { display: none; }
+/* the same box for why an AI help action failed, said where it was asked, at body size (AH-149 review r2) */
+.notice, .fix-changes .notice { margin: var(--s2) 0 var(--s3); padding: var(--s2) var(--s3); border: 1px solid var(--rule); background: var(--field); font-size: var(--fs-0); color: var(--ink); text-wrap: pretty; }
+.notice::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: var(--s2); vertical-align: -1px; background: var(--wine); }
 
 #empty-state { margin-top: var(--s2); }
 #empty-state p:first-child { margin: 0 0 var(--s2); font: 800 var(--fs-1)/1.2 var(--sans); color: var(--navy); text-wrap: balance; }

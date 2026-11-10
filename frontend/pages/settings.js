@@ -1,5 +1,5 @@
-import { $, show } from "../utils/dom.js";
-import { saveKey } from "../features/ai.js";
+import { $, show, turnOn } from "../utils/dom.js";
+import { keySaid, saveKey } from "../features/ai.js";
 import { forgetWorkbook } from "../features/forget.js";
 import { act } from "../hooks/use-action.js";
 import { clearAll } from "../features/memory.js";
@@ -16,7 +16,7 @@ const once = (fn) => async () => {
     await fn();
   } finally {
     sending = false;
-    buttons.forEach((b) => (b.disabled = false));
+    turnOn(buttons);
   }
 };
 
@@ -24,7 +24,7 @@ const once = (fn) => async () => {
 export function initSettings() {
   $("save-key").onclick = once(async () => {
     if ($("ai-key").value.trim()) await saveKey($("ai-key").value);
-    else $("ai-state").textContent = "Paste a key in the box first, then click Save key."; // an empty Save is not a Remove
+    else keySaid("Paste a key in the box first, then click Save key."); // an empty Save is not a Remove
   });
   $("remove-key").onclick = once(() => saveKey(""));
   $("forget-ai").addEventListener("click", () => { // AH-143: every fix Ask AI remembers on this PC, in every workbook

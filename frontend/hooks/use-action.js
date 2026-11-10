@@ -3,6 +3,7 @@ import { busy, notice } from "../components/progress.js";
 import { setApplied } from "../components/fix-preview.js";
 import { setAi } from "../features/ai.js";
 import { plainError } from "../utils/errors.js";
+import { turnOn } from "../utils/dom.js";
 
 // Wrap a sheet action: buttons off while it runs, a plain message if it fails, buttons back on after. One action at a
 // time whatever is pressed (state.working); the buttons turned off are those of `scope`: the whole pane for a scan, only
@@ -24,7 +25,7 @@ export const act = (fn, scope = "#main-ui") => async (...args) => {
     state.working = false;
     main.removeAttribute("data-held");
     busy(null);
-    off.forEach((b) => (b.disabled = false));
+    turnOn(off);
     setAi(state.aiAvailable); // Ask AI stays off without a key
     if (state.fix) setApplied(!!state.undos[state.fix.i]);
   }
