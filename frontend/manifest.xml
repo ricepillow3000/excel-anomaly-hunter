@@ -4,7 +4,8 @@
   <Id>a64b585c-34c7-4447-b3ae-9aa8b3294bcf</Id>
   <!-- a new logo needs new file names and a new Version: Office caches ribbon icons per URL (2026-10-19); 1.0.6.0 = the
        name Arcas (AH-101): Excel shows the ribbon and Add-ins names from the manifest it cached for the old Version;
-       1.0.7.0 = the flat crest-*.png icons (AH-103); 1.0.8.0 = crest2-*.png, a drawing fitted to each size (AH-121) -->
+       1.0.7.0 = the flat crest-*.png icons (AH-103); 1.0.8.0 = crest2-*.png, a drawing fitted to each size (AH-121);
+       an icon URL is never retired: Excel kept the 1.0.5.0 manifest across upgrades (AH-154, server.OLD_ICONS) -->
   <Version>1.0.8.0</Version>
   <ProviderName>ricepillow3000</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
