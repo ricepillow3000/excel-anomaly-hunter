@@ -260,7 +260,7 @@ const ENTERED = msOf("--enter-lead") + 4 * msOf("--enter-step") + msOf("--enter-
 // a dropdown's 150 to 250 ms
 {
   const curves = [...css.matchAll(/cubic-bezier\(([^)]*)\)/g)].map((m) => m[1].split(",").map(Number));
-  assert.ok(curves.length >= 3, "styles.css: no cubic-bezier curves found");
+  assert.ok(curves.length >= 2, "styles.css: no cubic-bezier curves found"); // --ease-out and --ease-in-out (--ease-lift went with the card lift, AH-148 final pass)
   for (const [x1, y1, x2, y2] of curves) assert.ok([x1, y1, x2, y2].every(Number.isFinite) && y1 >= 0 && y1 <= 1 && y2 >= 0 && y2 <= 1, `styles.css: cubic-bezier(${x1}, ${y1}, ${x2}, ${y2}) overshoots (a bounce)`);
   const num = (n) => { assert.ok(/^\d*\.?\d+$/.test(TOKENS[n] || ""), `styles.css: ${n} is not a number (${TOKENS[n]})`); return parseFloat(TOKENS[n]); };
   assert.deepEqual([msOf("--stagger-row"), msOf("--land-step"), num("--press"), msOf("--press-dur"), num("--pop-from"), msOf("--slide-dur"), num("--stretch"), msOf("--scroll-weight"), msOf("--pulse-dur")],
@@ -1448,12 +1448,13 @@ for (const [name, api, sha] of [["a good answer", json(release), "ab".repeat(32)
 }
 // the glide (AH-91): "See a sample scan" scrolls there by the clock, never a jump, and frames the sheet and the button under
 // it below the sticky bar with the checks still below the fold; then the button glides on to the checks, whose heading
-// turns up like a card; a wheel ends a glide where it is; no frame is asked for once it has ended
+// rises into place as every section head does (AH-148 final pass: it turned up like a card, its letters stretched
+// sideways in perspective); a wheel ends a glide where it is; no frame is asked for once it has ended
 const glideTo = async (p, sel, until) => {
   const b = await p.locator(sel).boundingBox();
   await p.evaluate(() => { window.frames_ = 0; window.__ys = []; window.__lift = []; const raf = window.requestAnimationFrame.bind(window);
     window.requestAnimationFrame = (f) => (window.frames_++, raf(f));
-    const h = document.getElementById("checks-title"), look = () => { window.__ys.push([performance.now(), scrollY]); const m = new DOMMatrix(getComputedStyle(h).transform); window.__lift.push(m.m22); if (window.__ys.length < 400) setTimeout(look, 20); }; look(); });
+    const h = document.getElementById("checks-title"), look = () => { window.__ys.push([performance.now(), scrollY]); const m = new DOMMatrix(getComputedStyle(h).transform); window.__lift.push(m.f); if (window.__ys.length < 400) setTimeout(look, 20); }; look(); });
   const t0 = Date.now();
   await p.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
   await p.waitForTimeout(300);
@@ -1477,14 +1478,14 @@ for (const width of [1440, 1280]) {
   const f0 = await p.evaluate(() => window.frames_); await p.waitForTimeout(1000);
   assert.equal(await p.evaluate(() => window.frames_), f0, `${width}px: a frame loop runs after the glide`);
   if (width === 1440) {
-    // on to the checks: slower, its heading lifted mid-way and at rest at the end, the section's top under the bar
+    // on to the checks: slower, its heading rising mid-way and at rest at the end, the section's top under the bar
     await p.waitForTimeout(2500); // the sheet's skeleton has landed
     const c = await glideTo(p, 'a[data-glide="top"][href="#checks"]', "#checks");
     const lift = await p.evaluate(() => window.__lift);
     const at = await p.evaluate(() => ({ top: document.getElementById("checks").getBoundingClientRect().top, bar: document.querySelector(".bar").getBoundingClientRect().bottom, focus: document.activeElement.id }));
     assert.ok(c.ms >= 2300 && c.ms <= 3700, `the glide to the checks took ${c.ms} ms`);
     assert.ok(Math.abs(at.top - at.bar) <= 2 && at.focus === "checks", `the glide to the checks ends at ${JSON.stringify(at)}`);
-    assert.ok(lift.some((v) => v > 0.05 && v < 0.95), `the checks' heading was never seen turning up: ${lift.map((v) => v.toFixed(2)).join(" ")}`);
+    assert.ok(lift.some((v) => v > 0.5 && v < 23.5), `the checks' heading was never seen rising: ${lift.map((v) => v.toFixed(1)).join(" ")}`);
     await p.waitForTimeout(1300);
     assert.equal(await p.evaluate(() => getComputedStyle(document.getElementById("checks-title")).transform), "none", "the checks' heading is not at rest");
     // a wheel ends a glide where it is: back to the top, glide, wheel, and nothing more moves
@@ -3391,7 +3392,9 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
       cols: [...document.querySelectorAll(".ws-main > .panel:not([hidden]) .grid thead th")].map((th) => Math.round(th.getBoundingClientRect().width * 10) / 10) }));
     const seen = {};
     for (const tab of ["found", "clean", "busy", "found"]) { await p.click(`#t-${tab}`); seen[tab] = await at(); if (tab === "busy") await p.click("#t-found"); }
-    want(seen.clean.next === seen.found.next && seen.busy.next === seen.found.next, `7 "See every check" moves between tabs at ${width} px: ${JSON.stringify(seen)}`);
+    // on a wide screen only: on a phone each tab is its own height (AH-148 final pass: held at After fixes', the findings
+    // ended 150 px above their caption), and a pressed tab brings its panel on screen instead
+    if (width > 760) want(seen.clean.next === seen.found.next && seen.busy.next === seen.found.next, `7 "See every check" moves between tabs at ${width} px: ${JSON.stringify(seen)}`);
     want(JSON.stringify(seen.clean.cols) === JSON.stringify(seen.found.cols), `7 the sheet's columns change between Findings and After fixes at ${width} px: ${JSON.stringify(seen)}`);
     // ... and on a wide screen the verdict and its note, in the filters' column, lie under the key, never over it
     await p.click("#t-clean");
@@ -3403,6 +3406,131 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
   }
   assert.deepEqual(miss, [], `AH-148 fix round 2:\n${miss.join("\n")}`);
   console.log("AH-148 fix round 2: a detail box beside or off its row's flagged cells with its head on screen (1440 and 390); the phone's sample whole at rest, row 11's Finding and flagged cells on screen; the check-file chevron and the aside's rule; the privacy summary's labels on a phone, heard once; the download bar down past the download; the checksum in two even halves, copied whole, SHA-256 unbroken; one height and one set of columns across the tabs");
+}
+// ---- AH-148 final pass, a third blind design review: on a phone an empty band of about 150 px sat under the sample's
+// last row (every tab held at After fixes' height); the checks' heading entered face down in perspective, its letters
+// stretched sideways and squashed; a checks-table "Row 31" landed on a phone with its flagged cell a swipe away; the swipe
+// hint showed on tabs with nothing to swipe, and a phone's tab changed what lay below the fold; "170.43 ÷ 2.99" broke
+// over two lines in a detail box; "All findings 7" beside types adding to 10 said nothing of rows flagged twice; the
+// case studies' cards had a hole mid-card; the support page's footer left "Source" alone on a line ----
+{
+  const miss = [];
+  const want = (ok, what) => { if (!ok) miss.push(what); };
+  // 1. a phone's Findings end where their last row ends: the caption under 40 px below it
+  {
+    const t = await open("index.html", { width: 390, height: 844, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate(() => document.fonts.ready);
+    const gap = await p.evaluate(() => { const rows = [...document.querySelectorAll("#p-found .grid tbody tr")].filter((tr) => tr.getClientRects().length);
+      return Math.round(document.getElementById("ws-cap").getBoundingClientRect().top - rows[rows.length - 1].getBoundingClientRect().bottom); });
+    want(gap < 40, `1 at 390 px the sample's last row ends ${gap} px above its caption`);
+    await done(t, "AH-148 final pass phone sample's height", [API]);
+  }
+  // 2. the checks' heading enters as every section head does: no frame of its entrance scales one axis more than the
+  // other, and its letter-spacing and font-stretch stay as they are
+  {
+    const t = await open("index.html", { width: 1440, height: 900 });
+    const p = t.page;
+    await p.waitForTimeout(ENTERED);
+    const r = await p.evaluate(async () => {
+      const h = document.getElementById("checks-title"), seen = [];
+      let on = true;
+      const look = () => { const c = getComputedStyle(h), m = new DOMMatrix(c.transform === "none" ? undefined : c.transform);
+        seen.push({ o: +c.opacity, flat: m.is2D, a: m.a, d: m.d, b: m.b, c: m.c, ls: c.letterSpacing, fs: c.fontStretch }); if (on) requestAnimationFrame(look); };
+      scrollTo(0, h.getBoundingClientRect().top + scrollY - 300); requestAnimationFrame(look);
+      await new Promise((ok) => setTimeout(ok, 1800)); on = false; return seen;
+    });
+    const moving = r.filter((f) => f.o < 0.99);
+    const bad = r.filter((f) => !f.flat || Math.abs(f.a - f.d) > 0.001 || Math.abs(f.b) > 0.001 || Math.abs(f.c) > 0.001 || f.ls !== r[r.length - 1].ls || f.fs !== r[r.length - 1].fs);
+    want(moving.length > 3 && !bad.length, `2 the checks' heading's entrance (${moving.length} frames seen moving) stretches or squashes it: ${JSON.stringify(bad.slice(0, 3))}`);
+    await done(t, "AH-148 final pass checks' heading", [API]);
+  }
+  // 3. a checks-table "Row 31" lands with the row's flagged Region cell in view, inside the table's scrolling box beside
+  // the pinned Row number, on a phone too (its table starts scrolled to its end); the row's gold mark shows on landing
+  for (const [width, height, motion] of [[1440, 900, "no-preference"], [390, 844, "no-preference"], [390, 844, "reduce"]]) {
+    const t = await open("index.html", { width, height, motion });
+    const p = t.page, label = `3 Row 31 at ${width} px (${motion})`;
+    if (motion !== "reduce") await p.waitForTimeout(ENTERED);
+    await p.evaluate(() => { const a = document.querySelector('.checks-table a.to-row[href="#r31"]'); scrollTo(0, a.getBoundingClientRect().top + scrollY - 300);
+      window.__landed = null; document.addEventListener("ah:glide-end", () => setTimeout(() => { const m = document.querySelector(".row-mark"), r = m && m.getBoundingClientRect(), row = document.getElementById("r31").getBoundingClientRect();
+        window.__landed = m ? { o: +getComputedStyle(m).opacity, top: Math.round(r.top - row.top), h: Math.round(r.height - row.height) } : null; }, 150)); });
+    await p.waitForTimeout(motion === "reduce" ? 0 : 1600);
+    await p.click('.checks-table a.to-row[href="#r31"]');
+    await p.waitForFunction(() => location.hash === "#r31", null, { timeout: 5000 }).catch(() => {});
+    await p.waitForTimeout(900);
+    const r = await p.evaluate(() => { const td = document.querySelector("#r31 :is(td.flag, td.q)"), b = td.getBoundingClientRect(), sc = td.closest(".scroll"), s = sc.getBoundingClientRect(), pin = document.querySelector("#r31 > :first-child").getBoundingClientRect().right;
+      return { cell: [b.left, b.right, b.top, b.bottom].map(Math.round), box: [Math.round(pin), Math.round(s.right)], text: td.textContent, screen: [innerWidth, innerHeight], landed: window.__landed }; });
+    const [l, rt, tp, bt] = r.cell;
+    want(l >= r.box[0] - 0.5 && rt <= r.box[1] + 0.5 && l >= 0 && rt <= r.screen[0] && tp >= 0 && bt <= r.screen[1], `${label}: row 31's flagged cell is not in view: ${JSON.stringify(r)}`);
+    if (motion !== "reduce") want(r.landed && r.landed.o > 0.5 && Math.abs(r.landed.top) <= 2 && Math.abs(r.landed.h) <= 2, `${label}: row 31 carries no gold mark on landing: ${JSON.stringify(r.landed)}`);
+    await done(t, `AH-148 final pass ${label}`, [API]);
+  }
+  // 4. the swipe hint only where there is a table to swipe, and a phone's tab brings its panel's top on screen
+  for (const motion of ["reduce", "no-preference"]) {
+    const t = await open("index.html", { width: 390, height: 844, motion });
+    const p = t.page;
+    if (motion !== "reduce") await p.waitForTimeout(ENTERED);
+    await p.evaluate(() => scrollTo(0, document.querySelector(".tabs").getBoundingClientRect().bottom + scrollY - innerHeight + 60));
+    await p.waitForTimeout(motion === "reduce" ? 50 : 1500);
+    const drawn = () => p.evaluate(() => { const s = document.querySelector(".swipe"); return !!s && s.getClientRects().length > 0 && getComputedStyle(s).visibility === "visible"; });
+    const found = await drawn();
+    await p.click("#t-busy");
+    await p.waitForTimeout(motion === "reduce" ? 50 : 1000);
+    const busy = await drawn(), top = await p.evaluate(() => Math.round(document.getElementById("p-busy").getBoundingClientRect().top));
+    await p.click("#t-clean"); await p.waitForTimeout(motion === "reduce" ? 50 : 1000);
+    const clean = await drawn();
+    if (motion === "reduce") want(found && !busy && !clean, `4 the swipe hint: on Findings ${found}, on Scanning ${busy}, on After fixes ${clean}`);
+    want(top >= 0 && top < 844 - 100, `4 at 390 px (${motion}) Scanning's panel starts at ${top} px, off screen`);
+    await done(t, `AH-148 final pass phone tabs (${motion})`, [API]);
+  }
+  // 5. an expression in a detail box ("170.43 ÷ 2.99", "-5 × 2.99 = -14.95") stays on one line
+  for (const [width, height] of [[1440, 900], [390, 844]]) {
+    const t = await open("index.html", { width, height, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate(() => document.fonts.ready);
+    for (const m of ["m11", "m22"]) {
+      await p.click(`.rowbtn[aria-controls="${m}"]`);
+      const split = await p.evaluate((m) => { const out = [], walk = document.createTreeWalker(document.getElementById(m), NodeFilter.SHOW_TEXT);
+        for (let n = walk.nextNode(); n; n = walk.nextNode()) for (const x of n.textContent.matchAll(/-?\d[\d.]*(?: [×÷=] -?\d[\d.]*)+/g)) {
+          const rg = document.createRange(); rg.setStart(n, x.index); rg.setEnd(n, x.index + x[0].length);
+          out.push([x[0], new Set([...rg.getClientRects()].filter((r) => r.width > 0.5).map((r) => Math.round(r.top))).size]); }
+        return out; }, m);
+      want(split.length >= 2 && split.every(([, n]) => n === 1), `5 ${m} at ${width} px breaks an expression over lines: ${JSON.stringify(split)}`);
+      await p.keyboard.press("Escape");
+    }
+    await done(t, `AH-148 final pass formulas at ${width}`, [API]);
+  }
+  // 6. under the filters, one line says a row can be counted by more than one type (All findings 7, the types 10)
+  {
+    const t = await open("index.html", { width: 1440, height: 900, motion: "reduce" });
+    const p = t.page;
+    const r = await p.evaluate(() => { const el = [...document.querySelectorAll(".typology *")].find((e) => e.children.length === 0 && /^A row can be flagged by more than one type\.$/.test(e.textContent.trim()));
+      const b = el && el.getBoundingClientRect(), last = [...document.querySelectorAll(".typology button")].pop().getBoundingClientRect();
+      return el ? { drawn: b.width > 0 && b.height > 0 && getComputedStyle(el).visibility === "visible", under: b.top >= last.bottom - 0.5 } : null; });
+    want(r && r.drawn && r.under, `6 no line under the filters says a row can be flagged by more than one type: ${JSON.stringify(r)}`);
+    await done(t, "AH-148 final pass filters' line", [API]);
+  }
+  // 7. the case studies' cards: no hole between their blocks' text (each under 40 px from the one before)
+  {
+    const t = await open("index.html", { width: 1440, height: 900, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate(() => document.fonts.ready);
+    // measured on the text, not on a block's box, which a grid row stretched
+    const gaps = await p.$$eval(".cases .case", (cs) => cs.map((c) => { const k = [...c.children].map((e) => { const rg = document.createRange(); rg.selectNodeContents(e); return rg.getBoundingClientRect(); }); return k.slice(1).map((b, i) => Math.round(b.top - k[i].bottom)); }));
+    want(gaps.length === 3 && gaps.every((g) => g.every((x) => x < 40)), `7 a case study's card has a hole between its blocks: ${JSON.stringify(gaps)}`);
+    await done(t, "AH-148 final pass case cards", [API]);
+  }
+  // 8. a footer link never sits alone on its line while the others share one, on every page at 1440 and 1280
+  for (const file of [...PAGES, MISSING]) {
+    for (const width of [1440, 1280]) {
+      const t = await open(file, { width, height: 900, motion: "reduce" });
+      const rows = await t.page.$$eval(".foot nav a", (as) => { const by = {}; for (const a of as) { const k = Math.round(a.getBoundingClientRect().top); (by[k] = by[k] || []).push(a.textContent.trim()); } return Object.values(by); });
+      want(rows.length === 1 || rows.every((r) => r.length > 1), `8 ${file} at ${width} px leaves a footer link alone on a line: ${JSON.stringify(rows)}`);
+      await done(t, `AH-148 final pass footer ${file} at ${width}`, [API]);
+    }
+  }
+  assert.deepEqual(miss, [], `AH-148 final pass:\n${miss.join("\n")}`);
+  console.log("AH-148 final pass: a phone's findings end at their last row; the checks' heading rises flat; Row 31 lands with its flagged cell in view and its gold mark; the swipe hint only on Findings and a phone's tab shows its panel; expressions whole in a detail box; a line under the filters on rows flagged twice; no hole in a case card; no footer link alone on a line");
 }
 await browser.close();
 server.close();

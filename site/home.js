@@ -208,6 +208,10 @@
       // (AH-138 review): the copy, the panel's own paper, grows to cover it; the sheet still clips it
       const now = ws.querySelector(".ws-main > .panel:not([hidden]):not([data-turn])");
       if (now && now.offsetHeight > panel.offsetHeight) s.height = now.offsetHeight + "px";
+      // ... and a new panel that starts higher (on a phone the swipe hint above the findings goes with them, AH-148 final
+      // pass) is covered from its own top, the old picture held where it was
+      const up = now ? panel.offsetTop - now.offsetTop : 0;
+      if (up > 0) { s.top = now.offsetTop + "px"; s.paddingTop = up + "px"; s.height = Math.max(now.offsetHeight, panel.offsetHeight + up) + "px"; }
       const timing = { duration: TURN, easing: INOUT, fill: "forwards" };
       const anims = [copy.animate([{ transform: "perspective(2400px) rotateY(0deg)" }, { transform: "perspective(2400px) rotateY(-100deg)" }], timing),
         shade.animate([{ opacity: 0 }, { opacity: 1 }], timing)];
@@ -286,8 +290,9 @@
     const toFlags = () => { if (narrow.matches) for (const sc of ws.querySelectorAll(".panel:not([hidden]) .scroll")) sc.scrollLeft = sc.scrollWidth; };
     toFlags();
     narrow.addEventListener("change", toFlags, on);
-    // Every tab's panel as tall as the tallest, so the sheet keeps its height and "See every check" its place from tab
-    // to tab (AH-148 fix round 2: After fixes, with its verdict and note, was 110 px taller than the findings). Measured
+    // Every tab's panel as tall as the tallest on a wide screen (styles.css: not on a phone, AH-148 final pass), so the
+    // sheet keeps its height and "See every check" its place from tab to tab (AH-148 fix round 2: After fixes, with its
+    // verdict and note, was 110 px taller than the findings). Measured
     // with each panel shown in turn inside one task (nothing is drawn between), again when the sheet's width changes
     // or the font arrives
     const wsMain = ws.querySelector(".ws-main"), panels = [...wsMain.querySelectorAll(":scope > .panel")];
@@ -305,6 +310,16 @@
     const held = window.ResizeObserver ? new ResizeObserver(() => hold(false)) : null;
     if (held) held.observe(wsMain);
     if (document.fonts) document.fonts.ready.then(() => { if (mounted && mounted.root === root) hold(true); });
+
+    // The page moves by the least that shows a box whole, or its head where the box is taller than the screen, under the
+    // sticky bar's scroll padding and clear of the phone's download bar when it shows; it glides with motion and jumps
+    // without (a detail box, AH-148 fix round 2; a phone's tab, final pass)
+    function bring(r) {
+      const dock = root.querySelector("#dock"), pad = parseFloat(getComputedStyle(html).scrollPaddingTop) || 0;
+      const low = dock && !dock.hidden && dock.getClientRects().length ? dock.getBoundingClientRect().top : html.clientHeight;
+      const dy = r.top < pad ? r.top - pad : r.bottom > low ? Math.min(r.bottom - low, r.top - pad) : 0;
+      if (dy) scrollBy({ top: dy, behavior: moving() ? "smooth" : "instant" });
+    }
 
     function show(tab) {
       for (const t of tabs) {
@@ -332,7 +347,16 @@
       if (state === "busy") scan();
     }
     const pick = (tab) => { if (tab.getAttribute("aria-selected") === "true") show(tab); else turn(() => show(tab)); };
-    for (const t of tabs) t.addEventListener("click", () => pick(t));
+    // a tab pressed on a phone changes what lies below the filters, often below the fold, where Scanning's one run played
+    // unseen (AH-148 final pass): the page moves by the least that shows its panel's top and half a screen of it (all of
+    // Scanning), and not at all when that is already in view
+    const press = (tab) => {
+      pick(tab);
+      if (!narrow.matches) return;
+      const r = byId(tab.getAttribute("aria-controls")).getBoundingClientRect();
+      bring({ top: r.top, bottom: r.top + Math.min(r.height, html.clientHeight / 2) });
+    };
+    for (const t of tabs) t.addEventListener("click", () => press(t));
     // the arrows, Home and End move between tabs, as in any tab list (WAI-ARIA tabs; Home and End since AH-132, and End
     // no longer scrolls the page to its bottom)
     ws.querySelector(".tabs").addEventListener("keydown", (e) => {
@@ -340,7 +364,7 @@
       if (i < 0 || !Object.hasOwn(to, e.key)) return;
       e.preventDefault();
       const next = tabs[(to[e.key] + tabs.length) % tabs.length];
-      next.focus(); pick(next);
+      next.focus(); press(next);
     });
 
     for (const b of ws.querySelectorAll(".typology button")) {
@@ -443,14 +467,8 @@
       const origin = px(b.left + b.width / 2 - r.left) + " " + px(b.top + b.height / 2 - r.top);
       box.style.transformOrigin = origin;
       open = { btn, box, origin };
-      // its head on screen (AH-148 fix round 2: on a phone it opened at y -36, its title and Close above the screen): the
-      // page moves by the least that shows the whole box, or its head where the box is taller than the screen, under the
-      // sticky bar's scroll padding; it glides with motion and jumps without ...
-      // ... and clear of the phone's download bar, when it shows
-      const dock = root.querySelector("#dock"), pad = parseFloat(getComputedStyle(html).scrollPaddingTop) || 0;
-      const low = dock && !dock.hidden && dock.getClientRects().length ? dock.getBoundingClientRect().top : html.clientHeight;
-      const dy = r.top < pad ? r.top - pad : r.bottom > low ? Math.min(r.bottom - low, r.top - pad) : 0;
-      if (dy) scrollBy({ top: dy, behavior: moving() ? "smooth" : "instant" });
+      // its head on screen (AH-148 fix round 2: on a phone it opened at y -36, its title and Close above the screen)
+      bring(r);
       if (moving() && box.animate) settle(box, back && back.q < 1 ? back : null);
       // the box is a dialog that sits after the whole table in the page: without this a keyboard or screen-reader user
       // reached it only after every other row; Escape and Close bring focus back to the row (focus scrolls nothing: the
@@ -522,9 +540,25 @@
       a.addEventListener("pointerenter", point, on); a.addEventListener("focus", point, on);
       a.addEventListener("pointerleave", unpoint, on); a.addEventListener("blur", unpoint, on);
     }
+    // ... and the row's first flagged cell is brought into the table's view: on a phone the table starts scrolled to its
+    // end, so "Row 31" landed with its flagged Region a swipe away (AH-148 final pass). The least sideways scroll that
+    // shows it beside the pinned Row number; it glides with the glide's landing, and jumps after a jump (reduced motion,
+    // where the link is the browser's own)
+    const toCell = (tr, smooth) => {
+      const cell = tr.querySelector("td.flag, td.q");
+      if (!cell) return;
+      const c = cell.getBoundingClientRect(), s = scroll.getBoundingClientRect();
+      const lo = Math.max(s.left + scroll.clientLeft, tr.firstElementChild.getBoundingClientRect().right), hi = s.left + scroll.clientLeft + scroll.clientWidth;
+      const dx = c.left < lo ? c.left - lo : c.right > hi ? Math.min(c.right - hi, c.left - lo) : 0;
+      if (dx) scroll.scrollBy({ left: dx, behavior: smooth ? "smooth" : "instant" });
+    };
+    const sampled = (tr) => tr && tr.matches && tr.matches("#p-found tr[id]") && tr.getClientRects().length > 0;
+    window.addEventListener("hashchange", () => { const tr = location.hash.length > 1 ? root.querySelector("#" + CSS.escape(location.hash.slice(1))) : null; if (sampled(tr)) toCell(tr, false); }, on);
     document.addEventListener("ah:glide-end", (e) => {
       const tr = e.detail && e.detail.arrived ? e.detail.target : null;
-      if (!tr || !tr.matches || !tr.matches("#p-found tr[id]") || !moving() || !tr.getClientRects().length) return;
+      if (!sampled(tr)) return;
+      toCell(tr, moving());
+      if (!moving()) return;
       if (flash) flash.cancel();
       const m = place(tr);
       flash = m.animate([{ opacity: 0, easing: EASE }, { opacity: 1, offset: 0.25 }, { opacity: 1, offset: 0.6, easing: EASE }, { opacity: 0 }], { duration: 600 });

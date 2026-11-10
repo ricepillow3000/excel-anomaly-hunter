@@ -73,6 +73,7 @@
             <button type="button" data-kind="keying" aria-pressed="false">Typing slips<span class="n" data-n="2" data-after="0">2</span></button>
             <button type="button" data-kind="label" aria-pressed="false">Same word, typed two ways<span class="n" data-n="1" data-after="0">1</span></button>
             <button type="button" data-kind="time" aria-pressed="false">Odd jumps over time<span class="n" data-n="5" data-after="4">5</span></button>
+            <p class="overlap">A row can be flagged by more than one type.</p>
             <p class="key"><span><i aria-hidden="true"></i>Probably wrong: <b class="kcount" data-n="3" data-after="0">3</b></span><span><i class="q" aria-hidden="true"></i>Worth a check: <b class="kcount" data-n="4" data-after="4">4</b></span></p>
           </nav>
 
@@ -110,10 +111,10 @@
                 <div class="m-head"><b>Row 11 · Probably wrong</b><button type="button" class="m-close" aria-label="Close">Close</button></div>
                 <dl>
                   <dt>Checks</dt><dd>Totals that don't add up, typing slips</dd>
-                  <dt>Rule</dt><dd>Total = Units × UnitCost</dd>
-                  <dt>Found</dt><dd>-5 × 2.99 = -14.95, but Total is 170.43</dd>
+                  <dt>Rule</dt><dd><span class="nb">Total = Units × UnitCost</span></dd>
+                  <dt>Found</dt><dd><span class="nb">-5 × 2.99 = -14.95</span>, but Total is 170.43</dd>
                   <dt>Usual limit</dt><dd>Units 0 or more</dd>
-                  <dt>Proposed fix</dt><dd>Units 57, from the row's own numbers: 170.43 ÷ 2.99</dd>
+                  <dt>Proposed fix</dt><dd>Units 57, from the row's own numbers: <span class="nb">170.43 ÷ 2.99</span></dd>
                 </dl>
                 <p class="m-said">In the pane: "Total 170.43 does not add up: Units × UnitCost = -14.95
 Units is -5, below its usual limit of 0"</p>
@@ -122,10 +123,10 @@ Units is -5, below its usual limit of 0"</p>
                 <div class="m-head"><b>Row 22 · Probably wrong</b><button type="button" class="m-close" aria-label="Close">Close</button></div>
                 <dl>
                   <dt>Checks</dt><dd>Totals that don't add up, typing slips, odd jumps over time</dd>
-                  <dt>Rule</dt><dd>Total = Units × UnitCost</dd>
-                  <dt>Found</dt><dd>7777 × 1.99 = 15476.23, but Total is 83.58</dd>
+                  <dt>Rule</dt><dd><span class="nb">Total = Units × UnitCost</span></dd>
+                  <dt>Found</dt><dd><span class="nb">7777 × 1.99 = 15476.23</span>, but Total is 83.58</dd>
                   <dt>Usual limit</dt><dd>Units 105 or less</dd>
-                  <dt>Proposed fix</dt><dd>Units 42, from the row's own numbers: 83.58 ÷ 1.99</dd>
+                  <dt>Proposed fix</dt><dd>Units 42, from the row's own numbers: <span class="nb">83.58 ÷ 1.99</span></dd>
                 </dl>
                 <p class="m-said">In the pane: "Total 83.58 does not add up: Units × UnitCost = 15476.23
 Units is 7777, above its usual limit of 105
@@ -242,7 +243,7 @@ Units jumped sharply near 2026-01-26"</p>
 
   <section class="section band-dark" id="checks" data-band aria-labelledby="checks-title">
     <div class="wrap cols" data-reveal-group>
-      <h2 class="sec-title reveal-item lift" data-depth="0.03" id="checks-title">Every row, held to the same standard</h2>
+      <h2 class="sec-title reveal-item" data-depth="0.03" id="checks-title">Every row, held to the same standard</h2>
       <p class="fact reveal-item">8 checks · 7 rows flagged in the sample above</p>
       <p class="sec-lede reveal-item">Clear-cut errors are caught by rules and the rest by statistics. Each flag gets one plain sentence.</p>
       <!-- the third column is true of the sample sheet above, row by row, or says it has none (test_site_sample.py) -->
