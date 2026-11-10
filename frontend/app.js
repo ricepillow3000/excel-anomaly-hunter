@@ -42,7 +42,7 @@ if (typeof Office !== "undefined") {
     $("fix-dismiss").onclick = act(dismissFix, CARD);
     $("fix-next").onclick = act(nextFix, CARD);
     $("fix-ask").onclick = askFix;
-    // AH-149: a request to start from fills the box and sends nothing; Ask AI sends it
+    // AH-149: a starter request fills the box and sends nothing; Ask AI sends it
     for (const b of document.querySelectorAll("#fix-tries .try")) b.addEventListener("click", () => { $("fix-intent").value = b.textContent; $("fix-intent").focus(); });
     $("odd-check").onclick = act(checkWords);
     // only Ctrl+Enter (Cmd+Enter on a Mac) is ours; every other key types, Enter makes a new line. The old DOM0
