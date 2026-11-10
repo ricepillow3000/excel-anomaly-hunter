@@ -1,6 +1,6 @@
 import { EXCEL_ERRORS } from "../constants/index.js";
 import { state } from "../hooks/use-state.js";
-import { $ } from "../utils/dom.js";
+import { $, show } from "../utils/dom.js";
 import { cellAt, colLetter, readAs, sameRow } from "../utils/sheet.js";
 import { setApplied } from "../components/fix-preview.js";
 import { busy } from "../components/progress.js";
@@ -246,8 +246,21 @@ export async function checkFix(f, changes) {
 const remembered = (u, columns, startCol) => u.changes.map((c, k) => [columns[cellAt(c.cell).col - startCol], u.writes[k].value, c.new])
   .filter(([h]) => String(h ?? "").trim());
 
+// AH-149 review: a failed Accept or Undo is said once, in the card's notice box (a hairline box and a square). It was
+// said on the status line and, thrown on to act(), again in #notice; act() still puts the buttons back. The next try
+// clears only this failure, never a helpline message (AH-125) that sits beside an Undo
+function failed(f, e, lead) {
+  const words = plainError(e, lead);
+  if (state.fix !== f) return;
+  $("fix-status").textContent = "";
+  $("fix-care").textContent = f.failed = words;
+  show("fix-care");
+}
+const tryAgain = (f) => $("fix-care").textContent === f.failed && show("fix-care", false);
+
 export async function applyFix(f, changes, sheet) { // the fix, its changes and sheet as they were when Accept was clicked
   if (state.undos[f.i]) return;
+  tryAgain(f);
   $("fix-apply").disabled = true;
   const status = (t) => state.fix === f && ($("fix-status").textContent = t);
   try {
@@ -277,8 +290,7 @@ export async function applyFix(f, changes, sheet) { // the fix, its changes and 
     if (state.fix === f) setApplied(true);
   } catch (e) {
     if (state.fix === f) $("fix-apply").disabled = false;
-    status(plainError(e, "Accept failed"));
-    throw e;
+    return failed(f, e, "Accept failed");
   }
   status("Accepted. Checking the row again…");
   let v;
@@ -301,6 +313,7 @@ export async function applyFix(f, changes, sheet) { // the fix, its changes and 
 export async function undoFix(f) {
   const u = state.undos[f.i];
   if (!u) return;
+  tryAgain(f);
   try {
     // Undo only types into the same record it fixed: the row's other cells must still be what the scan read (a sort or
     // an inserted row moves another record under these addresses), and each fixed cell must still hold exactly what
@@ -336,7 +349,6 @@ export async function undoFix(f) {
       $("fix-status").textContent = "Undone. The cells are back to what they were.";
     }
   } catch (e) {
-    if (state.fix === f) $("fix-status").textContent = plainError(e, "Undo failed");
-    throw e;
+    failed(f, e, "Undo failed");
   }
 }
