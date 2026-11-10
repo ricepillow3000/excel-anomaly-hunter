@@ -105,7 +105,7 @@ def test_what_each_case_study_says_is_wrong_is_read_from_its_own_excerpt():
     cols, rows = excerpt("mad-men-div0")
     y, s = cols.index("Years Since"), cols.index("Score/Y")
     assert [n for n, r in enumerate(rows, 2) if r[s] == "#DIV/0!"] == [n for n, r in enumerate(rows, 2) if r[y] == "0"] == [119, 120, 121]
-    assert "Years Since is 0" in text(found["mad-men-div0"]) and "unknown" in text(found["mad-men-div0"])
+    assert "which is 0 for all three" in text(found["mad-men-div0"]) and "unknown" in text(found["mad-men-div0"])
     # Daily Show: the lowercase "media" rows, and Media the usual spelling
     cols, rows = excerpt("daily-show-media")
     g = cols.index("Group")

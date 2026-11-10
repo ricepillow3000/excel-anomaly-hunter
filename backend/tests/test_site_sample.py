@@ -386,7 +386,7 @@ def test_the_checks_table_says_what_the_sample_shows_or_that_it_has_none():
     assert m and [int(x) for x in re.findall(r"\d+", m[1])] == list(CYCLES), what["Dates and jumps"]
     assert "Repeating cycles" not in what["Dates and jumps"]
     # AH-135: the site's own names for three checks in plain words (Temporal, Completeness, Plausibility were jargon)
-    assert list(checks) == ["Reconciliation", "Keying errors", "Consistency", "Dates and jumps", "Missing values", "Numbers that can't be right", "Fairness", "Ask AI (optional)"]
+    assert list(checks) == ["Reconciliation", "Keying errors", "Consistency", "Dates and jumps", "Missing values", "Numbers that can't be right", "Fairness", "Ask AI, optional"]
     assert root.one("p", cls="fact").text() == f"{len(checks)} checks · {len(flagged)} rows flagged in the sample above"
     kind = {"Reconciliation": "recon", "Keying errors": "keying", "Consistency": "label", "Dates and jumps": "time"}
     for name, cell in checks.items():
@@ -420,7 +420,7 @@ def test_the_checks_table_says_what_the_sample_shows_or_that_it_has_none():
     fair = checks["Fairness"].one("span", cls="other-sheet").one("span", cls="say").text()
     assert fair in said and fair.split(":")[0] not in COLUMNS, f"{fair} is not what the engine says: {said}"
     # the rest are general forms on another sheet, not claims about this one (a change here is a change to re-check by hand)
-    assert [checks[k].one("span", cls="other-sheet").text() for k in ("Missing values", "Numbers that can't be right", "Ask AI (optional)")] == [
+    assert [checks[k].one("span", cls="other-sheet").text() for k in ("Missing values", "Numbers that can't be right", "Ask AI, optional")] == [
         "On another sheet: #N/A, a repeated row", "On another sheet: Month 13, 99999", 'A request: "Use the usual spelling"']
     # ...and those other-sheet examples are the engine's too: a small sheet with each one planted gets each one flagged
     # for it (they were only words pinned here, AH-129)

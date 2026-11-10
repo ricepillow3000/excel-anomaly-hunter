@@ -123,8 +123,8 @@
     return end;
   }
 
-  // The phone's download bar (AH-126): on a phone only, once the hero's download has scrolled off the top and while the
-  // download section is not on screen, its hidden goes and it rises in from the bottom edge (transform and opacity, by
+  // The phone's download bar (AH-126): on a phone only, once the hero's download has scrolled off the top and before the
+  // download section comes on screen, its hidden goes and it rises in from the bottom edge (transform and opacity, by
   // the clock, nothing under reduced motion); it hides at once. Two IntersectionObservers, never a scroll listener, so
   // nothing runs while the page is still. Returns what lets it go.
   function dock(root) {
@@ -134,16 +134,22 @@
     // the contact form and every form on the page count as "near" too, and so does focus inside a form: the bar lay over
     // the contact form's own button (AH-138 review)
     const nears = new Set([dl, ...root.querySelectorAll("#contact, form")]), seen = new Set();
-    let past = false, near = false, typing = false, rise = null;
+    let past = false, near = false, beyond = false, typing = false, rise = null;
     const set = () => {
-      const on = phone.matches && past && !near && !typing;
+      const on = phone.matches && past && !near && !beyond && !typing;
       if (on === !bar.hidden) return;
       bar.hidden = !on;
       if (rise) { rise.cancel(); rise = null; }
       if (on && !still && bar.animate) rise = bar.animate([{ transform: "translate3d(0, 100%, 0)", opacity: 0 }, { transform: "translate3d(0, 0, 0)", opacity: 1 }], { duration: ms("--fill-dur", 350), easing: tokens.getPropertyValue("--ease-out").trim() || "ease-out" });
     };
     const io = new IntersectionObserver((entries) => {
-      for (const e of entries) if (e.target === cta) past = !e.isIntersecting && e.boundingClientRect.top < 0; else if (e.isIntersecting) seen.add(e.target); else seen.delete(e.target);
+      // past the download section (code signing, the footer) it stays down: it came back there over the last screens
+      // (AH-148 fix round 2), where the download it points to is behind the reader
+      for (const e of entries) {
+        if (e.target === cta) past = !e.isIntersecting && e.boundingClientRect.top < 0;
+        else if (e.isIntersecting) seen.add(e.target); else seen.delete(e.target);
+        if (e.target === dl) beyond = !e.isIntersecting && e.boundingClientRect.top < 0;
+      }
       near = seen.size > 0;
       set();
     });
@@ -194,6 +200,8 @@
       shade.setAttribute("data-turn-shade", "");
       copy.append(shade);
       panel.parentElement.append(copy);
+      const from = panel.querySelector(".scroll"), to = copy.querySelector(".scroll"); // a clone starts unscrolled
+      if (from && to) to.scrollLeft = from.scrollLeft;
       apply();
       // a taller new panel (After fixes after Scanning) showed its lower rows under the copy before the turn reached them
       // (AH-138 review): the copy, the panel's own paper, grows to cover it; the sheet still clips it
@@ -271,6 +279,32 @@
       } else later(full, 1100);
     }
 
+    // On a phone each table starts scrolled to its end, where the flagged columns are (AH-148 fix round 2, styles.css):
+    // at load, each time a tab shows its table, and when the screen turns narrow
+    const narrow = matchMedia("(max-width: 760px)");
+    const toFlags = () => { if (narrow.matches) for (const sc of ws.querySelectorAll(".panel:not([hidden]) .scroll")) sc.scrollLeft = sc.scrollWidth; };
+    toFlags();
+    narrow.addEventListener("change", toFlags, on);
+    // Every tab's panel as tall as the tallest, so the sheet keeps its height and "See every check" its place from tab
+    // to tab (AH-148 fix round 2: After fixes, with its verdict and note, was 110 px taller than the findings). Measured
+    // with each panel shown in turn inside one task (nothing is drawn between), again when the sheet's width changes
+    // or the font arrives
+    const wsMain = ws.querySelector(".ws-main"), panels = [...wsMain.querySelectorAll(":scope > .panel")];
+    let heldAt = -1;
+    const hold = (force) => {
+      const w = wsMain.clientWidth;
+      if (!force && w === heldAt) return;
+      heldAt = w;
+      wsMain.style.setProperty("--panel-h", "0px");
+      let tall = 0;
+      for (const p of panels) { const was = p.hidden; p.hidden = false; tall = Math.max(tall, p.getBoundingClientRect().height); p.hidden = was; }
+      wsMain.style.setProperty("--panel-h", tall + "px");
+    };
+    hold(true);
+    const held = window.ResizeObserver ? new ResizeObserver(() => hold(false)) : null;
+    if (held) held.observe(wsMain);
+    if (document.fonts) document.fonts.ready.then(() => { if (mounted && mounted.root === root) hold(true); });
+
     function show(tab) {
       for (const t of tabs) {
         const sel = t === tab;
@@ -278,6 +312,7 @@
         t.tabIndex = sel ? 0 : -1;
         byId(t.getAttribute("aria-controls")).hidden = !sel;
       }
+      toFlags();
       markTo(tab, true);
       const state = tab.id.slice(2);
       ws.dataset.state = state;
@@ -377,25 +412,49 @@
       if (same) return;
       const back = leaving && leaving.box === box ? poseNow(leaving.copy) : null;
       unleave();
-      // under its row, or above it where it would pass the findings' bottom: under them, rows 22 to 57 covered the
-      // caption and "See every check", whose clicks then did nothing (AH-132). Taller than the room on either side (a
-      // narrow phone), it sits on the findings' bottom
-      // The box is placed in .ws-main, which on a phone holds the swipe hint above the findings: measured from the
-      // findings, every box there sat the hint's height (31 px) too high, and row 22's rose past the findings once the
-      // pinned Finding made its rows taller (AH-148 fix round 1)
-      const row = btn.closest("tr").getBoundingClientRect(), sheet = main.getBoundingClientRect();
+      // Never over the row it explains (AH-148 fix round 2: row 22's box lay on its flagged cells at 1440 px, and on a
+      // phone it rose past the screen's top): under the row, or above it where it would pass the findings' bottom (under
+      // them, rows 22 to 57 covered the caption and "See every check", whose clicks then did nothing, AH-132), or, with
+      // room on neither side, beside the row's flagged cells, level with the row, in the widest stretch of the findings
+      // they leave. Only where even that is too narrow does it sit on the findings' bottom, as it did before.
+      // Positions are read from the findings, then set in .ws-main's own (on a phone it holds the swipe hint above them,
+      // AH-148 fix round 1)
+      const tr = btn.closest("tr"), row = tr.getBoundingClientRect(), sheet = main.getBoundingClientRect();
+      box.style.left = box.style.width = "";
       box.hidden = false;
-      const h = box.offsetHeight, under = row.bottom - sheet.top, over = row.top - sheet.top - h, shift = sheet.top - box.offsetParent.getBoundingClientRect().top;
-      box.style.top = shift + (under + h <= sheet.height ? under : over >= 0 ? over : Math.max(0, sheet.height - h)) + "px";
+      const at = box.offsetParent.getBoundingClientRect(); // a hidden box has none
+      let h = box.offsetHeight, top = row.bottom - sheet.top;
+      if (h > sheet.bottom - row.bottom) {
+        const cells = [...tr.querySelectorAll("td.flag, td.q")].map((c) => c.getBoundingClientRect()), gap = parseFloat(getComputedStyle(box).left) || 16;
+        const left = Math.min(...cells.map((c) => c.left)), right = Math.max(...cells.map((c) => c.right));
+        const roomL = left - sheet.left - 2 * gap, roomR = sheet.right - right - 2 * gap, room = Math.min(box.offsetWidth, Math.max(roomL, roomR));
+        if (h <= row.top - sheet.top) top = row.top - sheet.top - h;
+        else if (cells.length && room >= 280) {
+          box.style.width = room + "px";
+          box.style.left = (roomR >= roomL ? sheet.right - gap - room : sheet.left + gap) - at.left + "px";
+          h = box.offsetHeight;
+          top = Math.min(Math.max(0, row.top + row.height / 2 - h / 2 - sheet.top), sheet.height - h);
+        } else top = Math.max(0, sheet.height - h);
+      }
+      box.style.top = sheet.top - at.top + top + "px";
       btn.setAttribute("aria-expanded", "true");
       const b = btn.getBoundingClientRect(), r = box.getBoundingClientRect(), px = (v) => Math.round(v * 10) / 10 + "px";
       const origin = px(b.left + b.width / 2 - r.left) + " " + px(b.top + b.height / 2 - r.top);
       box.style.transformOrigin = origin;
       open = { btn, box, origin };
+      // its head on screen (AH-148 fix round 2: on a phone it opened at y -36, its title and Close above the screen): the
+      // page moves by the least that shows the whole box, or its head where the box is taller than the screen, under the
+      // sticky bar's scroll padding; it glides with motion and jumps without ...
+      // ... and clear of the phone's download bar, when it shows
+      const dock = root.querySelector("#dock"), pad = parseFloat(getComputedStyle(html).scrollPaddingTop) || 0;
+      const low = dock && !dock.hidden && dock.getClientRects().length ? dock.getBoundingClientRect().top : html.clientHeight;
+      const dy = r.top < pad ? r.top - pad : r.bottom > low ? Math.min(r.bottom - low, r.top - pad) : 0;
+      if (dy) scrollBy({ top: dy, behavior: moving() ? "smooth" : "instant" });
       if (moving() && box.animate) settle(box, back && back.q < 1 ? back : null);
       // the box is a dialog that sits after the whole table in the page: without this a keyboard or screen-reader user
-      // reached it only after every other row; Escape and Close bring focus back to the row
-      box.querySelector(".m-close").focus();
+      // reached it only after every other row; Escape and Close bring focus back to the row (focus scrolls nothing: the
+      // line above has placed the page)
+      box.querySelector(".m-close").focus({ preventScroll: true });
     }
     for (const btn of ws.querySelectorAll(".rowbtn")) {
       btn.addEventListener("click", (e) => { e.stopPropagation(); openMatrix(btn); });
@@ -412,7 +471,7 @@
 
     const unask = checksum(root), undock = dock(root), unproof = proof(root, on), unmark = rowMark(root, ws, on);
     copier(root, on);
-    mounted = { root, off: () => { if (run) run(); bye.abort(); unload(); unask(); undock(); unproof(); unmark(); for (const stop of ticks.values()) stop(); if (turning) turning(); unleave(); if (sized) sized.disconnect(); if (slide) slide.cancel(); mounted = null; } };
+    mounted = { root, off: () => { if (run) run(); bye.abort(); unload(); unask(); undock(); unproof(); unmark(); for (const stop of ticks.values()) stop(); if (turning) turning(); unleave(); if (sized) sized.disconnect(); if (held) held.disconnect(); if (slide) slide.cancel(); mounted = null; } };
   }
 
   // The proof strip's figures count up once, as each rises into view (AH-148, John: "alive", "fun to scroll"): "199 of

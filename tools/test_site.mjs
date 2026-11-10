@@ -596,7 +596,7 @@ function woff2(file) {
   assert.ok(cap.split(/[.:;] /).length <= 3 && cap.split(". ").length <= 2 && !/test|source/.test(cap), `the sample's caption is not two short plain sentences: "${cap}"`);
   for (const fact of ["engine's own", "level 5 of 10", "recommended", "Click a flagged row", "the row's own numbers", "the column's usual spelling"]) assert.ok(cap.includes(fact), `the sample's caption no longer says "${fact}"`);
   for (const p of PAGES) assert.ok(!html[p].includes("≠"), `${p}: a "≠" a reader must know the sign to read`);
-  assert.ok(!/John's relay/.test(home) && (home.match(/Arcas's own small server on Cloudflare, run by John, its maker/g) || []).length === 3, "the home page says \"John's relay\" where a stranger reads it");
+  assert.ok(!/John's relay/.test(home) && (home.match(/John's server on Cloudflare/g) || []).length === 3 && /John Nguyen, who makes and runs Arcas/.test(home), "the home page says \"John's relay\" where a stranger reads it");
   for (const p of ["index.html", "support.html"]) assert.ok(!/faq-head/.test(html[p]), `${p}: the questions still have a "Question / Answer" bar`);
   assert.ok(!/faq-head/.test(css), "styles.css: the questions' header bar is still styled");
   const after = [...css.matchAll(/([^{}]*\.faq[^{}]*summary::after[^{}]*)\{([^}]*)\}/g)];
