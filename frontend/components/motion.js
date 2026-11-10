@@ -96,8 +96,9 @@ export function stagger(els) {
   [...els].forEach((el, k) => el.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 210, delay: Math.min(k, 8) * 30, easing: EASE, fill: "backwards" }));
 }
 
-// The summary's numbers count up once (AH-149): 700 ms, ending on the number itself. Each number is a .count whose own
-// text stays the final number (styles: the count is drawn over it from a counter)
+// The summary's flagged numbers count up once (AH-149): 700 ms, ending on the number itself. Each is a .count whose own
+// text stays the final number (styles: the count is drawn over it from a counter, ending where it ends, so the words
+// after it never move)
 export function countUp(el) {
   if (still()) return;
   for (const c of el.querySelectorAll(".count")) {

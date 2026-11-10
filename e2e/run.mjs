@@ -171,6 +171,18 @@ if (mode === "flow") {
     window.__slow = 150; // an Excel that takes its time, so every step of the scan gets frames of its own
     new MutationObserver((_, mo) => { mo.disconnect(); __arrive = [...document.getElementById("flagged-list").children].slice(0, 12).map((li) => li.getAnimations().map((a) => [a.effect.getTiming().delay, Object.keys(a.effect.getKeyframes()[0]).filter((k) => !["offset", "easing", "composite", "computedOffset"].includes(k))])); })
       .observe(document.getElementById("flagged-list"), { childList: true }); });
+  // AH-149 review: every frame the summary counts, its words as drawn (a counting number is its counter's --n) and how wide
+  // each drawn number is beside the number it becomes. The total was counted too and drew "0 of     0 rows look wrong."
+  await page.evaluate(() => { window.__counted = [];
+    const f = () => { const s = document.getElementById("summary");
+      if (s?.querySelector(".counting")) {
+        const probe = (t) => { const p = s.appendChild(Object.assign(document.createElement("span"), { textContent: t })); const w = p.getBoundingClientRect().width; p.remove(); return w; };
+        const nums = [...s.querySelectorAll(".count.counting")].map((c) => [getComputedStyle(c).getPropertyValue("--n").trim(), c.getBoundingClientRect().width]);
+        __counted.push({ drawn: [...s.childNodes].map((n) => (n.classList?.contains("counting") ? getComputedStyle(n).getPropertyValue("--n").trim() : n.textContent)).join(""),
+          wider: nums.filter(([v, w]) => probe(v) > w + 0.5).map(([v, w]) => `${v} in ${w.toFixed(1)}`) });
+      }
+      if (__counted.length < 200 && !window.__stopTops) requestAnimationFrame(f); };
+    requestAnimationFrame(f); });
   await page.click("#scan");
   ok(await page.evaluate(() => document.getElementById("clear-highlights").disabled), "buttons are disabled while it works");
   // AH-94: from the click until the results render, the scan skeleton stands where they land (in place of the empty
@@ -201,7 +213,15 @@ if (mode === "flow") {
   { const tn = await page.evaluate(() => ["#flagged-list .row-head", "#summary", "#list-title", "#fix-title", "#busy-line", "#scan", "#clear-highlights"].map((q) => [q, document.querySelector(q) ? getComputedStyle(document.querySelector(q)).fontVariantNumeric : "missing"]));
     ok(tn.every(([, v]) => v.includes("tabular-nums")), "AH-149: every number that changes or lines up is in figures of one width - " + JSON.stringify(tn)); }
   { const count = await page.evaluate(() => [...document.querySelectorAll("#summary .count")].map((c) => c.textContent));
-    ok(count.join() === "5,300", "AH-149: the summary's numbers are their own, to count up, and its text is the result all along - " + count); }
+    ok(count.join() === "5", "AH-149: the summary's flagged number is its own, to count up, and its text is the result all along - " + count);
+    const frames = await page.evaluate(() => __counted);
+    ok(frames.length >= 5 && frames.every((f) => / of 300 rows look wrong\.$/.test(f.drawn) && !f.wider.length),
+      `AH-149 review: while the summary counts up, the total is the sheet's 300 rows in every frame, and no drawn number is wider than the one it becomes - ${frames.length} frames, ${JSON.stringify(frames.slice(0, 3))}`); }
+  { const h = await page.evaluate(() => ({ hint: document.getElementById("strength-hint").textContent, tested: document.getElementById("strength-measured")?.textContent,
+      open: document.getElementById("strength-tested")?.open, summary: document.querySelector("#strength-tested summary")?.textContent })); // null-safe: a pane without them fails by name
+    ok(h.hint === "Recommended. Plus unusual mixes of values across columns." && !h.open && h.summary === "How we tested this level"
+      && /^We tested it on \d+ practice sheets with \d+ mistakes hidden in them\. It found .* rows that were fine/.test(h.tested),
+      "AH-149 review: under the slider, what the level does in one short line; what it did on the bench under \"How we tested this level\", closed - " + JSON.stringify(h)); }
   ok((await page.getAttribute("#strength", "aria-valuetext")) === "5 of 10, Recommended", "AH-149: the slider tells a screen reader its level's word - " + (await page.getAttribute("#strength", "aria-valuetext")));
   ok(since(c0) === "/scan" && calls[c0][1].strength === 5 && calls[c0][1].power_bi === false, "Find problems sends exactly one /scan, at the slider's level - " + since(c0));
   { const m = await matchesEngine(); ok(m.ok, "the list is exactly what the engine answered: each flagged row, its severity in words and its reason - " + m.why); }
@@ -232,7 +252,7 @@ if (mode === "flow") {
     await shot("podium-row");
     ok(before[0] === "matrix(0, 0, 0, 1, 0, 0)" && after[0] === "matrix(1, 0, 0, 1, 0, 0)" && scaleOf(before[1]) === 1 && scaleOf(after[1]) > 1.01 && +after[2] === 1 && after[3] === "2" && after[4] === before[4],
       "a hovered row: the fill sweeps from scaleX(0) to scaleX(1), the row lifts above its neighbours on a shadow, its words unchanged - " + JSON.stringify([before.slice(0, 4), after.slice(0, 4)]));
-    await page.mouse.move(1, 1); await page.focus("#strength"); await page.keyboard.press("Tab"); await page.waitForTimeout(600);
+    await page.mouse.move(1, 1); await page.focus("#strength-tested summary"); await page.keyboard.press("Tab"); await page.waitForTimeout(600); // from the control before the list: since the AH-149 review, "How we tested this level"
     const keyed = await page.evaluate(() => { const b = document.activeElement; return [b.matches("#flagged-list button:focus-visible"), getComputedStyle(b, "::before").transform, getComputedStyle(b).transform]; });
     ok(keyed[0] && keyed[1] === "matrix(1, 0, 0, 1, 0, 0)" && scaleOf(keyed[2]) > 1.01, "keyboard focus gets the same fill and lift - " + keyed);
     await page.evaluate(() => document.activeElement.blur()); }
@@ -961,6 +981,12 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
     await failing(DROPPED, async () => { await page.route("**/odd-text", fail, { times: 1 }); await page.click("#odd-check"); await idle(); });
     ok((await text("#odd-list")) === "AI could not check: " + words && !(await page.isDisabled("#odd-check")), `Check words when ${how}: said in plain words - ` + (await text("#odd-list")));
   }
+  // AH-149 review: "AI could not check" was set at 15 px among 12 px hints and read as a heading; and the empty
+  // progress-and-notice line held a band of space over the summary once Check words had cleared "Done"
+  { const m = await page.evaluate(() => ({ odd: getComputedStyle(document.querySelector("#odd-list li")).fontSize, body: getComputedStyle(document.body).fontSize,
+      status: document.getElementById("status").getBoundingClientRect().height, notice: document.getElementById("notice").textContent }));
+    ok(m.odd === m.body, `Check words' answer, or why it could not check, is at body size - ${m.odd} (body ${m.body})`);
+    ok(m.notice === "" && m.status < 1, `with nothing to say and nothing running, the progress and notice line holds no space over the summary - ${m.status} px`); }
 }
 
 if (mode === "nokey") {

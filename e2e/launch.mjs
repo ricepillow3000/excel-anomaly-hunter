@@ -51,6 +51,17 @@ for (const width of [320, 360, 500]) { // Office's task pane: 320 px at its narr
   ok(m.scanBottom <= m.fold, `${width}px: "Find problems" button above the fold (bottom ${Math.round(m.scanBottom)} of ${m.fold} px)`);
   ok(m.noAlt === 0, `${width}px: every image has alt text (${m.noAlt} without)`);
   ok(m.unnamed.length === 0, `${width}px: every visible control has a name - ${m.unnamed}`);
+  // AH-149 review: "Recommended" stood under the slider's left side, a band of empty space stood over the first view,
+  // and each option's row was 80 px tall
+  await page.waitForFunction(() => [...document.querySelectorAll("[data-enter]")].every((e) => !e.style.opacity && !e.style.transform), null, { timeout: 5000 });
+  const lay = await page.evaluate(() => {
+    const s = document.getElementById("strength").getBoundingClientRect(), w = document.querySelector(".slider-scale span:nth-child(2)").getBoundingClientRect();
+    return { tick: s.left + s.width / 2, word: w.left + w.width / 2, status: document.getElementById("status").getBoundingClientRect().height,
+      rows: [...document.querySelectorAll(".settings-band details.more")].map((d) => Math.round(d.getBoundingClientRect().height)) };
+  });
+  ok(Math.abs(lay.word - lay.tick) <= 12, `${width}px: "Recommended" is centred under the slider's 5 tick (word ${lay.word.toFixed(1)}, tick ${lay.tick.toFixed(1)})`);
+  ok(lay.status < 1, `${width}px: before the first scan, with nothing to say, the progress and notice line holds no space (${lay.status} px)`);
+  ok(lay.rows.length === 4 && lay.rows.every((h) => h >= 44 && h <= 52), `${width}px: each closed option row is 44 to 52 px tall - ${lay.rows}`);
   ok(errors.length === 0, `${width}px: no page errors, unhandled rejections or uncaught errors ${errors}`);
   await page.close();
 }

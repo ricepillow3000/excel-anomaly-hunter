@@ -32,6 +32,7 @@ export async function runScan(auto, held = false) { // auto === false: the re-ch
   state.fix = null;
   if (state.view !== "results") only(state.lastScan ? "results" : "empty-state"); // no fix view left without its row
   scanning(true);
+  $("main-ui").toggleAttribute("data-held", true); // the progress and then "Done" take one held space till the action ends (use-action.js)
   try {
     await scan(auto, held, t0);
   } finally {

@@ -13,8 +13,10 @@ import { countUp, stagger } from "../components/motion.js";
 export function renderResults(rows, s, fair) {
   const flagged = flaggedRows(rows);
   state.order = listOrder(rows, state.decided); // the list keeps this order while rows get fixed or dismissed
-  // each number its own .count, so it can count up (AH-149); a scan that found nothing ends on a check mark
-  $("summary").replaceChildren(...summaryOf(rows).split(/(\d(?:[\d,]*\d)?)/).map((t, k) => (k % 2 ? Object.assign(document.createElement("span"), { className: "count", textContent: t }) : t)));
+  // each flagged number its own .count, so it can count up (AH-149); the rows' total ("of 300 rows") is itself from the
+  // first frame: counted up too, it read "0 of 0 rows look wrong." (AH-149 review). Nothing found ends on a check mark
+  const parts = summaryOf(rows).split(/(\d(?:[\d,]*\d)?)/);
+  $("summary").replaceChildren(...parts.map((t, k) => (k % 2 && !parts[k + 1].startsWith(" rows") ? Object.assign(document.createElement("span"), { className: "count", textContent: t }) : t)));
   $("summary").classList.toggle("tick", !flagged.length);
   countUp($("summary"));
   const counts = flagged.reduce((c, r) => ((c[r.severity] = (c[r.severity] || 0) + 1), c), {});

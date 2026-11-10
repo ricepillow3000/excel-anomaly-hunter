@@ -27,7 +27,6 @@ export async function openFix(i, selectInSheet, from = null) { // from: the list
   const r = state.lastRows[i], u = state.undos[i]; // u: its fix was accepted - the card offers Undo
   if (r && !SEV[r.severity] && !u && state.decided[i] === "fixed") return selectFixed(i); // fixed before: nothing to undo here
   if (!r || (!SEV[r.severity] && !u)) return;
-  busy("Opening row…");
   const f = (state.fix = { i, sheet, changes: [], calc: null });
   const at = from?.getBoundingClientRect();
   await morph(from?.querySelector(".row-head"), () => {
@@ -43,6 +42,7 @@ export async function openFix(i, selectInSheet, from = null) { // from: the list
     $("fix-changes").innerHTML = "";
     $("fix-explanation").textContent = "";
     only("fix-view");
+    busy("Opening row…"); // over the card, in the space it holds: said over the list, it pushed the list down as it left
     // the card turns in like a page, here and on Next row; from a row of the list, hinged at that row's height
     const view = $("fix-view");
     turnIn(view, at ? at.top + at.height / 2 - view.getBoundingClientRect().top : null);

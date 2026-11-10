@@ -12,6 +12,9 @@ export const act = (fn, scope = "#main-ui") => async (...args) => {
   state.working = true;
   const off = [...document.querySelectorAll(`${scope} button`)];
   off.forEach((b) => (b.disabled = true)); // the slider stays live: it queues its own re-check
+  // the line it said something on keeps its place while this runs, so what it says next lands where that was (styles #status)
+  const main = document.getElementById("main-ui");
+  main.toggleAttribute("data-held", !!document.getElementById("notice").textContent);
   notice("");
   try {
     await fn(...args);
@@ -19,6 +22,7 @@ export const act = (fn, scope = "#main-ui") => async (...args) => {
     notice(plainError(e)); // our own sentence, or plain words for Excel's code (AH-110); the detail goes to the console
   } finally {
     state.working = false;
+    main.removeAttribute("data-held");
     busy(null);
     off.forEach((b) => (b.disabled = false));
     setAi(state.aiAvailable); // Ask AI stays off without a key
