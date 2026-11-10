@@ -25,6 +25,17 @@
   --gold: #997D3A;     /* rules and strokes on paper only, or text of 24px+ */
   --gold-hi: #C9A85A;  /* gold on navy, any size (7.6:1) */
   --high: #ffc7ce; --medium: #ffeb9c; --low: #ffffcc; /* the same fills the sheet gets - never recolour without the engine */
+  /* AH-149: every tint is mixed in OKLCH from the hex tokens above, so its steps are even steps of lightness: paper to
+     the hairline's grey in four (the loading blocks, the scan's bars, a pressed summary, the hairline itself), and the
+     shadows, the grid and a disabled control as the token at part strength (a mix with transparent keeps its hue: navy
+     mixed with paper in OKLCH turned green halfway). Excel's three fills stay as Excel draws them */
+  --tint-1: color-mix(in oklch, var(--rule) 25%, var(--paper));
+  --tint-2: color-mix(in oklch, var(--rule) 50%, var(--paper));
+  --tint-3: color-mix(in oklch, var(--rule) 75%, var(--paper));
+  --shade: color-mix(in oklch, var(--navy) 50%, transparent);
+  --shade-soft: color-mix(in oklch, var(--navy) 14%, transparent);
+  --off-navy: color-mix(in oklch, var(--navy) 45%, transparent);
+  --off-wine: color-mix(in oklch, var(--wine) 45%, transparent);
 
   --sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
   /* a 1.25 type scale from a 14px body, never under 12px (AH-116: the limits table's heads were 10.5) */
@@ -35,8 +46,8 @@
   --cols: 4; --gutter: 12px; --margin: 16px;
   --ease: cubic-bezier(.16, 1, .3, 1);
 
-  --grid-line: rgb(12 25 56 / .045);
-  --grid-line-navy: rgb(239 230 210 / .04);
+  --grid-line: color-mix(in oklch, var(--navy) 4.5%, transparent);
+  --grid-line-navy: color-mix(in oklch, var(--on-navy) 4%, transparent);
   --tex: url("../assets/grain.svg") 0 0 / 320px 320px,
          linear-gradient(90deg, var(--grid-line) 1px, transparent 1px) 0 0 / 24px 24px,
          linear-gradient(var(--grid-line) 1px, transparent 1px) 0 0 / 24px 24px;
@@ -48,8 +59,11 @@
 [hidden] { display: none !important; }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
-body { font: 400 var(--fs-0)/1.5 var(--sans); color: var(--ink); background: var(--tex), var(--paper); font-variant-numeric: tabular-nums; }
-::selection { background: #E7D9B0; }
+/* AH-149: digits of one width wherever a number changes or lines up (the font has tnum: its own figures run 371 to 732
+   units wide, its tabular ones 600). The font shorthand resets it, so every rule below that sets font sets it again */
+body { font: 400 var(--fs-0)/1.5 var(--sans); color: var(--ink); background: var(--tex), var(--paper); font-variant-numeric: tabular-nums;
+  font-kerning: normal; }
+::selection { background: color-mix(in oklch, var(--gold) 25%, var(--paper)); }
 /* Chromium's own placeholder grey is 4.2:1 on paper: the small print's colour, at full strength (AH-87) */
 ::placeholder { color: var(--muted); opacity: 1; }
 /* a long link or code breaks anywhere rather than run past a 160 px pane (a 320 px pane at 200% zoom, AH-112) */
@@ -70,7 +84,8 @@ h1 { margin: 0; font: 800 var(--fs-1)/1 var(--sans); color: var(--on-navy); }
 .sheet-name { margin: var(--s3) 0 0; padding-top: var(--s2); border-top: 1px solid var(--rule-navy); font: 700 var(--fs--1)/1.4 var(--sans);
   color: var(--gold-hi); overflow-wrap: anywhere; }
 .sheet-name:empty { display: none; }
-h2 { position: relative; margin: var(--s5) 0 var(--s2); padding-top: var(--s3); font: 800 var(--fs-1)/1.1 var(--sans); color: var(--navy); }
+h2 { position: relative; margin: var(--s5) 0 var(--s2); padding-top: var(--s3); font: 800 var(--fs-1)/1.2 var(--sans); color: var(--navy);
+  font-variant-numeric: tabular-nums; text-wrap: balance; }
 /* the hairline over each heading; where the browser has scroll timelines it draws across as the heading scrolls in,
    1:1 with the scroll bar (no easing, no script): scroll back and it undraws */
 h2::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px; background: var(--navy); transform-origin: left; }
@@ -82,7 +97,7 @@ h2::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height:
 @keyframes draw { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 h3 { margin: 0 0 var(--s2); font: 700 13px/1.4 var(--sans); color: var(--navy); }
 .pad { padding: var(--margin); }
-.hint { margin: 0 0 var(--s3); color: var(--muted); font-size: var(--fs--1); }
+.hint { margin: 0 0 var(--s3); color: var(--muted); font-size: var(--fs--1); text-wrap: pretty; }
 .warn { color: var(--wine); }
 #main-ui { padding: 0 var(--margin); }
 
@@ -94,25 +109,32 @@ h3 { margin: 0 0 var(--s2); font: 700 13px/1.4 var(--sans); color: var(--navy); 
 
 /* buttons: rectangles. The main one is the flagged cell's wine; the others are navy frames, in sentence case like it */
 button { font: inherit; cursor: pointer; border-radius: 0; }
-button:disabled { cursor: default; opacity: 0.45; }
+/* a disabled control is drawn in its own colours at part strength (AH-149), never faded as a whole: a fade of every
+   button took the whole list down with the one being acted on */
+button:disabled { cursor: default; }
 /* a button disabled under the pointer (Check words with AI while it runs) shows its plain frame at once, never a
    half-faded navy fill that read as a third button style (AH-98) */
 .primary:disabled, .secondary:disabled { transition: none; }
+.primary:disabled { background: var(--off-wine); }
+.secondary:disabled, .link-btn:disabled { color: var(--off-navy); border-color: var(--off-navy); }
 .primary, .secondary { display: block; width: 100%; border-radius: 0;
   transition: background-color .3s var(--ease), color .3s var(--ease), border-color .3s var(--ease); }
+/* a hover eases over .3s; under reduced motion it changes at once, as every other state there does. A button turned back
+   on shows its colours at once (utils/dom.js turnOn, AH-149 review r2): faded back in, Find problems read as still off */
+@media (prefers-reduced-motion: reduce) { .primary, .secondary { transition: none; } }
+:root[data-turning-on] button { transition: none; }
 .primary { margin: var(--s3) 0; min-height: 48px; padding: 0 var(--s4); background: var(--wine); color: var(--on-wine); border: 0;
-  font: 700 var(--fs-0)/1.2 var(--sans); letter-spacing: .02em; text-align: left; }
+  font: 700 var(--fs-0)/1.2 var(--sans); font-variant-numeric: tabular-nums; letter-spacing: .02em; text-align: left; }
 .primary:hover:not(:disabled) { background: var(--navy); }
 .primary:focus-visible { outline: 2px solid var(--navy); outline-offset: 3px; }
-#scan { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
-#scan::after { content: ""; flex: none; width: 10px; height: 10px; background: currentColor; } /* one cell: the flagged cell */
-.secondary { margin: var(--s2) 0; min-height: 40px; padding: var(--s2) var(--s3); background: transparent; color: var(--navy); border: 1px solid var(--navy);
-  font: 700 13px/1.3 var(--sans); text-align: left; }
+.secondary { margin: var(--s2) 0; min-height: 44px; padding: var(--s2) var(--s3); background: transparent; color: var(--navy); border: 1px solid var(--navy);
+  font: 700 13px/1.3 var(--sans); font-variant-numeric: tabular-nums; text-align: left; }
 .secondary:hover:not(:disabled) { background: var(--navy); color: var(--paper); }
 .row-buttons { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: var(--s2) var(--gutter); margin-top: var(--s2); }
 .row-buttons > * { grid-column: span 2; min-width: 0; margin: 0; }
-.row-buttons > .primary { min-height: 40px; font-size: 13px; letter-spacing: 0; } /* "Accept" beside "Dismiss": one size, one case */
-.link-btn { border: 0; background: none; color: var(--navy); padding: var(--s4) 0 0; font: 700 13px/1.4 var(--sans);
+.row-buttons > .primary { min-height: 44px; font-size: 13px; letter-spacing: 0; } /* "Accept" beside "Dismiss": one size, one case */
+/* a finger's height (AH-149: 44 px, where the 24 px floor of WCAG 2.5.8 is a minimum, not a target) */
+.link-btn { min-height: 44px; border: 0; background: none; color: var(--navy); padding: var(--s4) 0 0; font: 700 13px/1.4 var(--sans);
   text-decoration: underline; text-decoration-color: var(--wine); text-underline-offset: 4px; }
 /* pressed (AH-120): only the slider's thumb answered a press, so a click on a slow Accept looked missed. A press is the
    hover's fill with a ring inset in it, at once and with no movement */
@@ -124,7 +146,7 @@ button:disabled { cursor: default; opacity: 0.45; }
 #skeleton { padding: var(--s5) var(--margin) var(--s2); }
 #app-body:has(#main-ui:not([hidden])) #skeleton,
 #app-body:has(#server-down:not([hidden])) #skeleton { display: none; }
-.sk-btn, .sk-track, .sk-row, .sk-line, .sk-scale, .sk-hint, .sk-foot { background: var(--paper-2); } /* no shimmer */
+.sk-btn, .sk-track, .sk-row, .sk-line, .sk-scale, .sk-hint, .sk-foot { background: var(--tint-1); } /* no shimmer */
 .sk-line { height: 11px; width: 52%; margin-bottom: var(--s3); }
 .sk-btn { height: 48px; margin: 0 0 var(--s5); }
 .sk-track { height: 3px; }
@@ -155,8 +177,8 @@ button:disabled { cursor: default; opacity: 0.45; }
 #pane-footer .pf-brand { display: flex; align-items: center; gap: var(--s3); color: var(--on-navy); font: 800 var(--fs-1)/1 var(--sans); }
 #pane-footer .pf-tag { margin: var(--s4) 0; padding-top: var(--s3); border-top: 1px solid var(--rule-navy); font-size: var(--fs--1); color: var(--on-navy-2); line-height: 1.5; }
 #pane-footer .pf-links { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); column-gap: var(--gutter); }
-#pane-footer .pf-links a { grid-column: span 2; color: var(--on-navy); border: 1px solid var(--on-navy-2); padding: var(--s3) var(--s3); text-decoration: none;
-  font: 700 13px/1 var(--sans); transition: background-color .3s var(--ease), color .3s var(--ease); }
+#pane-footer .pf-links a { grid-column: span 2; display: flex; align-items: center; min-height: 44px; color: var(--on-navy); border: 1px solid var(--on-navy-2);
+  padding: var(--s2) var(--s3); text-decoration: none; font: 700 13px/1.3 var(--sans); transition: background-color .3s var(--ease), color .3s var(--ease); }
 #pane-footer .pf-links a:hover { background: var(--on-navy); color: var(--navy); }
 #pane-footer .pf-links a:active { background: var(--on-navy-2); color: var(--navy); transition: none; }
 #pane-footer .pf-links a:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
@@ -168,5 +190,5 @@ button:disabled { cursor: default; opacity: 0.45; }
    the text colour */
 @media (forced-colors: active) {
   .primary { border: 2px solid ButtonText; }
-  #scan::after, #notice::before, #server-down p:first-child::before, #fix-care::before, h2::before { forced-color-adjust: none; background: CanvasText; }
+  .notice::before, #notice::before, #server-down p:first-child::before, #fix-care::before, h2::before { forced-color-adjust: none; background: CanvasText; }
 }

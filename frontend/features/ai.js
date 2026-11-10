@@ -1,5 +1,5 @@
 import { state } from "../hooks/use-state.js";
-import { $, show } from "../utils/dom.js";
+import { $, show, turnOn } from "../utils/dom.js";
 import { post } from "../services/api.js";
 import { showFix } from "../components/fix-preview.js";
 import { checkFix } from "./fix.js";
@@ -19,8 +19,15 @@ export function setAi(on, provider = state.aiProvider) {
   show("ai-off", !state.aiAvailable);
   show("odd-box", state.aiAvailable);
   $("fix-ask").disabled = !state.aiAvailable || !!state.fix?.asking;
-  $("ai-state").textContent = !state.aiAvailable ? "AI help is off. It's optional; fixes work without it."
-    : state.aiProvider === "free" ? FREE_ON : "AI help is on.";
+  keySaid(!state.aiAvailable ? "AI help is off. It's optional; fixes work without it."
+    : state.aiProvider === "free" ? FREE_ON : "AI help is on.");
+}
+
+// The AI help line: what the engine said about the key, or, in the pane's notice box, why it could not be saved (AH-149
+// review r2: "Arcas has stopped" there was a bare line among the steps and read as a heading)
+export function keySaid(words, failed = false) {
+  $("ai-state").textContent = words;
+  $("ai-state").classList.toggle("notice", failed);
 }
 
 export async function saveKey(key) {
@@ -30,13 +37,13 @@ export async function saveKey(key) {
     setAi(out.ai_available, out.ai_provider);
     // the engine tested the key with Google: "Key works", or why it was saved untested
     // only Remove reaches here without a message (Save sends a key); a Claude key set in Windows can keep AI on
-    $("ai-state").textContent = out.message || (out.ai_provider === "free" ? "Key removed. AI help uses the free shared AI again."
-      : out.ai_available ? "Key removed. AI help still uses the paid Claude key set on this PC." : "Key removed. AI help is off.");
+    keySaid(out.message || (out.ai_provider === "free" ? "Key removed. AI help uses the free shared AI again."
+      : out.ai_available ? "Key removed. AI help still uses the paid Claude key set on this PC." : "Key removed. AI help is off."));
   } catch (e) {
     // a key the engine refused (Google said no, or it is not a key) is no use to retry: it leaves the screen like a
     // saved one (AH-15); a save that failed (the disk, the engine gone) keeps it in the box to try again
     if (e.status === 400) $("ai-key").value = "";
-    $("ai-state").textContent = isOurs(e) ? e.message : plainError(e, "The key wasn't saved");
+    keySaid(isOurs(e) ? e.message : plainError(e, "The key wasn't saved"), true);
   }
 }
 
@@ -67,7 +74,7 @@ export async function askFix() { // talks to the engine only; the sheet is touch
     }
     const v = await checkFix(f, out.changes).catch(() => null); // Agent 3 looks first; null = a formula, judged after Accept
     if (v) out.explanation += v.clean ? " Checked: with this fix the row looks right."
-      : ` Checked: with this fix the row would still look unusual: ${plainReason(v.reason)}.`;
+      : ` Checked: with this fix the row would still look unusual: ${plainReason(v.reason, undefined, "; ")}.`;
     if (state.fix !== f) return; // the user moved to another row meanwhile
     // AH-153: the engine's own sentence when the AI's fix repeats a past fix of the user's, so a learned habit is told
     // apart from a fresh reading of the sheet (showFix sets the explanation as text)
@@ -81,10 +88,13 @@ export async function askFix() { // talks to the engine only; the sheet is touch
     // every model used up for today, or busy: John's words, in the notice box. The free AI's used-up day is the engine's
     // own words (AH-151), which name your own Google key as the way to more
     if (Object.hasOwn(LIMITS, String(e.limit))) notice(e.limit === "day" && state.aiProvider === "free" ? e.message : LIMITS[e.limit]);
-    else $("fix-status").textContent = plainError(e, "AI could not help");
+    else notice(plainError(e, "AI could not help")); // in the card's notice box, like the limits (AH-149 review r2)
   } finally {
     f.asking = false;
-    if (state.fix === f) (btn.disabled = !state.aiAvailable), (btn.textContent = "Ask AI");
+    if (state.fix === f) {
+      if (state.aiAvailable) turnOn([btn]); // AI turned off meanwhile: it stays off
+      btn.textContent = "Ask AI";
+    }
   }
 }
 
@@ -122,6 +132,7 @@ export async function checkWords() {
       : [item(partial ? "Nothing out of place so far." : "Nothing looks out of place.")]),
     ...(partial ? [item("Google got busy before every word was checked. Click again to check the rest. The finished part is kept.")] : []));
   } catch (e) { // Google busy (it often is), no key...: said right here, like Ask AI does
-    $("odd-list").replaceChildren(item(plainError(e, "AI could not check")));
+    // in the pane's notice box: as a bare line at body size it read as a heading (AH-149 review r2)
+    $("odd-list").replaceChildren(Object.assign(item(plainError(e, "AI could not check")), { className: "notice" }));
   }
 }

@@ -51,6 +51,17 @@ for (const width of [320, 360, 500]) { // Office's task pane: 320 px at its narr
   ok(m.scanBottom <= m.fold, `${width}px: "Find problems" button above the fold (bottom ${Math.round(m.scanBottom)} of ${m.fold} px)`);
   ok(m.noAlt === 0, `${width}px: every image has alt text (${m.noAlt} without)`);
   ok(m.unnamed.length === 0, `${width}px: every visible control has a name - ${m.unnamed}`);
+  // AH-149 review: "Recommended" stood under the slider's left side, a band of empty space stood over the first view,
+  // and each option's row was 80 px tall
+  await page.waitForFunction(() => [...document.querySelectorAll("[data-enter]")].every((e) => !e.style.opacity && !e.style.transform), null, { timeout: 5000 });
+  const lay = await page.evaluate(() => {
+    const s = document.getElementById("strength").getBoundingClientRect(), w = document.querySelector(".slider-scale span:nth-child(2)").getBoundingClientRect();
+    return { tick: s.left + s.width / 2, word: w.left + w.width / 2, status: document.getElementById("status").getBoundingClientRect().height,
+      rows: [...document.querySelectorAll(".settings-band details.more")].map((d) => Math.round(d.getBoundingClientRect().height)) };
+  });
+  ok(Math.abs(lay.word - lay.tick) <= 12, `${width}px: "Recommended" is centred under the slider's 5 tick (word ${lay.word.toFixed(1)}, tick ${lay.tick.toFixed(1)})`);
+  ok(lay.status < 1, `${width}px: before the first scan, with nothing to say, the progress and notice line holds no space (${lay.status} px)`);
+  ok(lay.rows.length === 4 && lay.rows.every((h) => h >= 44 && h <= 52), `${width}px: each closed option row is 44 to 52 px tall - ${lay.rows}`);
   ok(errors.length === 0, `${width}px: no page errors, unhandled rejections or uncaught errors ${errors}`);
   await page.close();
 }
@@ -155,6 +166,27 @@ async function open(ctx, file, { scan = false, limits = false } = {}) {
     const where = `${file}${how.limits ? " (limits editor)" : how.scan ? " (after a scan)" : ""}`;
     ok(!m.small.length, `${where}: every control is at least 24 x 24 px - ${m.small}`);
     ok(!m.tiny.length, `${where}: no text under 12 px - ${m.tiny}`);
+    await page.close();
+  }
+  await ctx.close();
+}
+
+// AH-149: a finger's height. In the pane, at its narrowest (320 px) and a wide one (500 px), every control a person
+// presses is at least 44 px tall (24 is WCAG's floor, not a size to aim for): the slider was 28, the options' summaries
+// 28, a checkbox's label 24, the plain buttons 40. A link inside a sentence is exempt, a checkbox goes by its label
+for (const width of [320, 500]) {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width, height: 700 }, reducedMotion: "reduce" });
+  for (const how of [{}, { scan: true }, { scan: true, limits: true }]) {
+    const page = await open(ctx, "taskpane.html", how);
+    const short = await page.evaluate(() => {
+      const name = (e) => e.tagName.toLowerCase() + (e.id ? "#" + e.id : "") + (e.classList.length ? "." + [...e.classList].join(".") : "") + ` "${(e.textContent || e.getAttribute("aria-label") || "").trim().slice(0, 24)}"`;
+      const inSentence = (a) => getComputedStyle(a).display === "inline" && a.parentElement.textContent.trim().length > a.textContent.trim().length + 2;
+      return [...document.querySelectorAll("button, summary, input:not([type=hidden]), select, textarea, a[href], [role=slider]")]
+        .filter((e) => e.checkVisibility() && !e.closest("[aria-hidden='true']") && !(e.tagName === "A" && inSentence(e)))
+        .map((e) => [e, ((e.type === "checkbox" || e.type === "radio") && e.closest("label") ? e.closest("label") : e).getBoundingClientRect().height])
+        .filter(([, h]) => h < 44 - 0.5).map(([e, h]) => `${name(e)} ${Math.round(h)}px`);
+    });
+    ok(!short.length, `${width}px${how.limits ? " (limits editor)" : how.scan ? " (after a scan)" : ""}: every control is at least 44 px tall - ${short}`);
     await page.close();
   }
   await ctx.close();

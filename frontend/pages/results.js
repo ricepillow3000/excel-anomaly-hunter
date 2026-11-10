@@ -7,12 +7,18 @@ import { act } from "../hooks/use-action.js";
 import { rowItem } from "../components/row-item.js";
 import { fairnessNote, fairnessTests, flaggedRows, listOrder, summaryOf } from "../features/scan.js";
 import { openFix } from "./fix.js";
+import { countUp, stagger } from "../components/motion.js";
 
 // Results show up: the summary, the color legend and the rows to check.
 export function renderResults(rows, s, fair) {
   const flagged = flaggedRows(rows);
   state.order = listOrder(rows, state.decided); // the list keeps this order while rows get fixed or dismissed
-  $("summary").textContent = summaryOf(rows);
+  // each flagged number its own .count, so it can count up (AH-149); the rows' total ("of 300 rows") is itself from the
+  // first frame: counted up too, it read "0 of 0 rows look wrong." (AH-149 review). Nothing found ends on a check mark
+  const parts = summaryOf(rows).split(/(\d(?:[\d,]*\d)?)/);
+  $("summary").replaceChildren(...parts.map((t, k) => (k % 2 && !parts[k + 1].startsWith(" rows") ? Object.assign(document.createElement("span"), { className: "count", textContent: t }) : t)));
+  $("summary").classList.toggle("tick", !flagged.length);
+  countUp($("summary"));
   const counts = flagged.reduce((c, r) => ((c[r.severity] = (c[r.severity] || 0) + 1), c), {});
   $("legend").replaceChildren(...Object.keys(SEV).filter((k) => counts[k]).map((k) => {
     const li = document.createElement("li");
@@ -27,11 +33,11 @@ export function renderResults(rows, s, fair) {
   $("fairness-list").replaceChildren(...tests.map((t) => Object.assign(document.createElement("li"), { textContent: t.text })));
   show("cut-note", !!s.cut);
   if (s.cut) $("cut-note").textContent = cutNote(s.cut);
-  listRows();
+  listRows(true);
 }
 
 // The rows to check, worst first, each tagged once it is fixed or dismissed (like Grammarly's list of cards)
-export function listRows() {
+export function listRows(arrive = false) {
   only("results");
   const { order, lastRows, decided } = state, { startRow } = state.lastScan;
   // Fixed / Dismissed come back after a reload too: kept in the workbook (features/decisions.js)
@@ -42,7 +48,9 @@ export function listRows() {
   // highlights with nothing highlighted (AH-111). The next scan that flags rows brings them back
   for (const id of ["list-title", "list-hint", "flagged-list", "clear-highlights"]) show(id, order.length > 0);
   $("list-title").textContent = done ? `Rows to check (${n(done)} of ${n(order.length)} done)` : "Rows to check";
-  $("flagged-list").replaceChildren(...order.slice(0, CAP).map((i) => rowItem({ ...lastRows[i], i }, startRow, act(() => openFix(i, true)), status(i))));
+  $("list-title").classList.toggle("tick", done > 0 && done === order.length); // every row done: a check mark, once
+  $("flagged-list").replaceChildren(...order.slice(0, CAP).map((i) => rowItem({ ...lastRows[i], i }, startRow, act((b) => openFix(i, true, b)), status(i))));
+  if (arrive) stagger($("flagged-list").children); // a new list arrives row by row; a redraw (Back, a fix) does not
   if (order.length > CAP) {
     const li = document.createElement("li");
     li.className = "more-rows";

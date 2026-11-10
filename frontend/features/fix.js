@@ -272,7 +272,9 @@ export async function applyFix(f, changes, sheet) { // the fix, its changes and 
   if (state.undos[f.i]) return;
   tryAgain(f);
   $("fix-apply").disabled = true;
-  const status = (t) => state.fix === f && ($("fix-status").textContent = t);
+  const status = (t, ok = false) => { if (state.fix === f) ($("fix-status").textContent = t), $("fix-status").classList.toggle("tick", ok); };
+  // AH-149: said on the card at once, in the same frame as the press; what follows says what the sheet really holds
+  status("Writing to your sheet…");
   try {
     // the scan's addresses are only right while the rows are where the scan saw them: never write into a moved row
     const { startRow, startCol, columns, rows } = state.lastScan;
@@ -317,12 +319,13 @@ export async function applyFix(f, changes, sheet) { // the fix, its changes and 
   state.lastRows[f.i] = { ...state.lastRows[f.i], severity: v.severity, reason: v.reason };
   await fillRow(f.i, !v.clean); // fixed: highlight off. Still odd: recolored by its new severity
   status(v.clean ? `Accepted and checked again: row ${startRow + f.i + 2} looks right now.`
-    : `Accepted, but the checker still sees a problem: ${plainReason(v.reason)}. Undo it, or describe a better fix to AI.`);
+    : `Accepted, but the checker still sees a problem: ${plainReason(v.reason, undefined, "; ")}. Undo it, or describe a better fix to AI.`, v.clean);
 }
 
 export async function undoFix(f) {
   const u = state.undos[f.i];
   if (!u) return;
+  if (state.fix === f) $("fix-status").classList.remove("tick");
   tryAgain(f);
   try {
     // Undo only types into the same record it fixed: the row's other cells must still be what the scan read (a sort or

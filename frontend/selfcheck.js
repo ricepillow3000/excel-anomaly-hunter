@@ -5,7 +5,7 @@ import { cutNote, r1c1ToA1, tableFromGrid, isDateFormat, excelDate, rowFromAddre
 import { issuesOf, recommendFix, typoKind, afterFix, unusualColumn } from "./features/fix.js";
 import { plainReason, summaryOf, flaggedRows, fairnessNote, fairnessTests, listOrder, levelChange } from "./features/scan.js";
 import { MEASURED, COLOR, OLD_COLOR } from "./constants/index.js";
-import { strengthHint, asStrength, levelAt } from "./pages/strength.js";
+import { strengthHint, asStrength, levelAt, levelWord } from "./pages/strength.js";
 import { exactFixes, safeUndo } from "./features/autofix.js";
 import { readdirSync, readFileSync } from "node:fs";
 import { hash, rowHash, codes, codeAt, asBook, decide, PER_SHEET, SHEETS } from "./features/decisions.js";
@@ -145,36 +145,38 @@ for (const font of readdirSync(new URL("assets/", import.meta.url)).filter((f) =
   assert.deepEqual([...saved].sort(), WORKBOOK_KEYS.map(([k]) => k).sort(), "the keys the pane saves in a workbook and the ones Forget removes differ");
 }
 
-// fairness line: protected columns named; a real gap spelled out; nothing at all without a protected column
+// fairness line: protected columns named; a real gap spelled out; nothing at all without a protected column. In plain
+// words since AH-149 ("protected", "outcomes" and "even across their groups" lost a reader with no statistics)
+const FAIR = "To be fair to people, Arcas never uses ";
 assert.equal(fairnessNote({ protected: {}, tests: [] }), "");
 assert.equal(fairnessNote(undefined), "");
 // with no gap, the line names only the checks that ran (AH-17: "Flags, blanks and outcomes are even" on a sheet that ran
 // one flag-rate check), says which ones too few rows could prove, and never calls an empty report even
 const even = (measure) => ({ verdict: "even", text: "x", measure });
 assert.equal(fairnessNote({ protected: { Age: "demographic", Location: "location" }, tests: [even("flag"), even("missing"), even("outcome")] }),
-  "Fairness: Age, Location are never used to decide which rows are unusual. Flags, blanks and outcomes are even across their groups.");
+  `${FAIR}Age or Location to pick which rows look wrong. Flagged rows, blank cells and yes/no answers come out about the same in each group.`);
 assert.equal(fairnessNote({ protected: { Region: "location" }, tests: [even("flag"), even("flag")] }),
-  "Fairness: Region is never used to decide which rows are unusual. Flags are even across its groups.");
+  `${FAIR}Region to pick which rows look wrong. Flagged rows come out about the same in each group.`);
 assert.equal(fairnessNote({ protected: { Sex: "demographic" }, tests: [even("outcome"), { verdict: "unclear", measure: "flag",
   text: "Sex: rows flagged differs across groups (1% to 9%), but there are not enough rows to tell whether that is a real gap" }] }),
-  "Fairness: Sex is never used to decide which rows are unusual. Outcomes are even across its groups. Not enough rows to tell: " +
+  `${FAIR}Sex to pick which rows look wrong. Yes/no answers come out about the same in each group. Not enough rows to tell: ` +
   "Sex: rows flagged differs across groups (1% to 9%), but there are not enough rows to tell whether that is a real gap.");
 assert.equal(fairnessNote({ protected: { Sex: "demographic" }, tests: [] }),
-  "Fairness: Sex is never used to decide which rows are unusual. Nothing to compare between its groups: no flags, blanks or yes/no results in groups of 20 rows or more.");
+  `${FAIR}Sex to pick which rows look wrong. Nothing to compare: no group of 20 rows or more has flagged rows, blank cells or yes/no answers.`);
 assert.equal(fairnessNote({ protected: { Location: "location" }, tests: [{ verdict: "gap", text: "Location Phoenix: 60% blank Income vs 3% for Chicago - a real gap, check why" }] }),
-  "Fairness: Location is never used to decide which rows are unusual. Check these gaps between groups: Location Phoenix: 60% blank Income vs 3% for Chicago - a real gap, check why.");
+  `${FAIR}Location to pick which rows look wrong. Groups that differ: Location Phoenix: 60% blank Income vs 3% for Chicago - a real gap, check why.`);
 // a gap the engine has measured public context for: the gap first, then its context sentence, once per sentence
 const ctx = "For comparison, in public US census data 30.4% of men and 10.9% of women earn over 50K.";
 assert.equal(fairnessNote({ protected: { sex: "demographic" }, tests: [
   { verdict: "gap", text: "sex Male: 30% income >50K vs 11% for Female - a real gap, check why", context: ctx, groups: { a: [9, 0.3], b: [9, 0.1] } },
   { verdict: "gap", text: "sex Female: 8% missing occupation vs 5% for Male - a real gap, check why", context: ctx, groups: { a: [9, 0.08], b: [9, 0.05] } },
   { verdict: "even", text: "x", context: "never shown for an even test" }] }),
-  "Fairness: sex is never used to decide which rows are unusual. Check these gaps between groups: sex Male: 30% income >50K vs 11% for Female - a real gap, check why; " +
+  `${FAIR}sex to pick which rows look wrong. Groups that differ: sex Male: 30% income >50K vs 11% for Female - a real gap, check why; ` +
   `sex Female: 8% missing occupation vs 5% for Male - a real gap, check why. ${ctx}`);
 // many gaps (census: 15): the 3 widest in the line, the rest in the list; the list puts gaps first, widest first
 const gap = (w, text) => ({ verdict: "gap", text, groups: { a: [50, 0.5 + w], b: [50, 0.5] } });
 const census = { protected: { sex: "demographic" }, tests: [{ verdict: "even", text: "e", groups: { a: [9, 0.9], b: [9, 0] } }, gap(0.1, "g1"), gap(0.4, "g4"), gap(0.2, "g2"), gap(0.3, "g3")] };
-assert.equal(fairnessNote(census), 'Fairness: sex is never used to decide which rows are unusual. Check these gaps between groups: g4; g3; g2, and 1 more under "All fairness checks".');
+assert.equal(fairnessNote(census), `${FAIR}sex to pick which rows look wrong. Groups that differ: g4; g3; g2, and 1 more under "All fairness checks".`);
 assert.deepEqual(fairnessTests(census).map((t) => t.text), ["g4", "g3", "g2", "g1", "e"]);
 assert.deepEqual(fairnessTests(undefined), []);
 
@@ -224,10 +226,12 @@ assert.ok(strengthHint(0).startsWith("Basics") && strengthHint(5).startsWith("Re
 // re-measures it), so 5 and 10 never read the same (AH-15)
 for (let s = 0; s <= 10; s++) {
   const [found, , fineLow] = MEASURED.levels[s], hint = strengthHint(s);
-  assert.ok(hint.includes(`On our ${MEASURED.sheets} test sheets: ${found === MEASURED.planted ? `all ${MEASURED.planted}` : `${found} of ${MEASURED.planted}`} planted mistakes found`), hint);
-  assert.ok(fineLow ? hint.includes(`${fineLow.toLocaleString("en-US")} of 2,724 fine rows listed as worth a check`) : hint.includes("no fine row listed"), hint);
+  assert.ok(hint.includes(`We tested it on ${MEASURED.sheets} practice sheets with ${MEASURED.planted} mistakes hidden in them. It found ${found === MEASURED.planted ? `all ${MEASURED.planted}` : `${found} of them`}`), hint);
+  assert.ok(fineLow ? hint.includes(`It also listed ${fineLow.toLocaleString("en-US")} of the 2,724 rows that were fine`) : hint.includes("It listed none of the 2,724 rows that were fine"), hint);
 }
 assert.notEqual(strengthHint(5), strengthHint(10));
+// AH-149: a screen reader hears the level's word beside its number, the scale's three words at their places
+assert.deepEqual([0, 3, 5, 7, 10].map(levelWord), ["Basics", "Lighter", "Recommended", "Stricter", "Strictest"]);
 // every level opens with its own words: 2, 4, 6, 8 and 10 used to repeat the level below, so 6 opened "Recommended." though
 // 5 is the recommended level (Council B, AH-15 review; AH-20)
 {
@@ -240,15 +244,15 @@ assert.notEqual(strengthHint(5), strengthHint(10));
 const sev = (...s) => s.map((x) => ({ severity: x, magnitude: 1 })), H = ["a", "b", "c", "d", "e"];
 const at = (level, rows, hashes = H, sheet = "Sales") => ({ level, rows, hashes, sheet });
 assert.equal(levelChange(at(5, sev("Medium", null, null, null, "Low")), at(10, sev("Medium", "Low", "Low", null, "Low"))),
-  "Level 10 (was 5): 2 more rows worth a check (borderline values); the rows that look wrong are the same.");
+  "Slider moved from 5 to 10: 2 more rows worth a check (values close to the edge of usual); the rows that look wrong are the same.");
 assert.equal(levelChange(at(10, sev("Medium", "Low", "Low", null, "Low")), at(5, sev("Medium", null, null, null, "Low"))),
-  "Level 5 (was 10): 2 fewer rows worth a check; the rows that look wrong are the same.");
+  "Slider moved from 10 to 5: 2 fewer rows worth a check; the rows that look wrong are the same.");
 assert.equal(levelChange(at(5, sev("Medium", null, "Low", null, null)), at(9, sev("Medium", "Medium", null, null, null))),
-  "Level 9 (was 5): 1 fewer row worth a check; 1 more row looks wrong.");
+  "Slider moved from 5 to 9: 1 fewer row worth a check; 1 more row looks wrong.");
 assert.equal(levelChange(at(5, sev(null, "Low", null, null, null)), at(6, sev(null, null, "Low", null, null))),
-  "Level 6 (was 5): 1 other row worth a check; the rows that look wrong are the same.");
+  "Slider moved from 5 to 6: 1 other row worth a check; the rows that look wrong are the same.");
 assert.equal(levelChange(at(5, sev("High", null, null, null, "Low")), at(7, sev("High", null, null, null, "Low"))),
-  "Level 7 (was 5): the same rows as at 5; nothing on this sheet sits between the two levels.");
+  "Slider moved from 5 to 7: the same rows as at 5. Nothing on this sheet falls between the two levels.");
 // nothing is said when the counts could mean something else: the same level, another sheet, an edited sheet, no scan before
 assert.equal(levelChange(at(5, sev("Medium")), at(5, sev(null))), "");
 assert.equal(levelChange(at(5, sev(null, "Low", null, null, null)), at(10, sev(null, "Low", "Low", null, null), H, "Costs")), "");
@@ -259,8 +263,8 @@ assert.equal(levelChange(null, at(10, sev("Low"))), "");
   const many = Array.from({ length: 60 }, () => ({ severity: "Medium", magnitude: 1 })), hs = many.map((_, i) => `h${i}`);
   const more = [...many, { severity: null, magnitude: 0 }, { severity: null, magnitude: 0 }], hs2 = [...hs, "x", "y"];
   const after = [...many, { severity: "Low", magnitude: 3 }, { severity: "Low", magnitude: 2 }];
-  assert.equal(levelChange(at(5, more, hs2), at(10, after, hs2)), "Level 10 (was 5): 2 more rows worth a check (borderline values); " +
-    'the rows that look wrong are the same. The list shows the 50 surest first, so the new ones are under "+ more" (all highlighted in the sheet).');
+  assert.equal(levelChange(at(5, more, hs2), at(10, after, hs2)), "Slider moved from 5 to 10: 2 more rows worth a check (values close to the edge of usual); " +
+    'the rows that look wrong are the same. The list shows the 50 surest rows first, so the new ones are in the "+ more" line at its end. Your sheet colours them all.');
 }
 assert.deepEqual([0, 10, 7, undefined, null, "3", 11, -1, 2.5].map(asStrength), [0, 10, 7, 5, 5, 5, 5, 5, 5]);
 // pointer anywhere on (or past) a 200px track starting at x=100 -> the nearest level
@@ -457,7 +461,7 @@ assert.deepEqual(rec.changes, [{ cell: "A2", new: "Sales" }], "fix only the colu
 tg = tableFromGrid([["Item", "Units", "Units sold", "Units"], ["a", 1, 2, 3]], null, 0, 1);
 assert.deepEqual(tg.columns, ["Item", "Units", "Units sold", "Units.1"]);
 assert.equal(plainReason('Flagged by 1 of 2: Units.1 weird limit is 50; this is 900 (likely 90); Units sold 5 does not add up: Units + Units.1 = 4; Item "Units" looks like a misspelling of "Unit"', tg.names),
-  'Units (column E) is 900, above its usual limit of 50 (likely 90) · Units sold 5 does not add up: Units (column C) + Units (column E) = 4 · Item "Units" looks like a misspelling of "Unit"');
+  'Units (column E) is 900, above its usual limit of 50 (likely 90)\nUnits sold 5 does not add up: Units (column C) + Units (column E) = 4\nItem "Units" looks like a misspelling of "Unit"');
 assert.equal(plainReason("Blank cell in column Units.1, which is otherwise filled", tg.names), "Blank cell in column Units (column E), which is otherwise filled");
 assert.deepEqual(tableFromGrid([["A", "B"], [1, 2]], null, 0, 0).names, {}, "no repeated header: nothing renamed");
 
@@ -467,14 +471,16 @@ assert.deepEqual(flaggedRows([{ severity: null, magnitude: 0 }, { severity: "Low
 // reasons in plain words: no "weird limit", no vote count, a limit clause stays whole
 assert.equal(plainReason("Flagged by 2 of 3: Units weird limit is 0; this is -5"), "Units is -5, below its usual limit of 0");
 assert.equal(plainReason("fare amount weird limit is 35; this is 52 (likely 5.2); Duplicate of row 7"),
-  "fare amount is 52, above its usual limit of 35 (likely 5.2) · Duplicate of row 7");
+  "fare amount is 52, above its usual limit of 35 (likely 5.2)\nDuplicate of row 7");
+// AH-149: each reason on its own line in the list and on the card; inside a sentence, a semicolon
+assert.equal(plainReason("A is 1; B is 2", {}, "; "), "A is 1; B is 2");
 assert.equal(plainReason("Flagged by 1 of 3: Unusual combination of values, mainly tolls; Units is unusual relative to its local trend near 2026-01-26 00:00:00"),
-  "Unusual mix of values, mostly in tolls · Units breaks its usual pattern near 2026-01-26");
+  "Unusual mix of values, mostly in tolls\nUnits breaks its usual pattern near 2026-01-26");
 assert.equal(plainReason(""), "");
 assert.equal(esc('x" autofocus onfocus="alert(1)'), "x&quot; autofocus onfocus=&quot;alert(1)", "a sheet header can't break out of an attribute");
 assert.equal(esc("<b>'&"), "&lt;b&gt;&#39;&amp;");
 assert.equal(plainReason("Flagged by 3 of 3: Units weird limit is 105; this is 9999; Units jumped sharply near 2026-01-26 00:00:00"),
-  "Units is 9999, above its usual limit of 105 · Units jumped sharply near 2026-01-26", "the ; after the value is a separator, not part of it");
+  "Units is 9999, above its usual limit of 105\nUnits jumped sharply near 2026-01-26", "the ; after the value is a separator, not part of it");
 assert.deepEqual(issuesOf("Flagged by 1 of 3: Units weird limit is 105; this is 9999 (likely 99.99); Duplicate of row 7").map((x) => x.text),
   ["Units weird limit is 105; this is 9999 (likely 99.99)", "Duplicate of row 7"], "limit clause kept whole");
 assert.deepEqual(issuesOf(""), []);
@@ -533,7 +539,7 @@ assert.match(recommendFix(["hotel", "adr"], [["City", 90]], 0, {}, "600 of 3000 
   /^600 of 3000 rows repeat an earlier row exactly, all through the sheet - the first is this one, a copy of row 5: this many, spread out, are usually separate real records/);
 // AH-49: amounts compared across groups are named like the other checks, and sorted by their relative width
 assert.equal(fairnessNote({ protected: { Sex: "demographic" }, tests: [even("flag"), even("amount")] }),
-  "Fairness: Sex is never used to decide which rows are unusual. Flags and amounts are even across its groups.");
+  `${FAIR}Sex to pick which rows look wrong. Flagged rows and amounts come out about the same in each group.`);
 assert.deepEqual(fairnessTests({ tests: [{ verdict: "even", measure: "amount", groups: { a: [50, 50000], b: [50, 49000] } },
   { verdict: "even", measure: "outcome", groups: { a: [50, 0.2], b: [50, 0.4] } }] }).map((t) => t.measure), ["outcome", "amount"]);
 // AH-32: a rare ERROR may be a log level; its card never calls it only a stand-in
@@ -560,9 +566,15 @@ assert.ok(DUR >= 900 && STEP >= 100 && MAX_DELAY + DUR <= 1600, `entrance ${DUR}
 // every new movement has its reduced-motion twin
 const css = readFileSync(new URL("styles/components.css", import.meta.url), "utf8");
 const calmCss = css.slice(css.lastIndexOf("@media (prefers-reduced-motion: reduce)"));
-for (const sel of [".flagged-list button::before", ".flagged-list button:is(:hover, :focus-visible):not(:disabled)", "#fix-changes li:hover", "#scan-skeleton::after"])
+for (const sel of [".flagged-list button::before", ".flagged-list button:is(:hover, :focus-visible):not(:disabled)", "#scan-skeleton::after", ".tick::after", "::view-transition-group(*)"])
   assert.ok(calmCss.includes(sel), `no reduced-motion rule for ${sel}`);
-assert.ok(/turnIn\(el\) \{\s*if \(!el \|\| still\(\)/.test(motion) && /fadeIn\(el\) \{\s*if \(!el \|\| still\(\)/.test(motion), "the page turn and the fade skip reduced motion");
+assert.ok(/turnIn\(el, y = null\) \{\s*if \(!el \|\| still\(\)/.test(motion) && /fadeIn\(el\) \{\s*if \(!el \|\| still\(\)/.test(motion), "the page turn and the fade skip reduced motion");
+assert.ok(/function morph\([^)]*\) \{\s*if \(!from \|\| still\(\)/.test(motion) && /function stagger\([^)]*\) \{\s*if \(still\(\)\)/.test(motion) && /function countUp\([^)]*\) \{\s*if \(still\(\)\)/.test(motion), "the morph, the rows' arrival and the count skip reduced motion");
+// AH-149: every movement is finite. The scan skeleton's light and the progress sliver ran forever ("infinite") while a
+// scan ran; each now has a count of its own
+for (const [f, src] of [["styles/components.css", css], ["styles/global.css", readFileSync(new URL("styles/global.css", import.meta.url), "utf8")]])
+  assert.ok(!/\binfinite\b/.test(src), `${f}: an animation that never ends`);
+assert.ok(!/iterations:\s*Infinity/.test(motion), "components/motion.js: an animation that never ends");
 
 // AH-110: Office's and the browser's own words never reach the screen ("Something went wrong:
 // InvalidOperationInCellEditMode", "Cannot read properties of undefined (reading 'values')"). The engine's and the network's

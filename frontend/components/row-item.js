@@ -9,7 +9,7 @@ export function rowItem(r, startRow, onClick, done = null) {
   const b = document.createElement("button");
   b.innerHTML = `<span class="row-head"><span class="swatch"></span>Row ${esc(startRow + r.i + 2)}<span class="sev">${esc(done || SEV[r.severity])}</span></span>` +
     `<span class="row-why">${esc(plainReason(r.reason) || "Looks right now.")}</span>`;
-  b.onclick = onClick;
+  b.onclick = (e) => onClick(e.currentTarget); // the row pressed: its card hinges where it was, and its head becomes the title
   li.appendChild(b);
   return li;
 }

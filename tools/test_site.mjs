@@ -419,7 +419,8 @@ for (const f of SCRIPTS) {
   const [iSheets, iFound, iPlanted, iFalse, iClean] = bench("industry"), [bSheets, bFound, bPlanted, bFalse, bClean] = bench("blind");
   const items = [...proof.matchAll(/<div class="reveal-item">(?:<span class="rule" aria-hidden="true"><\/span>)?<dt>([\s\S]*?)<\/dt>\s*<dd>([\s\S]*?)<\/dd>\s*<\/div>/g)].map((m) => [text(m[1]), text(m[2]), m[2]]);
   assert.deepEqual(items.map(([n]) => n), [`${iFound} of ${iPlanted}`, `${bFound} of ${bPlanted}`, `${Math.max(+iFalse, +bFalse)}`, "Free", "On your PC"], "the proof strip's figures");
-  assert.ok(items[0][1].includes(`industry bench of ${iSheets} sheets`) && items[1][1].includes(`blind bench of ${bSheets} sheets`), "the proof strip's benches");
+  // in plain words since AH-148 ("bench" and "tuned on" were the engine room's words): the figures still the record's
+  assert.ok(items[0][1].includes(`found in ${iSheets} test sheets`) && items[1][1].includes(`found in ${bSheets} more test sheets it had never seen`), "the proof strip's benches");
   assert.ok(items[2][1].includes(`${iClean} and ${bClean} clean rows`), "the proof strip's clean rows");
   const PROOF = REPO + "/blob/main/docs/proof/2026-11-05-stress-test.md";
   for (const [i, href] of [[0, PROOF], [1, PROOF], [2, PROOF], [3, REPO + "/blob/main/LICENSE"], [4, "privacy.html"]]) assert.ok(items[i][2].includes(`href="${href}"`), `proof item ${i + 1} does not link ${href}`);
@@ -472,7 +473,7 @@ for (const f of SCRIPTS) {
   // the home page's questions: how to tell which Excel you have, and what leaves the PC, in plain words
   const faq = sections["faq"] || "";
   assert.ok(text(faq).includes("To check, open Excel and click File > Account. If it says Microsoft 365 under Product information, you have the right Excel. Click About Excel: the first line ends with 64-bit or 32-bit."), "the FAQ does not say how to check which Excel you have");
-  assert.ok(text(faq).includes("No, not when it checks your sheet. Arcas does all its checking on your own computer and sends nothing. Part of your sheet leaves your computer only if you set up AI help and click Ask AI or Check words with AI. Then it goes to Google, through John's own server first if John gave you an invite code. The privacy page lists exactly what goes."), "the FAQ's data answer");
+  assert.ok(text(faq).includes("No, not when it checks your sheet. Arcas does all its checking on your own computer and sends nothing. Part of your sheet leaves your computer only when you click Ask AI or Check words with AI. Then it goes to Google, through John's own server first unless you saved your own Google key. The privacy page lists exactly what goes."), "the FAQ's data answer");
   // a phone can't install it: said under the hero's download, on narrow screens only
   assert.ok(/<div class="hero-cta">[\s\S]*?<\/div>\s*<p class="phone-only">Arcas runs on a Windows computer\. Open this page on that computer to download it\.<\/p>/.test(home), "no phone line under the hero's download");
   assert.ok(/\.phone-only\s*\{\s*display:\s*none;?\s*\}/.test(css) && /@media \(max-width: 760px\)[\s\S]*\.phone-only\s*\{\s*display:\s*block;?\s*\}/.test(css), "the phone line is not shown on narrow screens only");
@@ -499,6 +500,107 @@ for (const f of SCRIPTS) {
   for (const old of ["Reconciliation breaks", "Keying errors<span", "Label mismatches", "Temporal outliers"]) assert.ok(!home.includes(old), `the home page still says ${old}`);
   // the maker's phone and email come before his photo on a phone, or the photo stays small: here it stays a third wide
   assert.ok(/@media \(max-width: 760px\)[\s\S]*\.maker img\s*\{[^}]*width:\s*min\(33%, 240px\)/.test(css), "the maker's photo fills a phone's width");
+}
+// ---- AH-148 (John, 2026-11-09): "feel more immersive, alive, less AI and human... while keeping technical data simple and
+// easy to read". The type and the page's details, held to the font file itself where a number comes from it ----
+// a WOFF2 file's tables (its header, its table directory, one Brotli stream: the W3C WOFF2 format), so a figure styles.css
+// takes from the font is read from the font, never typed twice
+const WOFF2_TAGS = "cmap head hhea hmtx maxp name OS/2 post cvt  fpgm glyf loca prep CFF  VORG EBDT EBLC gasp hdmx kern LTSH PCLT VDMX vhea vmtx BASE GDEF GPOS GSUB EBSC JSTF MATH CBDT CBLC COLR CPAL SVG  sbix acnt avar bdat bloc bsln cvar fdsc feat fmtx fvar gvar hsty just lcar mort morx opbd prop trak Zapf Silf Glat Gloc Feat Sill".match(/.{4}\s?/g).map((t) => t.slice(0, 4));
+function woff2(file) {
+  const b = fs.readFileSync(path.join(SITE, file)), dir = [];
+  assert.equal(b.toString("latin1", 0, 4), "wOF2", `${file} is not a WOFF2 file`);
+  let at = 48;
+  const u128 = () => { let v = 0; for (let i = 0; i < 5; i++) { const x = b[at++]; v = v * 128 + (x & 127); if (!(x & 128)) return v; } return v; };
+  for (let i = 0, n = b.readUInt16BE(12); i < n; i++) {
+    const f = b[at++], tag = (f & 63) === 63 ? b.toString("latin1", at, (at += 4)) : WOFF2_TAGS[f & 63], len = u128();
+    dir.push([tag, (["glyf", "loca"].includes(tag) ? f >> 6 === 0 : f >> 6 !== 0) ? u128() : len]);
+  }
+  const data = zlib.brotliDecompressSync(b.subarray(at, at + b.readUInt32BE(20))), tables = {};
+  let o = 0;
+  for (const [tag, len] of dir) { tables[tag] = data.subarray(o, o + len); o += len; }
+  return tables;
+}
+{
+  const font = woff2("assets/plus-jakarta-sans.woff2"), upm = font.head.readUInt16BE(18), os2 = font["OS/2"];
+  const features = (t) => { const list = t.readUInt16BE(6); return new Set([...Array(t.readUInt16BE(list))].map((_, i) => t.toString("latin1", list + 2 + i * 6, list + 6 + i * 6))); };
+  const [ascent, descent, gap, xHeight] = [os2.readInt16BE(68) / upm, -os2.readInt16BE(70) / upm, os2.readInt16BE(72) / upm, os2.readInt16BE(86) / upm];
+  assert.ok(os2.readUInt16BE(62) & 128, "the font does not say to use its typographic metrics (OS/2 USE_TYPO_METRICS)");
+  // a selector list split at its top-level commas only (":is(:hover, :focus-visible)" is one selector)
+  const split = (list) => { const out = [""]; let depth = 0; for (const c of list) { if (c === "," && !depth) out.push(""); else { depth += c === "(" ? 1 : c === ")" ? -1 : 0; out[out.length - 1] += c; } } return out.map((x) => x.trim().replace(/\s+/g, " ")); };
+  const rules = [...css.matchAll(/([^{}]*)\{([^{}]*)\}/g)].map((m) => [split(m[1]), m[2]]);
+  const bodyOf = (sel) => rules.filter(([sels]) => sels.includes(sel)).map(([, b]) => b).join(";");
+  const has = (sel, re, what) => assert.ok(re.test(bodyOf(sel)), `styles.css: ${sel} has no ${what}`);
+  // kerning: the font has kern pairs (GPOS), and the page asks for them, with optical sizing where a font has it
+  assert.ok(features(font.GPOS).has("kern"), "the font has no kern feature");
+  has("*", /font-kerning:\s*normal !important/, "font-kerning: normal, kept past every font shorthand"); has("body", /font-optical-sizing:\s*auto/, "font-optical-sizing: auto");
+  // optical centre: a button's label is trimmed to its capitals and baseline (the browser check measures the icon)
+  for (const sel of [".btn", ".m-close", ".menu-btn", ".copy-btn", ".tabs button"]) has(sel, /text-box:\s*trim-both cap alphabetic/, "text-box: trim-both cap alphabetic");
+  // tabular numbers: the font has them, and the figures that stand in columns or change in place use them (the browser
+  // check reads them computed, past any font shorthand)
+  assert.ok(features(font.GSUB).has("tnum"), "the font has no tnum feature");
+  // no layout shift when the font arrives: two faces of Arial and its metric twins, scaled to the font, second in --sans,
+  // each override the font's own metric divided by its size-adjust
+  const fb = rules.filter(([sels, b]) => sels[0] === "@font-face" && /font-family:\s*"Plus Jakarta Sans Fallback"/.test(b)).map(([, b]) => b);
+  assert.equal(fb.length, 2, "styles.css: no regular and bold \"Plus Jakarta Sans Fallback\" faces");
+  for (const b of fb) {
+    const got = Object.fromEntries([...b.matchAll(/([a-z-]+):\s*([\d.]+)%/g)].map((m) => [m[1], parseFloat(m[2]) / 100]));
+    const pct = (k) => { assert.ok(Number.isFinite(got[k]), `styles.css: a fallback face has no ${k}`); return got[k]; };
+    const size = pct("size-adjust");
+    assert.ok(/src:\s*local\("Arial[^"]*"\)/.test(b) && /local\("Liberation Sans[^"]*"\)/.test(b) && size > 0.9 && size < 1.15, `styles.css: a fallback face is not Arial's family at a measured size (${b.trim()})`);
+    assert.ok(Math.abs(pct("ascent-override") * size - ascent) < 0.001 && Math.abs(pct("descent-override") * size - descent) < 0.001 && Math.abs(pct("line-gap-override") * size - gap) < 0.001,
+      `styles.css: a fallback face's overrides are not the font's ascent ${ascent}, descent ${descent} and line gap ${gap} over its size-adjust`);
+  }
+  assert.equal(TOKENS["--sans"].split(",")[1].trim(), '"Plus Jakarta Sans Fallback"', "styles.css: --sans does not fall back to the metric-matched face first");
+  // x-height: the system's mono font scaled to the font's own x-height, kept after every font shorthand that would reset it
+  for (const sel of ["code", ".in-sample .val", ".anchor code"]) assert.equal(parseFloat((/font-size-adjust:\s*([\d.]+)/.exec(bodyOf(sel)) || [])[1]), xHeight, `styles.css: ${sel} is not scaled to the font's x-height ${xHeight}`);
+  assert.ok(!/var\(--fs--2\)/.test(bodyOf(".steps .line")), "styles.css: the PowerShell line is still at the smallest step");
+  // widows and the measure
+  has("p", /text-wrap:\s*pretty/, "text-wrap: pretty"); has("li", /text-wrap:\s*pretty/, "text-wrap: pretty"); has("dd", /text-wrap:\s*pretty/, "text-wrap: pretty"); has(".faq summary", /text-wrap:\s*pretty/, "text-wrap: pretty");
+  has("h3", /text-wrap:\s*balance/, "text-wrap: balance"); has(".checks-table tbody th", /text-wrap:\s*balance/, "text-wrap: balance");
+  has(".prose h2", /line-height:\s*1\.05/, "line-height: 1.05");
+  // OKLCH: the brand colours stay exact hex (the difference fills' arithmetic needs them), the tints are mixed in OKLCH
+  // where the browser can, with the same mixes in hex where it cannot
+  const plain = Object.fromEntries([...(/:root\s*\{([^}]*)\}/.exec(css) || ["", ""])[1].matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
+  for (const [k, v] of [["--paper", "#F7F5F0"], ["--paper-2", "#EFECE4"], ["--ink", "#0C1938"], ["--wine", "#6B1E2E"], ["--gold", "#997D3A"], ["--gold-hi", "#C9A85A"]]) assert.equal(plain[k], v, `styles.css: ${k}`);
+  assert.ok(css.includes("background: #E3D3AC; mix-blend-mode: difference") && css.includes("background: #EBDCB8; mix-blend-mode: difference"), "styles.css: the difference fills are not the exact hex");
+  const mixed = /@supports \(color: color-mix\(in oklch, red, blue\)\)\s*\{\s*:root\s*\{([^}]*)\}/.exec(css);
+  assert.ok(mixed, "styles.css: no @supports block that mixes the tints in OKLCH");
+  const mixes = Object.fromEntries([...mixed[1].matchAll(/(--[a-z-]+):\s*(color-mix\(in oklch,[^;]*);/g)].map((m) => [m[1], m[2]]));
+  for (const k of ["--tint-hover", "--tint-flag-hover", "--tint-bar", "--shade-from", "--shade-to"]) {
+    assert.ok(/^(#[0-9A-F]{6}|rgba\([^)]*\))$/.test(plain[k] || ""), `styles.css: ${k} has no plain colour for a browser without color-mix (${plain[k]})`);
+    assert.ok(mixes[k], `styles.css: ${k} is not mixed in OKLCH`);
+    assert.ok(css.includes(`var(${k})`), `styles.css: ${k} is never used`);
+  }
+  assert.ok(!/#D9D3C4|rgba\(12, 25, 56, \.08\), rgba\(12, 25, 56, \.45\)\)/.test(css.replace(/--shade-from:[^;]*;\s*--shade-to:[^;]*;/, "")), "styles.css: a derived tint is still written by hand where it is used");
+  // the safe area on every edge a phone's notch or home bar can cover
+  has(".notice-bar p", /padding:[^;]*max\(var\(--margin\), env\(safe-area-inset-right, 0px\)\)[^;]*max\(var\(--margin\), env\(safe-area-inset-left, 0px\)\)/, "padding inside the safe area");
+  has(".skip-link", /left:\s*max\(var\(--margin\), env\(safe-area-inset-left, 0px\)\)/, "left inside the safe area");
+  has(".foot", /padding-block:[^;]*env\(safe-area-inset-bottom, 0px\)/, "padding above the home bar");
+  // affordance: a link says it is one on hover and on keyboard focus; the filters say what they do
+  has(".toc a:is(:hover, :focus-visible)", /text-decoration:\s*underline/, "underline");
+  has("a:is(:hover, :focus-visible)", /text-decoration-thickness:\s*2px/, "thicker underline");
+  has(".links a:is(:hover, :focus-visible)", /border-bottom-color:\s*var\(--ink\)/, "bar");
+  const home = html["index.html"];
+  assert.ok(home.includes('<span class="label">Show findings by type</span>'), "the filters' label does not say they filter");
+  // plain words in the site's own copy (the engine's and the pane's words stay theirs, held by test_site_sample.py): a
+  // detail box names its checks as the filters do
+  const said = [...home.matchAll(/<dt>Checks?<\/dt><dd>([^<]*)<\/dd>/g)].map((m) => m[1]);
+  assert.deepEqual(said, ["Totals that don't add up, typing slips", "Totals that don't add up, typing slips, odd jumps over time", "Same word, typed two ways", ...Array(4).fill("Odd jumps over time")], "the detail boxes' checks are not the filters' plain names");
+}
+// ---- AH-148 fix round 1, a blind design review: the sample's caption read like a note to a developer, a "≠" asked a
+// reader to know the sign, "John's relay" named neither John nor a relay to a stranger, and the questions looked like
+// a data table (a "Question / Answer" bar, an "Open" box on each row, an empty answer column) ----
+{
+  const home = html["index.html"], words = (s) => s.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+  const cap = words((/<figcaption class="ws-foot" id="ws-cap">([\s\S]*?)<\/figcaption>/.exec(home) || ["", ""])[1]);
+  assert.ok(cap.split(/[.:;] /).length <= 3 && cap.split(". ").length <= 2 && !/test|source/.test(cap), `the sample's caption is not two short plain sentences: "${cap}"`);
+  for (const fact of ["engine's own", "level 5 of 10", "recommended", "Click a flagged row", "the row's own numbers", "the column's usual spelling"]) assert.ok(cap.includes(fact), `the sample's caption no longer says "${fact}"`);
+  for (const p of PAGES) assert.ok(!html[p].includes("≠"), `${p}: a "≠" a reader must know the sign to read`);
+  assert.ok(!/John's relay/.test(home) && (home.match(/John's server on Cloudflare/g) || []).length === 3 && /John Nguyen, who makes and runs Arcas/.test(home), "the home page says \"John's relay\" where a stranger reads it");
+  for (const p of ["index.html", "support.html"]) assert.ok(!/faq-head/.test(html[p]), `${p}: the questions still have a "Question / Answer" bar`);
+  assert.ok(!/faq-head/.test(css), "styles.css: the questions' header bar is still styled");
+  const after = [...css.matchAll(/([^{}]*\.faq[^{}]*summary::after[^{}]*)\{([^}]*)\}/g)];
+  assert.ok(after.length && after.every((m) => !/content:\s*"[^"]/.test(m[2])), "styles.css: a question's marker is a word (Open, Close), not a chevron");
 }
 console.log(`website static check passed (${PAGES.length} pages, ${SCRIPTS.length} scripts)`);
 if (!process.argv.includes("--browser")) process.exit(0);
@@ -2589,7 +2691,7 @@ for (const file of PAGES.filter((f) => /<header[\s\S]*aria-current="page"[\s\S]*
   for (const width of [390, 1440]) {
     const t = await open("index.html", { width, height: 844, motion: "reduce" });
     const r = await t.page.evaluate(() => { const e = document.querySelector(".swipe"); return e ? { text: e.textContent.trim(), shown: e.getClientRects().length > 0, display: getComputedStyle(e).display } : null; });
-    want(r && r.text === "Swipe the table sideways to see each finding." && (width <= 760 ? r.shown : r.display === "none"), `R9 the swipe hint at ${width} px: ${JSON.stringify(r)}`);
+    want(r && r.text === "Swipe the table sideways to see each order's date and region." && (width <= 760 ? r.shown : r.display === "none"), `R9 the swipe hint at ${width} px: ${JSON.stringify(r)}`);
     await done(t, `R9 swipe hint at ${width}px`, [API]);
   }
   // 10. a short page fills the screen to its footer; the home page keeps its height. thanks.html is 1,136 px tall at
@@ -2739,7 +2841,9 @@ for (const file of PAGES.filter((f) => /<header[\s\S]*aria-current="page"[\s\S]*
     const r = await t.page.evaluate(() => { const p = document.querySelector(".notice-bar p"), a = p.querySelector("a"), top = (x) => Math.round(x.getBoundingClientRect().top);
       const w = document.createTreeWalker(p, NodeFilter.SHOW_TEXT); let dot = null; for (let n = w.nextNode(); n; n = w.nextNode()) if (!a.contains(n) && n.textContent.includes("·")) dot = n;
       const q = document.createRange(), i = dot.textContent.lastIndexOf("·"); q.setStart(dot, i); q.setEnd(dot, i + 1);
-      return { dot: Math.round(q.getBoundingClientRect().top), link: top(a), lines: new Set([...(() => { const all = document.createRange(); all.selectNodeContents(p); return all.getClientRects(); })()].map((x) => Math.round(x.top))).size }; });
+      // the link's words, not its box: on a phone its box reaches 12 px above them (a 44 px target, AH-148)
+      const words = document.createRange(); words.selectNodeContents(a);
+      return { dot: Math.round(q.getBoundingClientRect().top), link: top(words), lines: new Set([...(() => { const all = document.createRange(); all.selectNodeContents(p); return all.getClientRects(); })()].map((x) => Math.round(x.top))).size }; });
     want(Math.abs(r.dot - r.link) <= 6, `S6 ${file} at 390 px: "Download" alone on the notice line's last line ${JSON.stringify(r)}`);
     await done(t, `S6 notice line on ${file}`, file === MISSING ? [] : [API]);
   }
@@ -2843,6 +2947,570 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
   `the whitest of ${measured.frames} screencast frames ${(measured.white * 100).toFixed(2)}% white; seeked to its middle (${measured.mid.t} ms, the seek took ${measured.mid.spent} ms) the old page shows ${measured.mid.old.toFixed(1)} px and the new ${measured.mid.new.toFixed(1)} px of ${measured.mid.width}, ` +
   `overlap ${measured.mid.overlap.toFixed(1)} px (worst frame ${measured.overlap.toFixed(1)} px), the edge ${measured.mid.seam.toFixed(1)} px off the boundary; ` +
   `at 20 frames a second: middle ${measured.slow.mid.t} ms, ${measured.slow.mid.old.toFixed(1)} / ${measured.slow.mid.new.toFixed(1)} px, overlap ${measured.slow.mid.overlap.toFixed(1)} px (worst frame ${measured.slow.overlap.toFixed(1)} px), edge ${measured.slow.mid.seam.toFixed(1)} px off, both pages in ${measured.slow.both} of ${measured.slow.ofFrames} frames`);
+// ---- AH-148 (John, 2026-11-09): "feel more immersive, alive, less AI and human... fun to scroll and look at, while keeping
+// technical data simple and easy to read for non technical people". The type as the font draws it (kerning, tabular
+// figures, the mono font at the sans's x-height, labels centred on their capitals, no shift when the font arrives), a
+// thumb's 44 px on a phone, a line of text no longer than 75 letters, a whole row that answers the pointer, Copy said at
+// the press, a menu and a detail box that go on from where they are when cut short, one gold mark shared by a "Row 22"
+// link and its row, and figures that count to their values. Each check collects what it finds; the group fails once ----
+{
+  const miss = [];
+  const want = (ok, what) => { if (!ok) miss.push(what); };
+  const font = woff2("assets/plus-jakarta-sans.woff2"), upm = font.head.readUInt16BE(18);
+  const ASC = font["OS/2"].readInt16BE(68) / upm, DESC = -font["OS/2"].readInt16BE(70) / upm, CAP = font["OS/2"].readInt16BE(88) / upm;
+  const settle = (p, sel) => p.$eval(sel, (el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => {}))));
+  const landed = (p) => p.waitForFunction(() => !document.getElementById("preview").hasAttribute("data-loading"), null, { timeout: 4000 }).catch(() => {});
+  // (a) the type, computed: kerning on, tabular figures where they line up (past the .verdict's font shorthand), the
+  // labels trimmed to their capitals, the code at the font's x-height, a § heading's lines apart; and the download
+  // arrow's middle on the middle of its label's capitals, within 1 px
+  {
+    const t = await open("index.html", { width: 1440, height: 900, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate(() => document.fonts.ready);
+    const c = await p.evaluate(([ASC, DESC, CAP]) => {
+      const cs = (sel, k) => getComputedStyle(document.querySelector(sel))[k];
+      const b = document.querySelector("#download .stage .btn"), text = [...b.childNodes].find((n) => n.nodeType === 3 && n.data.trim()), rg = document.createRange();
+      rg.selectNodeContents(text);
+      const r = rg.getBoundingClientRect(), fs = parseFloat(getComputedStyle(b).fontSize), base = r.top + r.height * ASC / (ASC + DESC), i = b.querySelector("svg path").getBoundingClientRect();
+      return { kern: [...new Set(["p", ".label", ".btn", "h1", ".notice-bar p", ".grid td"].map((sel) => cs(sel, "fontKerning")))].join(), optical: cs("body", "fontOpticalSizing"),
+        tnum: [":is(.matrix) dd", ".verdict", ".stages li", ".case-scope", ".typology .n", ".proof dt"].map((sel) => [sel, cs(sel, "fontVariantNumeric")]).filter(([, v]) => !/tabular-nums/.test(v)),
+        trim: CSS.supports("text-box", "trim-both cap alphabetic") ? [".btn", ".m-close", ".menu-btn", ".copy-btn", ".tabs button"].map((sel) => [sel, cs(sel, "textBoxTrim"), cs(sel, "textBoxEdge")]).filter(([, a, e]) => a !== "trim-both" || !/cap alphabetic/.test(e)) : [],
+        adjust: ["code.line", ".in-sample .val", "#sha", ".prose code"].filter((sel) => document.querySelector(sel)).map((sel) => [sel, cs(sel, "fontSizeAdjust")]).filter(([, v]) => !/0\.536/.test(v)),
+        line: parseFloat(cs("code.line", "fontSize")), box: r.height / fs, off: Math.round(((i.top + i.height / 2) - (base - CAP * fs / 2)) * 100) / 100 };
+    }, [ASC, DESC, CAP]);
+    want(c.kern === "normal" && c.optical === "auto", `AH-148 kerning: font-kerning ${c.kern}, font-optical-sizing ${c.optical}`);
+    want(!c.tnum.length, `AH-148 tabular figures missing: ${JSON.stringify(c.tnum)}`);
+    want(!c.trim.length, `AH-148 labels not trimmed to their capitals: ${JSON.stringify(c.trim)}`);
+    want(!c.adjust.length && c.line >= 13, `AH-148 x-height: ${JSON.stringify(c.adjust)}, the PowerShell line at ${c.line} px`);
+    want(Math.abs(c.box - (ASC + DESC)) < 0.05 && Math.abs(c.off) <= 1, `AH-148 the download arrow is ${c.off} px off its label's capitals (text box ${c.box.toFixed(3)} em)`);
+    console.log(`AH-148 type: the download arrow ${c.off} px from its label's capital middle`);
+    await done(t, "AH-148 the type", [API]);
+    const q = await open("privacy.html", { width: 1440, height: 900, motion: "reduce" });
+    const h2 = await q.page.$eval(".prose h2", (h) => parseFloat(getComputedStyle(h).lineHeight) / parseFloat(getComputedStyle(h).fontSize));
+    want(Math.abs(h2 - 1.05) < 0.01, `AH-148 a § heading's leading is ${h2.toFixed(3)}, not 1.05`);
+    await done(q, "AH-148 the § headings", [API]);
+  }
+  // (b) no shift when the font arrives: with it held back 1.5 s the page paints in the fallback first, and the swap moves
+  // nothing (the layout shifts summed at most 0.01, at 1440 and 390); and the fallback face is the font's measure: the
+  // page's own text set in it is within 2% of its width in Plus Jakarta Sans, at 400 and at 800
+  for (const width of [1440, 390]) {
+    const t = await open("index.html", { width, height: 900, until: "domcontentloaded",
+      init: () => { window.__shift = 0; new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__shift += e.value; }).observe({ type: "layout-shift", buffered: true }); },
+      setup: (p) => p.route("**/plus-jakarta-sans.woff2", async (r) => { await new Promise((ok) => setTimeout(ok, 1500)); await r.continue(); }) });
+    const p = t.page;
+    await p.evaluate(() => document.fonts.ready); await p.waitForTimeout(600);
+    const r = await p.evaluate(() => {
+      const fcp = (performance.getEntriesByType("paint").find((e) => e.name === "first-contentful-paint") || {}).startTime, font = performance.getEntriesByType("resource").find((e) => /plus-jakarta-sans\.woff2$/.test(e.name));
+      const text = document.querySelector("main").textContent.replace(/\s+/g, " ");
+      const w = (family, weight) => { const s = document.createElement("span"); s.textContent = text; const st = s.style; st.position = "absolute"; st.whiteSpace = "nowrap"; st.visibility = "hidden"; st.font = `${weight} 20px ${family}`;
+        document.body.append(s); const x = s.getBoundingClientRect().width; s.remove(); return x; };
+      return { shift: window.__shift, fcp, came: font ? font.responseEnd : 0, ratio: [400, 800].map((k) => Math.round((w('"Plus Jakarta Sans Fallback", monospace', k) / w('"Plus Jakarta Sans"', k)) * 1000) / 1000) };
+    });
+    want(r.fcp < r.came - 500 && r.shift <= 0.01, `AH-148 the font's swap at ${width} px: painted at ${Math.round(r.fcp)} ms, the font came at ${Math.round(r.came)} ms, layout shift ${r.shift.toFixed(4)}`);
+    want(r.ratio.every((x) => Math.abs(x - 1) <= 0.02), `AH-148 the fallback face is not the font's measure: the page's text is ${r.ratio} of its width at 400 and 800`);
+    await done(t, `AH-148 the font's swap at ${width} px`, [API]);
+  }
+  // (c) a thumb's target on a phone (390 x 844): every link, button, summary and field outside a run of sentence text is
+  // 44 px tall or more (a box ticked through its label is pressed on the label), in the home page's open states too; and
+  // the colours the contrast check reads are all rgb() at rest (e2e/contrast.mjs parses rgb() and rgba() only; the OKLCH
+  // tints show only on a hover, a turn or a skeleton)
+  for (const file of PAGES) {
+    const t = await open(file, { width: 390, height: 844, motion: "reduce" });
+    const p = t.page;
+    for (const state of file === "index.html" ? ["", "open"] : [""]) {
+      if (state === "open") { await p.evaluate(() => { document.querySelector(".check-file").open = true; }); await p.click('.rowbtn[aria-controls="m11"]'); }
+      const small = await p.evaluate(() => {
+        const out = [], blockOf = (e) => { let a = e.parentElement; while (a && /^inline|^contents/.test(getComputedStyle(a).display)) a = a.parentElement; return a; };
+        const words = (e) => (e.textContent || "").replace(/\s+/g, " ").trim();
+        for (const e of document.querySelectorAll("a[href], button, summary, select, input, textarea")) {
+          if (!e.getClientRects().length || getComputedStyle(e).visibility !== "visible" || e.closest("[hidden], [aria-hidden=true], .skip-link")) continue;
+          const inSentence = e.tagName === "A" && getComputedStyle(e).display === "inline" && !e.closest("header, footer, .notice-bar") && words(blockOf(e)) !== words(e);
+          const r = (/^(checkbox|radio)$/.test(e.type) && e.closest("label") || e).getBoundingClientRect();
+          if (!inSentence && r.height < 44) out.push(`${e.tagName.toLowerCase()}${e.className ? "." + e.className.split(" ")[0] : ""} "${words(e).slice(0, 24)}" ${Math.round(r.width)}x${Math.round(r.height * 10) / 10}`);
+          if (!inSentence && e.tagName === "BUTTON" && words(e).length <= 1 && r.width < 44) out.push(`button "${words(e)}" ${Math.round(r.width)} px wide`);
+        }
+        return out;
+      });
+      for (const s of small) want(false, `AH-148 ${file} at 390 px${state ? " (" + state + ")" : ""}: a target under 44 px, ${s}`);
+    }
+    await p.mouse.move(1, 1); // at rest: the pointer off the row it opened (a hovered row takes its OKLCH tint)
+    const colours = await p.evaluate(() => { const out = new Set(); for (const e of document.querySelectorAll("body *")) { const c = getComputedStyle(e); for (const k of ["color", "backgroundColor", "borderTopColor"]) if (!/^rgba?\(/.test(c[k])) out.add(`${e.tagName.toLowerCase()} ${k} ${c[k]}`); } return [...out].slice(0, 5); });
+    want(!colours.length, `AH-148 ${file}: a colour at rest the contrast check cannot read: ${colours}`);
+    await done(t, `AH-148 targets on ${file}`, [API]);
+  }
+  // (d) the measure at 1440: no line of running text holds more than 75 letters (the questions' answers, the steps'
+  // aside, the checks' second column, the privacy and terms pages' text and table), counted per rendered line
+  for (const [file, sel] of [["index.html", ".faq .a p, .faq .a li, .steps .aside, .checks-table tbody td:not(.in-sample)"], ["privacy.html", ".prose p, .prose li, .card td"], ["terms.html", ".prose p, .prose li"], ["support.html", ".faq .a p, .faq .a li"]]) {
+    const t = await open(file, { width: 1440, height: 900, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate(() => document.fonts.ready);
+    await p.$$eval("details", (ds) => ds.forEach((d) => { d.open = true; }));
+    const long = await p.evaluate((sel) => [...document.querySelectorAll(sel)].filter((e) => e.getClientRects().length).map((el) => {
+      const lines = [], walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT), rg = document.createRange();
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) for (let i = 0; i < n.length; i++) {
+        rg.setStart(n, i); rg.setEnd(n, i + 1);
+        const r = rg.getClientRects()[0];
+        if (!r || !r.width) continue;
+        const y = r.top + r.height / 2;
+        let l = lines.find((x) => Math.abs(x.y - y) < 4);
+        if (!l) lines.push((l = { y, n: 0 }));
+        l.n++;
+      }
+      return [Math.max(0, ...lines.map((l) => l.n)), el.textContent.trim().slice(0, 40)];
+    }).filter(([n]) => n > 75), sel);
+    for (const [n, what] of long) want(false, `AH-148 ${file}: a line of ${n} letters ("${what}...")`);
+    await done(t, `AH-148 the measure on ${file}`, [API]);
+  }
+  // (e) a whole finding's row answers the pointer: hovered, every cell takes the tint, its flagged cells a darker wine (the
+  // white figure on it 4.5:1 or more), a row with no finding none; a row a filter leaves out keeps its marks off
+  {
+    const t = await open("index.html", { width: 1440, height: 900, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate((y) => scrollTo(0, y), await frameAt(p));
+    const look = (row) => p.evaluate((row) => { const x = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+      const rgb = (c) => { x.clearRect(0, 0, 1, 1); x.fillStyle = "#000"; x.fillStyle = c; x.fillRect(0, 0, 1, 1); return [...x.getImageData(0, 0, 1, 1).data]; };
+      const lum = ([r, g, b]) => [r, g, b].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
+      return [...document.querySelectorAll(`${row} > *`)].map((c) => { const s = getComputedStyle(c), bg = rgb(s.backgroundColor), fg = rgb(s.color), [a, b] = [lum(bg), lum(fg)].sort((m, n) => n - m);
+        return { flag: c.classList.contains("flag"), bg: bg.join(), ratio: bg[3] ? (a + 0.05) / (b + 0.05) : 0 }; }); }, row);
+    const r22 = "#r22", r4 = "#p-found tbody tr:first-child"; // row 4 has no finding
+    const rest = await look(r22), plain = await look(r4);
+    await p.hover("#r22 td.why"); const on = await look(r22);
+    await p.hover("#p-found tbody tr:nth-child(1) td.why"); const plainOn = await look(r4);
+    want(on.every((c, i) => c.bg !== rest[i].bg) && on.filter((c) => c.flag).every((c) => c.ratio >= 4.5) && on.some((c) => c.flag), `AH-148 a hovered finding's row: ${JSON.stringify({ rest, on })}`);
+    want(JSON.stringify(plainOn) === JSON.stringify(plain), "AH-148 a row with no finding answers the pointer");
+    await p.click('.typology button[data-kind="label"]');
+    const out = await look(r22); await p.hover("#r22 td.why"); const outOn = await look(r22);
+    want(JSON.stringify(outOn.filter((c) => c.flag)) === JSON.stringify(out.filter((c) => c.flag)), `AH-148 a row the filter leaves out took the flagged cells' hover: ${JSON.stringify({ out, outOn })}`);
+    await done(t, "AH-148 the row hover", [API]);
+    const q = await open("privacy.html", { width: 1440, height: 900, motion: "reduce" });
+    await q.page.hover(".toc a"); await q.page.waitForTimeout(50);
+    const toc = await q.page.$eval(".toc a", (a) => getComputedStyle(a).textDecorationLine);
+    await q.page.mouse.move(1, 1); await q.page.focus(".toc a"); await q.page.keyboard.press("Shift+Tab"); await q.page.keyboard.press("Tab");
+    const tocKey = await q.page.evaluate(() => [document.activeElement.matches(".toc a:focus-visible"), getComputedStyle(document.activeElement).textDecorationLine]);
+    want(toc === "underline" && tocKey[0] && tocKey[1] === "underline", `AH-148 a contents link hovered (${toc}) or focused (${tocKey}) is not underlined`);
+    await done(q, "AH-148 the contents' links", [API]);
+  }
+  // (f) Copy says Copied at the press: with a clipboard that answers 400 ms later, the label is Copied, the check in, within
+  // the frame after the click; with one that refuses 400 ms later, it takes it back to the selected line and Ctrl+C
+  for (const refuse of [false, true]) {
+    const t = await open("index.html", { width: 1280, init: refuse ? () => { Object.defineProperty(navigator.clipboard, "writeText", { value: () => new Promise((_, no) => setTimeout(() => no(new Error("refused")), 400)) }); }
+      : () => { Object.defineProperty(navigator.clipboard, "writeText", { value: () => new Promise((ok) => setTimeout(ok, 400)) }); } });
+    const p = t.page, label = `AH-148 Copy with a clipboard that ${refuse ? "refuses" : "answers"} 400 ms later`;
+    await p.waitForTimeout(ENTERED);
+    await p.click(".check-file summary"); await settle(p, ".check-file");
+    const r = await p.evaluate(async () => { const b = document.querySelector(".copy-btn"), say = () => [b.textContent.trim(), b.hasAttribute("data-done")];
+      b.click(); await new Promise((ok) => requestAnimationFrame(ok)); const first = say();
+      await new Promise((ok) => setTimeout(ok, 700)); return { first, later: say(), picked: getSelection().toString(), line: b.previousElementSibling.textContent }; });
+    want(r.first[0] === "Copied" && r.first[1], `${label}: the frame after the click says ${JSON.stringify(r.first)}`);
+    if (refuse) want(r.later[0] === "Press Ctrl+C" && !r.later[1] && r.picked === r.line, `${label}: ${JSON.stringify(r)}`);
+    else want(r.later[0] === "Copied" && r.later[1], `${label}: ${JSON.stringify(r)}`);
+    await done(t, label, [API]);
+  }
+  // (g) cut short, a popover goes on from where it is: the phone's menu opened, closed at 60 ms and opened again at 100 ms
+  // never grows or brightens while it leaves, nor shrinks or fades while it comes back (it jumped back to .95 and see-through
+  // and restarted); a row's detail box closed at 80 ms leaves from the pose it had, never from full
+  {
+    const t = await open("index.html", { width: 375, height: 667 });
+    const p = t.page;
+    await p.waitForTimeout(ENTERED);
+    const r = await p.evaluate(async () => {
+      const b = document.querySelector(".menu-btn"), n = document.getElementById("main-nav"), wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
+      const pose = () => { const c = getComputedStyle(n); return [performance.now(), c.transform === "none" ? 1 : new DOMMatrix(c.transform).a, +c.opacity]; };
+      const log = [], ev = {};
+      let on = true;
+      const look = () => { if (n.getClientRects().length) log.push(pose()); if (on) requestAnimationFrame(look); };
+      b.click(); requestAnimationFrame(look);
+      await wait(60); ev.close = pose(); b.click();
+      await wait(40); ev.open = pose(); b.click();
+      await wait(400); on = false;
+      return { log, ev, expanded: b.getAttribute("aria-expanded"), rest: pose().slice(1) };
+    });
+    const leaving = r.log.filter(([at]) => at > r.ev.close[0] && at < r.ev.open[0]), back = r.log.filter(([at]) => at > r.ev.open[0]);
+    want(r.ev.close[2] > 0 && r.ev.close[2] < 1 && r.ev.open[2] > 0 && r.ev.open[2] < 1, `AH-148 menu: not cut mid-way (${JSON.stringify(r.ev)})`);
+    want(leaving.every(([, s, o]) => s <= r.ev.close[1] + 0.005 && o <= r.ev.close[2] + 0.01), `AH-148 menu closed at 60 ms grew or brightened from ${r.ev.close.slice(1)}: ${leaving.map((x) => x.slice(1).map((v) => v.toFixed(3)).join("/")).join(" ")}`);
+    want(back.length > 3 && back.every(([, s, o]) => s >= r.ev.open[1] - 0.005 && o >= r.ev.open[2] - 0.01), `AH-148 menu opened again at 100 ms shrank or faded from ${r.ev.open.slice(1)}: ${back.map((x) => x.slice(1).map((v) => v.toFixed(3)).join("/")).join(" ")}`);
+    want(r.expanded === "true" && r.rest.join() === "1,1", `AH-148 menu: at rest ${JSON.stringify(r)}`);
+    await done(t, "AH-148 menu cut short", [API]);
+  }
+  {
+    const t = await open("index.html", { width: 1440, height: 900 });
+    const p = t.page;
+    await p.waitForTimeout(ENTERED);
+    await p.evaluate((y) => scrollTo(0, y), await frameAt(p)); await landed(p);
+    const r = await p.evaluate(async () => {
+      const box = document.getElementById("m22"), wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
+      const pose = (el) => { const c = getComputedStyle(el); return [performance.now(), c.transform === "none" ? 1 : new DOMMatrix(c.transform).a, +c.opacity]; };
+      document.querySelector('.rowbtn[aria-controls="m22"]').click();
+      await wait(80);
+      const cut = pose(box), log = [];
+      box.querySelector(".m-close").click();
+      for (let i = 0; i < 30; i++) { await new Promise((ok) => requestAnimationFrame(ok)); const c = document.querySelector("[data-pop-copy]"); if (c) log.push(pose(c)); }
+      return { cut, log, left: document.querySelectorAll("[data-pop-copy]").length };
+    });
+    want(r.cut[2] > 0 && r.cut[2] < 1, `AH-148 detail box: not cut mid-way (${r.cut})`);
+    want(r.log.length > 0 && r.log.every(([, s, o]) => s <= r.cut[1] + 0.005 && o <= r.cut[2] + 0.01) && r.left === 0, `AH-148 detail box closed at 80 ms left from more than its pose ${r.cut.slice(1)}: ${r.log.map((x) => x.slice(1).map((v) => v.toFixed(3)).join("/")).join(" ")} (${r.left} copies left)`);
+    await done(t, "AH-148 detail box cut short", [API]);
+  }
+  // (h) one mark for a link and its row: a checks-table "Row 22" link's glide lands with the link's gold frame round the
+  // sample's row 22, opacity only, 600 ms, once, then gone; none under reduced motion (the link jumps)
+  for (const motion of ["no-preference", "reduce"]) {
+    const t = await open("index.html", { width: 1440, height: 900, motion });
+    const p = t.page, label = `AH-148 Row 22's shared mark (${motion})`;
+    if (motion !== "reduce") await p.waitForTimeout(ENTERED);
+    await p.evaluate(() => { const a = document.querySelector('.checks-table a.to-row[href="#r22"]'); scrollTo(0, a.getBoundingClientRect().top + scrollY - 400);
+      window.__mark = null; document.addEventListener("ah:glide-end", () => { const m = document.querySelector(".row-mark"), a = m && m.getAnimations()[0], r = m && m.getBoundingClientRect(), row = document.getElementById("r22").getBoundingClientRect();
+        window.__mark = m && { n: m.getAnimations().length, dur: a ? a.effect.getComputedTiming().duration : 0, runs: a ? a.effect.getComputedTiming().iterations : 0, hidden: m.getAttribute("aria-hidden"),
+          props: a ? [...new Set(a.effect.getKeyframes().flatMap((k) => Object.keys(k)))].filter((k) => !["offset", "computedOffset", "easing", "composite"].includes(k)) : [],
+          off: [r.left - row.left, r.top - row.top, r.width - row.width, r.height - row.height].map((v) => Math.round(v)) }; }); });
+    await p.waitForTimeout(motion === "reduce" ? 0 : 1600);
+    await p.click('.checks-table a.to-row[href="#r22"]');
+    await p.waitForFunction(() => location.hash === "#r22", null, { timeout: 5000 }).catch(() => {});
+    await p.waitForTimeout(900);
+    const r = await p.evaluate(() => ({ at: window.__mark, after: [...document.querySelectorAll(".row-mark")].map((m) => [getComputedStyle(m).opacity, m.getAnimations().length]) }));
+    if (motion === "reduce") want(!r.at && r.after.every(([o, n]) => o === "0" && n === 0), `${label}: ${JSON.stringify(r)}`);
+    else want(r.at && r.at.n === 1 && r.at.dur === 600 && r.at.runs === 1 && r.at.hidden === "true" && r.at.props.join() === "opacity" && r.at.off.every((v) => Math.abs(v) <= 2) && r.after.length === 1 && r.after[0].join() === "0,0", `${label}: ${JSON.stringify(r)}`);
+    await done(t, label, [API]);
+  }
+  // ... and pointed at or focused while the row is on screen (a screen tall enough for both), the same frame shows round
+  // the row until the pointer or focus leaves; with the row off screen, nothing
+  {
+    const t = await open("index.html", { width: 1440, height: 900, motion: "reduce" });
+    const p = t.page, link = '.checks-table a.to-row[href="#r22"]';
+    const mark = () => p.evaluate(() => { const m = document.querySelector(".row-mark[data-on]"), row = document.getElementById("r22").getBoundingClientRect(), r = m && m.getBoundingClientRect(); return m ? [r.left - row.left, r.top - row.top, r.width - row.width, r.height - row.height].map(Math.round) : null; });
+    await p.evaluate((sel) => scrollTo(0, document.querySelector(sel).getBoundingClientRect().top + scrollY - 400), link);
+    await p.hover(link); const off = await mark();
+    const tall = await p.evaluate((sel) => Math.ceil(document.querySelector(sel).getBoundingClientRect().bottom + scrollY + 40), link);
+    await p.setViewportSize({ width: 1440, height: tall }); await p.evaluate(() => scrollTo(0, 0)); await p.mouse.move(1, 1);
+    await p.hover(link); const on = await mark();
+    await p.hover("h1"); const gone = await mark();
+    await p.focus(link); const focused = await mark();
+    await p.evaluate(() => document.activeElement.blur()); const blurred = await mark();
+    want(off === null && on && on.every((v) => Math.abs(v) <= 2) && gone === null && focused && blurred === null, `AH-148 Row 22 pointed at: off screen ${JSON.stringify(off)}, on screen ${JSON.stringify(on)}, left ${JSON.stringify(gone)}, focused ${JSON.stringify(focused)}, blurred ${JSON.stringify(blurred)}`);
+    await done(t, "AH-148 Row 22 pointed at", [API]);
+  }
+  // (i) figures that count: the proof strip's count up once as they rise (199 of 201 from "  0 of 201", the rest of the
+  // line still), each ending on exactly the page's text, which stays in the page every frame, the counting figure drawn
+  // with an empty alternative text; a filter's count ticks to its new value over 250 ms when a tab changes it, its text
+  // the new value at once; none of it under reduced motion
+  for (const motion of ["no-preference", "reduce"]) {
+    const t = await open("index.html", { width: 1440, height: 900, motion });
+    const p = t.page, label = `AH-148 counting figures (${motion})`;
+    if (motion !== "reduce") await p.waitForTimeout(ENTERED);
+    const finals = await p.$$eval(".proof dt", (ds) => ds.map((d) => d.textContent));
+    await p.evaluate(() => { window.__dt = []; window.__alt = ""; const ds = [...document.querySelectorAll(".proof dt")];
+      const look = () => { window.__dt.push(ds.map((d) => [d.textContent, d.getAttribute("data-tick")])); const k = ds.find((d) => d.hasAttribute("data-tick")); if (k && !window.__alt) window.__alt = getComputedStyle(k, "::before").content;
+        if (window.__dt.length < 150) requestAnimationFrame(look); }; requestAnimationFrame(look);
+      scrollTo(0, document.querySelector(".proof").getBoundingClientRect().top + scrollY - 300); });
+    await p.waitForFunction(() => window.__dt.length >= 150, null, { timeout: 8000 }).catch(() => {});
+    await p.waitForTimeout(500);
+    const r = await p.evaluate(() => ({ frames: window.__dt, alt: window.__alt, end: [...document.querySelectorAll(".proof dt")].map((d) => [d.textContent, d.getAttribute("data-tick")]) }));
+    const ticks = (i) => r.frames.map((f) => f[i][1]).filter(Boolean);
+    want(r.frames.every((f) => f.every(([text], i) => text === finals[i])) && JSON.stringify(r.end) === JSON.stringify(finals.map((x) => [x, null])), `${label}: the proof's text changed or did not end as the page's`);
+    if (motion === "reduce") want(finals.every((_, i) => !ticks(i).length), `${label}: it counted`);
+    else {
+      const big = ticks(1);
+      want(big.some((x) => /^[ \d]{3} of 201$/.test(x) && parseInt(x.replace(/ /g, ""), 10) < 199) && big.every((x) => x.length === finals[1].length && x.endsWith(" of 201")) && !ticks(2).length && !ticks(3).length,
+        `${label}: 199 of 201 counted ${JSON.stringify([...new Set(big)].slice(0, 12))}, 0 ${JSON.stringify(ticks(2).slice(0, 3))}`);
+      want(/\/\s*""/.test(r.alt), `${label}: the counting figure has a text a screen reader reads (${r.alt})`);
+    }
+    await p.evaluate((y) => scrollTo(0, y), await frameAt(p)); await landed(p);
+    const c = await p.evaluate(async () => { const n = document.querySelector(".typology .n"), seen = []; let on = true;
+      const look = () => { seen.push(n.getAttribute("data-tick")); if (on) requestAnimationFrame(look); };
+      document.getElementById("t-clean").click(); const text = n.textContent; requestAnimationFrame(look);
+      await new Promise((ok) => setTimeout(ok, 450)); on = false; return { text, seen, end: [n.textContent, n.getAttribute("data-tick")] }; });
+    if (motion === "reduce") want(c.text === "4" && c.seen.every((x) => x === null), `${label}: a filter's count ${JSON.stringify(c)}`);
+    else want(c.text === "4" && c.seen.some((x) => x === "6" || x === "5") && c.end.join() === "4,", `${label}: a filter's count ${JSON.stringify(c)}`);
+    await done(t, label, [API]);
+  }
+  assert.deepEqual(miss, [], `AH-148:\n${miss.join("\n")}`);
+  console.log("AH-148: kerning, tabular figures, trimmed labels, code at the x-height; no shift when the font arrives; 44 px targets on a phone; lines of 75 letters at most; the whole row answers the pointer; Copy at the press; a menu and a box cut short go on from where they are; Row 22 and its link share one mark; figures count to their values");
+}
+// ---- AH-148 fix round 1, a blind design review, as drawn: the case studies' cards ended 476, 446 and 561 px down; the
+// questions were a table with an "Open" box a row and an empty column beside a taller form; on a 390 px phone the
+// sample's Finding sat past the screen's edge, a swipe away ----
+{
+  const miss = [];
+  const want = (ok, what) => { if (!ok) miss.push(what); };
+  {
+    const t = await open("index.html", { width: 1440, height: 900, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate(() => document.fonts.ready);
+    const bottoms = await p.$$eval(".cases .case", (cs) => cs.map((c) => Math.round(c.getBoundingClientRect().bottom * 10) / 10));
+    want(bottoms.length === 3 && Math.max(...bottoms) - Math.min(...bottoms) <= 1, `the case studies' cards end at ${bottoms} px, not on one line`);
+    // the questions: each a full-width row whose marker is a drawn chevron (no word) that turns as it opens, its answer
+    // under it
+    const q = await p.evaluate(() => {
+      const d = document.querySelector("#faq details"), s = d.querySelector("summary"), faq = d.closest(".faq"), mark = () => getComputedStyle(s, "::after");
+      const shut = [mark().content, mark().transform];
+      d.open = true;
+      return { shut, open: mark().transform, wide: Math.round(s.getBoundingClientRect().width - faq.clientWidth), below: d.querySelector(".a").getBoundingClientRect().top >= s.getBoundingClientRect().bottom - 1,
+        head: !!faq.querySelector(".faq-head"), height: s.getBoundingClientRect().height };
+    });
+    want(q.shut[0] === '""' && q.shut[1] !== "none" && q.open !== q.shut[1] && q.wide === 0 && q.below && !q.head && q.height >= 44, `a question is not a full-width row with a chevron that turns: ${JSON.stringify(q)}`);
+    // ... and the form, twice their height, no longer stands beside an empty column: it starts at the section's top, and
+    // with every question shut the space under them beside it is under a third of its height (404 of 758 px before)
+    await p.evaluate(() => document.querySelectorAll("#faq details").forEach((d) => { d.open = false; }));
+    const at = await p.evaluate(() => { const f = document.querySelector("#faq .faq").getBoundingClientRect(), c = document.getElementById("contact").getBoundingClientRect(), h = document.getElementById("faq-title").getBoundingClientRect();
+      return { under: Math.round(c.bottom - f.bottom), form: Math.round(c.height), top: Math.round(c.top - h.top) }; });
+    want(at.under < at.form / 3 && Math.abs(at.top) <= 24, `an empty column stands beside the form: ${JSON.stringify(at)}`);
+    await done(t, "AH-148 fix round 1 at 1440", [API]);
+  }
+  // row 11's Finding on a 390 px phone: its words inside the screen and inside the table's scrolling box, no swipe
+  {
+    const t = await open("index.html", { width: 390, height: 844, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate(() => document.fonts.ready);
+    await p.evaluate(() => scrollTo(0, document.getElementById("r11").getBoundingClientRect().top + scrollY - 300));
+    const r = await p.evaluate(() => { const td = document.querySelector("#r11 td.why"), rg = document.createRange(), box = td.closest(".scroll").getBoundingClientRect();
+      rg.selectNodeContents(td); const w = rg.getBoundingClientRect(), at = document.elementFromPoint(w.left + 2, w.top + w.height / 2);
+      return { text: td.textContent.trim(), words: [w.left, w.right, w.top, w.bottom].map(Math.round), box: [box.left, box.right].map(Math.round), screen: [innerWidth, innerHeight], seen: !!at && td.contains(at) }; });
+    want(r.words[0] >= 0 && r.words[1] <= r.screen[0] && r.words[2] >= 0 && r.words[3] <= r.screen[1] && r.words[0] >= r.box[0] && r.words[1] <= r.box[1] && r.seen,
+      `row 11's Finding at 390 px is off screen or under another cell: ${JSON.stringify(r)}`);
+    await done(t, "AH-148 fix round 1 at 390", [API]);
+  }
+  assert.deepEqual(miss, [], `AH-148 fix round 1:\n${miss.join("\n")}`);
+  console.log("AH-148 fix round 1: the case cards end on one line; each question a full-width row with a turning chevron, the form beside the heading; row 11's Finding on a 390 px phone's screen");
+}
+// ---- AH-148 fix round 2, a second blind design review: row 22's detail box lay on its flagged cells at 1440 px and
+// opened above a phone's screen; at 390 px the pinned Finding cut Region to "Ce" and pushed the flagged cells a swipe
+// away; "Want to check the file first?" had no sign it opens; the privacy summary's values lost their column heads on a
+// phone; the download bar came back over code signing and the footer; the checksum left "e85c2d" alone on a line and
+// "SHA-256" broke at its hyphen; and After fixes changed the sheet's height and columns, moving "See every check" ----
+{
+  const miss = [];
+  const want = (ok, what) => { if (!ok) miss.push(what); };
+  // 1. a row's detail box never covers its row's flagged cells, and its head is on screen when it opens
+  for (const [width, height] of [[1440, 900], [390, 844]]) {
+    const t = await open("index.html", { width, height, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate(() => document.fonts.ready);
+    for (const m of ["m22", "m11"]) {
+      await p.click(`.rowbtn[aria-controls="${m}"]`);
+      const r = await p.evaluate((m) => { const box = document.getElementById(m), b = box.getBoundingClientRect(), h = box.querySelector(".m-head").getBoundingClientRect();
+        const cells = [...document.querySelector(`[aria-controls="${m}"]`).closest("tr").querySelectorAll("td.flag, td.q")].map((c) => c.getBoundingClientRect());
+        return { open: !box.hidden, covers: cells.filter((c) => c.left < b.right - 0.5 && c.right > b.left + 0.5 && c.top < b.bottom - 0.5 && c.bottom > b.top + 0.5).length,
+          head: [h.top, h.bottom].map(Math.round), screen: innerHeight, box: [b.left, b.top, b.right, b.bottom].map(Math.round) }; }, m);
+      want(r.open && r.covers === 0, `${m} at ${width} x ${height}: the detail box covers ${r.covers} of its row's flagged cells ${JSON.stringify(r)}`);
+      want(r.head[0] >= 0 && r.head[1] <= r.screen, `${m} at ${width} x ${height}: the detail box's head is off screen ${JSON.stringify(r)}`);
+      await p.keyboard.press("Escape");
+    }
+    await done(t, `AH-148 fix round 2 detail boxes at ${width}`, [API]);
+  }
+  // 3. the phone's sample at rest: (a) no cell's text cut by the screen, the box or a pinned cell, (b) row 11's Finding
+  // whole, (c) row 11's flagged cells on screen, no swipe
+  {
+    const t = await open("index.html", { width: 390, height: 844, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate(() => document.fonts.ready);
+    await p.evaluate(() => scrollTo(0, document.getElementById("r11").getBoundingClientRect().top + scrollY - 300));
+    const r = await p.evaluate(() => {
+      const sc = document.querySelector("#p-found .scroll"), box = sc.getBoundingClientRect(), pin = sc.querySelector("thead th").getBoundingClientRect().right;
+      const whole = (b, from) => b.left >= from - 0.5 && b.right <= Math.min(box.right, innerWidth) + 0.5;
+      const cut = [];
+      for (const el of sc.querySelectorAll("th, td")) {
+        if (!el.getClientRects().length || el.closest("thead") && el === el.parentElement.lastElementChild) continue; // the Finding's unseen head
+        const rg = document.createRange(); rg.selectNodeContents(el);
+        const b = rg.getBoundingClientRect(), pinned = getComputedStyle(el).position === "sticky" && el.getBoundingClientRect().left < pin;
+        if (!b.width) continue;
+        const from = pinned ? box.left : pin, seen = b.right > from + 0.5 && b.left < box.right - 0.5;
+        if (seen && !whole(b, from)) cut.push(`${el.closest("tr").id || el.closest("tr").rowIndex}:${el.textContent.trim().slice(0, 12)} [${Math.round(b.left)}, ${Math.round(b.right)}]`);
+        if (seen && el.scrollWidth > el.clientWidth + 1) cut.push(`${el.textContent.trim().slice(0, 12)} overflows its cell`);
+        // ... nor a sliver of a cell showing beside a pinned one (a "⋯" row's one wide cell spans the hidden columns)
+        const c = el.getBoundingClientRect();
+        if (!pinned && !el.closest("tr.skip") && c.right > from + 0.5 && c.left < box.right - 0.5 && !whole(c, from)) cut.push(`${el.closest("tr").id || el.closest("tr").rowIndex}:${el.textContent.trim().slice(0, 12)} cell [${Math.round(c.left)}, ${Math.round(c.right)}]`);
+      }
+      const td = document.querySelector("#r11 td.why"), rg = document.createRange(); rg.selectNodeContents(td);
+      const w = rg.getBoundingClientRect(), at = document.elementFromPoint(w.left + 2, w.top + w.height / 2);
+      const flags = [...document.querySelectorAll("#r11 td.flag")].map((c) => { const b = c.getBoundingClientRect(), hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+        return { text: c.textContent, inside: whole(b, pin) && b.top >= 0 && b.bottom <= innerHeight, hit: !!hit && c.contains(hit) }; });
+      return { cut, finding: { words: [w.left, w.right, w.top, w.bottom].map(Math.round), inside: whole(w, pin) && w.top >= 0 && w.bottom <= innerHeight, seen: !!at && td.contains(at) }, flags };
+    });
+    want(!r.cut.length, `3a the phone's sample cuts or covers cells at rest: ${r.cut.join("; ")}`);
+    want(r.finding.inside && r.finding.seen, `3b row 11's Finding at 390 px is not whole on screen: ${JSON.stringify(r.finding)}`);
+    want(r.flags.length === 3 && r.flags.every((f) => f.inside && f.hit), `3c row 11's flagged cells at 390 px are not on screen without a swipe: ${JSON.stringify(r.flags)}`);
+    await done(t, "AH-148 fix round 2 phone sample", [API]);
+  }
+  // 4. "Want to check the file first?" wears the questions' chevron, turns it as it opens, and is a 44 px target; the
+  // aside's rule beside it reaches the grid's right edge
+  {
+    const t = await open("index.html", { width: 1440, height: 900, motion: "reduce" });
+    const p = t.page;
+    const r = await p.evaluate(() => { const d = document.querySelector(".check-file"), s = d.querySelector("summary"), mark = () => getComputedStyle(s, "::after");
+      const shut = [mark().content, mark().transform, mark().borderRightWidth, mark().borderBottomWidth]; d.open = true; const opened = mark().transform; d.open = false;
+      const a = document.querySelector(".steps .aside").getBoundingClientRect(), g = document.querySelector(".steps"), gs = getComputedStyle(g);
+      return { shut, opened, height: s.getBoundingClientRect().height, aside: Math.round(a.right), grid: Math.round(g.getBoundingClientRect().right - parseFloat(gs.paddingRight)) }; });
+    want(r.shut[0] === '""' && r.shut[1] !== "none" && r.shut[2] === "2px" && r.shut[3] === "2px" && r.opened !== r.shut[1] && r.height >= 44, `4 the check-file summary has no drawn chevron that turns: ${JSON.stringify(r)}`);
+    want(Math.abs(r.aside - r.grid) <= 1, `4 the aside's rule stops short of the grid's edge: ${JSON.stringify(r)}`);
+    await done(t, "AH-148 fix round 2 check-file", [API]);
+  }
+  // 5. the privacy summary on a phone: each value under its column's head, a label no reader hears twice
+  {
+    const t = await open("privacy.html", { width: 390, height: 844, motion: "reduce" });
+    const p = t.page;
+    const heads = await p.$$eval(".card thead th", (ths) => ths.map((th) => th.textContent.trim()));
+    const r = await p.$$eval(".card tbody td", (tds) => tds.map((td) => { const b = getComputedStyle(td, "::before"); return { text: td.getAttribute("data-label"), col: td.cellIndex, shown: b.display !== "none" && b.content !== "none" && b.content !== "normal", up: b.textTransform }; }));
+    want(r.length === 8 && r.every((x) => x.shown && x.text === heads[x.col]), `5 the privacy summary's values on a phone have no column labels: ${JSON.stringify(r)} vs ${JSON.stringify(heads)}`);
+    const said = await p.locator(".card tbody td").first().ariaSnapshot();
+    want(!/where it runs/i.test(said), `5 a reader hears the privacy summary's label twice: ${said}`);
+    await done(t, "AH-148 fix round 2 privacy labels", [API]);
+  }
+  // 6. the download bar stays down past the download section: scrolled to the footer it is hidden
+  for (const [width, height] of [[390, 844], [1440, 900]]) {
+    const t = await open("index.html", { width, height, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate(() => scrollTo(0, document.getElementById("checks").offsetTop)); await p.waitForTimeout(400);
+    const mid = await p.evaluate(() => document.getElementById("dock").hidden);
+    await p.evaluate(() => document.getElementById("code-signing").scrollIntoView()); await p.waitForTimeout(400);
+    const signing = await p.evaluate(() => document.getElementById("dock").hidden);
+    await p.evaluate(() => scrollTo(0, document.documentElement.scrollHeight)); await p.waitForTimeout(400);
+    const foot = await p.evaluate(() => { const d = document.getElementById("dock"); return { hidden: d.hidden, drawn: d.getClientRects().length > 0 }; });
+    want(foot.hidden && !foot.drawn && signing, `6 the download bar at ${width} px shows past the download section: ${JSON.stringify({ signing, foot })}`);
+    if (width <= 760) want(!mid, `6 the download bar at ${width} px no longer shows between the hero and the download`);
+    await done(t, `AH-148 fix round 2 dock at ${width}`, [API]);
+  }
+  // 7. the checksum in two even halves (four on a phone), copied whole; SHA-256 on one line wherever it is written; "See every check" and
+  // the sheet's columns the same on every tab
+  for (const [width, size] of [[1440, "100%"], [390, "100%"], [320, "200%"]]) {
+    const t = await open("index.html", { width, height: 900, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate((size) => { document.documentElement.style.fontSize = size; document.querySelector(".check-file").open = true; }, size);
+    const r = await p.evaluate(() => { const c = document.getElementById("sha"), rg = document.createRange(); rg.selectNodeContents(c);
+      const lines = [...rg.getClientRects()].filter((x) => x.width > 1).map((x) => Math.round(x.width));
+      getSelection().removeAllRanges(); getSelection().addRange(rg); const copied = getSelection().toString(); getSelection().removeAllRanges();
+      return { lines, copied, sha: [...document.querySelectorAll(".nb")].filter((e) => e.textContent === "SHA-256").map((e) => e.getClientRects().length) }; });
+    if (size === "100%") want(r.lines.length === (width > 760 ? 2 : 4) && r.lines.every((w) => Math.abs(w - r.lines[0]) <= 1), `7 the checksum at ${width} px is not ${width > 760 ? "two" : "four"} even lines: ${JSON.stringify(r.lines)}`);
+    want(r.copied === "ab".repeat(32), `7 the checksum at ${width} px copies as ${JSON.stringify(r.copied)}`);
+    want(r.sha.length === 2 && r.sha.every((n) => n === 1), `7 "SHA-256" at ${width} px (${size}) breaks over lines: ${JSON.stringify(r.sha)}`);
+    await done(t, `AH-148 fix round 2 checksum at ${width}`, [API]);
+  }
+  for (const [width, height] of [[1440, 900], [390, 844]]) {
+    const t = await open("index.html", { width, height, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate(() => document.fonts.ready);
+    const at = () => p.evaluate(() => ({ next: Math.round((document.querySelector(".next-up a").getBoundingClientRect().top + scrollY) * 10) / 10,
+      cols: [...document.querySelectorAll(".ws-main > .panel:not([hidden]) .grid thead th")].map((th) => Math.round(th.getBoundingClientRect().width * 10) / 10) }));
+    const seen = {};
+    for (const tab of ["found", "clean", "busy", "found"]) { await p.click(`#t-${tab}`); seen[tab] = await at(); if (tab === "busy") await p.click("#t-found"); }
+    // on a wide screen only: on a phone each tab is its own height (AH-148 final pass: held at After fixes', the findings
+    // ended 150 px above their caption), and a pressed tab brings its panel on screen instead
+    if (width > 760) want(seen.clean.next === seen.found.next && seen.busy.next === seen.found.next, `7 "See every check" moves between tabs at ${width} px: ${JSON.stringify(seen)}`);
+    want(JSON.stringify(seen.clean.cols) === JSON.stringify(seen.found.cols), `7 the sheet's columns change between Findings and After fixes at ${width} px: ${JSON.stringify(seen)}`);
+    // ... and on a wide screen the verdict and its note, in the filters' column, lie under the key, never over it
+    await p.click("#t-clean");
+    const sum = await p.evaluate(() => { const k = document.querySelector(".typology .key").getBoundingClientRect(), s = document.querySelector(".clean-sum"), n = document.querySelector(".typology").getBoundingClientRect();
+      const c = s ? s.getBoundingClientRect() : { top: -1, left: -1, right: -1, bottom: 1e9 };
+      return { key: k.bottom, top: c.top, inside: c.left >= n.left - 0.5 && c.right <= n.right + 0.5 && c.bottom <= n.bottom + 0.5, wide: innerWidth > 1100 }; });
+    if (sum.wide) want(sum.top >= sum.key && sum.inside, `7 the verdict and its note at ${width} px lie over the key or outside the filters' column: ${JSON.stringify(sum)}`);
+    await done(t, `AH-148 fix round 2 tabs at ${width}`, [API]);
+  }
+  assert.deepEqual(miss, [], `AH-148 fix round 2:\n${miss.join("\n")}`);
+  console.log("AH-148 fix round 2: a detail box beside or off its row's flagged cells with its head on screen (1440 and 390); the phone's sample whole at rest, row 11's Finding and flagged cells on screen; the check-file chevron and the aside's rule; the privacy summary's labels on a phone, heard once; the download bar down past the download; the checksum in two even halves, copied whole, SHA-256 unbroken; one height and one set of columns across the tabs");
+}
+// ---- AH-148 final pass, a third blind design review: on a phone an empty band of about 150 px sat under the sample's
+// last row (every tab held at After fixes' height); a checks-table "Row 31" landed on a phone with its flagged cell a
+// swipe away; the swipe hint showed on tabs with nothing to swipe, and a phone's tab changed what lay below the fold;
+// "170.43 ÷ 2.99" broke over two lines in a detail box; "All findings 7" beside types adding to 10 said nothing of rows
+// flagged twice; the case studies' cards had a hole mid-card; the support page's footer left "Source" alone on a line ----
+{
+  const miss = [];
+  const want = (ok, what) => { if (!ok) miss.push(what); };
+  // 1. a phone's Findings end where their last row ends: the caption under 40 px below it
+  {
+    const t = await open("index.html", { width: 390, height: 844, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate(() => document.fonts.ready);
+    const gap = await p.evaluate(() => { const rows = [...document.querySelectorAll("#p-found .grid tbody tr")].filter((tr) => tr.getClientRects().length);
+      return Math.round(document.getElementById("ws-cap").getBoundingClientRect().top - rows[rows.length - 1].getBoundingClientRect().bottom); });
+    want(gap < 40, `1 at 390 px the sample's last row ends ${gap} px above its caption`);
+    await done(t, "AH-148 final pass phone sample's height", [API]);
+  }
+  // 3. a checks-table "Row 31" lands with the row's flagged Region cell in view, inside the table's scrolling box beside
+  // the pinned Row number, on a phone too (its table starts scrolled to its end); the row's gold mark shows on landing
+  for (const [width, height, motion] of [[1440, 900, "no-preference"], [390, 844, "no-preference"], [390, 844, "reduce"]]) {
+    const t = await open("index.html", { width, height, motion });
+    const p = t.page, label = `3 Row 31 at ${width} px (${motion})`;
+    if (motion !== "reduce") await p.waitForTimeout(ENTERED);
+    await p.evaluate(() => { const a = document.querySelector('.checks-table a.to-row[href="#r31"]'); scrollTo(0, a.getBoundingClientRect().top + scrollY - 300);
+      window.__landed = null; document.addEventListener("ah:glide-end", () => setTimeout(() => { const m = document.querySelector(".row-mark"), r = m && m.getBoundingClientRect(), row = document.getElementById("r31").getBoundingClientRect();
+        window.__landed = m ? { o: +getComputedStyle(m).opacity, top: Math.round(r.top - row.top), h: Math.round(r.height - row.height) } : null; }, 150)); });
+    await p.waitForTimeout(motion === "reduce" ? 0 : 1600);
+    await p.click('.checks-table a.to-row[href="#r31"]');
+    await p.waitForFunction(() => location.hash === "#r31", null, { timeout: 5000 }).catch(() => {});
+    await p.waitForTimeout(900);
+    const r = await p.evaluate(() => { const td = document.querySelector("#r31 :is(td.flag, td.q)"), b = td.getBoundingClientRect(), sc = td.closest(".scroll"), s = sc.getBoundingClientRect(), pin = document.querySelector("#r31 > :first-child").getBoundingClientRect().right;
+      return { cell: [b.left, b.right, b.top, b.bottom].map(Math.round), box: [Math.round(pin), Math.round(s.right)], text: td.textContent, screen: [innerWidth, innerHeight], landed: window.__landed }; });
+    const [l, rt, tp, bt] = r.cell;
+    want(l >= r.box[0] - 0.5 && rt <= r.box[1] + 0.5 && l >= 0 && rt <= r.screen[0] && tp >= 0 && bt <= r.screen[1], `${label}: row 31's flagged cell is not in view: ${JSON.stringify(r)}`);
+    if (motion !== "reduce") want(r.landed && r.landed.o > 0.5 && Math.abs(r.landed.top) <= 2 && Math.abs(r.landed.h) <= 2, `${label}: row 31 carries no gold mark on landing: ${JSON.stringify(r.landed)}`);
+    await done(t, `AH-148 final pass ${label}`, [API]);
+  }
+  // 4. the swipe hint only where there is a table to swipe, and a phone's tab brings its panel's top on screen
+  for (const motion of ["reduce", "no-preference"]) {
+    const t = await open("index.html", { width: 390, height: 844, motion });
+    const p = t.page;
+    if (motion !== "reduce") await p.waitForTimeout(ENTERED);
+    await p.evaluate(() => scrollTo(0, document.querySelector(".tabs").getBoundingClientRect().bottom + scrollY - innerHeight + 60));
+    await p.waitForTimeout(motion === "reduce" ? 50 : 1500);
+    const drawn = () => p.evaluate(() => { const s = document.querySelector(".swipe"); return !!s && s.getClientRects().length > 0 && getComputedStyle(s).visibility === "visible"; });
+    const found = await drawn();
+    await p.click("#t-busy");
+    await p.waitForTimeout(motion === "reduce" ? 50 : 1000);
+    const busy = await drawn(), top = await p.evaluate(() => Math.round(document.getElementById("p-busy").getBoundingClientRect().top));
+    await p.click("#t-clean"); await p.waitForTimeout(motion === "reduce" ? 50 : 1000);
+    const clean = await drawn();
+    if (motion === "reduce") want(found && !busy && !clean, `4 the swipe hint: on Findings ${found}, on Scanning ${busy}, on After fixes ${clean}`);
+    want(top >= 0 && top < 844 - 100, `4 at 390 px (${motion}) Scanning's panel starts at ${top} px, off screen`);
+    await done(t, `AH-148 final pass phone tabs (${motion})`, [API]);
+  }
+  // 5. an expression in a detail box ("170.43 ÷ 2.99", "-5 × 2.99 = -14.95") stays on one line
+  for (const [width, height] of [[1440, 900], [390, 844]]) {
+    const t = await open("index.html", { width, height, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate(() => document.fonts.ready);
+    for (const m of ["m11", "m22"]) {
+      await p.click(`.rowbtn[aria-controls="${m}"]`);
+      const split = await p.evaluate((m) => { const out = [], walk = document.createTreeWalker(document.getElementById(m), NodeFilter.SHOW_TEXT);
+        for (let n = walk.nextNode(); n; n = walk.nextNode()) for (const x of n.textContent.matchAll(/-?\d[\d.]*(?: [×÷=] -?\d[\d.]*)+/g)) {
+          const rg = document.createRange(); rg.setStart(n, x.index); rg.setEnd(n, x.index + x[0].length);
+          out.push([x[0], new Set([...rg.getClientRects()].filter((r) => r.width > 0.5).map((r) => Math.round(r.top))).size]); }
+        return out; }, m);
+      want(split.length >= 2 && split.every(([, n]) => n === 1), `5 ${m} at ${width} px breaks an expression over lines: ${JSON.stringify(split)}`);
+      await p.keyboard.press("Escape");
+    }
+    await done(t, `AH-148 final pass formulas at ${width}`, [API]);
+  }
+  // 6. under the filters, one line says a row can be counted by more than one type (All findings 7, the types 10)
+  {
+    const t = await open("index.html", { width: 1440, height: 900, motion: "reduce" });
+    const p = t.page;
+    const r = await p.evaluate(() => { const el = [...document.querySelectorAll(".typology *")].find((e) => e.children.length === 0 && /^A row can be flagged by more than one type\.$/.test(e.textContent.trim()));
+      const b = el && el.getBoundingClientRect(), last = [...document.querySelectorAll(".typology button")].pop().getBoundingClientRect();
+      return el ? { drawn: b.width > 0 && b.height > 0 && getComputedStyle(el).visibility === "visible", under: b.top >= last.bottom - 0.5 } : null; });
+    want(r && r.drawn && r.under, `6 no line under the filters says a row can be flagged by more than one type: ${JSON.stringify(r)}`);
+    await done(t, "AH-148 final pass filters' line", [API]);
+  }
+  // 7. the case studies' cards: no hole between their blocks' text (each under 40 px from the one before)
+  {
+    const t = await open("index.html", { width: 1440, height: 900, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate(() => document.fonts.ready);
+    // measured on the text, not on a block's box, which a grid row stretched
+    const gaps = await p.$$eval(".cases .case", (cs) => cs.map((c) => { const k = [...c.children].map((e) => { const rg = document.createRange(); rg.selectNodeContents(e); return rg.getBoundingClientRect(); }); return k.slice(1).map((b, i) => Math.round(b.top - k[i].bottom)); }));
+    want(gaps.length === 3 && gaps.every((g) => g.every((x) => x < 40)), `7 a case study's card has a hole between its blocks: ${JSON.stringify(gaps)}`);
+    await done(t, "AH-148 final pass case cards", [API]);
+  }
+  // 8. a footer link never sits alone on its line while the others share one, on every page at 1440 and 1280
+  for (const file of [...PAGES, MISSING]) {
+    for (const width of [1440, 1280]) {
+      const t = await open(file, { width, height: 900, motion: "reduce" });
+      const rows = await t.page.$$eval(".foot nav a", (as) => { const by = {}; for (const a of as) { const k = Math.round(a.getBoundingClientRect().top); (by[k] = by[k] || []).push(a.textContent.trim()); } return Object.values(by); });
+      want(rows.length === 1 || rows.every((r) => r.length > 1), `8 ${file} at ${width} px leaves a footer link alone on a line: ${JSON.stringify(rows)}`);
+      await done(t, `AH-148 final pass footer ${file} at ${width}`, [API]);
+    }
+  }
+  assert.deepEqual(miss, [], `AH-148 final pass:\n${miss.join("\n")}`);
+  console.log("AH-148 final pass: a phone's findings end at their last row; Row 31 lands with its flagged cell in view and its gold mark; the swipe hint only on Findings and a phone's tab shows its panel; expressions whole in a detail box; a line under the filters on rows flagged twice; no hole in a case card; no footer link alone on a line");
+}
 await browser.close();
 server.close();
 console.log("website browser check passed");

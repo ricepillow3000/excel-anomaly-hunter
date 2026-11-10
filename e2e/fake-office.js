@@ -84,8 +84,10 @@
     context: { document: { settings: { get: (k) => settings[k] ?? null, set: (k, v) => (settings[k] = v), remove: (k) => delete settings[k], saveAsync, refreshAsync: (cb) => cb() } } },
   };
   // window.__cellEdit = n (set before the pane loads, or any time): the next n Excel.run calls reject as real Excel does
-  // while the user is typing in a cell. window.__typeError = n: the next n throw a script error, as a bug of ours would
+  // while the user is typing in a cell. window.__typeError = n: the next n throw a script error, as a bug of ours would.
+  // window.__slow = ms: every Excel.run waits that long first, as a big workbook or a busy Excel does (AH-149)
   window.Excel = { run: async (a, b) => {
+    if (window.__slow > 0) await new Promise((go) => setTimeout(go, window.__slow));
     if (window.__cellEdit > 0) { window.__cellEdit--; throw Object.assign(new Error("InvalidOperationInCellEditMode"), { code: "InvalidOperationInCellEditMode" }); }
     if (window.__typeError > 0) { window.__typeError--; throw new TypeError("Cannot read properties of undefined (reading 'values')"); }
     return (b || a)(ctx);

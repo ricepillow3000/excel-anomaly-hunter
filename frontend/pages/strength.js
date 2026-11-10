@@ -8,15 +8,24 @@ import { activeSheet } from "../services/excel.js";
 // during every re-check, so a press on it fell through to the page and started a text drag (the "stop sign").
 // This one is never disabled, follows the pointer anywhere on the track (press, drag, release), and works by keyboard.
 // Letting go saves the level in the workbook and checks the sheet again; while a check runs, the newest level waits.
-// The hint: what the level adds, then what this very level did on the bench (constants MEASURED, re-measured by a test)
-export function strengthHint(s) {
-  const what = STRENGTH.filter(([at]) => at <= s).pop()[1], m = MEASURED.levels[s];
-  if (!m) return what;
+// The hint: what the level adds, then what this very level did on the bench (constants MEASURED, re-measured by a test).
+// The pane shows the first part and keeps the second under "How we tested this level": both under the slider read as
+// a five-line statistics paragraph (AH-149 review)
+const levelWords = (s) => STRENGTH.filter(([at]) => at <= s).pop()[1];
+export const strengthHint = (s) => [levelWords(s), strengthTested(s)].filter(Boolean).join(" ");
+export function strengthTested(s) {
+  const m = MEASURED.levels[s];
+  if (!m) return "";
   const [found, sure, fineLow, fineSure] = m, { sheets, planted, fine } = MEASURED;
-  return `${what} On our ${sheets} test sheets: ${found === planted ? `all ${planted}` : `${found} of ${planted}`} planted mistakes found` +
-    `${sure < found ? ` (${sure} as probably wrong, the rest as worth a check)` : ""}; ${fineLow ? `${n(fineLow)} of ${n(fine)} fine rows listed as worth a check` : "no fine row listed"}` +
-    `${fineSure ? `, ${n(fineSure)} as probably wrong` : ""}.`;
+  // AH-149, in plain words: "planted mistakes found; 25 of 2,724 fine rows listed" read as a statistics report
+  return `We tested it on ${sheets} practice sheets with ${planted} mistakes hidden in them. It found ` +
+    `${found === planted ? `all ${planted}` : `${found} of them`}${sure < found ? ` (${sure} marked probably wrong, the rest worth a check)` : ""}. ` +
+    `${fineLow ? `It also listed ${n(fineLow)} of the ${n(fine)} rows that were fine` : `It listed none of the ${n(fine)} rows that were fine`}` +
+    `${fineSure ? `, and called ${n(fineSure)} of them probably wrong` : ""}.`;
 }
+
+// Pure: the level's word for a screen reader, beside its number (AH-149): the three the scale names, and what lies between
+export const levelWord = (s) => (s === 0 ? "Basics" : s < 5 ? "Lighter" : s === 5 ? "Recommended" : s < 10 ? "Stricter" : "Strictest");
 
 // Pure: whatever the workbook holds -> a level 0-10 (a missing or broken setting = 5, the recommended one)
 export const asStrength = (v) => (Number.isInteger(v) && v >= 0 && v <= 10 ? v : 5);
@@ -31,10 +40,11 @@ function show(s) {
   level = s;
   const el = $("strength");
   el.setAttribute("aria-valuenow", s);
-  el.setAttribute("aria-valuetext", `${s} of 10`);
+  el.setAttribute("aria-valuetext", `${s} of 10, ${levelWord(s)}`);
   el.style.setProperty("--pct", `${s * 10}%`);
   $("strength-val").textContent = `${s} of 10`;
-  $("strength-hint").textContent = strengthHint(s);
+  $("strength-hint").textContent = levelWords(s);
+  $("strength-measured").textContent = strengthTested(s);
 }
 
 export function initStrength(rescan) {

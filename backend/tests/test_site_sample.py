@@ -117,12 +117,12 @@ def js(v):
     return str(int(v)) if isinstance(v, float) and v.is_integer() else str(v)
 
 
-def plain_reason(reason):  # frontend/features/scan.js plainReason
+def plain_reason(reason):  # frontend/features/scan.js plainReason, with its default separator: each reason on its own line (AH-149)
     s = re.sub(r"^Flagged by \d+ of \d+: ", "", reason or "")
     s = re.sub(r"(\S[^;]*?) weird limit is ([^;\s]+); this is ([^;\s]+)",
                lambda m: f"{m[1]} is {m[3]}, {'below' if float(m[3]) < float(m[2]) else 'above'} its usual limit of {m[2]}", s)
     s = re.sub(r"Unusual combination of values, mainly (.+?)(?=;|$)", r"Unusual mix of values, mostly in \1", s)
-    return s.replace(" is unusual relative to its local trend near", " breaks its usual pattern near").replace(" 00:00:00", "").replace("; ", " · ")
+    return s.replace(" is unusual relative to its local trend near", " breaks its usual pattern near").replace(" 00:00:00", "").replace("; ", "\n")
 
 
 def add_ups(reason):  # frontend/features/fix.js addUps
@@ -271,7 +271,7 @@ def test_every_finding_on_the_website_says_what_the_pane_says_and_offers_its_fix
         fix = why.all("b")
         short = why.text().split(" · Fix:")[0]
         # the short summary in the Finding column is literally true: the pane's own words, or the rule it breaks
-        if short == "Total ≠ Units × UnitCost":
+        if short == "Total doesn't equal Units × UnitCost":
             assert round(row[2] * row[3], 2) != row[4] and f"Total {js(row[4])} does not add up: Units × UnitCost = " in r["reason"]
         else:
             assert short in said, f"row {n}: '{short}' is not what the pane says: '{said}'"
@@ -386,7 +386,7 @@ def test_the_checks_table_says_what_the_sample_shows_or_that_it_has_none():
     assert m and [int(x) for x in re.findall(r"\d+", m[1])] == list(CYCLES), what["Dates and jumps"]
     assert "Repeating cycles" not in what["Dates and jumps"]
     # AH-135: the site's own names for three checks in plain words (Temporal, Completeness, Plausibility were jargon)
-    assert list(checks) == ["Reconciliation", "Keying errors", "Consistency", "Dates and jumps", "Missing values", "Numbers that can't be right", "Fairness", "Ask AI (optional)"]
+    assert list(checks) == ["Reconciliation", "Keying errors", "Consistency", "Dates and jumps", "Missing values", "Numbers that can't be right", "Fairness", "Ask AI, optional"]
     assert root.one("p", cls="fact").text() == f"{len(checks)} checks · {len(flagged)} rows flagged in the sample above"
     kind = {"Reconciliation": "recon", "Keying errors": "keying", "Consistency": "label", "Dates and jumps": "time"}
     for name, cell in checks.items():
@@ -420,7 +420,7 @@ def test_the_checks_table_says_what_the_sample_shows_or_that_it_has_none():
     fair = checks["Fairness"].one("span", cls="other-sheet").one("span", cls="say").text()
     assert fair in said and fair.split(":")[0] not in COLUMNS, f"{fair} is not what the engine says: {said}"
     # the rest are general forms on another sheet, not claims about this one (a change here is a change to re-check by hand)
-    assert [checks[k].one("span", cls="other-sheet").text() for k in ("Missing values", "Numbers that can't be right", "Ask AI (optional)")] == [
+    assert [checks[k].one("span", cls="other-sheet").text() for k in ("Missing values", "Numbers that can't be right", "Ask AI, optional")] == [
         "On another sheet: #N/A, a repeated row", "On another sheet: Month 13, 99999", 'A request: "Use the usual spelling"']
     # ...and those other-sheet examples are the engine's too: a small sheet with each one planted gets each one flagged
     # for it (they were only words pinned here, AH-129)

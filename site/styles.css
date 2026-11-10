@@ -9,6 +9,15 @@
    only transform and opacity ever move (AH-85, docs/design/motion.md).
    Weight: one font file, a tiny blocking script and a few deferred ones, no images but the favicon. */
 @font-face { font-family: "Plus Jakarta Sans"; src: url("assets/plus-jakarta-sans.woff2") format("woff2"); font-weight: 200 800; font-display: swap; }
+/* AH-148: until the font arrives (font-display: swap), the text is set in Arial (or Helvetica, or Liberation Sans and Arimo,
+   drawn to Arial's widths) scaled to Plus Jakarta Sans's own measure, so the swap moves no line. Read from the woff2 with
+   fontTools: ascender 1038 and descender 222 of 1000 (OS/2, USE_TYPO_METRICS), no line gap; the average advance over the
+   pages' own text is 0.4622 em at weight 400 against Arial's 0.4443 (104.02%), and 0.4844 at 800 against Arial Bold's
+   0.4765 (101.64%). Each override is the font's own value divided by its size-adjust */
+@font-face { font-family: "Plus Jakarta Sans Fallback"; src: local("Arial"), local("ArialMT"), local("Helvetica"), local("Liberation Sans"), local("LiberationSans"), local("Arimo");
+  font-weight: 200 549; size-adjust: 104.02%; ascent-override: 99.79%; descent-override: 21.34%; line-gap-override: 0%; }
+@font-face { font-family: "Plus Jakarta Sans Fallback"; src: local("Arial Bold"), local("Arial-BoldMT"), local("Helvetica Bold"), local("Helvetica-Bold"), local("Liberation Sans Bold"), local("LiberationSans-Bold"), local("Arimo Bold");
+  font-weight: 550 800; size-adjust: 101.64%; ascent-override: 102.13%; descent-override: 21.84%; line-gap-override: 0%; }
 :root {
   color-scheme: light;
   --paper: #F7F5F0;     /* the page */
@@ -26,7 +35,7 @@
   --on-dark-2: #B9B3A3; /* secondary text on navy (8.3:1) */
   --rule-dark: #2B3756; /* hairlines on navy */
 
-  --sans: "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif;
+  --sans: "Plus Jakarta Sans", "Plus Jakarta Sans Fallback", "Segoe UI", system-ui, sans-serif;
   --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
   /* a 1.25 type scale from a 17px body; its smallest step is 12px, the least any text on the site may be (AH-116: the
      sample's column heads were 10.88px at .68rem) */
@@ -63,6 +72,23 @@
   --grain-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='g' filterUnits='userSpaceOnUse' x='0' y='0' width='320' height='320'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' seed='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .94 0 0 0 0 .9 0 0 0 0 .82 0 0 0 -2 1.25'/%3E%3C/filter%3E%3Crect width='320' height='320' filter='url%28%23g%29' opacity='.06'/%3E%3C/svg%3E");
   --grid: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M.5 0V24M0 .5H24' fill='none' stroke='%230C1938' stroke-opacity='.05'/%3E%3C/svg%3E");
   --grid-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M.5 0V24M0 .5H24' fill='none' stroke='%23EFE6D2' stroke-opacity='.045'/%3E%3C/svg%3E");
+  /* AH-148 (John, 2026-11-09: "OKLCH"): the brand colours stay exact hex (the difference fills #E3D3AC and #EBDCB8 less
+     the paper are the navy to the bit); the tints made from them are mixed in OKLCH, where a step of lightness looks the
+     same in every hue and a tint keeps its parent's hue. These hex values are the same mixes, for a browser without
+     color-mix; the @supports block below puts the mixes in */
+  --tint-hover: #F3EDE1;       /* a hovered finding's row: the paper warmed a tenth toward the light gold */
+  --tint-flag-hover: #551623;  /* ... and its flagged cells: the wine 15% darker, its hue kept (white on it 14:1) */
+  --tint-bar: #DED5C2;         /* a skeleton bar: the panel a fifth of the way to the dark gold */
+  --shade-from: rgba(12, 25, 56, .08); --shade-to: rgba(12, 25, 56, .45); /* the turning page's shade, the navy */
+  /* the measure of running text (AH-148, John: "line length"): this font's zero is 0.732 em wide and its average letter
+     0.464 em (fontTools, over the pages' own text), so 1ch holds 1.58 letters: 68ch would be ~107 letters a line. 40ch is
+     about 63 on average, and no line over 75 (tools/test_site.mjs counts them) */
+  --measure: 40ch;
+}
+@supports (color: color-mix(in oklch, red, blue)) {
+  :root { --tint-hover: color-mix(in oklch, var(--paper) 90%, var(--gold-hi)); --tint-flag-hover: color-mix(in oklch, var(--wine) 85%, black);
+    --tint-bar: color-mix(in oklch, var(--paper-2) 80%, var(--gold));
+    --shade-from: color-mix(in oklch, var(--ink) 8%, transparent); --shade-to: color-mix(in oklch, var(--ink) 45%, transparent); }
 }
 * { box-sizing: border-box; }
 /* the hidden attribute always wins (AH-132): .result's display: grid outranked the browser's own [hidden] rule, and
@@ -70,12 +96,16 @@
 [hidden] { display: none !important; }
 html { scroll-padding-top: 88px; } /* the sticky bar would cover an anchor's heading */
 body { margin: 0; background: var(--grain), var(--grid), var(--paper); color: var(--ink-2); font: 400 var(--fs-0)/1.55 var(--sans); }
+/* AH-148: the font's own kerning (its GPOS kern pairs), asked for: at auto Safari may leave it off on small text. On every
+   element, kept past each font shorthand below (a "font:" resets font-kerning to auto) */
+body { font-optical-sizing: auto; }
+*, ::before, ::after { font-kerning: normal !important; }
 /* a short page (the 404, the thank-you) fills the screen to its footer (AH-138 review: the 404 ended at 740 px of 900 over
    bare grid). The page itself grows; while transition.js swaps pages the leaving one is fixed, out of the flow */
 body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
 main { flex: 1 0 auto; }
 a { color: var(--ink); text-decoration-color: var(--gold); text-underline-offset: 3px; text-decoration-thickness: 1px; }
-a:hover { text-decoration-thickness: 2px; }
+a:is(:hover, :focus-visible) { text-decoration-thickness: 2px; }
 /* Chromium's own placeholder grey is 4.2:1 on paper: the notes' colour, at full strength (AH-87) */
 ::placeholder { color: var(--muted); opacity: 1; }
 /* a tap shows our own pressed look (the gold line), never the browser's cyan box over it (AH-138 review) */
@@ -84,13 +114,18 @@ a, button, summary, [role="tab"] { -webkit-tap-highlight-color: transparent; }
 h1, h2, h3 { margin: 0; color: var(--ink); font-weight: 800; }
 h1, h2 { line-height: .95; letter-spacing: normal; text-wrap: balance; }
 h1 em, h2 em { font-style: normal; color: var(--wine); }
-h3 { font-size: var(--fs-0); line-height: 1.3; font-weight: 700; letter-spacing: normal; }
+h3 { font-size: var(--fs-0); line-height: 1.3; font-weight: 700; letter-spacing: normal; text-wrap: balance; }
 p { margin: 0; }
+/* AH-148 (John: "widow"): no paragraph ends on one short word alone; headings balance their lines */
+p, li, dd, .faq summary { text-wrap: pretty; }
 /* a long address or code (github.com/ricepillow3000/..., aistudio.google.com/apikey) breaks where it must: with the text
    at 200% on a 320 px phone it pushed the privacy page 267 px sideways, and a list item never got narrower than it (AH-112) */
 a, code, li, h1, h2, h3 { overflow-wrap: anywhere; } /* a headline's long word too ("something" at 66 px beside its §) */
 body { overflow-wrap: break-word; }
-code { font-family: var(--mono); font-size: .88em; background: var(--paper-2); border: 1px solid var(--rule); padding: 1px 5px; word-break: break-word; color: var(--ink); }
+/* AH-148 (John: "x-height"): the system's mono font is scaled to Plus Jakarta Sans's x-height (536 of 1000, OS/2
+   sxHeight), so a code beside a word is as tall as the word's small letters. Said again after each font shorthand below
+   (.val, the facts' and steps' code), which resets it */
+code { font-size-adjust: .536; font-family: var(--mono); font-size: .88em; background: var(--paper-2); border: 1px solid var(--rule); padding: 1px 5px; word-break: break-word; color: var(--ink); }
 .label { display: block; font: 700 var(--fs--1)/1.3 var(--sans); color: var(--ink); }
 
 /* the grid every block snaps to */
@@ -116,7 +151,7 @@ code { font-family: var(--mono); font-size: .88em; background: var(--paper-2); b
 .sec-title, .page-head h1 { position: relative; z-index: 1; }
 
 /* "Skip to content": the first stop of the keyboard, above the bar and out of sight until it has focus (AH-87) */
-.skip-link { position: absolute; top: 0; left: var(--margin); z-index: 20; padding: 12px var(--s2); background: var(--dark); color: var(--on-dark);
+.skip-link { position: absolute; top: 0; left: max(var(--margin), env(safe-area-inset-left, 0px)); z-index: 20; padding: 12px var(--s2); background: var(--dark); color: var(--on-dark);
   font: 700 var(--fs--1)/1.2 var(--sans); text-decoration: none; transform: translateY(-110%); }
 .skip-link:focus { transform: none; outline: 2px solid var(--gold-hi); outline-offset: -4px; }
 #page:focus { outline: none; } /* the content it lands on is a starting point, not a control */
@@ -124,7 +159,7 @@ code { font-family: var(--mono); font-size: .88em; background: var(--paper-2); b
 /* the announcement line and the bar */
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--dark); }
 .notice-bar { background: var(--dark); color: var(--on-dark); }
-.notice-bar p { max-width: calc(var(--wrap) + 2 * var(--margin)); margin: 0 auto; padding: 8px var(--margin); font: 500 var(--fs--1)/1.5 var(--sans); text-wrap: balance; } /* two even lines on a phone, never "Download" alone on the second (AH-138 review) */
+.notice-bar p { max-width: calc(var(--wrap) + 2 * var(--margin)); margin: 0 auto; padding: 8px max(var(--margin), env(safe-area-inset-right, 0px)) 8px max(var(--margin), env(safe-area-inset-left, 0px)); font: 500 var(--fs--1)/1.5 var(--sans); text-wrap: balance; } /* two even lines on a phone, never "Download" alone on the second (AH-138 review) */
 .notice-bar a { color: var(--on-dark); text-decoration-color: var(--gold-hi); text-decoration-thickness: 2px; }
 /* a link standing alone (the notice's Download, the footer's, the checks' "Row 22") is a target of 24 px at least
    (AH-115, WCAG 2.2 2.5.8: they were 17 and 21 px tall); the padding that makes it so is taken back by an equal margin, so
@@ -137,7 +172,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .brand .logo { width: auto; height: 40px; aspect-ratio: 32 / 40; flex: none; } /* drawn for this size: 40 px tall, one unit a CSS pixel, so its edges land on whole pixels (John, AH-103; AH-121) */
 .links { grid-column: 5 / -1; display: flex; justify-content: flex-end; align-items: center; gap: var(--s3); flex-wrap: wrap; }
 .links a { color: var(--ink); text-decoration: none; font: 600 var(--fs--1)/1 var(--sans); padding: 10px 0; border-bottom: 2px solid transparent; }
-.links a:hover { border-bottom-color: var(--ink); }
+.links a:is(:hover, :focus-visible) { border-bottom-color: var(--ink); }
 .links a[aria-current="page"] { border-bottom-color: var(--wine); }
 .links .btn-trim { padding: 12px 16px; background: var(--ink); color: var(--paper); border: 0; }
 .links .btn-trim:hover { background: var(--wine); color: var(--on-wine); }
@@ -149,6 +184,10 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 /* buttons: rectangles */
 .btn { position: relative; isolation: isolate; display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 48px; padding: 0 var(--s3); border: 2px solid transparent; border-radius: 0;
   font: 700 var(--fs--1)/1 var(--sans); text-decoration: none; cursor: pointer; } /* no colour is animated: with motion, a hover's new fill is drawn across by a mask (below) */
+/* AH-148 (John: "optical center"): a label on line-height 1 sat on its font's ascent and descent, so its capitals rode
+   above the button's middle; trimmed to the capitals and the baseline, the capitals are the box that is centred. Where a
+   browser has no text-box, nothing changes (the min-heights keep every button's size) */
+.btn, .m-close, .menu-btn, .copy-btn, .tabs button { text-box: trim-both cap alphabetic; }
 .btn svg { width: 18px; height: 18px; flex: none; }
 .btn-primary { background: var(--wine); color: var(--on-wine); }
 .btn-primary:hover { background: var(--ink); color: var(--paper); }
@@ -234,18 +273,27 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .typology button::before { content: ""; position: absolute; inset: 0; z-index: 1; background: #E3D3AC; mix-blend-mode: difference; transform: scaleX(0); transform-origin: 0 50%; pointer-events: none; }
 .typology button:is(:hover, :focus-visible, [aria-pressed="true"])::before { transform: scaleX(1); }
 .typology .n { position: relative; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* the counts overlap: All findings 7 beside types adding to 10 read as a mistake (AH-148 final pass) */
+.typology .overlap { margin: 0; padding: 12px var(--s2); border-top: 1px solid var(--rule); font-size: var(--fs--1); color: var(--ink-2); }
 .typology .key { margin: 0; padding: 14px var(--s2); border-top: 1px solid var(--rule); display: grid; gap: 6px; font-size: var(--fs--1); color: var(--ink-2); }
 .key .kcount { font-weight: 700; font-variant-numeric: tabular-nums; }
 .key span { position: relative; }
 .key i, td.why i { display: inline-block; width: 10px; height: 10px; background: var(--wine); margin-right: 8px; vertical-align: -1px; }
 .key i.q, td.why i.q { background: transparent; box-shadow: inset 0 0 0 2px var(--wine); }
 .ws-main { position: relative; min-width: 0; }
+/* home.js: the tallest tab's height, held by every tab on a wide screen, so "See every check" stays put. Not on a phone,
+   where After fixes' verdict and note lie over the table: held there, the findings ended ~150 px of empty paper above
+   the caption (AH-148 final pass), and a phone's tab brings its panel on screen instead (home.js) */
+@media (min-width: 761px) { .ws-main > .panel { min-height: var(--panel-h, 0); } }
 .scroll { overflow-x: auto; }
 table.grid { width: 100%; border-collapse: collapse; font: 500 var(--fs--1)/1.3 var(--sans); font-variant-numeric: tabular-nums; min-width: 640px; color: var(--ink); }
 .grid th, .grid td { position: relative; padding: 9px 12px; border-bottom: 1px solid var(--rule); border-right: 1px solid var(--rule); text-align: right; white-space: nowrap; }
 .grid th:last-child, .grid td:last-child { border-right: 0; }
 .grid thead th { background: var(--paper); color: var(--ink); font: 700 var(--fs--2)/1 var(--sans); letter-spacing: .1em; text-transform: uppercase; border-bottom-color: var(--ink); }
 .grid thead th:last-child { text-align: left; }
+/* every column but the Finding as narrow as its widest cell, the Finding taking the rest: the same widths on every tab
+   (AH-148 fix round 2: the columns grew and shrank with the Finding's words between Findings and After fixes) */
+@media (min-width: 761px) { .grid thead th:not(:last-child) { width: 1px; } }
 .grid tbody th { background: var(--paper); color: var(--ink-2); font-weight: 600; text-align: center; width: 48px; padding: 0; }
 .grid tbody th:not(:has(button)) { padding: 9px 0; }
 .grid td.t { text-align: left; }
@@ -261,7 +309,11 @@ table.grid { width: 100%; border-collapse: collapse; font: 500 var(--fs--1)/1.3 
 .grid td.why b { color: var(--ink); }
 /* only a finding opens a detail box: an After fixes row carries data-kind for the filters alone */
 #p-found .grid tr[data-kind] { cursor: pointer; }
-#p-found .grid tr[data-kind]:hover td:not(.flag) { background: var(--paper); }
+/* the whole row answers the pointer (AH-148, John: "affordance"): its plain cells take the warm tint and its flagged
+   cells a darker wine, so the row reads as one thing to press. A row a filter leaves out keeps its marks off (the rules
+   below outrank this one) */
+#p-found .grid tr[data-kind]:hover > :is(th, td):not(.flag) { background: var(--tint-hover); }
+.grid tr[data-kind]:hover > td.flag { background: var(--tint-flag-hover); }
 .rowbtn { width: 100%; min-height: 36px; font: 800 var(--fs--1)/1 var(--sans); color: var(--ink); background: none; border: 0; border-radius: 0; cursor: pointer;
   text-decoration: underline; text-decoration-color: var(--wine); text-decoration-thickness: 2px; text-underline-offset: 4px; font-variant-numeric: tabular-nums; }
 .rowbtn[aria-expanded="true"] { background: var(--ink); color: var(--paper); text-decoration: none; }
@@ -288,7 +340,7 @@ table.grid { width: 100%; border-collapse: collapse; font: 500 var(--fs--1)/1.3 
 /* the copy is a still picture of the panel: a CSS animation in it (the scan meter's fill) restarted from its first frame
    (AH-138 review: the bar refilled from 20% under "100%"); turn() writes each meter's pose onto the copy */
 [data-turn] * { animation: none !important; }
-[data-turn-shade] { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(12, 25, 56, .08), rgba(12, 25, 56, .45)); opacity: 0; }
+[data-turn-shade] { position: absolute; inset: 0; background: linear-gradient(90deg, var(--shade-from), var(--shade-to)); opacity: 0; }
 /* a box's closing copy (home.js, AH-138) wears the box's looks without its class, so nothing that counts the open boxes
    ever counts it */
 /* raised off the sheet: a still shadow under it, never animated (AH-138 review: flat on the table it did not read as a popover) */
@@ -296,14 +348,18 @@ table.grid { width: 100%; border-collapse: collapse; font: 500 var(--fs--1)/1.3 
 .matrix, [data-pop-copy] { position: absolute; left: var(--s2); z-index: 2; width: min(440px, calc(100% - 32px)); background: var(--paper); border: 1px solid var(--ink); font-size: var(--fs--1); color: var(--ink); }
 .m-head { display: flex; justify-content: space-between; align-items: center; gap: var(--s2); padding: 8px 12px; background: var(--ink); color: var(--paper); }
 .m-head b { font: 700 var(--fs--1)/1.3 var(--sans); }
-.m-close { font: 700 var(--fs--1)/1 var(--sans); color: var(--paper); background: none; border: 1px solid var(--paper); border-radius: 0; padding: 6px 8px; cursor: pointer; }
+.m-close { min-height: 28px; font: 700 var(--fs--1)/1 var(--sans); color: var(--paper); background: none; border: 1px solid var(--paper); border-radius: 0; padding: 6px 8px; cursor: pointer; } /* 28 px: its height before the trim (AH-148) */
 .m-close:hover { background: var(--paper); color: var(--ink); }
 [data-pop-copy] { pointer-events: none; }
 :is(.matrix, [data-pop-copy]) dl { margin: 0; display: grid; grid-template-columns: minmax(0, 112px) minmax(0, 1fr); }
 :is(.matrix, [data-pop-copy]) :is(dt, dd) { margin: 0; padding: 7px 12px; border-bottom: 1px solid var(--rule); line-height: 1.45; }
+/* AH-148 (John: "tabular numbers"): figures that stand in a column or change in place keep one width each */
+:is(.matrix, [data-pop-copy]) dd, .stages li, .case-scope { font-variant-numeric: tabular-nums; }
 :is(.matrix, [data-pop-copy]) dt { color: var(--ink-2); font-weight: 700; border-right: 1px solid var(--rule); }
 :is(.matrix, [data-pop-copy]) dl > :nth-last-child(-n+2) { border-bottom: 0; }
-.m-said { padding: 8px 12px; border-top: 1px solid var(--ink); background: var(--paper-2); color: var(--ink-2); }
+/* each of the pane's reasons on its own line, as the pane shows them (AH-149: it joins them with a line break, under
+   white-space: pre-line); index.html writes the break as a newline in the quote */
+.m-said { padding: 8px 12px; border-top: 1px solid var(--ink); background: var(--paper-2); color: var(--ink-2); white-space: pre-line; }
 /* the scanning state, in the pane's own words; the after-fixes state is the sheet itself, corrected */
 .busy { min-height: 440px; display: grid; align-content: center; justify-items: start; gap: var(--s2); padding: var(--s5); }
 .meter { width: min(360px, 100%); height: 12px; border: 1px solid var(--ink); }
@@ -320,13 +376,24 @@ table.grid { width: 100%; border-collapse: collapse; font: 500 var(--fs--1)/1.3 
 .stages li[data-done]::before { background: var(--ink); }
 .stages .small { margin-left: 6px; }
 .small { font-size: var(--fs--1); color: var(--muted); }
-/* after the fixes: the verdict over the sheet, a fixed cell kept bold over a dark gold underline (the wine fill is gone,
-   the change still shows), the rows worth a check still outlined, and the pane's sentence under it */
-.verdict { display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 12px var(--s3); border-bottom: 1px solid var(--ink); font: 800 var(--fs--1)/1.4 var(--sans); color: var(--ink); background: var(--paper); }
+/* after the fixes: the verdict and the pane's sentence (below), a fixed cell kept bold over a dark gold underline (the
+   wine fill is gone, the change still shows), the rows worth a check still outlined */
+.verdict { display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 12px var(--s3); border-bottom: 1px solid var(--ink); font: 800 var(--fs--1)/1.4 var(--sans); font-variant-numeric: tabular-nums; color: var(--ink); background: var(--paper); }
 .verdict::before { content: ""; flex: none; width: 10px; height: 10px; margin-top: calc(.7em - 5px); box-shadow: inset 0 0 0 2px var(--wine); }
 .grid td.mended { font-weight: 800; box-shadow: inset 0 -3px 0 var(--gold); }
 td.why i.ok { display: inline-block; width: 10px; height: 10px; margin-right: 8px; vertical-align: -1px; background: var(--gold); }
-.after-note { padding: 12px var(--s3); border-top: 1px solid var(--rule); font-size: var(--fs--1); color: var(--ink-2); }
+.after-note { margin: 0; padding: 0 var(--s3) 12px 44px; font-size: var(--fs--1); color: var(--ink-2); }
+/* the verdict and its note, one block over the sheet; on a wide screen it lies in the filters' column under the key
+   (right of it: the column's own width, (the sheet's width - a gutter) / 3 of .ws-main's, past the column's 1 px rule),
+   so After fixes is the findings' height and the glide still frames the sheet and "See every check" at 1440 x 900
+   (AH-148 fix round 2: in the panel it was 110 px taller and moved everything below it) */
+.clean-sum { background: var(--paper); border-bottom: 1px solid var(--ink); }
+.clean-sum .verdict { border-bottom: 0; background: none; }
+@media (min-width: 1101px) {
+  .clean-sum { position: absolute; right: calc(100% + 1px); bottom: 0; width: calc((100% - var(--gutter)) / 3 - 1px); background: none; border-bottom: 0; border-top: 1px solid var(--rule); }
+  .clean-sum .verdict { padding: 14px var(--s2) 8px; }
+  .clean-sum .after-note { padding: 0 var(--s2) 14px; }
+}
 .swipe { display: none; } /* a phone only (below): the sample scrolls sideways there */
 .ws-foot { padding: 12px var(--s3); border-top: 1px solid var(--ink); font-size: var(--fs--1); color: var(--ink-2); }
 /* the way on to the checks, right under the sheet (AH-91) */
@@ -343,14 +410,16 @@ td.why i.ok { display: inline-block; width: 10px; height: 10px; margin-right: 8p
 .checks-table thead th:nth-child(1) { width: 25.47%; }
 .checks-table thead th:nth-child(2) { width: 42.45%; }
 .checks-table tbody tr { position: relative; }
-.checks-table tbody th, .checks-table tbody td { padding: var(--s2) var(--gutter) 20px 0; vertical-align: top; border-bottom: 1px solid var(--rule-dark); }
-.checks-table tbody th { font: 700 var(--fs-1)/1.25 var(--sans); letter-spacing: normal; color: var(--on-dark); }
+/* rows padded 12 and 16 px (16 and 20 before AH-148): the second column at --measure takes more lines, and all eight rows
+   still fit one 1440 x 900 screen (AH-98) */
+.checks-table tbody th, .checks-table tbody td { padding: 12px var(--gutter) 16px 0; vertical-align: top; border-bottom: 1px solid var(--rule-dark); }
+.checks-table tbody th { font: 700 var(--fs-1)/1.25 var(--sans); letter-spacing: normal; color: var(--on-dark); text-wrap: balance; }
 .checks-table tbody td { color: var(--on-dark-2); }
 .checks-table tbody :is(th, td):last-child { padding-right: 0; }
 .in-sample > * { display: block; width: fit-content; }
 .in-sample > * + * { margin-top: 6px; }
 .in-sample .to-row { padding-block: 2px; margin-block: -2px; font-weight: 700; color: var(--on-dark); text-decoration-color: var(--gold-hi); }
-.in-sample .val { font: 500 var(--fs--1)/1.5 var(--mono); color: var(--on-dark); }
+.in-sample .val { font: 500 var(--fs--1)/1.5 var(--mono); font-size-adjust: .536; color: var(--on-dark); }
 .in-sample .say { color: var(--on-dark); }
 .in-sample .nil { font-weight: 700; color: var(--on-dark); }
 .in-sample .other-sheet { color: var(--on-dark-2); }
@@ -377,12 +446,18 @@ dl.anchor { position: relative; margin: 0; display: grid; grid-template-columns:
 .anchor dt { font-weight: 700; color: var(--ink); }
 .anchor dd { color: var(--ink-2); }
 .anchor code { display: block; }
-.anchor code, .steps code { font: 500 var(--fs--1)/1.5 var(--mono); color: var(--ink); background: var(--paper); border: 1px solid var(--rule); padding: 3px 8px; word-break: break-all; }
+.anchor code, .steps code { font: 500 var(--fs--1)/1.5 var(--mono); font-size-adjust: .536; color: var(--ink); background: var(--paper); border: 1px solid var(--rule); padding: 3px 8px; word-break: break-all; }
 #sha, #rel { position: relative; }
 /* the checksum's box holds the 64-character hash's height from the start (AH-132): the hash took 2 to 4 lines where the
    link to the release page took 1 or 2, so the facts grew when GitHub answered. An invisible hash of zeros, floated
    under the text with no width of its own, keeps the box that tall at every width */
-#sha { display: flow-root; }
+/* two even halves of 32 characters, never 58 and a lone 6 (AH-148 fix round 2), or four of 16 where 32 do not fit (a
+   phone); narrower still (text at 200%), it breaks where it must. Its list item speaks the code's font, so the query's
+   ch is the code's own */
+.anchor dd:has(> #sha) { container: sha / inline-size; font: 500 var(--fs--1)/1.5 var(--mono); font-size-adjust: .536; }
+#sha { display: flow-root; width: calc(32ch + 18px); max-width: 100%; }
+@container sha (width < calc(32ch + 18px)) { #sha { width: calc(16ch + 18px); } }
+.nb { white-space: nowrap; } /* a word or a sum that must stay whole: SHA-256, a sample's date, a detail box's arithmetic (AH-148 final pass: "170.43 ÷" ended one line, "2.99" began the next) */
 /* the hash may break anywhere, the release page link's words never ("pag / e" on a phone, AH-138 review) */
 #sha a { word-break: normal; overflow-wrap: normal; }
 #sha::before { content: "0000000000000000000000000000000000000000000000000000000000000000"; float: left; width: 100%; margin-right: -100%; visibility: hidden; }
@@ -393,7 +468,7 @@ dl.anchor { position: relative; margin: 0; display: grid; grid-template-columns:
 .steps li { position: relative; counter-increment: step; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: var(--s2); padding-top: var(--s2); font-size: var(--fs--1); color: var(--ink-2); }
 .steps li::before { content: counter(step, decimal-leading-zero); font: 800 var(--fs-5)/.9 var(--sans); letter-spacing: normal; color: var(--wine); font-variant-numeric: tabular-nums; }
 .steps li b { color: var(--ink); }
-.steps .line { display: block; margin-top: 12px; font-size: var(--fs--2); word-break: normal; overflow-x: auto; white-space: nowrap; }
+.steps .line { display: block; margin-top: 12px; font-size: var(--fs--1); word-break: normal; overflow-x: auto; white-space: nowrap; }
 /* the PowerShell line's Copy button (AH-138): home.js shows it (hidden with no script). Copied, its two icons trade places
    (the copy icon shrinks, blurs and fades as the check comes in from the same) and a gold ring pulses out once */
 .copy-btn { position: relative; display: inline-flex; align-items: center; gap: 8px; min-height: 32px; margin-top: 8px; padding: 0 12px;
@@ -421,13 +496,16 @@ dl.anchor { position: relative; margin: 0; display: grid; grid-template-columns:
 @keyframes pulse { from { opacity: .6; transform: scale(1); } to { opacity: 0; transform: scale(var(--ring-to, 1.35)); } }
 /* the checksum and the Unblock route, closed under the steps (AH-135): a person who wants them opens them */
 .check-file { grid-column: 1 / span 6; align-self: start; border-top: 1px solid var(--rule); font-size: var(--fs--1); color: var(--ink-2); }
-.check-file summary { display: flex; align-items: center; min-height: 44px; cursor: pointer; font-weight: 700; color: var(--ink); }
+.check-file summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: var(--s2); min-height: 44px; cursor: pointer; font-weight: 700; color: var(--ink); }
+.check-file summary::-webkit-details-marker { display: none; }
 .check-file summary:active { background: var(--paper); }
 /* one column that may shrink below the PowerShell line's width (it scrolls in its own box): an auto track took the
    line's full width, and open at 320 px with text at 200% the page scrolled 321 px sideways (found by AH-138's check) */
 .check-file > div { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s2); padding-bottom: var(--s2); }
 .check-file b { color: var(--ink); }
-.steps .aside { grid-column: 7 / -1; font-size: var(--fs--1); color: var(--ink-2); padding-top: var(--s2); border-top: 1px solid var(--rule); }
+/* its rule runs to the grid's edge, as the box's beside it runs to its column's (AH-148 fix round 2: with the measure as
+   its max-width the rule stopped at x 1130 of 1360); the text keeps the measure by its right padding */
+.steps .aside { grid-column: 7 / -1; font-size: var(--fs--1); color: var(--ink-2); padding-top: var(--s2); padding-right: max(0px, 100% - var(--measure)); border-top: 1px solid var(--rule); }
 
 /* reading pages: the same headline, then the text over seven columns beside its contents */
 .page-head { padding-block: var(--s7); }
@@ -445,15 +523,18 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
 /* a hovered entry shows the flagged cell's square before its first word, where a wine side stripe was (AH-98) */
 .toc a { position: relative; color: var(--ink-2); text-decoration: none; font-size: var(--fs--1); padding: 10px 0 10px 18px; border-bottom: 1px solid var(--rule); }
 .toc a::before { content: ""; position: absolute; left: 0; top: calc(10px + .775em - 5px); width: 10px; height: 10px; background: var(--wine); transform: scale(0); }
-.toc a:hover { color: var(--ink); }
+.toc a:is(:hover, :focus-visible) { color: var(--ink); text-decoration: underline; } /* AH-148: a link says it is one under the pointer and the keyboard */
 .toc a:hover::before { transform: none; }
 .prose { grid-column: 5 / span 7; min-width: 0; counter-reset: sec; color: var(--ink-2); }
 .prose section { counter-increment: sec; padding: var(--s5) 0; border-top: 1px solid var(--ink); }
 /* the sections are numbered because the text points to them ("the parts listed in §3") */
-.prose h2 { font-size: var(--fs-3); margin-bottom: var(--s3); display: flex; gap: var(--s2); align-items: baseline; }
+.prose h2 { font-size: var(--fs-3); line-height: 1.05; margin-bottom: var(--s3); display: flex; gap: var(--s2); align-items: baseline; } /* AH-148: at .95 a § heading's two lines touched */
 .prose h2::before { content: "§" counter(sec); font: 800 var(--fs-1)/1 var(--sans); letter-spacing: 0; color: var(--wine); flex: none; font-variant-numeric: tabular-nums; }
 .prose h3 { margin: var(--s4) 0 var(--s1); color: var(--ink); }
 .prose p { margin: 0 0 12px; }
+/* AH-148 (John: "line length"): running text stops at --measure, about 63 letters, wherever its column is wider; the
+   columns of the grid stay as they are */
+.prose :is(p, li), .faq .a :is(p, li) { max-width: var(--measure); }
 .prose ul { padding-left: 20px; margin: var(--s1) 0 12px; display: grid; gap: 8px; }
 .prose li::marker { color: var(--ink); }
 .prose strong { color: var(--ink); }
@@ -467,21 +548,32 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
 /* support: the answers over seven columns, the form over five */
 .support { padding-block: 0 var(--s8); }
 .faq { grid-column: 1 / span 7; min-width: 0; border: 1px solid var(--ink); background: var(--grain), var(--grid), var(--paper-2); }
-.faq .faq-head { display: grid; grid-template-columns: minmax(0, 1fr) 80px; padding: 14px var(--s3); background: var(--ink); }
-.faq .faq-head span { font: 700 var(--fs--1)/1 var(--sans); color: var(--paper); }
-.faq .faq-head span:last-child { text-align: right; }
+/* a plain list of questions (AH-148 fix round 1: a "Question / Answer" bar, an "Open" box on each row and an empty
+   answer column read as a data table): each question a full-width row, a chevron that turns when it opens, the answer
+   under it */
 .faq details { border-bottom: 1px solid var(--rule); }
 .faq details:last-child { border-bottom: 0; }
-.faq summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: minmax(0, 1fr) 80px; gap: var(--s2); align-items: center; padding: 16px var(--s3); font-weight: 700; color: var(--ink); }
+.faq summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: var(--s2); min-height: 44px; padding: 16px var(--s3); font-weight: 700; color: var(--ink); }
 .faq summary::-webkit-details-marker { display: none; }
-.faq summary::after { content: "Open"; justify-self: end; font: 700 var(--fs--1)/1 var(--sans); color: var(--ink); padding: 7px 9px; border: 1px solid var(--ink); }
-.faq summary:hover::after { background: var(--ink); color: var(--paper); }
-.faq details[open] summary::after { content: "Close"; background: var(--ink); color: var(--paper); }
-.faq details[open] summary { border-bottom: 1px solid var(--rule); }
-.faq .a { padding: var(--s2) var(--s3) var(--s3); color: var(--ink-2); font-size: var(--fs-0); }
+.faq summary:hover { background: var(--paper); }
+/* "Want to check the file first?" opens the same way, so it wears the same chevron (AH-148 fix round 2: it had no sign
+   that it opens) */
+:is(.faq, .check-file) summary::after { content: ""; flex: none; width: 8px; height: 8px; margin: 0 4px 4px 0; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+:is(.faq details, .check-file)[open] > summary::after { transform: translateY(3px) rotate(-135deg); }
+.faq .a { padding: 0 var(--s3) var(--s3); color: var(--ink-2); font-size: var(--fs-0); }
 .faq .a p { margin: 0 0 8px; }
 .faq .a ol { margin: 0 0 8px; padding-left: 1.4em; }
 .faq .a b { color: var(--ink); }
+@media (prefers-reduced-motion: no-preference) { :is(.faq, .check-file) summary::after { transition: transform var(--pop-in) var(--ease-out); } }
+/* the home page's form is twice as tall as its five questions, and stood beside them alone with a column of nothing
+   under them (AH-148 fix round 1): on a wide screen the form starts at the section's top, beside the heading and the
+   lede, which take the questions' seven columns. The room the form leaves stays under the questions (pushed down to the
+   form's foot, a question opening would grow upward and move the one just pressed) */
+@media (min-width: 1101px) {
+  #faq > .cols { grid-template-rows: auto auto 1fr; }
+  #faq :is(.sec-title, .sec-lede) { grid-column: 1 / span 7; }
+  #faq .form-card { grid-row: 1 / span 3; margin-top: 0; }
+}
 .form-card { grid-column: 8 / -1; min-width: 0; border: 1px solid var(--ink); background: var(--grain), var(--grid), var(--paper-2); }
 .form-card h2 { font-size: var(--fs-2); padding: 18px var(--s3); background: var(--paper); border-bottom: 1px solid var(--ink); letter-spacing: normal; line-height: 1.1; }
 .form-card form { display: grid; gap: 20px; padding: var(--s3); }
@@ -522,8 +614,10 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
 .proof > div:nth-child(4) .rule { --col: 3; }
 .proof > div:nth-child(5) .rule { --col: 4; }
 /* three public tables, scanned (AH-133): a card each, the pane's words quoted row by row, the source credited */
-.cases { grid-column: 1 / -1; margin-top: var(--s6); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gutter); align-items: start; }
-.case { display: grid; gap: 12px; padding: var(--s3); border: 1px solid var(--ink); background: var(--grain), var(--paper-2); font-size: var(--fs--1); color: var(--ink-2); }
+/* the cards of a row one height, their credits on one line at the bottom (AH-148 fix round 1: their bottoms were 476, 446
+   and 561 px down) */
+.cases { grid-column: 1 / -1; margin-top: var(--s6); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gutter); }
+.case { display: grid; align-content: start; gap: 12px; padding: var(--s3); border: 1px solid var(--ink); background: var(--grain), var(--paper-2); font-size: var(--fs--1); color: var(--ink-2); }
 .case h3 { font-size: var(--fs-1); line-height: 1.2; }
 .case-scope { color: var(--muted); }
 .case-said { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
@@ -555,10 +649,11 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
 .dock .btn { width: 100%; }
 
 /* footer, on the dark band */
-.foot { background: var(--grain-dark), var(--dark); color: var(--on-dark-2); font-size: var(--fs--1); padding-block: var(--s5); }
+.foot { background: var(--grain-dark), var(--dark); color: var(--on-dark-2); font-size: var(--fs--1); padding-block: var(--s5) calc(var(--s5) + env(safe-area-inset-bottom, 0px)); } /* the phone's home bar (AH-148: every page, not only the home page) */
 .foot .cols { row-gap: var(--s2); align-items: center; }
-.foot span { grid-column: 1 / span 6; }
-.foot nav { grid-column: 7 / -1; display: flex; justify-content: flex-end; gap: var(--s3); flex-wrap: wrap; }
+/* the links take eight columns: in six, the support page's seven left "Source" alone on a second line at 1440 (AH-148 final pass) */
+.foot span { grid-column: 1 / span 4; }
+.foot nav { grid-column: 5 / -1; display: flex; justify-content: flex-end; gap: var(--s3); flex-wrap: wrap; }
 .foot a { color: var(--on-dark); text-decoration-color: var(--gold-hi); }
 
 /* pressed (AH-120): a hover said nothing to a finger on a phone, so everything that acts as a button draws a dark gold
@@ -610,7 +705,7 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
   html[data-js] #preview[data-loading] :is(tbody tr:not([data-in]) i, .key span:not([data-in]) i) { visibility: hidden; }
   html[data-js] #preview[data-loading] :is(tbody tr > td, tbody tr > th, .n, .key span)::after,
   html[data-js] dl.anchor[data-loading] :is(#sha, #rel)::after { content: ""; position: absolute; left: var(--sk-x, 0); top: var(--sk-y, 0); width: var(--sk-w, 0); height: var(--sk-h, 0);
-    background: #D9D3C4; pointer-events: none; transition: opacity var(--land-fade) var(--ease-out); }
+    background: var(--tint-bar); pointer-events: none; transition: opacity var(--land-fade) var(--ease-out); }
   html[data-js] #preview[data-loading] :is(tbody tr[data-in] > td, tbody tr[data-in] > th, .n[data-in], .key span[data-in])::after { opacity: 0; }
   html[data-js] #preview[data-loading] tbody tr[data-in] { animation: land 360ms var(--ease-out) both; }
   html[data-js] #preview[data-loading] .ws-body, html[data-js] dl.anchor[data-loading] { overflow: clip; }
@@ -683,6 +778,24 @@ html[data-moving] #field { z-index: 2; }
   ::view-transition-old(root), ::view-transition-new(root) { animation-timing-function: var(--ease-out); }
 }
 
+/* AH-148 (John, 2026-11-09: "shared element transition"): a checks-table "Row 22" link and the sample's row 22 are one
+   thing, so the link's gold mark is drawn round the row: for 600 ms when the link's glide lands there (opacity only, once),
+   and while the link is pointed at or focused with the sample on screen (home.js). One still frame, laid over the row in
+   its scrolling table, never in the way of a press */
+#p-found .scroll { position: relative; }
+.row-mark { position: absolute; z-index: 1; border: 2px solid var(--gold); opacity: 0; pointer-events: none; }
+.row-mark[data-on] { opacity: 1; }
+@media (prefers-reduced-motion: no-preference) { .row-mark { transition: opacity var(--pop-out) var(--ease-out); } }
+/* a figure that counts to its value (AH-148, John: "alive"): the proof strip's when it rises into view, a filter's count
+   when a tab changes it. Its real text stays in the page the whole time, see-through, keeping its box, so a reader, a
+   find or a copy meets the final value; the counting figure is drawn over it, with an empty alternative text (after the
+   "/") so a screen reader never reads it. home.js counts by the clock, ~900 and 250 ms, never under reduced motion */
+[data-tick] { position: relative; color: transparent; }
+[data-tick]::before { content: attr(data-tick) / ""; position: absolute; left: 0; top: 0; white-space: pre; }
+.proof dt[data-tick]::before { color: var(--wine); }
+.typology .n[data-tick]::before { color: var(--ink); }
+.key .kcount[data-tick]::before { color: var(--ink-2); }
+
 /* Windows High Contrast (AH-113): forced colours drop every fill and shadow, and those were the only marks of a flagged
    cell, a cell worth a check, a fixed one, the key's squares and the bar's Download box. Here each keeps a mark the theme
    draws in its own colours, and the kinds stay apart: a flagged cell and its square filled with the highlight, one worth a
@@ -699,6 +812,9 @@ html[data-moving] #field { z-index: 2; }
      transparent border would show on every tab */
   .tabs button { border-bottom-color: Canvas; }
   .tabs button::after, .tab-mark { forced-color-adjust: none; background: CanvasText; }
+  /* a counting figure's real text is drawn in the theme's colour here (its see-through colour is forced), so the copy over
+     it would double it (AH-148) */
+  [data-tick]::before { content: none; }
 }
 
 @media (max-width: 1100px) {
@@ -736,9 +852,29 @@ html[data-moving] #field { z-index: 2; }
   .tabs button:first-child { padding-left: 0; }
   .ws-body { grid-template-columns: minmax(0, 1fr); }
   .swipe { display: block; padding: 10px var(--s2) 0; font-size: var(--fs--1); color: var(--ink-2); }
+  .ws:not([data-state="found"]) .swipe { display: none; } /* on the findings only (AH-148 final pass: Scanning has no table, and over After fixes' verdict it read as noise) */
+  /* the sample on a phone (AH-148 fix round 2): pinned to the right as a column, the Finding cut Region to "Ce" and "Ea"
+     and pushed the flagged cells off screen. Now each row is a grid of fixed columns (em, so they grow with the text),
+     its Finding a full-width line under it, the Row number pinned at the left beside both, and home.js starts the table
+     scrolled to its end: Row, Units, UnitCost and Total whole on screen, OrderDate and Region a swipe away. The three
+     flagged columns share what the screen has left, so the end of the scroll lands on a column's edge and no cell is
+     cut; 1em past the last one leaves room for a hovered cell's lift */
+  .scroll { container-type: inline-size; padding-bottom: 8px; } /* the hovered cell's lift (1.13, 3 px up) stays inside the box */
+  table.grid { display: block; width: max-content; min-width: 0; }
+  .grid :is(thead, tbody) { display: block; }
+  .grid tr { --more: max(0px, (100cqw - 23em) / 3); display: grid; grid-template-columns: 4.4em 8.1em 6em calc(5em + var(--more)) calc(7.2em + var(--more)) calc(5.4em + var(--more)); padding-right: 1em; }
+  .grid tr > :is(th, td) { width: auto; } /* each cell fills its column (the Row's 48 px was the table's) */
+  .grid tr > :first-child { position: sticky; left: 0; z-index: 1; }
+  .grid tr > td:nth-child(6) { border-right: 0; }
+  .grid tr:has(> td.why:not(:empty)) > th { grid-row: span 2; }
+  .grid td.why { grid-column: 2 / -1; position: sticky; left: 4.4em; width: calc(100cqw - 5.4em); white-space: normal; }
+  .grid td.why:empty { display: none; }
+  .grid tr.skip > td:last-child { grid-column: 2 / -1; }
+  /* the Finding's head names the lines for a reader, unseen: each line says what it is */
+  .grid thead th:last-child { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
   /* two columns of filters, or one when the text is so large (200%, AH-112) that two 8rem columns don't fit */
   .typology { grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr)); border-right: 0; border-bottom: 1px solid var(--ink); }
-  .typology .label, .typology .key { grid-column: 1 / -1; }
+  .typology .label, .typology .overlap, .typology .key { grid-column: 1 / -1; }
   .typology button:nth-of-type(even) { border-left: 1px solid var(--rule); }
   .busy { min-height: 320px; padding: var(--s3); }
   .it-ledger, .steps ol { grid-template-columns: minmax(0, 1fr); gap: var(--s4); margin-top: var(--s5); }
@@ -768,6 +904,10 @@ html[data-moving] #field { z-index: 2; }
   .card tr { display: grid; border-bottom: 1px solid var(--rule); }
   .card th, .card td { border-bottom: 0; padding: 12px var(--s2); }
   .card td.eg { border-left: 0; padding-top: 0; }
+  /* each value under its column's head, the thead being gone (AH-148 fix round 2: on a phone the values floated with no
+     label); the label's alternative text is empty, so a reader that already names the cell by its column never hears
+     it twice */
+  .card td[data-label]::before { content: attr(data-label) / ""; display: block; margin-bottom: 4px; font: 700 var(--fs--2)/1.2 var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); }
   .foot nav { justify-content: flex-start; }
   /* the phone's menu (AH-126): the brand and the Menu button share the bar's first row, the links open in full width
      below them */
@@ -787,8 +927,26 @@ html[data-moving] #field { z-index: 2; }
      wait in the closed menu through the first load, and the brand and the notice line come from the left */
   html[data-js] .bar { overflow: visible; }
   html[data-js] #home .foot { padding-bottom: calc(var(--s5) + 73px + env(safe-area-inset-bottom, 0px)); }
+  /* a thumb's target, 44 px tall (AH-148, John: "touch target"; Apple's and Material's own size): a row's button, the
+     Copy button, a detail box's Close (44 wide too, a word on one line), the brand, the contents' entries. A link standing
+     alone on a line of text (the notice's Download, the footer's, the checks' "Row 22") grows its box by padding that an
+     equal negative margin takes back, so no line around it moves (as AH-115's 24 px did) */
+  .rowbtn, .copy-btn, .brand, .confirm { min-height: 44px; } /* .confirm: the support form's box, pressed on its label */
+  .m-close { min-height: 44px; min-width: 44px; }
+  .toc a { padding-block: 11.5px; }
+  .notice-bar p a { padding-block: 12px; margin-block: -12px; }
+  .foot nav a, .in-sample .to-row { padding-block: 11.5px; margin-block: -11.5px; }
 }
 @media (min-width: 761px) { .dock { display: none; } }
+/* the measure in the two tables of running text (AH-148): a cell cannot take a max-width, so its right padding grows to
+   leave the text --measure wide. A cell's percentage padding is of the table's width: the checks' second column is 42.45%
+   of it, privacy's middle one 50% (its first and last are 25%). Their columns stay where they are. The checks' text runs
+   to 44ch (about 69 letters, at most 71): at 40ch its Fairness row took another line, and the eighth row's top no longer
+   came on screen at 1440 x 900, where all eight rise together (AH-98) */
+@media (min-width: 761px) {
+  .checks-table tbody td:not(.in-sample) { padding-right: max(var(--gutter), 42.45% - 44ch); }
+  .card td:not(.eg) { padding-right: max(var(--s3), 50% - var(--measure)); }
+}
 /* a short laptop screen (1280 x 720): the hero's download was 27 px below the first screen, so the hero starts higher */
 @media (min-width: 761px) and (max-height: 820px) {
   .hero { padding-top: var(--s2); }

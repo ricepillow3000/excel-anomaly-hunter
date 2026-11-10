@@ -34,6 +34,12 @@ from anomaly_hunter.sealed import write_private as _write_private
 
 # the pane, served as-is: beside the code in a checkout, inside the bundle in the one-file app (unpacked to _MEIPASS)
 PANEL = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2])) / "frontend"
+# Every icon name an older manifest gave Office answers with today's crest of its size. Excel keeps drawing the manifest
+# it cached first across upgrades, so 1.0.8.0 installs showed 1.0.5.0's mark-*.png, deleted, as Office's grey
+# placeholder (AH-154). A new logo changes CREST and adds the name it retires here; an icon URL is never retired.
+CREST = "crest2"
+OLD_ICONS = {f"assets/{old}-{size}.png": f"assets/{CREST}-{size}.png"
+             for old in ("icon", "logo", "banner", "mark", "crest") for size in (16, 32, 64, 80)}
 HOME = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local") / "AnomalyHunter"  # cert, key, log
 # where server.log is, in the words a user can paste into File Explorer: "details in server.log" sent people looking
 # for a file they had never seen (AH-124)
@@ -138,6 +144,8 @@ def create_app(scan_csv=None):
     scan writes both only when the pane says power_bi (off unless the user turns it on) and removes them otherwise.
     None = no file at all (tests)."""
     app = Flask(__name__, static_folder=str(PANEL), static_url_path="")
+    serve = app.view_functions["static"]  # the same file serving and cache headers, no new route (OLD_ICONS)
+    app.view_functions["static"] = lambda filename: serve(filename=OLD_ICONS.get(filename, filename))
     # Flask takes DEBUG from FLASK_DEBUG when it builds the app: one variable on the user's PC put Werkzeug's debugger
     # and HTML tracebacks in place of our JSON errors (AH-87 audit). No debug switch, the environment's included (G1)
     app.debug = False

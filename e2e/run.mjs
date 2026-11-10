@@ -106,6 +106,13 @@ await failing(/e2e recorder probe/, async () => {
 ok(unhandled.length === 2 && unhandled.some((u) => u.startsWith("unhandledrejection")) && unhandled.some((u) => u.startsWith("error")), "the page's recorder hears an unhandled rejection and an uncaught error - " + JSON.stringify(unhandled));
 errors.splice(0, Infinity, ...errors.filter((e) => !/e2e recorder probe/.test(e))); unhandled.length = 0;
 const text = (sel) => page.textContent(sel);
+// AH-149 review r2: a notice as the pane draws one: at body size, in a hairline box with a square before its first word,
+// and said in that one place (never again in the notice line over the results). "Arcas has stopped" was set at 15 px
+// with no box under Check words with AI, and as a bare line in the AI help steps, and both read as a heading
+const looksLikeNotice = (sel) => page.$eval(sel, (e) => { const c = getComputedStyle(e), b = getComputedStyle(e, "::before"), body = getComputedStyle(document.body).fontSize;
+  const m = { size: c.fontSize, body, border: `${c.borderTopWidth} ${c.borderTopStyle}`, square: `${b.content} ${b.width} ${b.height} ${b.backgroundColor}`,
+    twice: !!e.textContent && document.getElementById("notice").textContent.includes(e.textContent) };
+  return { ...m, ok: m.size === body && m.border === "1px solid" && b.content === '""' && b.width === "10px" && b.height === "10px" && b.backgroundColor !== "rgba(0, 0, 0, 0)" && !m.twice }; });
 // AH-94 motion: a transform's scale, and each change of #main-ui's data-scanning (the scan skeleton) with its time
 const scaleOf = (m) => +(/^matrix\(([-\d.e]+)/.exec(m) || [0, 1])[1]; // "none" = 1
 const watchSkeleton = () => page.evaluate(() => { const m = document.getElementById("main-ui"), first = !window.__sk; window.__sk = [];
@@ -119,7 +126,11 @@ const midShot = async (name, at, sel) => { if (!process.env.SHOTS) return;
   await shot(name);
   await page.evaluate(() => document.getAnimations().filter((a) => a.timeline === document.timeline).forEach((a) => a.play())); };
 const cell = (a) => page.evaluate((a) => __cell("Sales", a), a);
-const idle = () => page.waitForFunction(() => !document.getElementById("scan").disabled);
+// an action is over: Find problems is on again, and no action holds the pane (since AH-149 a card's own action turns off
+// only the card's buttons, so Find problems alone no longer says it)
+const idle = () => page.waitForFunction(() => !document.getElementById("scan").disabled && !__state.working);
+// AH-149: the card's angle, read from its computed transform (perspective(1200px) rotateY(a): the matrix's first value is cos a)
+const angleOf = (t) => { const m = /^matrix3d\(([-\d.e]+)/.exec(t); return m ? (Math.acos(Math.min(1, +m[1])) * 180) / Math.PI : 0; };
 const find = async () => { await page.click("#scan"); await idle(); await page.waitForSelector("#results", { state: "visible" }); };
 // WCAG AA as the pane really draws it (AH-87): every text over 4.5:1 (3:1 large) against what lies under it, faded by
 // every opacity above it, every text box's edge and placeholder too. Fixed rows were faded to 0.6 (their grey 2.7:1) and
@@ -128,6 +139,9 @@ const contrast = async (where) => {
   // the page at rest, as a person reads it: right after a reload the entrance (components/motion.js) still holds the
   // slider at part opacity for up to 1.2 s, and the gate once measured "How hard to look" mid-fade at 3.8:1
   await page.waitForFunction(() => [...document.querySelectorAll("[data-enter]")].every((e) => !e.style.opacity && !e.style.transform), null, { timeout: 5000 });
+  // ...and once every clock-driven movement has ended: since AH-149 the rows fade in 30 ms apart and the summary's numbers
+  // count up over 700 ms, and the gate read a row mid-fade at 1.9:1
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.timeline !== document.timeline || a.playState !== "running"), null, { timeout: 5000 });
   const was = await page.$$eval("#main-ui details", (ds) => ds.map((d) => { const o = d.open; d.open = true; return o; }));
   const bad = await page.evaluate(contrastProblems);
   await page.$$eval("#main-ui details", (ds, was) => ds.forEach((d, k) => (d.open = was[k])), was);
@@ -144,22 +158,58 @@ const doubleClick = async (sel, gap = 150) => {
   await page.waitForTimeout(gap);
   await page.mouse.down({ clickCount: 2 }); await page.mouse.up({ clickCount: 2 });
 };
+// Back to the list. Since AH-149 the list comes back inside a view transition, drawn a frame or two after the press:
+// wait for it, as a person sees it, before reading it
+const back = async () => { await page.click("#fix-back"); await page.waitForSelector("#results", { state: "visible" }); };
+// every frame for a while, whether a view transition is running (AH-149), and a wait for one to have run and ended
+const watchVt = () => page.evaluate(() => { window.__vt = []; const f = () => { __vt.push(document.getAnimations().some((a) => String(a.effect?.pseudoElement).startsWith("::view-transition"))); if (__vt.length < 90) requestAnimationFrame(f); }; requestAnimationFrame(f); });
+const vtDone = async () => { await page.waitForFunction(() => __vt.some(Boolean), null, { timeout: 3000 }).catch(() => {});
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running"), null, { timeout: 5000 }).catch(() => {}); };
 const openRow = async (r) => { await page.click(`#flagged-list button:has-text("Row ${r} ")`); await idle(); await page.waitForFunction(() => document.getElementById("fix-changes").children.length || document.getElementById("fix-explanation").textContent); };
 
 if (mode === "flow") {
   // 1) one click, no stop at a limits table; buttons are off while it works, so nothing queues silently
   const c0 = calls.length;
   await watchSkeleton();
+  // AH-149: every frame from the click on, where the first result row is once it has appeared, and the rows' arrival
+  await page.evaluate(() => { window.__tops = []; window.__arrive = null;
+    const f = () => { const b = document.querySelector("#flagged-list button"); if (b?.checkVisibility()) __tops.push(b.getBoundingClientRect().top); if (!window.__stopTops) requestAnimationFrame(f); };
+    requestAnimationFrame(f);
+    window.__slow = 150; // an Excel that takes its time, so every step of the scan gets frames of its own
+    new MutationObserver((_, mo) => { mo.disconnect(); __arrive = [...document.getElementById("flagged-list").children].slice(0, 12).map((li) => li.getAnimations().map((a) => [a.effect.getTiming().delay, Object.keys(a.effect.getKeyframes()[0]).filter((k) => !["offset", "easing", "composite", "computedOffset"].includes(k))])); })
+      .observe(document.getElementById("flagged-list"), { childList: true }); });
+  // AH-149 review: every frame the summary counts, its words as drawn (a counting number is its counter's --n) and how wide
+  // each drawn number is beside the number it becomes. The total was counted too and drew "0 of     0 rows look wrong."
+  await page.evaluate(() => { window.__counted = [];
+    const f = () => { const s = document.getElementById("summary");
+      if (s?.querySelector(".counting")) {
+        const probe = (t) => { const p = s.appendChild(Object.assign(document.createElement("span"), { textContent: t })); const w = p.getBoundingClientRect().width; p.remove(); return w; };
+        const nums = [...s.querySelectorAll(".count.counting")].map((c) => [getComputedStyle(c).getPropertyValue("--n").trim(), c.getBoundingClientRect().width]);
+        __counted.push({ drawn: [...s.childNodes].map((n) => (n.classList?.contains("counting") ? getComputedStyle(n).getPropertyValue("--n").trim() : n.textContent)).join(""),
+          wider: nums.filter(([v, w]) => probe(v) > w + 0.5).map(([v, w]) => `${v} in ${w.toFixed(1)}`) });
+      }
+      if (__counted.length < 200 && !window.__stopTops) requestAnimationFrame(f); };
+    requestAnimationFrame(f); });
+  const atRest = await page.evaluate(() => getComputedStyle(document.getElementById("scan")).backgroundColor); // before any scan
   await page.click("#scan");
+  await page.mouse.move(0, 0); // off the button, so its at-rest colour is the one to compare once the scan is over
   ok(await page.evaluate(() => document.getElementById("clear-highlights").disabled), "buttons are disabled while it works");
   // AH-94: from the click until the results render, the scan skeleton stands where they land (in place of the empty
   // state on a first scan), its rows built like a list row; a Find problems scan keeps it at least ~450 ms
   // (read null-safe: a pane without a skeleton fails these checks by name instead of stopping the run)
   const sk = await page.evaluate(() => { const s = document.getElementById("scan-skeleton"), r = s?.querySelector(".flagged-list .row-box")?.getBoundingClientRect();
     return { on: !!s && s.offsetParent !== null, empty: document.getElementById("empty-state").offsetParent !== null, rows: s?.querySelectorAll(".flagged-list .row-box").length,
-      light: s && getComputedStyle(s, "::after").animationName, box: r ? [r.left, r.width, r.height] : [NaN, NaN, NaN] }; });
+      light: s && getComputedStyle(s, "::after").animationName, passes: s && getComputedStyle(s, "::after").animationIterationCount,
+      sliver: getComputedStyle(document.getElementById("busy-bar")).animationIterationCount, box: r ? [r.left, r.width, r.height] : [NaN, NaN, NaN] }; });
   ok(sk.on && !sk.empty && sk.rows === 5 && sk.light === "sk-pass", "the scan skeleton shows at once, in place of the empty state, 5 rows and one passing light - " + JSON.stringify(sk));
+  ok(+sk.passes > 0 && +sk.passes < 100 && /^\d+$/.test(sk.passes) && /^\d+$/.test(sk.sliver), "AH-149: the skeleton's light and the progress sliver pass a set number of times, never forever - " + JSON.stringify([sk.passes, sk.sliver]));
   await shot("skeleton");
+  // AH-149 review r2: the first frame Find problems is on again, the results shown and nothing running, it is drawn in its
+  // full colour, as before any scan: it faded back from its off colour over .3 s, and the pictures caught it mauve
+  { const on = await (await page.waitForFunction(() => { const s = document.getElementById("scan");
+      return !s.disabled && !__state.working && { bg: getComputedStyle(s).backgroundColor, results: document.getElementById("results").checkVisibility(), mark: getComputedStyle(s, "::after").content }; })).jsonValue();
+    ok(on.results && on.bg === atRest, `AH-149 review r2: once the results are in and nothing runs, Find problems is on and in its full colour at once - ${on.bg} (before any scan ${atRest})`);
+    ok(on.mark === "none", "AH-149 review r2: no white square in Find problems (it read as a Stop icon) - " + on.mark); }
   await idle();
   ok(await page.isVisible("#results"), "results after ONE click");
   { const box = await page.evaluate(() => { const r = document.querySelector("#flagged-list button").getBoundingClientRect(); return [r.left, r.width, r.height]; });
@@ -168,7 +218,27 @@ if (mode === "flow") {
     ok(gone && Math.abs(box[0] - sk.box[0]) < 0.5 && Math.abs(box[1] - sk.box[1]) < 0.5 && Math.abs(box[2] - sk.box[2]) <= 3 && held.length === 1 && held[0] >= 440,
       `the skeleton goes when the results land, its first row where the real first row is (skeleton ${sk.box.map(Math.round)}, real ${box.map(Math.round)}), shown ${held.map(Math.round)} ms`); }
   await shot("landed");
-  await page.waitForTimeout(800); // room for a second, unwanted scan to show up, as the slider checks give it
+  await page.waitForTimeout(1000); // room for a second, unwanted scan to show up, as the slider checks give it
+  { const tops = await page.evaluate(() => { window.__stopTops = true; window.__slow = 0; return __tops; });
+    ok(tops.length > 10 && Math.max(...tops) - Math.min(...tops) < 0.5, `AH-149: from Find problems to 1 s after the results land, the first row never moves once it is there (the progress line and "Done" take turns in one held space) - ${tops.length} frames, tops ${Math.min(...tops).toFixed(1)} to ${Math.max(...tops).toFixed(1)}`); }
+  { const arrive = await page.evaluate(() => __arrive);
+    const delays = arrive?.map((a) => a[0]?.[0]);
+    ok(arrive && arrive.every((a) => a.length === 1 && a[0][1].join() === "opacity") && delays.join() === [0, 30, 60, 90, 120, 150, 180, 210, 240, 240, 240, 240].slice(0, delays.length).join() && delays.length >= 5,
+      "AH-149: the rows arrive 30 ms apart from the first at once, by opacity only, eight steps at most - " + JSON.stringify(arrive)); }
+  { const tn = await page.evaluate(() => ["#flagged-list .row-head", "#summary", "#list-title", "#fix-title", "#busy-line", "#scan", "#clear-highlights"].map((q) => [q, document.querySelector(q) ? getComputedStyle(document.querySelector(q)).fontVariantNumeric : "missing"]));
+    ok(tn.every(([, v]) => v.includes("tabular-nums")), "AH-149: every number that changes or lines up is in figures of one width - " + JSON.stringify(tn)); }
+  { const count = await page.evaluate(() => [...document.querySelectorAll("#summary .count")].map((c) => c.textContent));
+    ok(count.join() === "5", "AH-149: the summary's flagged number is its own, to count up, and its text is the result all along - " + count);
+    const frames = await page.evaluate(() => __counted);
+    const said = await page.evaluate(() => document.getElementById("summary").textContent.trim());
+    ok(frames.length === 0 && said.startsWith("5 of 300 rows look wrong."),
+      `AH-149 review r1: a flagged number under 10 is drawn as itself from the first frame, never counted from 0 ("0 of 300 rows look wrong." above 5 flagged rows) - ${frames.length} counting frames, ${JSON.stringify(frames.slice(0, 3))}, "${said}"`); }
+  { const h = await page.evaluate(() => ({ hint: document.getElementById("strength-hint").textContent, tested: document.getElementById("strength-measured")?.textContent,
+      open: document.getElementById("strength-tested")?.open, summary: document.querySelector("#strength-tested summary")?.textContent })); // null-safe: a pane without them fails by name
+    ok(h.hint === "Recommended. Plus unusual mixes of values across columns." && !h.open && h.summary === "How we tested this level"
+      && /^We tested it on \d+ practice sheets with \d+ mistakes hidden in them\. It found .* rows that were fine/.test(h.tested),
+      "AH-149 review: under the slider, what the level does in one short line; what it did on the bench under \"How we tested this level\", closed - " + JSON.stringify(h)); }
+  ok((await page.getAttribute("#strength", "aria-valuetext")) === "5 of 10, Recommended", "AH-149: the slider tells a screen reader its level's word - " + (await page.getAttribute("#strength", "aria-valuetext")));
   ok(since(c0) === "/scan" && calls[c0][1].strength === 5 && calls[c0][1].power_bi === false, "Find problems sends exactly one /scan, at the slider's level - " + since(c0));
   { const m = await matchesEngine(); ok(m.ok, "the list is exactly what the engine answered: each flagged row, its severity in words and its reason - " + m.why); }
   ok((await text("#summary")).startsWith("5 of 300 rows look wrong."), "summary in plain words - " + (await text("#summary")));
@@ -198,14 +268,36 @@ if (mode === "flow") {
     await shot("podium-row");
     ok(before[0] === "matrix(0, 0, 0, 1, 0, 0)" && after[0] === "matrix(1, 0, 0, 1, 0, 0)" && scaleOf(before[1]) === 1 && scaleOf(after[1]) > 1.01 && +after[2] === 1 && after[3] === "2" && after[4] === before[4],
       "a hovered row: the fill sweeps from scaleX(0) to scaleX(1), the row lifts above its neighbours on a shadow, its words unchanged - " + JSON.stringify([before.slice(0, 4), after.slice(0, 4)]));
-    await page.mouse.move(1, 1); await page.focus("#strength"); await page.keyboard.press("Tab"); await page.waitForTimeout(600);
+    await page.mouse.move(1, 1); await page.focus("#strength-tested summary"); await page.keyboard.press("Tab"); await page.waitForTimeout(600); // from the control before the list: since the AH-149 review, "How we tested this level"
     const keyed = await page.evaluate(() => { const b = document.activeElement; return [b.matches("#flagged-list button:focus-visible"), getComputedStyle(b, "::before").transform, getComputedStyle(b).transform]; });
     ok(keyed[0] && keyed[1] === "matrix(1, 0, 0, 1, 0, 0)" && scaleOf(keyed[2]) > 1.01, "keyboard focus gets the same fill and lift - " + keyed);
     await page.evaluate(() => document.activeElement.blur()); }
 
+  // AH-149: the card hinges at the height of the row it came from (two rows, two heights), and the row's head flies to
+  // the card's title and home again, named for the view transition only while it runs
+  for (const r of [11, 81]) {
+    const row = page.locator(`#flagged-list button:has-text("Row ${r} ")`);
+    await row.scrollIntoViewIfNeeded(); // where it is when it is pressed (the list scrolls)
+    const mid = await row.evaluate((b) => { const k = b.getBoundingClientRect(); return k.top + k.height / 2; }); // on screen, as the eye finds it
+    await watchVt();
+    await row.click(); await idle(); await vtDone();
+    const card = await page.evaluate(() => { const v = document.getElementById("fix-view"); return { top: v.getBoundingClientRect().top, origin: getComputedStyle(v).transformOrigin,
+      names: [...document.querySelectorAll(".row-head, #fix-title")].map((e) => getComputedStyle(e).viewTransitionName).filter((n) => n !== "none") }; });
+    const y = parseFloat(card.origin.split(" ")[1]), opened = await page.evaluate(() => __vt.some(Boolean));
+    ok(Math.abs(y - (mid - card.top)) <= 4, `AH-149: opening row ${r}, the card hinges at that row's height (${Math.round(mid - card.top)} px from its top): ${card.origin}`);
+    ok(opened && !card.names.length, `AH-149: opening row ${r}, its head flies to the card's title in a view transition, and no name is left after - ${JSON.stringify({ opened, names: card.names })}`);
+    await watchVt();
+    await back(); await vtDone();
+    const home = await page.evaluate(() => ({ vt: __vt.some(Boolean), names: [...document.querySelectorAll(".row-head, #fix-title")].map((e) => getComputedStyle(e).viewTransitionName).filter((n) => n !== "none") }));
+    ok(home.vt && !home.names.length && (await page.isVisible("#results")), `AH-149: Back flies the title home to row ${r} - ` + JSON.stringify(home));
+  }
+
   // 2) open a row's card, Accept (Agent 3 checks it again, highlight goes), Undo
   { // AH-94: the card turns in like a page (finite, so nothing waits on it forever) and lies flat by 800 ms
     await page.click('#flagged-list button:has-text("Row 11 ")');
+    // since AH-149 the card is drawn once the view transition has the list's picture, a frame after the click: read the
+    // turn once it has begun
+    await page.waitForFunction(() => document.getElementById("fix-view").getAnimations().length > 0, null, { polling: "raf", timeout: 3000 }).catch(() => {});
     const turning = await page.evaluate(() => { const v = document.getElementById("fix-view"), a = v.getAnimations({ subtree: true });
       return { t: getComputedStyle(v).transform, n: a.length, end: Math.max(...a.map((x) => x.effect.getComputedTiming().endTime)) }; });
     await idle(); await page.waitForFunction(() => document.getElementById("fix-changes").children.length || document.getElementById("fix-explanation").textContent);
@@ -220,15 +312,29 @@ if (mode === "flow") {
       await page.evaluate(async () => { const { turnIn } = await import("./components/motion.js"); turnIn(document.getElementById("fix-view")); });
       await midShot("card-mid-turn", 160, "#fix-view");
       await page.waitForTimeout(700); }
-    // each proposed change steps up on hover, like a podium
+    // AH-149: a proposed change is not a control, so it no longer steps up on hover (it said "press me")
     await page.hover("#fix-changes li"); await page.waitForTimeout(500);
     const step = await page.evaluate(() => getComputedStyle(document.querySelector("#fix-changes li")).transform);
-    await shot("card-change-podium");
-    ok(scaleOf(step) >= 1.03, "a proposed change steps up on hover - " + step);
-    await page.mouse.move(1, 1); }
+    ok(step === "none", "a proposed change does not lift on hover: it is not a control - " + step);
+    await page.mouse.move(1, 1);
+    // AH-149: a turn started while one runs goes on from the card's angle: a second turn 150 ms into the first never
+    // snaps back to 80deg (no jump over 15deg from one frame to the next), and the card lies flat at the end
+    const frames = await page.evaluate(async () => { const { turnIn } = await import("./components/motion.js"), v = document.getElementById("fix-view"), out = [];
+      let on = true; const f = () => { out.push(getComputedStyle(v).transform); if (on) requestAnimationFrame(f); };
+      turnIn(v); requestAnimationFrame(f);
+      await new Promise((go) => setTimeout(go, 150)); turnIn(v);
+      await Promise.all(v.getAnimations().map((a) => a.finished.catch(() => {}))); await new Promise((go) => requestAnimationFrame(go)); on = false;
+      return out; });
+    const angles = frames.map(angleOf), jump = Math.max(...angles.slice(1).map((a, k) => Math.abs(a - angles[k])));
+    ok(angles.length > 10 && jump <= 15 && angles.at(-1) < 0.5, `AH-149: Next row pressed mid-turn: the card turns on from where it is, its biggest step between frames ${jump.toFixed(1)}deg - ${angles.map((a) => a.toFixed(0)).join(",")}`); }
   ok((await text("#fix-title")) === "Row 11: probably wrong", "fix view titled in words");
+  { await page.evaluate((pairs) => { for (const [c, w] of pairs) { const p = document.createElement("p"); p.className = "probe"; p.textContent = `${w} probe text`; p.style.color = c; document.querySelector(".fix-result").append(p); } },
+      [["oklch(0.25 0.06 265)", "dark"], ["oklch(0.86 0.02 90)", "pale"]]);
+    const probe = (await page.evaluate(contrastProblems)).filter((b) => b.includes("probe text"));
+    await page.evaluate(() => document.querySelectorAll(".probe").forEach((p) => p.remove()));
+    ok(probe.length === 1 && probe[0].includes("pale"), "AH-149: the contrast gate reads an OKLCH colour as the browser draws it - " + JSON.stringify(probe)); }
   await contrast("a row's card, Ask AI's box shown");
-  ok((await text("#fix-reason")) === "Total 170.43 does not add up: Units × UnitCost = -14.95 · Units is -5, below its usual limit of 0",
+  ok((await text("#fix-reason")) === "Total 170.43 does not add up: Units × UnitCost = -14.95\nUnits is -5, below its usual limit of 0",
     "reason in plain words - " + (await text("#fix-reason")));
   ok((await text("#fix-changes")).startsWith("C11: -5 → "), "preview old -> new");
   ok(await page.isVisible("#fix-dismiss") && !(await page.isVisible("#fix-next")), "card asks: Accept or Dismiss");
@@ -241,9 +347,10 @@ if (mode === "flow") {
   ok(await page.evaluate(() => Object.values(__settings.anomalyHunterDecisions?.Sales || {}).includes("fixed")), "Accept keeps the decision in the workbook");
   ok((await wrote()) === "Sales!C11", "Accept wrote exactly the one targeted cell, nothing else - " + (await wrote()));
   ok((await text("#fix-status")).includes("looks right now"), "checker re-scanned the fixed row - " + (await text("#fix-status")));
+  ok(await page.evaluate(() => document.getElementById("fix-status").classList.contains("tick")), "AH-149: a fix that checks out gets a check mark, once");
   ok((await cell("C11")).fill === "#00B050" && (await cell("E11")).fill === "#00B050", "fixed row: highlight gone, the user's own green back");
   ok(await page.isVisible("#fix-next") && !(await page.isVisible("#fix-dismiss")), "then Undo / Next row");
-  await page.click("#fix-back");
+  await back();
   ok(/1 of \d+ done/.test(await text("#list-title")) && (await text("#flagged-list")).includes("Fixed"), "list keeps its rows and marks the fixed one - " + (await text("#list-title")));
   await openRow(11); // a fixed row opened again still offers Undo
   ok((await text("#fix-title")) === "Row 11: fixed" && (await page.isVisible("#fix-undo")) && (await text("#fix-changes")).startsWith("C11: -5 → "), "reopened fixed row offers Undo");
@@ -269,8 +376,12 @@ if (mode === "flow") {
 
   // AH-127: a card turns in for 600 ms, and a click aimed at its Accept while it turned wrote a fix the user never chose.
   // Row 22 accepted, then Next row (row 11, listed next); its Accept clicked where it is drawn 50 ms into the turn
-  await page.click("#fix-back"); await openRow(22); await page.click("#fix-apply"); await idle();
+  await back(); await openRow(22); await page.click("#fix-apply"); await idle();
+  // aimed once the card has settled, as a person aims (since AH-149 the row's head flies to the title first)
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running"), null, { timeout: 5000 }).catch(() => {});
   const n5 = await page.evaluate(() => __log.length), c5 = calls.length;
+  // on screen first, as a person scrolls to it: since AH-149 the card is taller (44 px buttons, its fix area held)
+  await page.locator("#fix-next").scrollIntoViewIfNeeded();
   { const b = await page.locator("#fix-next").boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); }
   const turning = await page.waitForFunction(() => !document.getElementById("fix-apply").disabled && !document.getElementById("fix-apply").hidden
     && document.getElementById("fix-view").getAnimations().some((a) => a.playState === "running"), null, { polling: "raf", timeout: 3000 }).then(() => true, () => false);
@@ -286,13 +397,13 @@ if (mode === "flow") {
   ok((await page.evaluate((n) => __log.length - n, n6)) === 1 && since(c6) === "/check", `once it has turned in, a click on Accept writes once - "${since(c6)}"`);
   // both back as they were, for step 3 on
   if (await page.isVisible("#fix-undo")) { await page.click("#fix-undo"); await idle(); }
-  await page.click("#fix-back"); await openRow(22); await page.click("#fix-undo"); await idle(); await page.click("#fix-back");
+  await back(); await openRow(22); await page.click("#fix-undo"); await idle(); await back();
   await openRow(11);
   ok((await cell("C11")).v === -5 && (await cell("C22")).v === 7777 && !(await page.evaluate(() => Object.values(__settings.anomalyHunterDecisions?.Sales || {}).length)),
     "both undone: row 11 and row 22 hold their values again, no decision left");
 
   // 3) clicking a highlighted row in the sheet opens it too; Dismiss leaves it, unhighlighted, and opens the next
-  await page.click("#fix-back");
+  await back();
   await page.evaluate(() => __userSelect("Sales", "B22"));
   await page.waitForFunction(() => document.getElementById("fix-title").textContent.startsWith("Row 22"), null, { timeout: 10000 }).catch(() => {});
   ok((await text("#fix-title")).startsWith("Row 22"), "sheet click opens the row");
@@ -310,7 +421,7 @@ if (mode === "flow") {
   ok(/^Row \d+/.test(await text("#fix-title")) && !(await text("#fix-title")).startsWith("Row 22"), "and moves to the next row - " + (await text("#fix-title")));
 
   // 4) Remove highlights puts back exactly what was there (the user's green row 11 too)
-  await page.click("#fix-back");
+  await back();
   ok((await text("#flagged-list")).includes("Dismissed"), "the dismissed row is marked in the list");
   await page.click("#clear-highlights"); await idle();
   const after = await page.evaluate(() => ["A11", "A22", "B22", "A51"].map((a) => __cell("Sales", a).fill));
@@ -379,7 +490,7 @@ if (mode === "flow") {
   { const [b, a] = replies.slice(-2), said = await text("#level-change");
     const want = await page.evaluate(async ([rb, ra]) => { const { levelChange } = await import("./features/scan.js");
       return levelChange({ level: 5, rows: rb, hashes: __state.hashes, sheet: __state.lastScan.sheet }, { level: 0, rows: ra, hashes: __state.hashes, sheet: __state.lastScan.sheet }); }, [b.rows, a.rows]);
-    ok(said.startsWith("Level 0 (was 5): ") && said === want && (await page.isVisible("#level-change")), "a slider re-check says what level 0 changed against 5 - " + said); }
+    ok(said.startsWith("Slider moved from 5 to 0: ") && said === want && (await page.isVisible("#level-change")), "a slider re-check says what level 0 changed against 5 - " + said); }
   const listed0 = (await page.$$("#flagged-list li")).length;
   ok(listed0 <= listed5 && (await page.evaluate(() => __settings.anomalyHunterStrength)) === 0 && (await text("#strength-hint")).startsWith("Basics"),
     `strength 0 re-checks with the basics only (${listed5} -> ${listed0} rows), saved in the workbook`);
@@ -502,7 +613,7 @@ if (mode === "flow") {
     "and Undo after a reload puts the old value back, takes the Fixed out and forgets the old value - " + (await text("#fix-status")) + " / " + (await kept()));
   await page.click("#fix-apply"); await idle(); // fixed again, for the steps below
   ok((await cell("C11")).v !== -5 && (await kept()) === "dismissed,fixed", "Accept again after that Undo - " + (await kept()));
-  await page.click("#fix-back");
+  await back();
   // a fixed row whose old values the workbook no longer holds (Forget, or another PC's pane) only selects its row
   await page.evaluate(() => { window.__keptUndo = __settings.anomalyHunterAcceptUndo; delete __settings.anomalyHunterAcceptUndo; }); await find();
   await page.click('#flagged-list button:has-text("Row 11 ")'); await idle();
@@ -510,7 +621,7 @@ if (mode === "flow") {
   await page.evaluate(() => { __settings.anomalyHunterAcceptUndo = window.__keptUndo; }); // back, for Forget (6g) to find
   await openRow(22);
   ok((await text("#fix-title")).startsWith("Row 22") && (await page.isVisible("#fix-apply")), "a dismissed row's card still opens from the list, so it can still be fixed");
-  await page.click("#fix-back");
+  await back();
   const flagsNow = records(FLAGS), statusOf = (r) => flagsNow.find((x) => x[2] === String(r))?.[8];
   ok(statusOf(11) === "Fixed" && statusOf(22) === "Dismissed" && statusOf(51) === "Open", `latest-flags.csv: Status Fixed, Dismissed, Open (${statusOf(11)}, ${statusOf(22)}, ${statusOf(51)})`);
   const swap = () => page.evaluate(() => { for (const c of "ABCDE") { const a = __cell("Sales", c + "22").v, b = __cell("Sales", c + "23").v; __edit("Sales", c + "22", b); __edit("Sales", c + "23", a); } });
@@ -562,7 +673,10 @@ if (mode === "flow") {
   // 7a) 30 scans and re-checks: what the pane keeps (listeners, page nodes) stays what is on screen (AH-13). Counted by
   // Chromium itself after a forced garbage collection, so a leaked list or a listener added per scan shows up
   const cdp = await page.context().newCDPSession(page);
-  const counters = async () => { await cdp.send("HeapProfiler.collectGarbage"); return cdp.send("Memory.getDOMCounters"); };
+  // counted at rest: since AH-149 a list's rows fade in and the summary counts up, and a list replaced mid-fade is held by
+  // its animation until it ends (under 1 s), then released
+  const counters = async () => { await page.waitForFunction(() => document.getAnimations().every((a) => a.timeline !== document.timeline || a.playState !== "running"), null, { timeout: 5000 });
+    await cdp.send("HeapProfiler.collectGarbage"); return cdp.send("Memory.getDOMCounters"); };
   await find();
   // counted with $$eval: an element handle (page.$$) keeps its node alive, and 5 of them read as a leak of 5 rows
   const rowsShown = () => page.$$eval("#flagged-list li", (lis) => lis.length);
@@ -610,7 +724,7 @@ if (mode === "flow") {
   await failing(DROPPED, async () => { await page.route("**/check", dropMidway, { times: 1 }); await page.click("#fix-apply"); await idle(); });
   ok((await text("#fix-status")) === `Accepted. Couldn't check it again (${DOWN}). Click Find problems to check the sheet.` && (await page.evaluate(() => __cell("Other", "B81").v)) === "East",
     "the engine down mid-Accept: the fix is in, and the card says the re-check couldn't run - " + (await text("#fix-status")));
-  await page.click("#fix-undo"); await idle(); await page.click("#fix-back");
+  await page.click("#fix-undo"); await idle(); await back();
 
   // 7d) AH-110: Excel's and the browser's own words never reach the screen. "Something went wrong:
   // InvalidOperationInCellEditMode" (a cell being typed in) and "Something went wrong: Cannot read properties of
@@ -670,6 +784,8 @@ if (mode === "flow") {
   await page.evaluate(() => __load("Clean", [["Item", "Units", "Cost"], ...Array.from({ length: 60 }, (_, k) => [["Pen", "Pad", "Ink"][k % 3], 40 + ((k * 7) % 23), +(1.99 + (k % 4)).toFixed(2)])]));
   await find();
   ok((await text("#summary")) === "No problems found in 60 rows." && (await listBits()) === "", "a clean sheet: the summary alone, no hint, no empty list, no Remove highlights - " + (await listBits()));
+  ok(await page.evaluate(() => document.getElementById("summary").classList.contains("tick") && getComputedStyle(document.getElementById("summary"), "::after").animationIterationCount === "1"),
+    "AH-149: a sheet with no problem ends on a check mark, drawn once");
   await page.evaluate(() => __activate("Sales")); await find();
   ok((await listBits()) === "list-hint,flagged-list,clear-highlights,list-title", "the next scan that flags rows shows the list again - " + (await listBits()));
 
@@ -720,7 +836,7 @@ if (mode === "flow") {
     await idle(); await page.waitForTimeout(500);
     const wrote = await page.evaluate((n) => __log.slice(n).map((x) => `${x[1]}!${x[2]}`).join(), w);
     ok(wrote === "Twice!C11" && since(k2) === "/check", `two fast clicks on Accept write one cell and check it once - wrote ${wrote}, sent ${since(k2)}`);
-    await page.click("#fix-undo"); await idle(); await page.click("#fix-back"); }
+    await page.click("#fix-undo"); await idle(); await back(); }
 
   // 8d) AH-124: a sheet with over 5,000 rows flagged (a block of 5,200 orders pasted twice) lists the 50 surest and one
   // "+ N more" line, N the rest of what the engine flagged, and the pane never freezes: no task on the page over 2 s
@@ -740,6 +856,61 @@ if (mode === "flow") {
     ok(longest < 2000, `the pane stays responsive on ${flagged} flags: its longest task ${Math.round(longest)} ms`);
     await page.click("#clear-highlights"); await idle();
     await page.evaluate(() => __activate("Sales")); await find(); }
+
+  // 8e) AH-149, with an Excel that takes 300 ms a call (a big workbook): the pane answers a press in the same frame and
+  // never claims more than the sheet holds. Accept says "Writing to your sheet…" on its own card at once, only the card's
+  // buttons go off; Dismiss marks the row and turns the next card in at once; a Dismiss Excel refuses is put back
+  { const pressed = (sel, check) => page.evaluate(([sel, check]) => new Promise((done) => {
+      const seen = { writing: () => document.getElementById("fix-status").textContent === "Writing to your sheet…" && document.getElementById("fix-apply").disabled,
+        dismissed: () => !document.getElementById("fix-title").textContent.startsWith("Row 22:") && __state.decided[20] === "dismissed" }[check];
+      let t0 = 0;
+      document.addEventListener("click", () => (t0 = performance.now()), { capture: true, once: true });
+      const f = () => (t0 && seen() ? done(performance.now() - t0) : t0 && performance.now() - t0 > 3000 ? done(Infinity) : requestAnimationFrame(f));
+      requestAnimationFrame(f);
+      document.querySelector(sel).click();
+    }), [sel, check]);
+    // the card's buttons stay where they are drawn when its fix arrives late
+    await page.evaluate(() => (window.__slow = 300));
+    await page.evaluate(() => { window.__btn = []; const f = () => { const b = document.getElementById("fix-dismiss"); if (b.checkVisibility() && document.getElementById("fix-view").checkVisibility()) __btn.push(b.offsetTop); if (!window.__btnStop) requestAnimationFrame(f); }; window.__btnStop = false; requestAnimationFrame(f); });
+    await page.click('#flagged-list button:has-text("Row 22 ")'); await idle();
+    await page.waitForFunction(() => document.getElementById("fix-changes").children.length || document.getElementById("fix-explanation").textContent);
+    await page.waitForTimeout(300);
+    const at = await page.evaluate(() => { window.__btnStop = true; return __btn; });
+    ok(at.length > 10 && Math.max(...at) === Math.min(...at), `AH-149: the card's buttons stay where they are when its fix arrives ${300 * 2} ms late - ${at.length} frames, ${Math.min(...at)} to ${Math.max(...at)} px`);
+    const w0 = await page.evaluate(() => __log.length);
+    const ms = await pressed("#fix-apply", "writing");
+    const others = await page.evaluate(() => ({ scan: document.getElementById("scan").disabled, faded: [...document.querySelectorAll("#main-ui button")].filter((b) => b.checkVisibility() && getComputedStyle(b).opacity !== "1").map((b) => b.id || b.textContent) }));
+    ok(ms < 100 && !others.scan && !others.faded.length, `AH-149: Accept says "Writing to your sheet…" on its card in ${Math.round(ms)} ms, only the card's buttons off, nothing faded - ` + JSON.stringify(others));
+    await idle();
+    ok((await page.evaluate((n) => __log.length - n, w0)) === 1 && (await text("#fix-status")).startsWith("Accepted"), "and once Excel has it, the card says what the sheet holds - " + (await text("#fix-status")));
+    await page.click("#fix-undo"); await idle();
+    const k0 = await page.evaluate(() => Object.values(__settings.anomalyHunterDecisions?.Sales || {}).length);
+    const title0 = await text("#fix-title");
+    const dms = await pressed("#fix-dismiss", "dismissed");
+    ok(dms < 100, `AH-149: Dismiss marks row 22 Dismissed and turns the next card in, in ${Math.round(dms)} ms, before Excel has answered - ${title0} -> ${await text("#fix-title")}`);
+    await idle();
+    ok((await page.evaluate(() => Object.values(__settings.anomalyHunterDecisions?.Sales || {}).length)) === k0 + 1 && (await cell("C22")).fill === null,
+      "and Excel then takes row 22's highlight off, the Dismiss kept once");
+    // a double-click on Dismiss, Excel slow: one row dismissed, one card on
+    const t1 = await text("#fix-title");
+    await doubleClick("#fix-dismiss"); await idle(); await page.waitForTimeout(400); await idle();
+    ok((await page.evaluate(() => Object.values(__settings.anomalyHunterDecisions?.Sales || {}).length)) === k0 + 2 && (await text("#fix-title")) !== t1,
+      `AH-149: a double-click on Dismiss with Excel slow dismisses one row - ${t1} -> ${await text("#fix-title")}`);
+    // Excel refuses (a cell being typed in): the row and its card come back, said in plain words, nothing kept
+    await page.evaluate(() => (window.__slow = 0));
+    const t2 = await text("#fix-title"), r2 = +/^Row (\d+)/.exec(t2)[1], k2 = await page.evaluate(() => Object.values(__settings.anomalyHunterDecisions?.Sales || {}).length);
+    await failing(/InvalidOperationInCellEditMode/, async () => { await page.evaluate(() => (window.__cellEdit = 1)); await page.click("#fix-dismiss"); await idle(); });
+    const putBack = { title: await text("#fix-title"), status: await text("#fix-status"), kept: await page.evaluate(() => Object.values(__settings.anomalyHunterDecisions?.Sales || {}).length),
+      decided: await page.evaluate((i) => __state.decided[i] ?? null, r2 - 2) };
+    ok(putBack.title === t2 && putBack.status === `Row ${r2} was not dismissed, so it is back on your list. Excel is busy editing a cell. Press Enter or Esc, then try again.` && putBack.kept === k2 && putBack.decided === null,
+      "AH-149: a Dismiss Excel refuses puts the row and its card back and says so in plain words - " + JSON.stringify(putBack));
+    await back();
+    // step 2 of a scan that takes a while counts its seconds, never a made-up percentage
+    await page.route("**/scan", async (r) => { await new Promise((go) => setTimeout(go, 2300)); await r.continue(); }, { times: 1 });
+    await page.click("#scan");
+    const secs = await page.waitForFunction(() => /^Step 2 of 3: checking 300 rows… 2 s$/.test(document.getElementById("busy-line").textContent), null, { timeout: 8000 }).then(() => true, () => false);
+    await idle();
+    ok(secs, "AH-149: while the engine checks, the progress line counts the seconds it has taken"); }
 
   // 9) the engine down when the pane opens: the pane says so, and Try again brings it back once it answers.
   // Every /health is refused until the pane has said so, not only the first: with { times: 1 } any other request for
@@ -880,9 +1051,19 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
       await page.route("**/fix", fail, { times: 1 }); await page.click("#fix-ask");
       await page.waitForFunction(() => document.getElementById("fix-ask").textContent === "Ask AI" && !document.getElementById("fix-ask").disabled, null, { timeout: 30000 }).catch(() => {});
     });
-    ok((await text("#fix-status")) === "AI could not help: " + words && !(await page.isDisabled("#fix-ask")) && (await page.inputValue("#fix-intent")) === typed,
-      `Ask AI when ${how}: said on the card, Ask AI back, the request kept - ` + (await text("#fix-status")));
+    ok((await text("#fix-care")) === "AI could not help: " + words && (await page.isVisible("#fix-care")) && (await text("#fix-status")) === "" && !(await page.isDisabled("#fix-ask")) && (await page.inputValue("#fix-intent")) === typed,
+      `Ask AI when ${how}: said on the card in its notice box, Ask AI back, the request kept - ` + (await text("#fix-care")) + " | " + (await text("#fix-status")));
+    const look = await looksLikeNotice("#fix-care");
+    ok(look.ok, `AH-149 review r2: Ask AI when ${how}: why it could not help is a notice at body size, said once - ` + JSON.stringify(look));
   }
+
+  // AH-149: three requests to start from, each one Ask AI already answers: a press fills the box and sends nothing
+  { posts.length = 0;
+    const tries = await page.$$eval("#fix-tries .try", (bs) => bs.map((b) => b.textContent));
+    await page.click('#fix-tries .try:has-text("Is this a typo?")'); await page.waitForTimeout(400);
+    ok(tries.join("|") === "Explain this row in simple words|What should this value be?|Is this a typo?" && (await page.inputValue("#fix-intent")) === "Is this a typo?"
+      && posts.length === 0 && (await page.evaluate(() => document.activeElement.id)) === "fix-intent", "a request to start from fills the Ask AI box, sends nothing and leaves the caret in the box - " + posts);
+    await page.fill("#fix-intent", typed); }
 
   // the AI key box (Options > AI help) takes typed keys too; Enter in it sends nothing
   await page.click("#settings summary");
@@ -897,7 +1078,7 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
 
   // Check words with AI: only the text columns' distinct words go; the AI's answer is shown as text, never as markup,
   // and a word it makes up (not in the column) is dropped. The stub answers with markup in "why" and a made-up word.
-  await page.click("#fix-back");
+  await back();
   posts.length = 0;
   await page.click("#odd-check"); await idle();
   ok(posts.join() === "/odd-text", "Check words with AI sends only /odd-text - " + posts);
@@ -912,7 +1093,15 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
     ["the engine goes down mid-call", dropMidway, DOWN]]) {
     await failing(DROPPED, async () => { await page.route("**/odd-text", fail, { times: 1 }); await page.click("#odd-check"); await idle(); });
     ok((await text("#odd-list")) === "AI could not check: " + words && !(await page.isDisabled("#odd-check")), `Check words when ${how}: said in plain words - ` + (await text("#odd-list")));
+    const look = await looksLikeNotice("#odd-list li");
+    ok(look.ok, `AH-149 review r2: Check words when ${how}: why it could not check is a notice at body size, said once - ` + JSON.stringify(look));
   }
+  // AH-149 review: "AI could not check" was set at 15 px among 12 px hints and read as a heading; and the empty
+  // progress-and-notice line held a band of space over the summary once Check words had cleared "Done"
+  { const m = await page.evaluate(() => ({ odd: getComputedStyle(document.querySelector("#odd-list li")).fontSize, body: getComputedStyle(document.body).fontSize,
+      status: document.getElementById("status").getBoundingClientRect().height, notice: document.getElementById("notice").textContent }));
+    ok(m.odd === m.body, `Check words' answer, or why it could not check, is at body size - ${m.odd} (body ${m.body})`);
+    ok(m.notice === "" && m.status < 1, `with nothing to say and nothing running, the progress and notice line holds no space over the summary - ${m.status} px`); }
 }
 
 if (mode === "nokey") { // engine started with no key: John's free AI through the relay, here stub_claude.py's /fix (e2e/engine.py)
@@ -972,6 +1161,8 @@ if (mode === "nokey") { // engine started with no key: John's free AI through th
     });
     ok((await text("#ai-state")) === words && (await page.isVisible("#ai-box")) && (await page.inputValue("#ai-key")) === code,
       `Save key when ${how}: said in plain words, AI help stays on the free AI, the key kept in its box to try again - ` + (await text("#ai-state")));
+    const look = await looksLikeNotice("#ai-state");
+    ok(look.ok, `AH-149 review r2: Save key when ${how}: why it was not saved is a notice at body size, said once - ` + JSON.stringify(look));
   }
   await page.fill("#ai-key", "");
 }
@@ -1028,7 +1219,9 @@ if (mode === "flow") {
   await busy.close();
 }
 
-if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/pane-${mode}.png`, fullPage: true }); // proof for people
+// proof for people, at rest: the pointer off every button first (the full-page picture moved the page under it, and a
+// hover caught half-way read as a button turned off, AH-149 review r2)
+if (process.env.SHOTS) { await page.mouse.move(0, 0); await page.waitForTimeout(400); await page.screenshot({ path: `${process.env.SHOTS}/pane-${mode}.png`, fullPage: true }); }
 const real = errors.filter((e) => !(mode === "nokey" && e.includes("status of 400"))); // the junk key gets the engine's 400 on purpose
 ok(real.length === 0, "no page errors " + JSON.stringify(real));
 ok(unhandled.length === 0, "no unhandled promise rejection or uncaught error on the page in this mode - " + JSON.stringify(unhandled));

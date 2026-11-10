@@ -11,14 +11,16 @@ import { clearHighlights } from "./features/highlight.js";
 import { applyFix, undoFix } from "./features/fix.js";
 import { setAi, askFix, checkWords } from "./features/ai.js";
 import { openLimitsEditor, saveLimitsAndRescan } from "./pages/limits.js";
-import { dismissFix, nextFix } from "./pages/fix.js";
-import { listRows } from "./pages/results.js";
+import { backToList, dismissFix, nextFix } from "./pages/fix.js";
 import { initStrength } from "./pages/strength.js";
 import { autoOn, setAuto, autoUndo, undoAutoFix } from "./features/autofix.js";
 import { notice } from "./components/progress.js";
 import { n } from "./utils/text.js";
 import { initSettings } from "./pages/settings.js";
-import { fadeIn, initMotion } from "./components/motion.js";
+import { initMotion } from "./components/motion.js";
+import { plainError } from "./utils/errors.js";
+
+const CARD = "#fix-view"; // what a card does turns off only the card's buttons (AH-149)
 
 if (typeof Office !== "undefined") {
   Office.onReady((info) => {
@@ -34,12 +36,14 @@ if (typeof Office !== "undefined") {
     $("cancel-limits").onclick = () => only(state.lastScan ? "results" : "empty-state");
     $("save-limits").onclick = act(saveLimitsAndRescan);
     $("auto-limits").onclick = act(async () => (saveLimits(null), await runScan()));
-    $("fix-back").onclick = () => { state.fix = null; listRows(); fadeIn($("results")); };
-    $("fix-apply").onclick = act(() => state.fix && applyFix(state.fix, state.fix.changes, state.fix.sheet));
-    $("fix-undo").onclick = act(() => state.fix && undoFix(state.fix));
-    $("fix-dismiss").onclick = act(dismissFix);
-    $("fix-next").onclick = act(nextFix);
+    $("fix-back").onclick = () => { backToList().catch((e) => notice(plainError(e))); };
+    $("fix-apply").onclick = act(() => state.fix && applyFix(state.fix, state.fix.changes, state.fix.sheet), CARD);
+    $("fix-undo").onclick = act(() => state.fix && undoFix(state.fix), CARD);
+    $("fix-dismiss").onclick = act(dismissFix, CARD);
+    $("fix-next").onclick = act(nextFix, CARD);
     $("fix-ask").onclick = askFix;
+    // AH-149: a starter request fills the box and sends nothing; Ask AI sends it
+    for (const b of document.querySelectorAll("#fix-tries .try")) b.addEventListener("click", () => { $("fix-intent").value = b.textContent; $("fix-intent").focus(); });
     $("odd-check").onclick = act(checkWords);
     // only Ctrl+Enter (Cmd+Enter on a Mac) is ours; every other key types, Enter makes a new line. The old DOM0
     // `onkeydown = (e) => e.key === "Enter" && e.ctrlKey && askFix()` returned false for every other key, and a DOM0
