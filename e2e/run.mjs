@@ -317,15 +317,34 @@ if (mode === "flow") {
   ok(after[0] === "#00B050" && after[1] === null && after[2] === "#00B0F0" && after[3] === null, "Remove highlights restores the old fills, cell by cell on a two-color row - " + after);
   ok((await text("#notice")).startsWith("Highlights removed"), "and says so");
 
-  // 5) ...also after the pane was closed and reopened (no memory of what it painted)
+  // 5) ...also after the pane was closed and opened again (a reload: the fake workbook keeps its cells, fills and saved
+  // settings). AH-150: the old fills lived only in the pane's memory, so a reopened pane cleared every cell in our colours
+  // to no fill (row 11's green was lost, and a whole row in Excel's own Neutral style went too), and Find problems after a
+  // reopen took our own colour for each cell's fill, so no button could ever take those highlights off again.
+  // The scan also sets the opening setting only once: written on every scan, it made Excel ask to save a workbook nothing
+  // had changed, and opened the pane for everyone the file went to
+  ok(await page.evaluate(() => __settings["Office.AutoShowTaskpaneWithDocument"] === true), "a scanned workbook opens with this pane");
+  await page.evaluate(() => { const s = Office.context.document.settings, set = s.set; window.__sets = []; s.set = (k, v) => (__sets.push(k), set(k, v)); });
   await find();
-  // ...and a whole row painted by a pane from before AH-40, in Excel's very colors
-  await page.evaluate(() => { __state.painted = null; __fill("Sales", "A30", "#00B050"); __fill("Sales", "D40", "#FFC7CE"); for (const c of "ABCDE") __fill("Sales", c + "60", "#FFEB9C"); });
+  ok(await page.evaluate(() => !__sets.includes("Office.AutoShowTaskpaneWithDocument")), "a scan of a workbook that already opens with the pane does not set it again - " + (await page.evaluate(() => __sets)));
+  await page.reload(); await page.waitForSelector("#main-ui", { state: "visible" });
+  // the user's own fills: a cell, and a cell and a whole row in Excel's own Bad and Neutral styles (one step off ours)
+  await page.evaluate(() => { __fill("Sales", "A30", "#00B050"); __fill("Sales", "D40", "#FFC7CE"); for (const c of "ABCDE") __fill("Sales", c + "60", "#FFEB9C"); });
+  const fillsAt = () => page.evaluate(() => ["C11", "E11", "A51", "B81", "C121", "B22", "A30", "D40", "A60", "E60"].map((a) => __cell("Sales", a).fill).join());
+  const OWN = "#00B050,#00B050,,,,#00B0F0,#00B050,#FFC7CE,#FFEB9C,#FFEB9C";
+  await find();
+  ok((await cell("C11")).fill === "#FFEB9D" && (await cell("A51")).fill === "#FFEB9D", "reopened, then Find problems: the rows are highlighted again");
   await page.click("#clear-highlights"); await idle();
-  const cleared = await page.evaluate(() => ["C11", "A51", "B81", "A30", "D40", "A60", "E60"].map((a) => __cell("Sales", a).fill));
-  ok(cleared.slice(0, 3).every((f) => f === null) && cleared[3] === "#00B050", "reopened pane: only OUR colors are removed - " + cleared);
-  ok(cleared[4] === "#FFC7CE", "a single cell in Excel's own 'Bad' style (same pink) is the user's, and stays");
-  ok(cleared[5] === null && cleared[6] === null, "a whole row an older pane painted is ours too, and goes");
+  ok((await fillsAt()) === OWN, "and Remove highlights puts back each cell's own fill, row 11's green too - " + (await fillsAt()));
+  await page.click("#clear-highlights"); await idle();
+  ok((await fillsAt()) === OWN, "a second Remove highlights changes nothing: the user's Bad and Neutral styles, a whole row too, stay - " + (await fillsAt()));
+  // the workbook no longer holds the old fills (Forget, or a pane from before AH-150): a cell in our colour that a scan
+  // flags again is our highlight, never the user's fill, so Remove highlights takes it off
+  await find(); await page.reload(); await page.waitForSelector("#main-ui", { state: "visible" });
+  await page.evaluate(() => delete __settings.anomalyHunterHighlights); await find();
+  await page.click("#clear-highlights"); await idle();
+  ok(await page.evaluate(() => ["C11", "A51", "B81", "C121"].every((a) => __cell("Sales", a).fill === null)), "with no old fills kept, a scan then Remove highlights still takes every highlight off");
+  await page.evaluate(() => { __fill("Sales", "A30", null); __fill("Sales", "D40", null); for (const c of "ABCDE") __fill("Sales", c + "60", null); });
 
   // 6) limits: plain words, bad input refused, saving rescans, "Back to automatic" resets
   const openStrict = () => page.locator("details.more:has(#edit-limits)").evaluate((d) => (d.open = true));
@@ -519,7 +538,7 @@ if (mode === "flow") {
   // (row 22 dismissed, row 11 fixed) are there first
   await openStrict(); await page.click("#edit-limits");
   await page.locator('#limits-rows .limits-row[data-column="Units"] input').nth(1).fill("10000"); await page.click("#save-limits"); await idle();
-  const BOOK = ["anomalyHunterLimits", "anomalyHunterStrength", "anomalyHunterAutoUndo", "anomalyHunterAcceptUndo", "anomalyHunterDecisions", "Office.AutoShowTaskpaneWithDocument"];
+  const BOOK = ["anomalyHunterLimits", "anomalyHunterStrength", "anomalyHunterAutoUndo", "anomalyHunterAcceptUndo", "anomalyHunterDecisions", "Office.AutoShowTaskpaneWithDocument", "anomalyHunterHighlights"];
   const held = () => page.evaluate((ks) => ks.filter((k) => __settings[k] !== undefined && __settings[k] !== null), BOOK);
   const sheetNow = () => page.evaluate(() => { const out = []; for (let r = 1; r <= 301; r++) for (const c of "ABCDE") out.push(__cell("Sales", c + r)); return JSON.stringify(out); });
   const heldBefore = await held(), cellsBefore = await sheetNow(), wrote0 = await page.evaluate(() => __log.length);
@@ -536,8 +555,8 @@ if (mode === "flow") {
   ok((await tag(22)) === "Probably wrong" && (await text("#strength-val")) === "5 of 10" && (await text("#flagged-list")).includes("Units is 7777"),
     `the next scan: row 22 is no longer Dismissed, the slider is back at 5, the automatic limits are used - ${await tag(22)}`);
   await page.locator("details.more:has(#forget-book)").evaluate((d) => (d.open = true));
-  await page.click("#forget-book"); await idle(); // the scan saved the pane's opening setting again: only that goes now
-  ok((await text("#forget-state")) === "Removed from this workbook: the setting that opens this pane with the file. Your cells are as they were. Save the workbook to keep the change in the file; the next scan saves the setting that opens this pane again.",
+  await page.click("#forget-book"); await idle(); // the scan saved the pane's opening setting and its highlights' old fills again: only those go now
+  ok((await text("#forget-state")) === "Removed from this workbook: the setting that opens this pane with the file; the colours your highlighted cells had before. Your cells are as they were. Save the workbook to keep the change in the file; the next scan saves the setting that opens this pane again.",
     "a second Forget names only what was there - " + (await text("#forget-state")));
 
   // 7a) 30 scans and re-checks: what the pane keeps (listeners, page nodes) stays what is on screen (AH-13). Counted by
@@ -613,6 +632,14 @@ if (mode === "flow") {
   await page.evaluate(() => __load("Empty", [["only a header"]]));
   await page.click("#scan"); await idle();
   ok((await text("#notice")).startsWith("Not enough data here."), "empty sheet explained");
+
+  // 8a) AH-150: a column holds dates when most of its first cells say so: a sort that put a text in row 2 sent the whole
+  // OrderDate column as serial numbers
+  await page.evaluate((rows) => { __load("Sorted", [rows[0], ["unknown", ...rows[1].slice(1)], ...rows.slice(2, 60)], [0]);
+    return Excel.run(async (ctx) => { ctx.workbook.worksheets.getItem("Sorted").getRange("A2").numberFormat = [["General"]]; }); }, rows);
+  await find();
+  { const sent = scans.at(-1).rows.map((r) => r[0]);
+    ok(sent[0] === "unknown" && sent.slice(1).every((d) => /^\d{4}-\d\d-\d\d$/.test(d)), "a date column with a text in row 2 is still sent as dates - " + sent.slice(0, 3)); }
 
   // 8b) AH-111: a sheet with nothing wrong says so and shows no list. Under "No problems found in 60 rows." it showed
   // "Worst first. Click a row to see what's wrong...", an empty framed list and Remove highlights. The next scan that

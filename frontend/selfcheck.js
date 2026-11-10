@@ -10,6 +10,7 @@ import { exactFixes, safeUndo } from "./features/autofix.js";
 import { readdirSync, readFileSync } from "node:fs";
 import { hash, rowHash, codes, codeAt, asBook, decide, PER_SHEET, SHEETS } from "./features/decisions.js";
 import { WORKBOOK_KEYS } from "./features/forget.js";
+import { asHighlights, KEPT } from "./features/highlight.js";
 import * as K from "./constants/index.js";
 import { remember, forget, recall, clearAll, MAX_KEPT, SENT } from "./features/memory.js";
 
@@ -28,6 +29,10 @@ assert.equal(codeAt(hs, 1, "a"), "a.1");
 // the scan's dates are text: a fixed row read back from Excel must be read the same way to keep its code
 assert.deepEqual(readAs([46028, 46028, "x"], [true, false, false]), ["2026-01-06", 46028, "x"]);
 assert.deepEqual(tableFromGrid([["When", "N"], [46028, 1]], [["General", "General"], ["m/d/yyyy", "General"]], 0, 0).dates, [true, false]);
+// AH-150: a column holds dates when most of its first non-empty cells wear a date format, never by row 2 alone: a sort
+// that put a blank or a text there sent the whole column as serial numbers, and one date-formatted cell made a count dates
+assert.deepEqual(tableFromGrid([["When", "N"], ["", 5], ["unknown", 6], [46028, 7], [46029, 8], [46030, 9]],
+  [["General", "General"], ["General", "m/d/yyyy"], ["General", "0"], ["m/d/yyyy", "0"], ["m/d/yyyy", "0"], ["m/d/yyyy", "0"]], 0, 0).dates, [true, false]);
 // a crafted workbook can put anything under the key: only codes and our two words survive, and "__proto__" is a sheet
 const tampered = JSON.parse('{"__proto__": {"a1.0": "fixed"}, "S": {"a1.0": "dismissed", "b.0": "admin", "<img>": "fixed", "c.12": "fixed"}, "T": [1], "U": "x"}');
 const book = asBook(tampered);
@@ -504,6 +509,11 @@ assert.deepEqual(spots({ cells: ["Gone"] }, ["A", "B"]), [0, 1], "a name the tab
 assert.deepEqual(spots({}, ["A", "B"]), [0, 1]);
 // our colors are never Excel's own Bad / Neutral / Note fills, so a reopened pane never clears a cell the user styled
 assert.ok(Object.values(COLOR).every((c) => !OLD_COLOR.includes(c)) && OLD_COLOR.length === 3);
+// AH-150: the fills kept under highlights come from the workbook, which a crafted .xlsx can fill with anything: only A1
+// cells and #RRGGBB fills (or none) go back into a cell, at most KEPT of them
+assert.deepEqual({ ...asHighlights({ sheet: "S", cells: { C11: "#00B050", D2: null, "A1:B2": "#000000", E3: "red", F4: 1, Sheet2: "#000000" } }).cells }, { C11: "#00B050", D2: null });
+for (const v of [null, "x", [], { sheet: 1, cells: {} }, { sheet: "S" }]) assert.equal(asHighlights(v), null);
+assert.equal(Object.keys(asHighlights({ sheet: "S", cells: Object.fromEntries(Array.from({ length: KEPT + 5 }, (_, k) => [`A${k + 1}`, null])) }).cells).length, KEPT);
 // AH-48: the note for many repeated rows gets its own advice, never "the values are just unusual together"
 assert.match(recommendFix(["hotel", "adr"], [["City", 90]], 0, {}, "600 of 3000 rows repeat an earlier row exactly, all through the sheet - the first is this one, a copy of row 5", 0, 0).explanation,
   /^600 of 3000 rows repeat an earlier row exactly, all through the sheet - the first is this one, a copy of row 5: this many, spread out, are usually separate real records/);

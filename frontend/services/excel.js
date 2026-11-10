@@ -21,8 +21,9 @@ export async function activeSheet() {
   });
 }
 
-// Values only, in slices (formulas are read per row when a fix opens; number formats only for the top rows,
-// where the header and first data row are). This was 3x the data in one call - the freeze on big sheets.
+// Values only, in slices (formulas are read per row when a fix opens; number formats only for the top 30 rows, where
+// the header and the first 20 data rows are: utils/sheet.js tells a date column by them). This was 3x the data in one
+// call - the freeze on big sheets.
 export async function readSheet(onSlice) {
   return Excel.run(async (ctx) => {
     const sheet = ctx.workbook.worksheets.getActiveWorksheet().load("name");
@@ -30,7 +31,7 @@ export async function readSheet(onSlice) {
     await ctx.sync();
     const { rowIndex: r0, columnIndex: c0, columnCount: w } = used;
     const total = Math.min(used.rowCount, Math.floor(maxCells() / w));
-    const top = sheet.getRangeByIndexes(r0, c0, Math.min(total, 12), w).load("numberFormat");
+    const top = sheet.getRangeByIndexes(r0, c0, Math.min(total, 30), w).load("numberFormat");
     const step = Math.max(1, Math.floor(READ_CELLS / w)), values = [];
     for (let k = 0; k < total; k += step) {
       const part = sheet.getRangeByIndexes(r0 + k, c0, Math.min(step, total - k), w).load("values");

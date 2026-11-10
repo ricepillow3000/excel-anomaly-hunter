@@ -1,4 +1,4 @@
-import { ACCEPT_UNDO_KEY, DECISIONS_KEY, KEY, STRENGTH_KEY, UNDO_KEY } from "../constants/index.js";
+import { ACCEPT_UNDO_KEY, DECISIONS_KEY, HIGHLIGHT_KEY, KEY, STRENGTH_KEY, UNDO_KEY } from "../constants/index.js";
 import { ours } from "../utils/errors.js";
 
 // What the pane keeps inside the workbook (its document settings), named as the Privacy page names them. It stays in
@@ -11,6 +11,7 @@ export const WORKBOOK_KEYS = [
   [ACCEPT_UNDO_KEY, "the old values of the cells you changed with Accept"],
   [DECISIONS_KEY, "the codes of the rows you fixed or dismissed"],
   ["Office.AutoShowTaskpaneWithDocument", "the setting that opens this pane with the file"],
+  [HIGHLIGHT_KEY, "the colours your highlighted cells had before"],
 ];
 
 // Remove each of them that the workbook holds, save, and say which were there -> [what was removed]. Never a cell:
