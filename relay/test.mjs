@@ -1,6 +1,6 @@
 // Abuse tests for the relay, run on this PC with a stand-in Google and an in-memory counter: node relay/test.mjs
 import assert from "node:assert";
-import worker, { Counter, dayKey } from "./worker.js";
+import worker, { Counter, dayKey, network } from "./worker.js";
 import { canary } from "./canary.mjs";
 
 const hash = async (t) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)))]
@@ -354,6 +354,28 @@ assert.equal(sent.length, before, "and never reaches Google");
   const c = JSON.parse(puts.at(-1)[1]);
   assert.deepEqual(c.nets, { [mac]: 1 }, "counted under the keyed hash of the day and the network");
   assert.ok(c.pub === 1 && c.total === 0 && Object.keys(c.by).length === 0, "apart from the invites' counts - " + puts.at(-1)[1]);
+}
+// AH-151 follow-up: one IPv6 subscriber gets a whole /64 (billions of addresses), so an IPv6 address is counted by its
+// /64 prefix, written out in full first (an address may drop zeros with "::"); an IPv4 address is counted as it is
+{
+  assert.equal(network("203.0.113.7"), "203.0.113.7", "IPv4 as it is");
+  assert.equal(network("2001:db8:0:1::1"), "2001:db8:0:1::/64");
+  assert.equal(network("2001:0DB8:0000:0001:ffff:1:2:3"), "2001:db8:0:1::/64", "leading zeros and capitals, the same /64");
+  assert.equal(network("2001:db8::1"), "2001:db8:0:0::/64", ":: in the middle fills the missing groups with 0");
+  assert.equal(network("::1"), "0:0:0:0::/64");
+  assert.equal(network("fe80::"), "fe80:0:0:0::/64");
+  assert.equal(network("::ffff:192.0.2.1"), "0:0:0:0::/64", "a dotted IPv4 tail counts as two groups");
+  assert.equal(network("2001:db8:aa:bb::"), "2001:db8:aa:bb::/64");
+  const penv = { ...env, COUNTER: namespace(), PUBLIC_DAILY_PER_NETWORK: "2", PUBLIC_DAILY_TOTAL: "400", PUBLIC_MODELS: "gemini-3.5-flash-lite" };
+  const free = (ip) => worker.fetch(new Request("https://relay.example/fix", { method: "POST", headers: { "CF-Connecting-IP": ip },
+    body: JSON.stringify(good) }), penv);
+  googleStatus = 200;
+  assert.equal((await free("2001:db8:0:1::1")).status, 200);
+  assert.equal((await free("2001:db8:0:1:ffff::2")).status, 200, "another address of the same /64");
+  assert.equal((await free("2001:0db8:0:1:9::3")).status, 429, "the same /64 shares the cap, however the address is written");
+  assert.equal((await free("2001:db8:0:2::1")).status, 200, "another /64 has its own share");
+  assert.equal((await free("198.51.100.1")).status, 200);
+  assert.equal((await free("198.51.100.2")).status, 200, "IPv4: each address its own share, as before");
 }
 console.log("relay abuse tests passed");
 

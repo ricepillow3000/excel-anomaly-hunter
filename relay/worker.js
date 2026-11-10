@@ -8,8 +8,8 @@
 //   4. no request or answer is ever logged - only "who, how many today"
 // AH-151: a request with no Authorization header at all is the public tier, so every user has AI help with no key or
 // invite: its own model (PUBLIC_MODELS) and caps, per network and for everyone, counted apart from the invites'. A
-// network is counted under HMAC-SHA-256(GEMINI_KEY, day + IP): no IP is stored, nobody without the key can reverse
-// it, and it changes every day
+// network (an IPv4 address, an IPv6 /64) is counted under HMAC-SHA-256(GEMINI_KEY, day + network): no IP is stored,
+// nobody without the key can reverse it, and it changes every day
 // ponytail: a cell can still carry a free-text prompt - the caps, not the shape check, are what bound abuse.
 const MODEL = "gemini-3.8-flash";
 // Google's free tier gives flash-lite ~500 requests a day per project, gemini-3.8-flash ~20 (2026-11-09)
@@ -31,6 +31,18 @@ async function sha256(text) {
 // A [vars] cap that is missing or not a number falls back to the real quota; "0" means off, not "unset"
 // (2026-10-15 audit: `+"0" || 20` turned a switched-off relay back on at 20 a day)
 const cap = (v, fallback) => (v !== undefined && v !== "" && Number.isFinite(+v) ? +v : fallback);
+
+// One IPv6 subscriber gets a whole /64 (billions of addresses): an IPv6 address is counted by its /64 prefix, written
+// out in full first ("::" drops groups of 0; a dotted IPv4 tail is two groups); an IPv4 address as it is
+export function network(ip) {
+  if (!ip.includes(":")) return ip;
+  const [head, tail] = ip.toLowerCase().split("::");
+  const groups = (s) => (s ? s.split(":") : []);
+  const size = (g) => g.length + (g.at(-1)?.includes(".") ? 1 : 0);
+  const h = groups(head), t = groups(tail);
+  const all = tail === undefined ? h : [...h, ...Array(8 - size(h) - size(t)).fill("0"), ...t];
+  return all.slice(0, 4).map((g) => parseInt(g, 16).toString(16)).join(":") + "::/64";
+}
 
 async function hmac(key, text) {
   const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -79,7 +91,7 @@ export default {
     })).json());
     let ok;
     try { // the counter down (a Durable Object outage): our own JSON, and Google is never called (AH-13 sweep)
-      if (pub) who = await hmac(env.GEMINI_KEY, dayKey() + ip);
+      if (pub) who = await hmac(env.GEMINI_KEY, dayKey() + network(ip)); // too many groups throws: refused, never counted
       ok = await take(false);
     } catch {
       return json(503, { error: "The shared AI can't count today's fixes right now. Try again in a minute." });
