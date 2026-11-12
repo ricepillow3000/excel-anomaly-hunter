@@ -3,7 +3,8 @@
 // against the daily caps. AH-151: with no Authorization header a request is the public tier, so those probes send a
 // body the relay refuses before it counts (a fix-shaped one would reach Google and spend a free call).
 // 13 requests, no load. Run: node relay/live-probe.mjs [relay URL] (CI: relay-live.yml)
-// Then, with RELAY_CANARY_INVITE set, one real call that must work (canary.mjs, AH-108).
+// Then one real call that must work, with no invite through the public tier (AH-162), and with RELAY_CANARY_INVITE
+// set, one more with that invite (canary.mjs, AH-108).
 import { canary } from "./canary.mjs";
 
 const R = process.argv[2] || "https://anomaly-hunter-relay.john4000-nguyen.workers.dev";
@@ -51,14 +52,17 @@ for (const [name, path, init, want] of probes) {
 }
 console.log(`${pass}/${probes.length} refused correctly`);
 
+// AH-162: the public tier's call runs every day; refusals alone never show a revoked key or a retired model
+const pub = await canary(R, "");
+console.log(pub.line);
+let alive = pub.ok;
 const invite = process.env.RELAY_CANARY_INVITE;
-let alive = true;
 if (!invite) {
-  console.log("Canary skipped: no RELAY_CANARY_INVITE. To turn it on, make an invite named canary " +
-    "(node relay/new-invite.mjs canary, upload tokens.json) and save its code as the repository secret RELAY_CANARY_INVITE.");
+  console.log("The invite canary is optional: to turn it on, make an invite named canary (node relay/new-invite.mjs " +
+    "canary, upload tokens.json) and save its code as the repository secret RELAY_CANARY_INVITE.");
 } else {
   const c = await canary(R, invite);
   console.log(c.line);
-  alive = c.ok;
+  alive = alive && c.ok;
 }
 process.exit(pass === probes.length && alive ? 0 : 1);

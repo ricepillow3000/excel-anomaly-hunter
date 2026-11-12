@@ -34,8 +34,8 @@ From `relay/`, run `npx wrangler@4.151.1 rollback` and pick the last good versio
 list` shows them). Use the wrangler version pinned in `relay/wrangler.toml`, never a bare `npx wrangler`. A rollback
 can bring back the secrets that version had, so check that the invite list and the Gemini key are the current ones
 afterwards; if not, upload them again with `secret put` as `relay/wrangler.toml` says. Then run the Relay live
-probe workflow on the Actions tab (`relay-live.yml`): it checks that strangers are still refused and, with the canary
-invite set, that a real call still works.
+probe workflow on the Actions tab (`relay-live.yml`): it checks that strangers are still refused, that a real call with
+no invite still works through the public tier and, with the canary invite set, that one with the invite does too.
 
 ## The website (GitHub Pages)
 

@@ -76,7 +76,7 @@ Add a piece only when its "add it when" signal shows up in a measurement, and sa
 | Sharding, partitioning, replication, read replicas | no database; a sheet is at most 2M cells in memory | data that doesn't fit one machine |
 | Leader election, service discovery, distributed locks, sagas, distributed transactions, CAP, eventual consistency, multi-region | one process; the relay's counter is a single Cloudflare Durable Object (one writer, consistent) | several servers sharing state |
 | Auto-scaling, vertical scaling, serverless, cost | the relay is serverless (no cold starts to speak of) and capped; the engine is the user's own CPU | a bill that grows with users |
-| Metrics, alerts, distributed tracing, on-call | one live probe of the relay in CI (`relay-live.yml`), with one real call through a canary invite once its secret is set (`relay/canary.mjs`, AH-108); incidents are written up as tests and lessons (CLAUDE.md, SECURITY-LESSONS.md) | users John can't hear from directly |
+| Metrics, alerts, distributed tracing, on-call | one live probe of the relay in CI (`relay-live.yml`), with one real call through the public tier every day (`relay/canary.mjs`, AH-162) and one through a canary invite once its secret is set (AH-108); incidents are written up as tests and lessons (CLAUDE.md, SECURITY-LESSONS.md) | users John can't hear from directly |
 | Clock skew | certificate valid from a day back; deadlines use a monotonic clock; the relay's day is Pacific time on Cloudflare's clock | machines comparing their own times |
 | HTTP/2, HTTP/3 | loopback, one request at a time; Cloudflare speaks them to the relay | many requests per page over the internet |
 
