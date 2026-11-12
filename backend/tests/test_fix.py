@@ -121,6 +121,25 @@ def test_each_fix_field_is_taken_right_up_to_its_limit_and_refused_one_past_it(m
     assert len(seen) == 3
 
 
+def test_the_fix_routes_formulas_and_reason_are_checked_up_to_their_limit_and_refused_one_past_it(monkeypatch):
+    # AH-160: 'formulas' was checked only for its length (any item, a 10 MB formula) and 'reason' not at all, though
+    # each column's name is looked for in it. The pane sends the row as Excel's formulas: a formula, or the cell itself
+    monkeypatch.setattr(client, "api_key_configured", lambda: True)
+    seen = []
+    monkeypatch.setattr(client, "suggest_fix", lambda *a, **k: seen.append(a) or {"explanation": "x", "changes": []})
+    longest = "=" + "1" * 8191  # Excel's longest formula, 8,192 characters
+    for ok in ({**BODY, "formulas": ["2026-01-07", "", longest]}, {**BODY, "formulas": [None, True, -5]},
+               {**BODY, "reason": "x" * 10_000}, {**BODY, "reason": None}):
+        assert post(ok).status_code == 200, str(ok)[:200]
+    assert seen[0][-1] == ["2026-01-07", "", longest] and seen[2][-3] == "x" * 10_000 and seen[3][-3] == ""
+    for bad in ({**BODY, "formulas": [None, None, longest + "1"]}, {**BODY, "formulas": [None, None, {}]},
+                {**BODY, "formulas": [None, [], None]}, {**BODY, "reason": "x" * 10_001}, {**BODY, "reason": 5},
+                {**BODY, "reason": {"a": 1}}):
+        r = post(bad)
+        assert r.status_code == 400 and r.get_json()["error"], str(bad)[:200]
+    assert len(seen) == 4
+
+
 def test_fix_route_503_without_key(monkeypatch):
     monkeypatch.setattr(client, "api_key_configured", lambda: False)
     r = post(BODY)

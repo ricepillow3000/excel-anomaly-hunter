@@ -2,6 +2,7 @@
 from collections import Counter
 
 from openpyxl import Workbook
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.comments import Comment
 from openpyxl.styles import PatternFill
 
@@ -16,27 +17,32 @@ RANK = {"High": 3, "Medium": 2, "Low": 1}
 VERDICT = {"gap": "Gap - check why", "unclear": "Not enough rows to tell", "left out": "Left out - too many groups"}
 
 
+def _put(ws, row):
+    """A control character ("\x07") is no XML character: openpyxl refused it, and the whole report with it (AH-160)."""
+    ws.append([ILLEGAL_CHARACTERS_RE.sub("?", v) if isinstance(v, str) else v for v in row])
+
+
 def write_report(df, rows, status, out_path, limits_path, warnings, fair=None):
     wb = Workbook()
     data = wb.active
     data.title = "Data"
     head = [*df.columns, "Severity", "Bucket", "Reason"]
-    data.append(head)
+    _put(data, head)
     vals = df.astype(object).where(df.notna(), None).values.tolist()
     for v, r in zip(vals, rows):
-        data.append(v + [r["severity"] or "", r["bucket"] or "", r["reason"]])
+        _put(data, v + [r["severity"] or "", r["bucket"] or "", r["reason"]])
         if r["severity"]:
             for cell in data[data.max_row]:
                 cell.fill = FILL[r["severity"]]
             # ponytail: one note on Reason cell, not one per triggering cell
-            data.cell(data.max_row, len(head)).comment = Comment(r["reason"], "Arcas")
+            data.cell(data.max_row, len(head)).comment = Comment(ILLEGAL_CHARACTERS_RE.sub("?", r["reason"]), "Arcas")
 
     bad = wb.create_sheet("Anomalies")
-    bad.append(head + ["Row"])
+    _put(bad, head + ["Row"])
     order = sorted((i for i, r in enumerate(rows) if r["severity"] in RANK),
                    key=lambda i: (-RANK[rows[i]["severity"]], -rows[i]["magnitude"]))
     for i in order:
-        bad.append(vals[i] + [rows[i]["severity"], rows[i]["bucket"], rows[i]["reason"], i + 2])
+        _put(bad, vals[i] + [rows[i]["severity"], rows[i]["bucket"], rows[i]["reason"], i + 2])
 
     sev, bkt = Counter(r["severity"] for r in rows), Counter(r["bucket"] for r in rows)
     lines = [["Counts by severity"], *([k, sev[k]] for k in ("High", "Medium", "Low", "Noted")),
@@ -47,20 +53,20 @@ def write_report(df, rows, status, out_path, limits_path, warnings, fair=None):
         lines += [[], ["Warnings"], *([w] for w in warnings)]
     summary = wb.create_sheet("Summary")
     for line in lines:
-        summary.append(line)
+        _put(summary, line)
 
     # Fairness: which columns are protected (never used to judge who is unusual) and one line per subgroup test
     fairness = wb.create_sheet("Fairness")
     prot = (fair or {}).get("protected", {})
-    fairness.append(["Protected columns - checked for typos and blanks, never used to decide who is unusual"])
+    _put(fairness, ["Protected columns - checked for typos and blanks, never used to decide who is unusual"])
     for col, why in prot.items():
-        fairness.append([col, why])
+        _put(fairness, [col, why])
     if not prot:
-        fairness.append(["(none found by column name: age, gender, race, marital status, location, zip...)"])
-    fairness.append([])
-    fairness.append(["Result", "What was compared", "Finding", "Groups (rows, rate)", "p-value", "In real data"])
+        _put(fairness, ["(none found by column name: age, gender, race, marital status, location, zip...)"])
+    _put(fairness, [])
+    _put(fairness, ["Result", "What was compared", "Finding", "Groups (rows, rate)", "p-value", "In real data"])
     for t in (fair or {}).get("tests", []):
-        fairness.append([VERDICT.get(t["verdict"], "Even"), f"{t['column']}: {t['test']}",
+        _put(fairness, [VERDICT.get(t["verdict"], "Even"), f"{t['column']}: {t['test']}",
                          t["text"], "; ".join(f"{g} ({n}, {r:.0%})" for g, (n, r) in t["groups"].items()),
                          "" if t["p"] is None else round(t["p"], 4), t.get("context", "")])
     for ws in wb:  # a scanned cell "=HYPERLINK(...)" or "=cmd|..." stays text: opening the report never runs it
