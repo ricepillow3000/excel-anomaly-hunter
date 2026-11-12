@@ -101,6 +101,27 @@ def test_a_key_the_provider_echoes_never_reaches_server_log_or_the_answer(monkey
     assert CANARY not in logged, logged
 
 
+@pytest.mark.parametrize("route,module,name", [("/scan", "scan_agent", "scan"), ("/check", "checker", "check"),
+                                                ("/suggest", "checker", "suggest")])
+def test_an_engine_bug_answers_our_words_and_logs_its_traceback_without_the_key(monkeypatch, caplog, route, module, name):
+    # AH-160: these routes caught every error themselves, a copy of the engine-wide 500 handler: the answer and the log
+    # must be the same through that handler alone
+    import logging
+    caplog.set_level(logging.DEBUG)
+    monkeypatch.setattr(client, "secrets", lambda: [CANARY])
+
+    def boom(*a, **k):
+        raise RuntimeError(f"a bug that quotes {CANARY}")
+    monkeypatch.setattr(getattr(server, module), name, boom)
+    rows = [["a", 1], ["b", 2]]
+    r = create_app().test_client().post(route, json={"columns": ["Name", "Amt"], "rows": rows, "row_index": 0,
+                                                     "changes": [{"col": 1, "value": 3}], "column": "Amt"})
+    assert r.status_code == 500 and r.get_json() == {"error": server.BROKE}
+    logged = [x for x in caplog.records if x.name == create_app().logger.name and x.levelno == logging.ERROR]
+    assert len(logged) == 1 and "Traceback" in logged[0].getMessage() and "a bug that quotes [the AI key]" in logged[0].getMessage()
+    assert CANARY not in caplog.text
+
+
 def test_invite_code_is_only_ever_sent_over_https(monkeypatch):
     client.INVITE_FILE.write_text("inv_" + "a" * 24, encoding="utf-8")
     for url, ok in [("https://anomaly-hunter-relay.example.workers.dev", True), ("http://relay.example", False),

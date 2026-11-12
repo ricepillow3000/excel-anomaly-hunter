@@ -7,6 +7,7 @@ import pandas as pd
 from anomaly_hunter.engine.detectors import spread
 from anomaly_hunter.engine.load import numbers
 from anomaly_hunter.engine.pipeline import summary_rows
+from anomaly_hunter.powerbi import FORMULA_START, inert
 
 COLS = ["column", "baseline_low", "baseline_high", "weird_low", "weird_high"]
 
@@ -18,6 +19,8 @@ def _num(v):
 def read_limits(path, column_types):
     """-> ({col: (b_lo, b_hi, w_lo, w_hi)}, warnings). Blank cell = no limit."""
     t = pd.read_csv(path, dtype=str).reindex(columns=COLS)
+    # a header written inert ("'=HYPERLINK...", suggest_limits) names its column as the data does
+    t["column"] = t["column"].map(lambda c: c[1:] if isinstance(c, str) and c[:1] == "'" and c[1:].startswith(FORMULA_START) else c)
     ok = t["column"].isin(numbers(column_types))
     warnings = [f"limits.csv names column '{c}', " + ("an identifier, not a measurement" if column_types.get(c) == "id" else "not found in the data")
                 + " - skipped" for c in t["column"][~ok]]
@@ -106,5 +109,6 @@ def _limits(x, k):
 
 
 def suggest_limits(df, number_columns, out_path):
-    rows = [(c, *b) for c, b in suggest_limits_dict(df, number_columns).items()]
+    # the CLI tells the user to open this file: a header "=HYPERLINK(...)" is written as text, never live (AH-160)
+    rows = [(inert(c), *b) for c, b in suggest_limits_dict(df, number_columns).items()]
     pd.DataFrame(rows, columns=COLS).to_csv(out_path, index=False)

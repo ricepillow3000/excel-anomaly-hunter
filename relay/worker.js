@@ -46,6 +46,24 @@ export function network(ip, bits = 64) {
   return all.slice(0, bits / 16).map((g) => parseInt(g, 16).toString(16)).join(":") + "::/" + bits;
 }
 
+// The body as text, or null past `max` bytes. AH-160: with no Content-Length (a streamed body) req.text() read 64 MB and
+// more before the cap was checked: read piece by piece, and stop at the first byte past it
+async function upTo(req, max) {
+  const reader = req.body?.getReader(), pieces = [];
+  let size = 0;
+  for (let p = await reader?.read(); p && !p.done; p = await reader.read()) {
+    size += p.value.byteLength;
+    if (size > max) {
+      reader.cancel().catch(() => {});
+      return null;
+    }
+    pieces.push(p.value);
+  }
+  const all = new Uint8Array(size);
+  pieces.reduce((at, p) => (all.set(p, at), at + p.byteLength), 0);
+  return new TextDecoder().decode(all);
+}
+
 async function hmac(key, text) {
   const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   return [...new Uint8Array(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(text)))].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -72,8 +90,8 @@ export default {
     // AH-158: bytes, never characters (8,192 "é" are 16 KB), and a declared size over the cap is refused unread
     const big = () => json(413, { error: "That request is too large for the shared AI. Try a smaller selection." });
     if (+req.headers.get("Content-Length") > MAX_BODY) return big();
-    const raw = await req.text();
-    if (new TextEncoder().encode(raw).length > MAX_BODY) return big();
+    const raw = await upTo(req, MAX_BODY);
+    if (raw === null) return big();
     let body;
     try {
       body = JSON.parse(raw);
@@ -81,7 +99,10 @@ export default {
       return json(400, { error: "The shared AI couldn't read that request. Update Arcas to the newest version, then try again." });
     }
     const prompt = body?.messages?.[0]?.content;
-    if (typeof prompt !== "string" || !prompt || body.messages.length !== 1 || !body.response_format) return json(400, { error: "The shared AI couldn't read that request. Update Arcas to the newest version, then try again." });
+    // AH-160: the answer's format is set here too: a JSON schema the answer must follow, never plain text for anyone who asks
+    const schema = body?.response_format?.json_schema?.schema;
+    if (typeof prompt !== "string" || !prompt || body.messages.length !== 1 || typeof schema !== "object" || !schema
+      || Array.isArray(schema) || body.response_format.type !== "json_schema") return json(400, { error: "The shared AI couldn't read that request. Update Arcas to the newest version, then try again." });
     const ip = req.headers.get("CF-Connecting-IP"); // Cloudflare always sets it: without it there is no network to count
     if (pub && !ip) return json(400, { error: "The free AI couldn't read that request. Try again later." });
 

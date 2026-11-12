@@ -82,8 +82,8 @@
   "id": "bad-cells-tighten",
   "guard": "_bad: cells text/number/bool/blank",
   "file": "backend/anomaly_hunter/server.py",
-  "old": "isinstance(v, (str, bool, int)) or isinstance(v, float) and math.isfinite(v) for r in rows for v in r)",
-  "new": "isinstance(v, (str, bool, int)) for r in rows for v in r)",
+  "old": "    return v is None or isinstance(v, (str, bool, int)) or isinstance(v, float) and math.isfinite(v)\n",
+  "new": "    return v is None or isinstance(v, (str, bool, int))\n",
   "kind": "tighten",
   "tests": [
    "backend/tests/test_server.py::test_scan_flags_planted_outlier"
@@ -306,8 +306,8 @@
   "id": "fix-formulas-loosen",
   "guard": "/fix formulas as long as columns",
   "file": "backend/anomaly_hunter/server.py",
-  "old": "if formulas is not None and not (isinstance(formulas, list) and len(formulas) == len(body[\"columns\"])):",
-  "new": "if False:",
+  "old": "if formulas is not None and not (isinstance(formulas, list) and len(formulas) == len(body[\"columns\"]) and all(",
+  "new": "if formulas is not None and not (isinstance(formulas, list) and all(",
   "kind": "loosen",
   "tests": [
    "backend/tests/test_fix.py::test_each_fix_field_is_taken_right_up_to_its_limit_and_refused_one_past_it"
@@ -317,8 +317,8 @@
   "id": "fix-formulas-tighten",
   "guard": "/fix formulas as long as columns are taken",
   "file": "backend/anomaly_hunter/server.py",
-  "old": "if formulas is not None and not (isinstance(formulas, list) and len(formulas) == len(body[\"columns\"])):",
-  "new": "if formulas is not None:",
+  "old": "if formulas is not None and not (isinstance(formulas, list) and len(formulas) == len(body[\"columns\"]) and all(",
+  "new": "if formulas is not None and not (isinstance(formulas, list) and len(formulas) == len(body[\"columns\"]) - 1 and all(",
   "kind": "tighten",
   "tests": [
    "backend/tests/test_fix.py::test_each_fix_field_is_taken_right_up_to_its_limit_and_refused_one_past_it"
@@ -919,8 +919,8 @@
   "id": "relay-body-loosen",
   "guard": "relay body cap 8 KB",
   "file": "relay/worker.js",
-  "old": "if (new TextEncoder().encode(raw).length > MAX_BODY)",
-  "new": "if (new TextEncoder().encode(raw).length > MAX_BODY * 4)",
+  "old": "if (size > max) {",
+  "new": "if (size > max * 4) {",
   "kind": "loosen",
   "tests": [
    "node relay/test.mjs"
@@ -941,8 +941,8 @@
   "id": "relay-body-offbyone",
   "guard": "relay body cap 8 KB (exactly 8 KB fits)",
   "file": "relay/worker.js",
-  "old": "if (new TextEncoder().encode(raw).length > MAX_BODY)",
-  "new": "if (new TextEncoder().encode(raw).length >= MAX_BODY)",
+  "old": "if (size > max) {",
+  "new": "if (size >= max) {",
   "kind": "tighten",
   "tests": [
    "node relay/test.mjs"
@@ -1323,8 +1323,8 @@
   "id": "relay-body-bytes-loosen",
   "guard": "relay body cap counts bytes, not characters (AH-158)",
   "file": "relay/worker.js",
-  "old": "if (new TextEncoder().encode(raw).length > MAX_BODY)",
-  "new": "if (raw.length > MAX_BODY)",
+  "old": "size += p.value.byteLength;",
+  "new": "size += new TextDecoder().decode(p.value).length;",
   "kind": "loosen",
   "tests": [
    "node relay/test.mjs"
@@ -1535,6 +1535,193 @@
   "old": "network(ip, 48)",
   "new": "network(ip, 32)",
   "kind": "tighten",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "header-names-resume-loosen",
+  "guard": "duplicate headers named in linear time (AH-160)",
+  "file": "backend/anomaly_hunter/engine/load.py",
+  "old": "name, k = c, last.get(c, first)",
+  "new": "name, k = c, first",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_engine.py::test_each_repeated_header_goes_on_from_the_last_name_given_to_it"
+  ]
+ },
+ {
+  "id": "header-names-skip-tighten",
+  "guard": "duplicate headers keep the names they always had (AH-160)",
+  "file": "backend/anomaly_hunter/engine/load.py",
+  "old": "        last[c] = k\n",
+  "new": "        last[c] = k + 1\n",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_engine.py::test_duplicate_headers_keep_the_names_they_always_had"
+  ]
+ },
+ {
+  "id": "limits-inert-loosen",
+  "guard": "limits.csv never holds a live formula (AH-160)",
+  "file": "backend/anomaly_hunter/engine/limits.py",
+  "old": "rows = [(inert(c), *b)",
+  "new": "rows = [(c, *b)",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_engine.py::test_a_header_that_looks_like_a_formula_is_written_inert_in_limits_csv_and_read_back"
+  ]
+ },
+ {
+  "id": "limits-inert-readback-tighten",
+  "guard": "a header written inert in limits.csv still names its column (AH-160)",
+  "file": "backend/anomaly_hunter/engine/limits.py",
+  "old": "c[1:] if isinstance(c, str) and c[:1] == \"'\" and c[1:].startswith(FORMULA_START) else c",
+  "new": "c",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_engine.py::test_a_header_that_looks_like_a_formula_is_written_inert_in_limits_csv_and_read_back"
+  ]
+ },
+ {
+  "id": "report-control-loosen",
+  "guard": "report.xlsx cells: a control character as ? (AH-160)",
+  "file": "backend/anomaly_hunter/engine/report.py",
+  "old": "ws.append([ILLEGAL_CHARACTERS_RE.sub(\"?\", v) if isinstance(v, str) else v for v in row])",
+  "new": "ws.append(row)",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_engine.py::test_a_control_character_in_a_cell_is_written_to_the_report_as_a_question_mark"
+  ]
+ },
+ {
+  "id": "report-comment-control-loosen",
+  "guard": "report.xlsx notes: a control character as ? (AH-160)",
+  "file": "backend/anomaly_hunter/engine/report.py",
+  "old": "Comment(ILLEGAL_CHARACTERS_RE.sub(\"?\", r[\"reason\"]), \"Arcas\")",
+  "new": "Comment(r[\"reason\"], \"Arcas\")",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_engine.py::test_a_control_character_in_a_cell_is_written_to_the_report_as_a_question_mark"
+  ]
+ },
+ {
+  "id": "broke-words-loosen",
+  "guard": "an engine bug answers in our own words (json_error 500)",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "            return {\"error\": BROKE}, 500\n",
+  "new": "            return {\"error\": e.description}, 500\n",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_api_security.py::test_an_engine_bug_answers_our_words_and_logs_its_traceback_without_the_key"
+  ]
+ },
+ {
+  "id": "fix-reason-loosen",
+  "guard": "/fix reason at most 10,000 characters (AH-160)",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "len(reason) > 10_000:",
+  "new": "len(reason) > 100_000:",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_fix.py::test_the_fix_routes_formulas_and_reason_are_checked_up_to_their_limit_and_refused_one_past_it"
+  ]
+ },
+ {
+  "id": "fix-reason-tighten",
+  "guard": "/fix reason: 10,000 characters are taken (AH-160)",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "len(reason) > 10_000:",
+  "new": "len(reason) >= 10_000:",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_fix.py::test_the_fix_routes_formulas_and_reason_are_checked_up_to_their_limit_and_refused_one_past_it"
+  ]
+ },
+ {
+  "id": "fix-reason-type-loosen",
+  "guard": "/fix reason is text (AH-160)",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "if not isinstance(reason, str) or len(reason)",
+  "new": "if len(str(reason))",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_fix.py::test_the_fix_routes_formulas_and_reason_are_checked_up_to_their_limit_and_refused_one_past_it"
+  ]
+ },
+ {
+  "id": "fix-formulas-cell-loosen",
+  "guard": "/fix formulas: each a cell (AH-160)",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "_cell(f) and not (isinstance(f, str) and f.startswith(\"=\")",
+  "new": "not (isinstance(f, str) and f.startswith(\"=\")",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_fix.py::test_the_fix_routes_formulas_and_reason_are_checked_up_to_their_limit_and_refused_one_past_it"
+  ]
+ },
+ {
+  "id": "fix-formulas-length-loosen",
+  "guard": "/fix formulas at most 8,192 characters (AH-160)",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "len(f) > EXCEL_FORMULA) for f in formulas",
+  "new": "len(f) > 2 * EXCEL_FORMULA) for f in formulas",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_fix.py::test_the_fix_routes_formulas_and_reason_are_checked_up_to_their_limit_and_refused_one_past_it"
+  ]
+ },
+ {
+  "id": "fix-formulas-length-tighten",
+  "guard": "/fix formulas: 8,192 characters are taken (AH-160)",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "len(f) > EXCEL_FORMULA) for f in formulas",
+  "new": "len(f) >= EXCEL_FORMULA) for f in formulas",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_fix.py::test_the_fix_routes_formulas_and_reason_are_checked_up_to_their_limit_and_refused_one_past_it"
+  ]
+ },
+ {
+  "id": "relay-stream-loosen",
+  "guard": "relay reads a body of no declared size only up to 8 KB (AH-160)",
+  "file": "relay/worker.js",
+  "old": "const raw = await upTo(req, MAX_BODY);",
+  "new": "const raw = await req.text();",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-stream-whole-tighten",
+  "guard": "relay: a small streamed body is read whole (AH-160)",
+  "file": "relay/worker.js",
+  "old": "pieces.push(p.value);",
+  "new": "pieces.push(p.value.slice(1));",
+  "kind": "tighten",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-format-type-loosen",
+  "guard": "relay: the answer's format is a JSON schema (AH-160)",
+  "file": "relay/worker.js",
+  "old": " || body.response_format.type !== \"json_schema\") return",
+  "new": ") return",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-format-schema-loosen",
+  "guard": "relay: the JSON schema is an object (AH-160)",
+  "file": "relay/worker.js",
+  "old": "typeof schema !== \"object\" || !schema\n      || Array.isArray(schema) ||",
+  "new": "",
+  "kind": "loosen",
   "tests": [
    "node relay/test.mjs"
   ]
