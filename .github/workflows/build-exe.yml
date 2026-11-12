@@ -306,5 +306,5 @@ jobs:
           cp dist/Arcas.exe dist/AnomalyHunter.exe
           gh release create "$TAG" dist/Arcas.exe dist/AnomalyHunter.exe --repo "$REPO" --target "$SHA" --latest \
             --title "Arcas ${TAG#v}" \
-            --notes "Download Arcas.exe below and double-click it. A blue \"Windows protected your PC\" box appears: click More info, then Run anyway (some PCs ask \"Open File - Security Warning\" instead: click Run). Then click Yes on the certificate question. Tested on a fresh Windows PC before publishing. SHA-256: $sum. Code signing policy: https://ricepillow3000.github.io/excel-anomaly-hunter/#code-signing. AnomalyHunter.exe is the same file under the app's old name, for links made before it was renamed Arcas."
+            --notes "Download Arcas.exe below and double-click it. A blue \"Windows protected your PC\" box appears: click More info, then Run anyway (some PCs ask \"Open File - Security Warning\" instead: click Run). Then click Yes on the certificate question. Tested on a fresh Windows PC before publishing. SHA-256: $sum. Code signing policy: https://ricepillow3000.github.io/excel-anomaly-hunter/code-signing.html. AnomalyHunter.exe is the same file under the app's old name, for links made before it was renamed Arcas."
           echo "published $TAG: https://github.com/$REPO/releases/latest/download/Arcas.exe ($sum)"

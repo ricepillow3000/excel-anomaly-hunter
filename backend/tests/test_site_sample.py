@@ -19,6 +19,7 @@ from anomaly_hunter.server import create_app
 
 ROOT = Path(__file__).resolve().parents[2]
 PAGE = ROOT / "site" / "index.html"
+CHECKS = ROOT / "site" / "checks.html"  # the full checks table, off the home page since AH-159
 APP = create_app().test_client()
 COLUMNS = ["OrderDate", "Region", "Units", "UnitCost", "Total"]
 LETTERS = "ABCDE"
@@ -100,10 +101,10 @@ class Tree(HTMLParser):
         self.cur.kids.append(data)
 
 
-def page():
+def page(path=PAGE):
     t = Tree()
-    t.feed(PAGE.read_text(encoding="utf-8"))
-    return t.root.one("figure", id="preview"), t.root
+    t.feed(path.read_text(encoding="utf-8"))
+    return (t.root.one("figure", id="preview") if path == PAGE else None), t.root
 
 
 def quoted(s):
@@ -372,12 +373,14 @@ def test_the_after_fixes_tab_says_what_the_pane_says_once_the_three_fixes_are_in
 def test_the_checks_table_says_what_the_sample_shows_or_that_it_has_none():
     """The checks were 8 numbered cards with examples; they are a table (AH-98) whose third column, "In the sample above",
     names the sample's own row where it has an instance and says plainly where it has none. Every row link lands on a
-    row the engine flags for that check, every number beside it is that row's, and the fact over the table counts both."""
-    _, root = page()
+    row the engine flags for that check, every number beside it is that row's, and the fact over the table counts both.
+    Since AH-159 the table is on checks.html, its links to the home page's sample (index.html#r22)."""
+    _, home = page()
+    _, root = page(CHECKS)
     rows, body = sample(), scan(sample())
     flagged = {i + 2: r for i, r in enumerate(body["rows"]) if r["severity"]}
     table = root.one("table", cls="checks-table")
-    assert [th.text() for th in table.one("thead").all("th")] == ["Check", "What it catches", "In the sample above"]
+    assert [th.text() for th in table.one("thead").all("th")] == ["Check", "What it catches", "In the sample"]
     checks = {tr.one("th").text(): tr.one("td", cls="in-sample") for tr in table.one("tbody").all("tr")}
     what = {tr.one("th").text(): tr.all("td")[0].text() for tr in table.one("tbody").all("tr")}
     # the cycles the series check leaves alone, named as it holds them (detectors.CYCLES) and no other: the row said
@@ -387,7 +390,7 @@ def test_the_checks_table_says_what_the_sample_shows_or_that_it_has_none():
     assert "Repeating cycles" not in what["Dates and jumps"]
     # AH-135: the site's own names for three checks in plain words (Temporal, Completeness, Plausibility were jargon)
     assert list(checks) == ["Reconciliation", "Keying errors", "Consistency", "Dates and jumps", "Missing values", "Numbers that can't be right", "Fairness", "Ask AI, optional"]
-    assert root.one("p", cls="fact").text() == f"{len(checks)} checks · {len(flagged)} rows flagged in the sample above"
+    assert root.one("p", cls="fact").text() == f"{len(checks)} checks · {len(flagged)} rows flagged in the sample"
     kind = {"Reconciliation": "recon", "Keying errors": "keying", "Consistency": "label", "Dates and jumps": "time"}
     for name, cell in checks.items():
         links = cell.all("a", cls="to-row")
@@ -395,9 +398,9 @@ def test_the_checks_table_says_what_the_sample_shows_or_that_it_has_none():
             assert not links and cell.one("span", cls="nil").text().startswith(("None in this sample", "Not run on this sample")), name
             continue
         (a,) = links
-        n = int(a.attrs["href"].removeprefix("#r"))
+        n = int(a.attrs["href"].removeprefix("index.html#r"))
         assert a.text() == f"Row {n}" and n in flagged and kind[name] in kinds(flagged[n]["reason"]), f"{name}: row {n}"
-        assert root.one("tr", id=f"r{n}").one("th").text() == str(n)
+        assert home.one("tr", id=f"r{n}").one("th").text() == str(n)
         checks[name] = (n, rows[n - 2], flagged[n], cell.text().removeprefix(a.text()))
     n, row, r, eg = checks["Reconciliation"]
     assert eg == f"{js(row[4])} ÷ {js(row[3])} = {js(r['likely']['Units'])}" and js(round(row[4] / row[3], 9)) == js(r["likely"]["Units"])
@@ -461,3 +464,25 @@ def test_the_python_port_of_the_panes_words_matches_the_pane():
     assert got["summary"] == summary_of(out["rows"]) == "3 of 60 rows look wrong. 4 more are worth a quick check."
     assert got["after"] == summary_of(out_after["rows"])
     assert got["fair"] == ""  # no fairness line in the pane for this sheet
+
+
+def test_the_home_pages_short_checks_name_the_samples_own_rows():
+    """AH-159: the home page lists its checks a line each; where a line names a row of the sample ("In the sample: Row 31"),
+    the engine flags that row for that check, and the link glides to it on the same page."""
+    _, root = page()
+    flagged = {i + 2: r for i, r in enumerate(scan(sample())["rows"]) if r["severity"]}
+    section = root.one("section", id="checks")
+    items = {li.one("h3").text(): li for li in section.one("ul", cls="check-list").all("li")}
+    assert list(items) == ["Spelling", "Formulas", "Numbers", "Dates", "Blanks and duplicates", "Fairness"]
+    want = {"Spelling": {"label"}, "Numbers": {"recon", "keying"}, "Dates": {"time"}}
+    for name, li in items.items():
+        links = li.all("a", cls="to-row")
+        if name not in want:
+            assert not links, name  # this sample has none of them: no row is named
+            continue
+        (a,) = links
+        n = int(a.attrs["href"].removeprefix("#r"))
+        assert a.text() == f"Row {n}" and a.attrs.get("data-glide") == "frame" and li.text().endswith(f"In the sample: Row {n}"), f"{name}: {li.text()}"
+        assert n in flagged and want[name] <= kinds(flagged[n]["reason"]), f"{name}: row {n} is flagged for {kinds(flagged[n]['reason'])}"
+        assert root.one("tr", id=f"r{n}").one("th").text() == str(n)
+

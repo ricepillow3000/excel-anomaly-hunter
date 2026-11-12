@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Arcas case studies: what it found in three public FiveThirtyEight tables</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: https://*.goatcounter.com; font-src 'self'; connect-src 'self' https://api.github.com; base-uri 'none'; form-action 'none'">
+<meta name="description" content="What Arcas found in three public FiveThirtyEight tables, each row in the words the pane uses, checked by hand against each table's own notes.">
+<link rel="canonical" href="https://ricepillow3000.github.io/excel-anomaly-hunter/cases.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Arcas">
+<meta property="og:title" content="Arcas case studies: what it found in three public FiveThirtyEight tables">
+<meta property="og:description" content="What Arcas found in three public FiveThirtyEight tables, each row in the words the pane uses, checked by hand against each table's own notes.">
+<meta property="og:url" content="https://ricepillow3000.github.io/excel-anomaly-hunter/cases.html">
+<meta property="og:image" content="https://ricepillow3000.github.io/excel-anomaly-hunter/assets/og-card.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="The Arcas crest beside the words: find the error before it reaches the board. Free for Windows, a scan never leaves your PC.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://ricepillow3000.github.io/excel-anomaly-hunter/assets/og-card.png">
+<link rel="icon" href="assets/crest2-32.png" sizes="32x32">
+<link rel="icon" href="assets/crest2-64.png" sizes="64x64">
+<link rel="icon" href="assets/crest2-192.png" sizes="192x192">
+<link rel="apple-touch-icon" href="assets/crest2-180.png">
+<link rel="preload" href="assets/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css">
+<script src="boot.js"></script>
+</head>
+<body id="cases-page">
+<a class="skip-link" href="#page">Skip to content</a>
+<aside class="notice-bar" aria-label="Announcement"><p>Free for Windows · a scan never leaves your PC · <a href="index.html#download">Download</a></p></aside>
+<header class="bar">
+  <div class="wrap cols">
+    <a class="brand" href="index.html" aria-label="Arcas home"><svg class="logo" viewBox="0 0 32 40" aria-hidden="true"><g data-part="spear" fill="#997D3A"><path d="M16 0 L17 0.7 C17 3 17.3 5.8 18.2 7.9 L17 8.8 H15 L13.8 7.9 C14.7 5.8 15 3 15 0.7 Z"/><rect x="15" y="8" width="2" height="10"/><path d="M16 8.6 C14.5 8.6 13 8.6 12 9.1 C11.1 9.6 10.9 10.6 11.5 12 H12.6 C12.5 11.2 12.7 10.7 13.2 10.5 C14 10.2 15.1 10.3 16 10.7 C16.9 10.3 18 10.2 18.8 10.5 C19.3 10.7 19.5 11.2 19.4 12 H20.5 C21.1 10.6 20.9 9.6 20 9.1 C19 8.6 17.5 8.6 16 8.6 Z"/><rect x="14" y="13" width="4" height="2"/></g><g data-part="banner"><path d="M4.5 20.5 H27.5 V37.6 L16 39.5 L4.5 37.6 Z" fill="#0C1938" stroke="#997D3A" stroke-linejoin="miter"/></g><g data-part="drape"><path d="M4 20 H28 V21 Q16 25 4 21 Z" fill="#997D3A"/></g><g data-part="bar" fill="#997D3A"><rect x="4" y="17" width="24" height="2"/><rect x="1" y="16" width="3" height="4"/><rect x="28" y="16" width="3" height="4"/></g><g data-part="emblem"><g fill="#F7F5F0"><path d="M16 34 H11 L9 37 H14 Z"/><path d="M16 34 H21 L23 37 H18 Z"/></g><circle cx="16" cy="28" r="3.25" fill="none" stroke="#F7F5F0" stroke-width="1.5"/><path d="M11.5 31.5 L19.5 23.5 L20.5 24.5 L12.5 32.5 Z" fill="#F7F5F0"/></g></svg><span>Arcas</span></a>
+    <button class="menu-btn" type="button" aria-expanded="false" aria-controls="main-nav">Menu</button><nav class="links" id="main-nav" aria-label="Main"><a href="index.html">Product</a><a href="checks.html">Checks</a><a href="privacy.html">Privacy &amp; security</a><a href="support.html">Support</a><a class="btn-trim" href="index.html#download">Download</a></nav>
+  </div>
+</header>
+
+<main id="page" data-page="cases">
+  <section class="page-head">
+    <div class="wrap cols">
+      <h1 data-enter="left" id="cases-title">What it found in three FiveThirtyEight tables</h1>
+      <p class="calm" data-enter="left">FiveThirtyEight publishes the data behind its stories. Arcas found these in three of its tables, and each was checked by hand against the table's own notes.</p>
+    </div>
+  </section>
+
+  <!-- three public tables (AH-133, here since AH-159): what the pane says about an excerpt of each, every row it lists, in
+       its own words; backend/tests/test_site_cases.py scans the excerpts (backend/tests/fixtures/cases/) again and reads these back -->
+  <section class="section" id="cases" aria-labelledby="cases-title">
+    <div class="wrap cols" data-reveal-group>
+      <div class="cases calm" data-reveal-group>
+        <article class="case reveal-item" data-case="classic-rock-release-year" aria-labelledby="case-classic-rock-release-year">
+          <h3 id="case-classic-rock-release-year">Classic rock songs on the radio</h3>
+          <p class="case-scope">120 of its 2,229 rows, scanned at level 5</p>
+          <ul class="case-said">
+            <li data-rows="39">Row 39, probably wrong: <q>Release Year is 1071, below its usual limit of 1938</q></li>
+            <li data-rows="96">Row 96, probably wrong: <q>Text "SONGFACTS.COM" in number column Release Year</q></li>
+            <li data-rows="9">Row 9, worth a check: <q>Release Year is blank in 22 of 120 rows, spread through the sheet</q></li>
+          </ul>
+          <p>Levon by Elton John is dated 1071, yet every other Elton John song in the table is from 1970 to 1975. Bullfrog Blues has the website's name where its year goes, and its right year is unknown.</p>
+          <p>The blanks are honest. The source leaves a year empty when it found none.</p>
+          <p class="case-credit">Data: <a href="https://github.com/fivethirtyeight/data/tree/master/classic-rock">FiveThirtyEight</a>, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a></p>
+        </article>
+        <article class="case reveal-item" data-case="mad-men-div0" aria-labelledby="case-mad-men-div0">
+          <h3 id="case-mad-men-div0">“Mad Men” actors, after the show</h3>
+          <p class="case-scope">120 of its 248 rows, scanned at level 5</p>
+          <ul class="case-said">
+            <li data-rows="119 120 121">Rows 119, 120 and 121, probably wrong: <q>Excel error #DIV/0! in Score/Y</q></li>
+            <li data-rows="2">Row 2, worth a check: <q>Status? is written "End" 15 times and "END" 76 times (same word, different capitals/spaces)</q></li>
+          </ul>
+          <p>Their score per year divides by the years since their role ended, which is 0 for all three, so the published file kept the spreadsheet's error. The right value is unknown, since a score per year means nothing over 0 years.</p>
+          <p>The table's notes define only END, so End is the same word written another way.</p>
+          <p class="case-credit">Data: <a href="https://github.com/fivethirtyeight/data/tree/master/mad-men">FiveThirtyEight</a>, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a></p>
+        </article>
+        <article class="case reveal-item" data-case="daily-show-media" aria-labelledby="case-daily-show-media">
+          <h3 id="case-daily-show-media">Guests of “The Daily Show”</h3>
+          <p class="case-scope">99 of its 2,693 rows, all from 2002, scanned at level 5</p>
+          <ul class="case-said">
+            <li data-rows="13 34 88">Rows 13, 34 and 88, probably wrong: <q>Group "media" looks like "Media" (same word, different capitals/spaces)</q></li>
+            <li data-rows="3 24 36 71">Rows 3, 24, 36 and 71, probably wrong: <q>GoogleKnowlege_Occupation "Journalist" looks like "journalist" (same word, different capitals/spaces)</q></li>
+            <li data-rows="90">Row 90, probably wrong: <q>GoogleKnowlege_Occupation "Singer-songwriter" looks like "singer-songwriter" (same word, different capitals/spaces)</q></li>
+          </ul>
+          <p>A count that tells capitals apart splits one group in two. The right value is Media, as the column writes it everywhere else.</p>
+          <p>The occupations written two ways are real slips too.</p>
+          <p class="case-credit">Data: <a href="https://github.com/fivethirtyeight/data/tree/master/daily-show-guests">FiveThirtyEight</a>, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a></p>
+        </article>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap cols" data-reveal-group>
+    <span class="reveal-item">Arcas · made by one person · free, with no warranty<br>No cookies, no tracking of you.</span>
+    <nav class="reveal-item" aria-label="Footer">
+      <a href="index.html#download">Download</a>
+      <a href="code-signing.html">Code signing policy</a>
+      <a href="privacy.html">Privacy &amp; security</a>
+      <a href="terms.html">Terms</a>
+      <a href="support.html">Support</a>
+      <a href="https://github.com/ricepillow3000/excel-anomaly-hunter">Source</a>
+    </nav>
+  </div>
+</footer>
+<script src="motion.js" defer></script>
+<script src="field.js" defer></script>
+<script src="home.js" defer></script>
+<script src="support.js" defer></script>
+<script src="transition.js" defer></script>
+<script src="count.js" defer></script>
+</body>
+</html>

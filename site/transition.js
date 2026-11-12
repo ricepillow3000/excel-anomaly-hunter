@@ -15,7 +15,7 @@
 // set themselves up on "ah:page" and let go on "ah:leave" (home.js, support.js).
 (() => {
   const html = document.documentElement;
-  const PAGES = ["index.html", "privacy.html", "support.html", "terms.html", "thanks.html"];
+  const PAGES = ["index.html", "privacy.html", "support.html", "terms.html", "thanks.html", "checks.html", "cases.html", "code-signing.html"];
   // A crossfade drew both headlines half-opaque in one place at 300 ms, a smudge that read as a glitch (AH-73 review,
   // 1440 x 900 screenshots, 2026-10-30). A curtain keeps both pages moving at once with never a pixel of one over the
   // other: one edge, and the drift and dim on the same curve so the clips stay true to the edge in every frame. The

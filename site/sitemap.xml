@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <!-- the four pages at the addresses GitHub Pages serves them from, the same as each page's canonical (AH-119, AH-126);
+  <!-- the indexable pages at the addresses GitHub Pages serves them from, the same as each page's canonical (AH-119, AH-126);
        404.html and thanks.html, the contact form's thank-you page (AH-133), are left out (noindex). There is no robots.txt: this is a project site under /excel-anomaly-hunter/, and
        crawlers read robots.txt only at the domain's root, so one here would do nothing. Submit this file to a search
        console instead -->
@@ -8,4 +8,7 @@
   <url><loc>https://ricepillow3000.github.io/excel-anomaly-hunter/privacy.html</loc></url>
   <url><loc>https://ricepillow3000.github.io/excel-anomaly-hunter/support.html</loc></url>
   <url><loc>https://ricepillow3000.github.io/excel-anomaly-hunter/terms.html</loc></url>
+  <url><loc>https://ricepillow3000.github.io/excel-anomaly-hunter/checks.html</loc></url>
+  <url><loc>https://ricepillow3000.github.io/excel-anomaly-hunter/cases.html</loc></url>
+  <url><loc>https://ricepillow3000.github.io/excel-anomaly-hunter/code-signing.html</loc></url>
 </urlset>

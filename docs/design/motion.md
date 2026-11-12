@@ -77,8 +77,9 @@ again; its links stay plain links that land at once.
 Mark each block with `class="reveal-item"` and the parent whose children should cascade with `data-reveal-group`.
 An item's group is its nearest `data-reveal-group` parent; items with none form one group per page. A group of list
 rows (a table's rows, a list's items, a ledger's cells) is `data-reveal-group="rows"` and steps `--stagger-row` (30 ms)
-apart; headings, ledes and blocks keep `--stagger` (90 ms) (AH-138). On the home page: the checks table's `tbody`, the
-proof figures, both IT ledgers and the install steps' `ol`; on support.html the questions; on privacy.html and
+apart; headings, ledes and blocks keep `--stagger` (90 ms) (AH-138). On the home page: the short checks' list, the
+proof figures and the install steps' `ol` (the checks table's `tbody` on checks.html, the IT ledgers on support.html and
+code-signing.html since AH-159); on support.html the questions; on privacy.html and
 terms.html the contents lists.
 
 ```html
