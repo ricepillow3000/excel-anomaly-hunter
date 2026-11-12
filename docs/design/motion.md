@@ -77,8 +77,9 @@ again; its links stay plain links that land at once.
 Mark each block with `class="reveal-item"` and the parent whose children should cascade with `data-reveal-group`.
 An item's group is its nearest `data-reveal-group` parent; items with none form one group per page. A group of list
 rows (a table's rows, a list's items, a ledger's cells) is `data-reveal-group="rows"` and steps `--stagger-row` (30 ms)
-apart; headings, ledes and blocks keep `--stagger` (90 ms) (AH-138). On the home page: the checks table's `tbody`, the
-proof figures, both IT ledgers and the install steps' `ol`; on support.html the questions; on privacy.html and
+apart; headings, ledes and blocks keep `--stagger` (90 ms) (AH-138). On the home page: the short checks' list, the
+proof figures and the install steps' `ol` (the checks table's `tbody` on checks.html, the IT ledgers on support.html and
+code-signing.html since AH-159); on support.html the questions; on privacy.html and
 terms.html the contents lists.
 
 ```html
@@ -561,3 +562,12 @@ Alive, and still plain to read:
   flagged by more than one type (All findings 7, the types 10); the case studies' text flows from the top of each
   equal-height card, the room left under the credit; the footer's links take eight of the twelve columns, so the
   support page's seven fit on one line at 1280 and 1440.
+
+## AH-159 (John, 2026-11-12): the headline's one word
+
+"Every cell, *consistent*": the word in Instrument Serif Italic, the wine, and a gold hairline under it (`.hero-head
+em::after`). It is drawn at rest. Where motion is welcome and the script runs (`html[data-js]`), it is drawn across
+once as the headline lands: the `draw` keyframes (scaleX 0 to 1), 900 ms on `--ease-out`, starting `--enter-lead` +
+700 ms in, `backwards` fill only, so it waits undrawn through its delay and nothing is held once it ends. Transform
+only, finite, no shimmer and no glow. Under reduced motion, or with no script, there is no animation and the line is
+simply there. `tools/test_site.mjs` (its AH-159 block) holds all three.

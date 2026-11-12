@@ -1,4 +1,4 @@
-"""AH-133 (John, 2026-11-05: "case studies"). The home page's three case studies quote what Arcas said about real public
+"""AH-133 (John, 2026-11-05: "case studies"). The three case studies (on cases.html since AH-159) quote what Arcas said about real public
 tables, FiveThirtyEight's (CC BY 4.0). A quote on a website drifts the way the sample did (test_site_sample.py), so
 this re-scans each committed excerpt the way the pane sends it (POST /scan, every cell as trimmed text, strength 5) and
 reads each card back: every row the pane would list is quoted, in the pane's own words and with its label, and nothing
@@ -14,7 +14,7 @@ from test_site_sample import plain_reason
 
 ROOT = Path(__file__).resolve().parents[2]
 CASES = Path(__file__).resolve().parent / "fixtures" / "cases"
-PAGE = ROOT / "site" / "index.html"
+PAGE = ROOT / "site" / "cases.html"  # their own page since AH-159
 APP = create_app().test_client()
 SEV = {"High": "very likely wrong", "Medium": "probably wrong", "Low": "worth a check"}  # frontend/constants SEV, as a clause
 NAMES = ("classic-rock-release-year", "mad-men-div0", "daily-show-media")
@@ -36,7 +36,7 @@ def scan(name):
 def cards():
     src = PAGE.read_text(encoding="utf-8")
     section = re.search(r'<section\b[^>]*\sid="cases".*?</section>', src, re.S)
-    assert section, 'the home page has no section id="cases"'
+    assert section, 'cases.html has no section id="cases"'
     found = {m[1]: m[2] for m in re.finditer(r'<article class="case[^"]*" data-case="([\w-]+)"[^>]*>(.*?)</article>', section[0], re.S)}
     assert sorted(found) == sorted(NAMES), sorted(found)
     return found

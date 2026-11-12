@@ -11,7 +11,8 @@ import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const SITE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "site");
-const PAGES = ["index.html", "privacy.html", "support.html", "terms.html", "thanks.html"];
+// AH-159: the checks table, the case studies and the code signing policy left the home page for pages of their own
+const PAGES = ["index.html", "privacy.html", "support.html", "terms.html", "thanks.html", "checks.html", "cases.html", "code-signing.html"];
 // the thank-you page the home page's contact form leads to (AH-133): a page of the site like the others, but kept out of
 // search (noindex) and out of the sitemap, and reached only through the form, so no link points to it
 const NOINDEX = ["thanks.html"];
@@ -24,7 +25,7 @@ const REPO = "https://github.com/ricepillow3000/excel-anomaly-hunter";
 const API = "https://api.github.com/repos/ricepillow3000/excel-anomaly-hunter/releases/latest";
 // where GitHub Pages publishes each page (pages.yml uploads site/ whole): the canonical, og:url and sitemap.xml say these
 const SITE_URL = "https://ricepillow3000.github.io/excel-anomaly-hunter/";
-const PUBLIC = { "index.html": SITE_URL, "privacy.html": SITE_URL + "privacy.html", "support.html": SITE_URL + "support.html", "terms.html": SITE_URL + "terms.html", "thanks.html": SITE_URL + "thanks.html" };
+const PUBLIC = Object.fromEntries(PAGES.map((p) => [p, p === "index.html" ? SITE_URL : SITE_URL + p]));
 // the CSP of every page. img-src names GoatCounter for the visit counter's one pixel (count.js, AH-126), which sends
 // nothing until John sets his code there; the 404 page loads no script, so it keeps the stricter policy
 const CSP = (counter) => `default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:${counter ? " https://*.goatcounter.com" : ""}; font-src 'self'; connect-src 'self' ${new URL(API).origin}; base-uri 'none'; form-action 'none'`;
@@ -70,7 +71,7 @@ for (const p of PAGES) {
   assert.ok(/<body[^>]*>\s*(?:<!--[\s\S]*?-->\s*)?<a class="skip-link" href="#page">Skip to content<\/a>/.test(src), `${p}: "Skip to content" is not the first thing in <body>`);
   // page transitions (AH-73): one swappable container a page, and every script on every page (the document never
   // reloads, so a page reached by a transition runs only what the first page loaded)
-  assert.equal(src.match(/<main\b[^>]*>/g).join(), `<main id="page" data-page="${{ "index.html": "home", "privacy.html": "privacy", "support.html": "support", "terms.html": "terms", "thanks.html": "thanks" }[p]}">`, `${p}: not one <main id="page">`);
+  assert.equal(src.match(/<main\b[^>]*>/g).join(), `<main id="page" data-page="${{ "index.html": "home", "privacy.html": "privacy", "support.html": "support", "terms.html": "terms", "thanks.html": "thanks", "checks.html": "checks", "cases.html": "cases", "code-signing.html": "signing" }[p]}">`, `${p}: not one <main id="page">`);
   assert.deepEqual(attr(src, "src").filter((s) => s.endsWith(".js")), SCRIPTS, `${p}: does not load every script once`);
 }
 // a box that scrolls sideways must take keyboard focus, or a keyboard user can't read its end
@@ -198,19 +199,29 @@ for (const f of fs.readdirSync(path.join(SITE, "assets")).filter((f) => /\.(png|
     }
   }
 }
-// SignPath's free open-source signing (AH-100) asks for "Code signing policy" on the home and download pages, with the
-// sentence its releases will carry; until the exe is signed the page must say it is not, never claim a signature
+// SignPath's free open-source signing (AH-100) asks for a "Code signing policy" page, with the sentence its releases will
+// carry; until the exe is signed the page must say it is not, never claim a signature. Since AH-159 the policy is its own
+// page, code-signing.html, and the home page's #code-signing (every released Arcas.exe's notes and the SignPath
+// application link there) is one line in the download that says it and links the policy
 {
-  const home = html["index.html"];
-  const sec = (/<section\b[^>]*\sid="code-signing"[^>]*>([\s\S]*?)<\/section>/.exec(home) || [])[1];
-  assert.ok(sec, 'the home page has no section id="code-signing"');
-  const text = sec.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/\s+/g, " ");
-  assert.equal((/<h2\b[^>]*>([\s\S]*?)<\/h2>/.exec(sec) || [])[1], "Code signing policy", 'the code signing section\'s heading is not "Code signing policy"');
-  assert.ok(text.includes("Free code signing provided by SignPath.io, certificate by SignPath Foundation"), "the code signing section lacks SignPath's attribution sentence");
-  assert.ok(/Arcas\.exe is not code-signed/.test(text), "the code signing section does not say the exe is not code-signed yet");
+  const page = html["code-signing.html"], home = html["index.html"];
+  const sec = (/<section\b[^>]*\sid="code-signing"[^>]*>([\s\S]*?)<\/section>/.exec(page) || [])[1];
+  assert.ok(sec, 'code-signing.html has no section id="code-signing"');
+  const text = (/<main[\s\S]*<\/main>/.exec(page) || [""])[0].replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/\s+/g, " ");
+  assert.equal((/<h1\b[^>]*>([\s\S]*?)<\/h1>/.exec(page) || [])[1], "Code signing policy", 'code-signing.html\'s heading is not "Code signing policy"');
+  assert.ok(text.includes("Free code signing provided by SignPath.io, certificate by SignPath Foundation"), "the code signing policy lacks SignPath's attribution sentence");
+  assert.ok(/Arcas\.exe is not code-signed/.test(text), "the code signing policy does not say the exe is not code-signed yet");
+  const dl = (/<section\b[^>]*\sid="download"[\s\S]*?<\/section>/.exec(home) || [""])[0], line = (/<p\b[^>]*\sid="code-signing"[^>]*>([\s\S]*?)<\/p>/.exec(dl) || [])[1] || "";
+  assert.ok(/not code-signed yet/.test(line) && /<a href="code-signing\.html">code signing policy<\/a>/.test(line), `the home page's #code-signing, in the download, does not say it is not signed and link the policy: "${line}"`);
   const sig = (/<dt>Signature<\/dt><dd>([\s\S]*?)<\/dd>/.exec(home) || [])[1] || "";
-  assert.ok(/Not code-signed yet/.test(sig) && /<a href="#code-signing">Code signing policy<\/a>/.test(sig), "the download facts' Signature does not say not code-signed yet with a link to the code signing policy");
-  for (const p of PAGES) assert.ok(/<footer[\s\S]*<a href="(index\.html)?#code-signing">Code signing policy<\/a>[\s\S]*<\/footer>/.test(html[p]), `${p}: the footer does not link the code signing policy`);
+  assert.ok(/Not code-signed yet/.test(sig) && /<a href="code-signing\.html">Code signing policy<\/a>/.test(sig), "the download facts' Signature does not say not code-signed yet with a link to the code signing policy");
+  for (const p of PAGES) assert.ok(/<footer[\s\S]*<a href="code-signing\.html">Code signing policy<\/a>[\s\S]*<\/footer>/.test(html[p]), `${p}: the footer does not link the code signing policy`);
+  assert.ok(read(MISSING).includes(`<a href="${ROOT_PATH}code-signing.html">Code signing policy</a>`), "404.html: the footer does not link the code signing policy");
+  // ... and what is published from now on links the page itself (old releases' #code-signing still lands, above)
+  for (const f of ["README.md", ".github/workflows/build-exe.yml"]) {
+    const src = fs.readFileSync(path.join(SITE, "..", f), "utf8");
+    assert.ok(src.includes(SITE_URL + "code-signing.html") && !src.includes(SITE_URL + "#code-signing"), `${f} does not link ${SITE_URL}code-signing.html`);
+  }
 }
 // AH-125: the privacy policy is one click from every page, in the footer as well as the header
 for (const p of PAGES) assert.ok(/<footer[\s\S]*<a href="privacy\.html"[^>]*>[\s\S]*<\/footer>/.test(html[p]), `${p}: the footer does not link the privacy page`);
@@ -325,13 +336,15 @@ for (const f of SCRIPTS) {
 // standard account cannot install it; the fallback size went stale (81 MB for a 75 MB file) while home.js writes the
 // live one; the hero promised that nothing changes until you accept it, but Auto-fix (off at first) writes by itself
 {
-  const home = html["index.html"], said = (re) => ((re.exec(home) || [])[1] || "").replace(/<[^>]+>/g, "");
-  const scope = said(/<dt>Who can install it<\/dt><dd>([\s\S]*?)<\/dd>/);
+  const home = html["index.html"], said = (re, src = home) => ((re.exec(src) || [])[1] || "").replace(/<[^>]+>/g, "");
+  // the IT team's list is on the support page since AH-159
+  const scope = said(/<dt>Who can install it<\/dt><dd>([\s\S]*?)<\/dd>/, html["support.html"]);
   assert.ok(!/no administrator rights/i.test(home) && /must be an administrator on this PC/.test(scope), `the install scope says "${scope}"`);
   assert.ok(!/\d\s*MB/.test(said(/<dd id="rel">([\s\S]*?)<\/dd>/)), "the release line's fallback names a size that goes stale (home.js writes the live one)");
+  // a promise that nothing changes until Accept names Auto-fix with it (since AH-159 the hero makes neither: the questions do)
   const hero = said(/<section class="hero"[\s\S]*?<p>([\s\S]*?)<\/p>/);
-  assert.ok(/until you click Accept/.test(hero) && /Auto-fix/.test(hero), `the hero leaves out Auto-fix: "${hero}"`);
-  assert.ok(/further down/.test(said(/<span class="note">([\s\S]*?)<\/span>/)) && !/at the end of the page/.test(home), "the hero note says the download is at the end of the page");
+  assert.ok(!/until you click Accept/.test(hero) || /Auto-fix/.test(hero), `the hero leaves out Auto-fix: "${hero}"`);
+  assert.ok(!/at the end of the page/.test(home), "the hero note says the download is at the end of the page");
   const version = (/<input id="version"[^>]*placeholder="([^"]*)"/.exec(html["support.html"]) || [])[1];
   assert.ok(version !== undefined && !/\d/.test(version), `the support form's version placeholder names a version that goes stale: "${version}"`);
 }
@@ -357,13 +370,15 @@ for (const f of SCRIPTS) {
     assert.deepEqual([b.readUInt16LE(26) & 0x3fff, b.readUInt16LE(28) & 0x3fff], [w, h], `assets/${f} is not ${w} x ${h}`);
     assert.ok(!/Exif|<x:xmpmeta|GPS/.test(b.toString("latin1")), `assets/${f} carries EXIF, XMP or GPS data`);
   }
-  assert.ok(/Made in the United States by John Nguyen/.test(text(maker)), "the maker section does not say where Arcas is made, and by whom");
-  // John's own story leads the section, in his words and only his facts (AH-136, John 2026-11-05): his first business
-  // class, its weekly Excel exercises, cells that got worse the longer he worked; then what Arcas does about it
-  const story = (/<div class="story">([\s\S]*?)<\/div>/.exec(maker) || ["", ""])[1];
-  for (const said of ["It started on my first day of business class.", "the longer I stayed on a sheet, the lower the quality of my cells",
-    "Fatigue is part of being human", "suggests a fix you can accept or dismiss"]) assert.ok(text(story).includes(said), `John's story lacks: ${said}`);
-  assert.ok(maker.indexOf('class="story"') < maker.indexOf("Made in the United States"), "John's story is not above his byline");
+  // John's own story leads the section, in his words and only his facts (AH-136, John 2026-11-05): his business class, its
+  // weekly Excel, more mistakes the longer he typed; then what Arcas does about it. Since AH-159 ("simplify it so anyone
+  // can understand it") in words a child can read: 60 words at most, no sentence over 15
+  const story = text((/<div class="story">([\s\S]*?)<\/div>/.exec(maker) || ["", ""])[1]);
+  for (const said of ["Hi, I'm John Nguyen. I made Arcas.", "In business class we used Excel every week.", "the longer I typed, the more mistakes I made",
+    "Everyone gets tired. Arcas does not.", "shows you what to fix"]) assert.ok(story.includes(said), `John's story lacks: ${said}`);
+  const sentences = story.split(/(?<=[.?!])\s+/);
+  assert.ok(story.split(/\s+/).length <= 60 && sentences.every((x) => x.split(/\s+/).length <= 15), `John's story is not short and plain (${story.split(/\s+/).length} words): ${sentences.map((x) => x.split(/\s+/).length)}`);
+  assert.ok(text(maker).includes("John Nguyen") && /<h2\b[^>]*>Who made Arcas<\/h2>/.test(maker), "the maker section's heading or John's name");
   assert.ok(maker.includes('<a href="tel:+17702659930">(770) 265-9930</a>'), "the maker section has no tap-to-call phone");
   const PROFILES = [["LinkedIn", "https://www.linkedin.com/in/johnnguyen3000/"], ["Handshake", "https://app.joinhandshake.com/profiles/74fwhv"], ["GitHub", "https://github.com/ricepillow3000"]];
   const links = [...maker.matchAll(/<a class="btn btn-plain" href="(https:[^"]+)" aria-label="([^"]+)">(<svg\b[^>]*>)[\s\S]*?<\/svg>([^<]*)<\/a>/g)];
@@ -425,9 +440,9 @@ for (const f of SCRIPTS) {
   assert.ok(items[2][1].includes(`${iClean} and ${bClean} clean rows`), "the proof strip's clean rows");
   const PROOF = REPO + "/blob/main/docs/proof/2026-11-05-stress-test.md";
   for (const [i, href] of [[0, PROOF], [1, PROOF], [2, PROOF]]) assert.ok(items[i][2].includes(`href="${href}"`), `proof item ${i + 1} does not link ${href}`);
-  // "Free" and "On your PC" measure nothing: one sentence under the strip says them, with the licence and the privacy page (AH-156)
-  const note = (/<p class="proof-note[^"]*">([\s\S]*?)<\/p>/.exec(proof) || ["", ""])[1];
-  assert.ok(/^Arcas is free\b/.test(text(note)) && /a scan runs on your PC and sends nothing to the internet/.test(text(note)) && note.includes(`href="${REPO}/blob/main/LICENSE"`) && note.includes('href="privacy.html"'), `the sentence under the proof strip: "${text(note)}"`);
+  // only the measured figures here (AH-156); the licence went to the download it covers (AH-159, John: "the MIT License is
+  // under the wrong spot"), and a quiet link leads on to the case studies' own page
+  assert.ok(!/MIT License|LICENSE/.test(proof) && proof.includes('<a href="cases.html">See what it found in three public tables</a>'), "the proof strip still carries the licence, or no link to the case studies");
 }
 // ---- AH-135, a usability review for a person with few computer skills: a way to reach John with no GitHub account,
 // the install in the order a person meets it, the IT section named for who reads it, and plain names for the checks ----
@@ -465,15 +480,18 @@ for (const f of SCRIPTS) {
   const dl = sections["download"] || "";
   assert.ok(text((/<p class="sec-lede[^"]*">([\s\S]*?)<\/p>/.exec(dl) || [])[1] || "").startsWith("On a work computer, ask your IT team first. Arcas installs only on a Windows account that is an administrator on that PC."), "the install's first line");
   const stage = (/<div class="stage[\s\S]*?<\/div>/.exec(dl) || [""])[0];
-  assert.ok(/Download for Windows<\/a>\s*<p class="[^"]+">Your browser may say Arcas\.exe isn't commonly downloaded\. Click the three dots beside it, then Keep, then Keep anyway\. It says this because the file is new and not signed yet\.<\/p>/.test(stage), "no browser warning under the download button");
+  // ... with the MIT sentence right under the button since AH-159 (John: "the MIT License is under the wrong spot")
+  assert.ok(/Download for Windows<\/a>\s*<p class="license-line">Free for any number of people\. Open source under the <a href="https:\/\/github\.com\/ricepillow3000\/excel-anomaly-hunter\/blob\/main\/LICENSE">MIT License<\/a>\.<\/p>\s*<p class="[^"]+">Your browser may say Arcas\.exe isn't commonly downloaded\. Click the three dots beside it, then Keep, then Keep anyway\. It says this because the file is new and not signed yet\.<\/p>/.test(stage), "no browser warning under the download button");
   const steps = [...((/<div class="steps[\s\S]*?<\/ol>/.exec(dl) || [""])[0]).matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((m) => text(m[1]));
   assert.equal(steps.length, 4, `the install has ${steps.length} steps, not 4`);
   assert.ok(/Downloads/.test(steps[0]) && /Windows protected your PC/.test(steps[1]) && /More info/.test(steps[1]) && /Run anyway/.test(steps[1]), `the first steps: ${steps.slice(0, 2)}`);
-  assert.ok(steps[2].includes("Windows names it Anomaly Hunter local CA, Arcas's old name. It only lets Excel talk to Arcas on this computer. Click Yes. If you click No, the install stops, and you can run it again."), `the certificate step: ${steps[2]}`);
+  assert.ok(steps[2].includes("Windows asks to install a certificate named Anomaly Hunter local CA, Arcas's old name. It only lets Excel talk to Arcas on this computer. Click Yes."), `the certificate step: ${steps[2]}`);
   assert.ok(/Start here/.test(steps[3]) && /Find problems/.test(steps[3]) && /Practice/.test(steps[3]), `the last step: ${steps[3]}`);
   assert.ok(!/past Windows' checks/.test(dl), "the steps' heading still says past Windows' checks");
-  const check = (/<details class="[^"]*">\s*<summary>Want to check the file first\? \(optional\)<\/summary>[\s\S]*?<\/details>/.exec(dl) || [""])[0];
+  const check = (/<details class="[^"]*">\s*<summary>File details for IT<\/summary>[\s\S]*?<\/details>/.exec(dl) || [""])[0];
   assert.ok(check && dl.indexOf(check) > dl.indexOf("</ol>") && check.includes("Get-FileHash .\\Arcas.exe -Algorithm SHA256") && check.includes("If they differ, delete the file and download it again.") && /SHA-256/.test(check) && /Unblock/.test(check), "the checksum and Unblock are not in a closed box under the steps");
+  // ... with the release's facts (AH-159: one closed box for IT, so the download takes no room for them)
+  assert.ok(/<dl class="anchor">[\s\S]*id="sha"[\s\S]*<dt>Works with<\/dt>[\s\S]*<dt>Signature<\/dt>[\s\S]*<\/dl>/.test(check), "the release's facts are not in the closed box for IT");
   // the home page's questions: how to tell which Excel you have, and what leaves the PC, in plain words
   const faq = sections["faq"] || "";
   assert.ok(text(faq).includes("To check, open Excel and click File > Account. If it says Microsoft 365 under Product information, you have the right Excel. Click About Excel: the first line ends with 64-bit or 32-bit."), "the FAQ does not say how to check which Excel you have");
@@ -491,10 +509,9 @@ for (const f of SCRIPTS) {
   const ADMIN = "Arcas could not finish. Your Windows account is not an administrator on this PC. Ask the person who looks after your computers to install it for you.";
   assert.ok([...sup.matchAll(/<summary>([\s\S]*?)<\/summary>/g)].some((m) => text(m[1]).includes(ADMIN)), "support.html has no question for the installer's administrator message");
   // the hero says what changes and what is further down
-  assert.ok(text((/<span class="note">([\s\S]*?)<\/span>/.exec(home) || [])[1] || "") === "Free · for Windows with desktop Excel · download and install steps further down", "the hero's note");
-  assert.ok(text((/<section class="hero"[\s\S]*?<p>([\s\S]*?)<\/p>/.exec(home) || [])[1] || "").endsWith("Nothing in your sheet changes until you click Accept. An optional Auto-fix can tidy stray capitals and spaces for you."), "the hero's promise");
-  // the IT section is named for who reads it, and says a person can skip it
-  const it = sections["it"] || "";
+  assert.ok(text((/<span class="note">([\s\S]*?)<\/span>/.exec(home) || [])[1] || "") === "Free for Windows with desktop Excel.", "the hero's note");
+  // the IT section is named for who reads it, and says a person can skip it (on the support page since AH-159)
+  const it = (/<section\b[^>]*\sid="it"[\s\S]*?<\/section>/.exec(sup) || [""])[0];
   assert.equal(text((/<h2\b[^>]*>([\s\S]*?)<\/h2>/.exec(it) || [])[1] || ""), "For your IT team", "the IT section's heading");
   assert.ok(text(it).includes("You don't need this part to use Arcas. Share it with whoever looks after your computers."), "the IT section does not say a person can skip it");
   assert.deepEqual([...it.matchAll(/<dt>([^<]+)<\/dt>/g)].map((m) => m[1]), ["Price", "Who can install it", "Internet use", "What leaves this PC"], "the IT section's items");
@@ -600,7 +617,10 @@ function woff2(file) {
   assert.ok(cap.split(/[.:;] /).length <= 3 && cap.split(". ").length <= 2 && !/test|source/.test(cap), `the sample's caption is not two short plain sentences: "${cap}"`);
   for (const fact of ["engine's own", "level 5 of 10", "recommended", "Click a flagged row", "the row's own numbers", "the column's usual spelling"]) assert.ok(cap.includes(fact), `the sample's caption no longer says "${fact}"`);
   for (const p of PAGES) assert.ok(!html[p].includes("≠"), `${p}: a "≠" a reader must know the sign to read`);
-  assert.ok(!/John's relay/.test(home) && (home.match(/John's server on Cloudflare/g) || []).length === 3 && /John Nguyen, who makes and runs Arcas/.test(home), "the home page says \"John's relay\" where a stranger reads it");
+  // the three places it was said on the home page are the download's facts, the IT list (support.html) and the Ask AI
+  // check (checks.html) since AH-159
+  const said = [home, html["support.html"].slice(html["support.html"].indexOf('id="it"')), html["checks.html"]].map((x) => (x.match(/John's server on Cloudflare/g) || []).length);
+  assert.ok(!/John's relay/.test(home + html["checks.html"]) && said.join() === "1,1,1", `"John's relay" where a stranger reads it, or "John's server on Cloudflare" missing: ${said}`);
   for (const p of ["index.html", "support.html"]) assert.ok(!/faq-head/.test(html[p]), `${p}: the questions still have a "Question / Answer" bar`);
   assert.ok(!/faq-head/.test(css), "styles.css: the questions' header bar is still styled");
   const after = [...css.matchAll(/([^{}]*\.faq[^{}]*summary::after[^{}]*)\{([^}]*)\}/g)];
@@ -612,11 +632,13 @@ function woff2(file) {
 {
   const home = html["index.html"], words = (s) => s.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
   // a real screenshot of the pane, under the sample: a small WebP with no metadata, its box kept, loaded near the screen
-  const shot = (/<figure class="shot">([\s\S]*?)<\/figure>/.exec(home) || ["", ""])[1], img = (/<img\b[^>]*>/.exec(shot) || [""])[0];
+  const shot = (/<figure class="shot[^"]*">([\s\S]*?)<\/figure>/.exec(home) || ["", ""])[1], img = (/<img\b[^>]*>/.exec(shot) || [""])[0];
   for (const want of ['src="assets/pane-after-scan.webp"', 'width="360"', 'height="900"', 'loading="lazy"', 'decoding="async"']) assert.ok(img.includes(want), `the pane's screenshot lacks ${want}: ${img}`);
   assert.ok(/alt="The Arcas pane after a scan: [^"]{20,}"/.test(img), `the pane's screenshot has no alt that says what it shows: ${img}`);
   assert.ok(/^The Arcas pane after a scan of a 300-row sales sheet\b/.test(words((/<figcaption>([\s\S]*?)<\/figcaption>/.exec(shot) || ["", ""])[1])), "the pane's screenshot has no caption that says what sheet it is");
-  assert.ok(home.indexOf('class="shot"') > home.indexOf('id="preview"') && home.indexOf('class="shot"') < home.indexOf('id="checks"'), "the pane's screenshot is not between the sample and the checks");
+  // beside the short list of checks since AH-159, after the sample
+  const checks = (/<section\b[^>]*\sid="checks"[\s\S]*?<\/section>/.exec(home) || [""])[0];
+  assert.ok(home.indexOf('class="shot') > home.indexOf('id="preview"') && checks.includes('<figure class="shot'), "the pane's screenshot is not in the checks, after the sample");
   const b = fs.readFileSync(path.join(SITE, "assets", "pane-after-scan.webp"));
   assert.ok(b.toString("latin1", 0, 4) === "RIFF" && b.toString("latin1", 8, 12) === "WEBP" && b.toString("latin1", 12, 16) === "VP8 ", "assets/pane-after-scan.webp is not a plain lossy WebP (no metadata chunks)");
   assert.deepEqual([b.readUInt16LE(26) & 0x3fff, b.readUInt16LE(28) & 0x3fff], [360, 900], "assets/pane-after-scan.webp is not 360 x 900");
@@ -626,14 +648,62 @@ function woff2(file) {
   // headings that say what is there, never a slogan
   const h2 = (id) => words(([...home.matchAll(/<h2\b[^>]*\sid="([\w-]+)"[^>]*>([\s\S]*?)<\/h2>/g)].find((m) => m[1] === id) || [])[2] || "");
   assert.equal(h2("faq-title"), "Questions people ask before installing");
-  assert.equal(h2("cases-title"), "What it found in three FiveThirtyEight tables");
+  // the case studies' page is named by its headline (AH-159: they left the home page)
+  assert.equal(words((/<h1\b[^>]*\sid="cases-title"[^>]*>([\s\S]*?)<\/h1>/.exec(html["cases.html"]) || [])[1] || ""), "What it found in three FiveThirtyEight tables");
   // three measured figures (the block above reads each from the record), and no card box around a case
   assert.equal(((/<dl class="proof[\s\S]*?<\/dl>/.exec(home) || [""])[0].match(/<dt>/g) || []).length, 3, "the proof strip does not hold three figures");
+  assert.ok(/<article class="case/.test(html["cases.html"]) && !/<article class="case/.test(home), "the case studies are not on cases.html alone");
   const kase = (/(?:^|\})\s*\.case\s*\{([^}]*)\}/.exec(css) || ["", ""])[1];
   assert.ok(kase && /border-top:\s*1px solid/.test(kase) && !/(^|;)\s*border:/.test(kase) && !/border-radius|box-shadow|background/.test(kase), `styles.css: .case is still a box: ${kase}`);
   assert.ok(/\.case:first-child\s*\{\s*grid-column:\s*1 \/ -1;?\s*\}/.test(css), "styles.css: the first case does not run across the page");
   const fig = (/(?:^|\})\s*\.shot img\s*\{([^}]*)\}/.exec(css) || ["", ""])[1];
   assert.ok(/border:\s*1px solid/.test(fig) && /max-width/.test(fig) && /height:\s*auto/.test(fig) && !/border-radius|box-shadow/.test(fig), `styles.css: the pane's screenshot is not a hairline box that fits a phone: ${fig}`);
+}
+// ---- AH-159 (John, 2026-11-12): "the website feels so long I got bored scrolling through it". The headline says what
+// Arcas is for (consistent data), the lead is one sentence, the MIT License sits under the download it covers, the checks
+// are one line each with the whole table on checks.html, the case studies and the code signing policy have pages of their
+// own, and the headline's one word is set in a self-hosted italic serif with a gold hairline drawn under it once ----
+{
+  const home = html["index.html"], words = (s) => s.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+  const section = (id) => ([...home.matchAll(/<section\b[^>]*\sid="([\w-]+)"[\s\S]*?<\/section>/g)].find((m) => m[1] === id) || [""])[0];
+  assert.equal((/<h1 class="hero-head"[^>]*>([\s\S]*?)<\/h1>/.exec(home) || [])[1], "Every cell, <em>consistent</em>", "the hero's headline");
+  // one sentence, the coordinator's words for John: 26 words, the length of what Arcas catches
+  const lead = words((/<div class="hero-copy"[^>]*>\s*<p>([\s\S]*?)<\/p>/.exec(home) || ["", ""])[1]);
+  assert.ok(lead.split(/(?<=[.?!])\s+/).length === 1 && lead.split(/\s+/).length <= 26 && /typo/.test(lead) && /formula/.test(lead) && /add up/.test(lead), `the hero's lead is not one short sentence: "${lead}"`);
+  // the page's title and descriptions say the same idea
+  for (const k of ["description", "og:description"]) assert.ok(/consistent/.test(metaOf(home, k.startsWith("og:") ? "property" : "name", k)[0] || ""), `index.html: its ${k} does not say consistent`);
+  assert.ok(/consistent/i.test(TITLE["index.html"]), `index.html: its title "${TITLE["index.html"]}"`);
+  // the MIT License in the download, nowhere in the proof strip
+  const mit = "Free for any number of people. Open source under the MIT License.";
+  assert.ok(words(section("download")).includes(mit) && !words(section("proof")).includes("MIT License"), "the MIT sentence is not in the download, or is still in the proof strip");
+  // the anchors other pages, old releases and the SignPath application link to still land on the home page
+  for (const id of ["checks", "code-signing", "download", "maker", "preview", "contact", "faq", "proof"]) assert.ok(ids(home).includes(id), `index.html has no #${id}`);
+  // the home page's order: the sample, the checks, who made it, the proof, the download, the questions and the form
+  assert.deepEqual([...home.matchAll(/<section class="(?:section|hero)[^"]*" id="([\w-]+)"/g)].map((m) => m[1]), ["checks", "maker", "proof", "download", "faq"], "the home page's sections");
+  for (const id of ["cases", "it"]) assert.ok(!ids(home).includes(id), `#${id} is still on the home page`);
+  // six checks a line each, in plain names, then the way to every check
+  const checks = section("checks");
+  assert.deepEqual([...checks.matchAll(/<h3>([^<]+)<\/h3>/g)].map((m) => m[1]), ["Spelling", "Formulas", "Numbers", "Dates", "Blanks and duplicates", "Fairness"], "the short list of checks");
+  assert.ok(checks.includes('<a href="checks.html">See every check</a>') && !/checks-table/.test(home) && /<table class="checks-table"/.test(html["checks.html"]), "the full table is not on checks.html, linked from the checks");
+  // every page's "Checks" goes to checks.html (the 404 page root-absolute)
+  for (const p of PAGES) assert.ok(/<nav class="links"[^>]*>[\s\S]*?<a href="checks\.html"( aria-current="page")?>Checks<\/a>/.test(html[p]), `${p}: the bar's Checks is not checks.html`);
+  assert.ok(read(MISSING).includes(`<a href="${ROOT_PATH}checks.html">Checks</a>`), "404.html: the bar's Checks is not checks.html");
+  // the serif: our own file (Instrument Serif Italic, OFL, cut to Basic Latin), preloaded on the home page only, and named in
+  // the stylesheet for the headline's one word and nowhere else
+  const serif = fs.readFileSync(path.join(SITE, "assets", "instrument-serif-italic.woff2"));
+  assert.ok(serif.toString("latin1", 0, 4) === "wOF2" && serif.length <= 20 * 1024, `assets/instrument-serif-italic.woff2 is not a small WOFF2 (${serif.length} bytes)`);
+  assert.ok(/SIL Open Font License, Version 1\.1/.test(read("assets/OFL-InstrumentSerif.txt")) && /Instrument Serif/.test(read("assets/OFL-InstrumentSerif.txt")), "the serif's licence is not shipped beside it");
+  assert.ok(/@font-face \{ font-family: "Instrument Serif"; src: url\("assets\/instrument-serif-italic\.woff2"\) format\("woff2"\); font-style: italic; font-weight: 400; font-display: swap; \}/.test(css), "styles.css: the serif's @font-face");
+  const using = [...css.matchAll(/([^{}]*)\{([^{}]*)\}/g)].filter((m) => /Instrument Serif/.test(m[2]) && !/@font-face/.test(m[1])).map((m) => m[1].trim());
+  assert.deepEqual(using, [".hero-head em"], "styles.css: the serif is set somewhere other than the headline's one word");
+  const PRELOAD = '<link rel="preload" href="assets/instrument-serif-italic.woff2" as="font" type="font/woff2" crossorigin>';
+  for (const p of PAGES) assert.equal(html[p].includes(PRELOAD), p === "index.html", `${p}: the serif is ${p === "index.html" ? "not " : ""}preloaded`);
+  // the hairline: drawn at rest (no transform of its own), drawn across once by the clock where motion is welcome and
+  // the script runs, and never forever
+  const line = (/\.hero-head em::after \{([^}]*)\}/.exec(css) || ["", ""])[1];
+  assert.ok(/background: var\(--gold\)/.test(line) && !/transform:|opacity:/.test(line), `styles.css: the hairline at rest: ${line}`);
+  const drawn = (/@media \(prefers-reduced-motion: no-preference\) \{ html\[data-js\] \.hero-head em::after \{ animation: ([^;}]+);? \} \}/.exec(css) || [])[1] || "";
+  assert.ok(/^draw 900ms var\(--ease-out\) /.test(drawn) && !/infinite|alternate/.test(drawn), `styles.css: the hairline's draw: "${drawn}"`);
 }
 console.log(`website static check passed (${PAGES.length} pages, ${SCRIPTS.length} scripts)`);
 if (!process.argv.includes("--browser")) process.exit(0);
@@ -764,7 +834,7 @@ const done = async ({ ctx, problems, outside }, label, allowed = []) => {
     want(m2.expanded === "false" && !m2.links && m2.focus === "button", `AH-126 menu on ${file}: Escape ${JSON.stringify(m2)}`);
     await p.keyboard.press("Enter");
     want((await menu()).expanded === "true", `AH-126 menu on ${file}: Enter on the button does not open it`);
-    await p.click('#main-nav a[href$="#checks"]');
+    await p.click('#main-nav a[href$="checks.html"]');
     await p.waitForTimeout(300);
     want((await menu()).expanded === "false", `AH-126 menu on ${file}: a link click leaves it open`);
     await done(t, `menu on ${file} at 375px`, [API]);
@@ -964,8 +1034,12 @@ const done = async ({ ctx, problems, outside }, label, allowed = []) => {
   await contact({ width: 390, motion: "reduce", message: "😀🧾".repeat(500) }); // 2,000 characters of emoji: cut to fit
   // the photo: not fetched at the top of the page; near the screen, the 240 px file on a 1x screen and the 480 px one on
   // a 2x screen, in the 240 x 300 box it had before it came (no layout shift)
+  // (on a phone 400 px tall since AH-159: the shorter page brought the photo to 2,036 px on a computer and 3,700 px on a
+  // phone, inside the 3,000 px past the screen at which Chromium fetches a lazy image at once, which says nothing of
+  // whether it waits; its box there is a third of the width at the picture's own 4:5. The shift counted is the one its
+  // arrival makes: a phone's first screen now holds the sample, whose load is held elsewhere)
   for (const dpr of [1, 2]) {
-    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: dpr, reducedMotion: "reduce" });
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 400 }, deviceScaleFactor: dpr, reducedMotion: "reduce" });
     const p = await ctx.newPage();
     await p.route("https://api.github.com/**", json(release)); await p.route(/^https:\/\/(?!api\.github\.com)/, (r) => r.abort());
     await p.addInitScript(() => { window.__cls = 0; new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__cls += e.value; }).observe({ type: "layout-shift", buffered: true }); });
@@ -973,12 +1047,13 @@ const done = async ({ ctx, problems, outside }, label, allowed = []) => {
     const got = () => p.evaluate(() => performance.getEntriesByType("resource").map((e) => e.name).filter((n) => /john-\d+\.webp/.test(n)).map((n) => n.split("/").pop()));
     want((await got()).length === 0, `AH-133 photo at ${dpr}x: fetched at the top of the page ${await got()}`);
     const box0 = await p.$eval("#maker img", (i) => [Math.round(i.getBoundingClientRect().width), Math.round(i.getBoundingClientRect().height)]);
+    await p.evaluate(() => { window.__cls = 0; });
     await p.$eval("#maker", (m) => m.scrollIntoView({ block: "center" }));
     await p.waitForFunction(() => { const i = document.querySelector("#maker img"); return i.complete && i.naturalWidth > 0; }, null, { timeout: 5000 }).catch(() => {});
     const r = await p.$eval("#maker img", (i) => ({ w: i.naturalWidth, // density-corrected: 480 px at 2x reads as 240
       box: [Math.round(i.getBoundingClientRect().width), Math.round(i.getBoundingClientRect().height)] }));
     const cls = await p.evaluate(() => window.__cls);
-    want(JSON.stringify(await got()) === JSON.stringify([dpr === 1 ? "john-240.webp" : "john-480.webp"]) && r.w === 240 && JSON.stringify(box0) === "[240,300]" && JSON.stringify(r.box) === "[240,300]" && cls === 0,
+    want(JSON.stringify(await got()) === JSON.stringify([dpr === 1 ? "john-240.webp" : "john-480.webp"]) && r.w === 240 && JSON.stringify(box0) === JSON.stringify(r.box) && Math.abs(r.box[0] / r.box[1] - 0.8) < 0.02 && cls === 0,
       `AH-133 photo at ${dpr}x: ${JSON.stringify({ files: await got(), ...r, before: box0, cls })}`);
     await ctx.close();
   }
@@ -1321,15 +1396,16 @@ const onTop = (page) => page.evaluate(async () => {
   await p.waitForTimeout(2500);
   const slow = await p.evaluate(() => window.frames_); await p.waitForTimeout(1000);
   assert.ok(slow > 0 && (await p.evaluate(() => window.frames_)) === slow, `at 20 frames a second the cursor light was still moving after 2.5 s (${slow} frames)`);
-  // the page's rhythm: paper at the top, the dark band at the checks, the download's panel at the bottom, and back on
-  // the way up. Read from the section under the middle of the screen at its left edge, as a visitor sees it
+  // the page's rhythm: paper at the top, the dark band at the checks, the download's panel further down (the questions
+  // follow it since AH-159), and back on the way up. Read from the section under the middle of the screen at its left
+  // edge, as a visitor sees it
   const behind = () => p.evaluate(() => { let e = document.elementFromPoint(2, innerHeight / 2);
     while (e && getComputedStyle(e).backgroundColor === "rgba(0, 0, 0, 0)") e = e.parentElement;
     return getComputedStyle(e || document.body).backgroundColor; });
   assert.equal(await behind(), "rgb(247, 245, 240)");
   await p.evaluate(() => scrollTo(0, document.getElementById("checks").offsetTop)); await p.waitForTimeout(100);
   assert.equal(await behind(), "rgb(12, 25, 56)");
-  await p.evaluate(() => scrollTo(0, document.body.scrollHeight)); await p.waitForTimeout(100);
+  await p.evaluate(() => scrollTo(0, document.getElementById("download").offsetTop + 60 - innerHeight / 2)); await p.waitForTimeout(100);
   assert.equal(await behind(), "rgb(239, 236, 228)");
   // ... and the logo above the Download button is whole once its stage has risen into place: five parts drawn, in their
   // colors, opaque and in place
@@ -1657,9 +1733,10 @@ async function scrollLinked(p, label, field) {
   const snap = async () => ({ deco: JSON.stringify(await decoration(p)), field: field ? (await fieldShot(p)).toString("base64") : "" });
   const go = async (y) => { await p.evaluate((y) => scrollTo(0, y), y); await p.waitForTimeout(400); };
   const vh = await p.evaluate(() => innerHeight);
-  // a quarter of the way through the screen: the checks table's first row's hairline, its fifth row's, the three steps
+  // a quarter of the way through the screen: the checks' first hairline, their fifth's, the steps' first (AH-159: the
+  // checks a line each, the table on checks.html)
   const spots = [];
-  for (const sel of [".checks-table tbody tr:nth-child(1) .rule", ".checks-table tbody tr:nth-child(5) .rule", ".steps li:nth-child(1) .rule"]) spots.push(Math.round((await layoutTop(p, sel)) - vh * 0.75));
+  for (const sel of [".check-list li:nth-child(1) .rule", ".check-list li:nth-child(5) .rule", ".steps li:nth-child(1) .rule"]) spots.push(Math.round((await layoutTop(p, sel)) - vh * 0.75));
   for (const y of spots) {
     await go(0); await go(y);
     const a = await snap();
@@ -1669,12 +1746,12 @@ async function scrollLinked(p, label, field) {
     await go(await p.evaluate(() => document.documentElement.scrollHeight)); await go(y);
     assert.deepEqual(await snap(), a, `${label}, scroll ${y}: not the same after a trip to the bottom and back`);
   }
-  // step by step: the second hairline (the checks table's second row) draws further, and the IT headline drifts further, at each of
-  // three nearby positions
+  // step by step: the second hairline (the second check's) draws further, and the proof's headline drifts further, at
+  // each of three nearby positions (the IT headline's until AH-159 took it to the support page)
   const sxs = [], ys = [];
   for (const y of [spots[0] - 20, spots[0], spots[0] + 20]) { await go(y); sxs.push((await decoration(p)).filter((x) => x.rule)[1].sx); }
-  const it = await p.evaluate(() => Math.round(document.getElementById("it").offsetTop - innerHeight * 0.6));
-  const at = await p.evaluate(() => [...document.querySelectorAll(".rule, [data-depth]")].indexOf(document.querySelector("#it .sec-title")));
+  const it = await p.evaluate(() => Math.round(document.getElementById("proof").offsetTop - innerHeight * 0.6));
+  const at = await p.evaluate(() => [...document.querySelectorAll(".rule, [data-depth]")].indexOf(document.querySelector("#proof .sec-title")));
   for (const y of [it - 20, it, it + 20]) { await go(y); ys.push((await decoration(p))[at].y); }
   assert.ok(sxs.every((x) => x > 0 && x < 1) && sxs[0] < sxs[1] && sxs[1] < sxs[2], `${label}: the hairline does not follow the scroll: ${sxs}`);
   assert.ok(ys[0] < ys[1] && ys[1] < ys[2] && Math.abs(ys[1]) < 40, `${label}: the headline's drift does not follow the scroll: ${ys}`);
@@ -1765,9 +1842,11 @@ const revealed = (p, sel) => p.$$eval(sel, (es) => es.map((e) => { const c = get
     dur: Math.round(parseFloat(c.transitionDuration) * 1000), revealed: e.hasAttribute("data-revealed"), settled: e.hasAttribute("data-settled") }; }));
 let reveal = null;
 {
-  const t = await open("index.html", { width: 1440, init: () => { window.__unobserved = []; const un = IntersectionObserver.prototype.unobserve;
+  // the checks table's 8 rows (AH-98; they were 8 cards), on checks.html since AH-159, where the table starts below a
+  // 1440 x 900 screen (at 939 px) and its eight rows fit one
+  const t = await open("checks.html", { width: 1440, init: () => { window.__unobserved = []; const un = IntersectionObserver.prototype.unobserve;
     IntersectionObserver.prototype.unobserve = function (el) { window.__unobserved.push(el); return un.call(this, el); }; } });
-  const p = t.page, GRID = ".checks-table tbody > .reveal-item"; // the checks table's 8 rows (AH-98; they were 8 cards)
+  const p = t.page, GRID = ".checks-table tbody > .reveal-item";
   const tok = await tokens(p);
   // John's 2026-11-02 timings (AH-90): an unhurried cascade, 90 ms apart, each item 1.1 s; list rows 30 ms apart (AH-138)
   assert.ok(tok.ease === "cubic-bezier(.16, 1, .3, 1)" && tok.stagger === 90 && tok.row === 30 && tok.dur === 1100 && tok.rise >= 20 && tok.rise <= 30 && tok.cap >= 1, `the motion tokens: ${JSON.stringify(tok)}`);
@@ -1806,7 +1885,7 @@ let reveal = null;
   // (d) revealed once: unobserved, and a trip away and back does not hide it again
   assert.equal(await p.evaluate(() => [...document.querySelectorAll(".checks-table tbody > .reveal-item")].filter((e) => window.__unobserved.includes(e)).length), 8, "the observer still watches a revealed check");
   await p.evaluate(() => scrollTo(0, 0)); await p.waitForTimeout(300);
-  await p.evaluate(() => scrollTo(0, document.getElementById("checks").offsetTop)); await p.waitForTimeout(50);
+  await p.evaluate(() => scrollTo(0, document.getElementById("every-check").offsetTop)); await p.waitForTimeout(50);
   assert.ok((await revealed(p, GRID)).every((x) => x.op === "1" && x.tf === "none"), "a check hid again after a trip away and back");
   reveal = { delays: after.map((x) => x.delay), layout: count("Layout", s1.ts), paint: count("Paint", s1.ts), layoutAll: count("Layout", last), paintAll: count("Paint", last), ms: Math.round((s1.ts - s0.ts) / 1000) };
   // composite only: no layout from the scroll to the last transitionend; letting go of will-change afterwards lays the
@@ -1819,7 +1898,7 @@ let reveal = null;
   const t = await open("index.html#download", { width: 1440, until: "load" });
   const p = t.page;
   await p.waitForTimeout(150);
-  const r = await p.evaluate(() => ({ stage: document.querySelector("#download .stage").hasAttribute("data-revealed"), above: document.querySelector("#it .sec-title").hasAttribute("data-revealed"),
+  const r = await p.evaluate(() => ({ stage: document.querySelector("#download .stage").hasAttribute("data-revealed"), above: document.querySelector("#proof .sec-title").hasAttribute("data-revealed"),
     below: document.querySelector(".steps .aside").hasAttribute("data-revealed") }));
   assert.ok(r.stage && r.above, `index.html#download: ${JSON.stringify(r)}`);
   await p.evaluate(() => { location.hash = "#checks"; }); await p.waitForTimeout(50);
@@ -1842,12 +1921,12 @@ let reveal = null;
   assert.equal(later.top, await p.evaluate(() => parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop)), "privacy.html's #use is not under the bar's edge");
   await done(t, "a jump on privacy.html", [API]);
 }
-// the checks table's "In the sample above" links glide to the sample's own row, framed on the screen (AH-98)
+// the checks' "In the sample" links glide to the sample's own row, framed on the screen (AH-98; the short list's since AH-159)
 {
   const t = await open("index.html", { width: 1440 });
   const p = t.page;
   await p.waitForTimeout(ENTERED);
-  await p.evaluate(() => scrollTo(0, document.querySelector(".checks-table").getBoundingClientRect().top + scrollY - 200)); await p.waitForTimeout(1600);
+  await p.evaluate(() => scrollTo(0, document.querySelector(".check-list").getBoundingClientRect().top + scrollY - 200)); await p.waitForTimeout(1600);
   const b = await p.locator('.to-row[href="#r22"]').first().boundingBox();
   await p.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
   await p.waitForFunction(() => location.hash === "#r22", null, { timeout: 4500 });
@@ -1858,8 +1937,8 @@ let reveal = null;
 }
 // the field fades under the text outside the hero and the navy band (AH-98): each prose, list and table block there lies
 // on a still layer of its own section's colour that reaches past it on every side; nothing in the hero or the band does
-for (const [file, must] of [["index.html", ["#it .sec-lede", "#it .it-ledger", "#download .sec-lede", "#download dl.anchor", "#download .steps"]],
-  ["privacy.html", [".page-head p", ".toc", ".prose"]], ["support.html", [".page-head p"]]]) {
+for (const [file, must] of [["index.html", ["#proof .sec-lede", "#proof dl.proof", "#maker .maker", "#download .sec-lede", "#download dl.anchor", "#download .steps"]],
+  ["privacy.html", [".page-head p", ".toc", ".prose"]], ["support.html", [".page-head p", "#it .sec-lede", "#it .it-ledger"]], ["cases.html", [".page-head p", ".cases"]], ["code-signing.html", [".page-head p", ".it-ledger"]], ["checks.html", [".page-head p"]]]) {
   const t = await open(file, { width: 1440, motion: "reduce" });
   const r = await t.page.evaluate((must) => {
     const behind = (el) => { for (let e = el.parentElement; e; e = e.parentElement) { const c = getComputedStyle(e).backgroundColor; if (c !== "rgba(0, 0, 0, 0)") return c; } return ""; };
@@ -1867,7 +1946,7 @@ for (const [file, must] of [["index.html", ["#it .sec-lede", "#it .it-ledger", "
     for (const sel of must) for (const el of document.querySelectorAll(sel)) if (!el.closest(".calm")) bad.push(`${sel} is not calm`);
     for (const el of document.querySelectorAll(".calm")) {
       const a = getComputedStyle(el, "::before");
-      if (el.closest(".hero, #checks")) bad.push(`a calm block in the hero or the band: ${el.className}`);
+      if (el.closest(".hero, [data-band]")) bad.push(`a calm block in the hero or the band: ${el.className}`);
       if (a.content !== '""' || a.position !== "absolute" || a.zIndex !== "-1" || a.backgroundColor !== behind(el) || !(parseFloat(a.top) < 0 && parseFloat(a.left) < 0 && parseFloat(a.right) < 0 && parseFloat(a.bottom) < 0))
         bad.push(`${el.className}: ${a.content} ${a.position} ${a.zIndex} ${a.backgroundColor} on ${behind(el)}, inset ${a.top} ${a.left}`);
     }
@@ -1910,11 +1989,11 @@ for (const file of ["index.html", "privacy.html"]) {
     init: () => {
       const log = window.__flash = { hero: [], item: [], at: {} };
       const look = () => {
-        for (const [k, sel] of [["hero", ".hero-head"], ["item", "#it .sec-title"]]) { const e = document.querySelector(sel); if (e) { const o = getComputedStyle(e).opacity; if (log[k][log[k].length - 1] !== o) log[k].push(o); } }
+        for (const [k, sel] of [["hero", ".hero-head"], ["item", "#proof .sec-title"]]) { const e = document.querySelector(sel); if (e) { const o = getComputedStyle(e).opacity; if (log[k][log[k].length - 1] !== o) log[k].push(o); } }
       };
       const loop = () => { look(); if (!log.stop) requestAnimationFrame(loop); };
       requestAnimationFrame(loop);
-      for (const ev of ["DOMContentLoaded", "load"]) addEventListener(ev, () => { look(); log.at[ev] = getComputedStyle(document.querySelector("#it .sec-title")).opacity; if (ev === "load") setTimeout(() => { log.stop = true; }, 600); });
+      for (const ev of ["DOMContentLoaded", "load"]) addEventListener(ev, () => { look(); log.at[ev] = getComputedStyle(document.querySelector("#proof .sec-title")).opacity; if (ev === "load") setTimeout(() => { log.stop = true; }, 600); });
     } });
   await t.page.waitForTimeout(800);
   const f = await t.page.evaluate(() => window.__flash);
@@ -1998,6 +2077,7 @@ for (const width of [1440, 761, 390, 320]) {
   const heights = [];
   for (const api of [json(release), json("", 503)]) {
     const t = await open("index.html", { width, motion: "reduce", api });
+    await t.page.evaluate(() => { document.querySelector(".check-file").open = true; }); // in the box for IT since AH-159
     heights.push(await t.page.$eval("#sha", (c) => Math.round(c.getBoundingClientRect().height * 10) / 10));
     await done(t, `the checksum's box at ${width}px`, [API]);
   }
@@ -2650,7 +2730,8 @@ for (const file of PAGES.filter((f) => /<header[\s\S]*aria-current="page"[\s\S]*
     want(r0 && r1 && !r0.running && !r1.running && Math.abs(r0.a - r0.at) <= 0.01 && Math.abs(r1.a - r0.at) <= 0.01, `R1 the turning page's meter: ${JSON.stringify([r0, r1])}`);
     await done(t, "R1 turning meter", [API]);
   }
-  // 2. the phone's menu lies over the page: opening it moves nothing below, and its "Checks" lands on the checks
+  // 2. the phone's menu lies over the page: opening it moves nothing below, and its "Checks" lands at the top of the
+  // checks' own page (AH-159: they left the home page)
   {
     const t = await open("index.html", { width: 390, height: 844 });
     const p = t.page;
@@ -2660,18 +2741,19 @@ for (const file of PAGES.filter((f) => /<header[\s\S]*aria-current="page"[\s\S]*
     await p.click(".menu-btn"); await settle(p, "#main-nav");
     const y1 = await top();
     want(Math.abs(y1 - y0) <= 0.5, `R2 opening the phone's menu moves the page ${y1 - y0} px`);
-    await p.click('#main-nav a[href$="#checks"]');
-    await p.waitForFunction(() => !window.AH.gliding(), null, { timeout: 4000 }).catch(() => {});
+    await p.click('#main-nav a[href$="checks.html"]');
+    await p.waitForURL((u) => u.pathname === "/checks.html", { timeout: 4000 }).catch(() => {});
+    await p.waitForFunction(() => document.querySelectorAll("main").length === 1 && document.body.id === "checks-page", null, { timeout: 4000 }).catch(() => {});
     await still(p);
-    const r = await p.evaluate(() => ({ checks: document.getElementById("checks").getBoundingClientRect().top, bar: document.querySelector(".bar").getBoundingClientRect().bottom, y: scrollY }));
-    want(Math.abs(r.checks - Math.max(0, r.bar)) <= 2, `R2 "Checks" from the phone's menu lands off the checks: ${JSON.stringify(r)}`);
+    const r = await p.evaluate(() => ({ at: location.pathname, y: scrollY, h1: document.querySelector("h1").getBoundingClientRect().top, bar: document.querySelector(".bar").getBoundingClientRect().bottom, menu: document.querySelector(".menu-btn").getAttribute("aria-expanded") }));
+    want(r.at === "/checks.html" && r.y === 0 && r.h1 >= r.bar && r.menu === "false", `R2 "Checks" from the phone's menu does not land at the top of checks.html: ${JSON.stringify(r)}`);
     await done(t, "R2 phone menu over the page", [API]);
   }
   // 4. the release page link's words are never split, on a phone and at 320 px with text at 200%
   for (const [width, size] of [[390, "100%"], [320, "200%"]]) {
     const t = await open("index.html", { width, height: 800, motion: "reduce", api: json({ message: "API rate limit exceeded" }, 403) });
     const p = t.page;
-    const r = await p.evaluate((size) => { document.documentElement.style.fontSize = size;
+    const r = await p.evaluate((size) => { document.documentElement.style.fontSize = size; document.querySelector(".check-file").open = true;
       const a = document.querySelector("#sha a"), text = a.firstChild, split = [];
       for (const m of text.textContent.matchAll(/\S+/g)) { const q = document.createRange(); q.setStart(text, m.index); q.setEnd(text, m.index + m[0].length);
         const lines = new Set([...q.getClientRects()].filter((x) => x.width > 0).map((x) => Math.round(x.top))); if (lines.size > 1) split.push(m[0]); }
@@ -2766,7 +2848,7 @@ for (const file of PAGES.filter((f) => /<header[\s\S]*aria-current="page"[\s\S]*
     await done(t, "R12 detail box shadow", [API]);
   }
   assert.deepEqual(miss, [], `AH-138 fix round 1:\n${miss.join("\n")}`);
-  console.log("AH-138 fix round 1: the turning page's meter frozen, the phone's menu over the page and its Checks landing on the checks, the release link's words whole at 390 and 320 px (200%), a filter clearing the other rows' marks, the button fills to their edge, the Copy button's width kept, the phone's swipe hint, short pages to the screen's bottom, answers settling 30 ms apart, the detail box's shadow");
+  console.log("AH-138 fix round 1: the turning page's meter frozen, the phone's menu over the page and its Checks landing at the top of checks.html, the release link's words whole at 390 and 320 px (200%), a filter clearing the other rows' marks, the button fills to their edge, the Copy button's width kept, the phone's swipe hint, short pages to the screen's bottom, answers settling 30 ms apart, the detail box's shadow");
 }
 // ---- AH-138 fix round 2 (a second blind design review, 2026-11-06): the phone's menu closes like a popover (a press
 // outside it, or a scroll) and its links are 44 px targets; the phone's download bar never covers the contact form; the
@@ -3006,7 +3088,7 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
       rg.selectNodeContents(text);
       const r = rg.getBoundingClientRect(), fs = parseFloat(getComputedStyle(b).fontSize), base = r.top + r.height * ASC / (ASC + DESC), i = b.querySelector("svg path").getBoundingClientRect();
       return { kern: [...new Set(["p", ".label", ".btn", "h1", ".notice-bar p", ".grid td"].map((sel) => cs(sel, "fontKerning")))].join(), optical: cs("body", "fontOpticalSizing"),
-        tnum: [":is(.matrix) dd", ".verdict", ".stages li", ".case-scope", ".typology .n", ".proof dt"].map((sel) => [sel, cs(sel, "fontVariantNumeric")]).filter(([, v]) => !/tabular-nums/.test(v)),
+        tnum: [":is(.matrix) dd", ".verdict", ".stages li", ".typology .n", ".proof dt"].map((sel) => [sel, cs(sel, "fontVariantNumeric")]).filter(([, v]) => !/tabular-nums/.test(v)),
         trim: CSS.supports("text-box", "trim-both cap alphabetic") ? [".btn", ".m-close", ".menu-btn", ".copy-btn", ".tabs button"].map((sel) => [sel, cs(sel, "textBoxTrim"), cs(sel, "textBoxEdge")]).filter(([, a, e]) => a !== "trim-both" || !/cap alphabetic/.test(e)) : [],
         adjust: ["code.line", ".in-sample .val", "#sha", ".prose code"].filter((sel) => document.querySelector(sel)).map((sel) => [sel, cs(sel, "fontSizeAdjust")]).filter(([, v]) => !/0\.536/.test(v)),
         line: parseFloat(cs("code.line", "fontSize")), box: r.height / fs, off: Math.round(((i.top + i.height / 2) - (base - CAP * fs / 2)) * 100) / 100 };
@@ -3022,6 +3104,10 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
     const h2 = await q.page.$eval(".prose h2", (h) => parseFloat(getComputedStyle(h).lineHeight) / parseFloat(getComputedStyle(h).fontSize));
     want(Math.abs(h2 - 1.05) < 0.01, `AH-148 a § heading's leading is ${h2.toFixed(3)}, not 1.05`);
     await done(q, "AH-148 the § headings", [API]);
+    const k = await open("cases.html", { width: 1440, height: 900, motion: "reduce" }); // the case studies' own page since AH-159
+    const scope = await k.page.$eval(".case-scope", (e) => getComputedStyle(e).fontVariantNumeric);
+    want(/tabular-nums/.test(scope), `AH-148 tabular figures missing: .case-scope ${scope}`);
+    await done(k, "AH-148 the case studies' figures", [API]);
   }
   // (b) no shift when the font arrives: with it held back 1.5 s the page paints in the fallback first, and the swap moves
   // nothing (the layout shifts summed at most 0.01, at 1440 and 390); and the fallback face is the font's measure: the
@@ -3073,7 +3159,7 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
   }
   // (d) the measure at 1440: no line of running text holds more than 75 letters (the questions' answers, the steps'
   // aside, the checks' second column, the privacy and terms pages' text and table), counted per rendered line
-  for (const [file, sel] of [["index.html", ".faq .a p, .faq .a li, .steps .aside, .checks-table tbody td:not(.in-sample)"], ["privacy.html", ".prose p, .prose li, .card td"], ["terms.html", ".prose p, .prose li"], ["support.html", ".faq .a p, .faq .a li"]]) {
+  for (const [file, sel] of [["index.html", ".faq .a p, .faq .a li, .steps .aside, .check-file p, .check-list p, .maker-text p"], ["checks.html", ".checks-table tbody td:not(.in-sample)"], ["cases.html", ".case p, .case li"], ["privacy.html", ".prose p, .prose li, .card td"], ["terms.html", ".prose p, .prose li"], ["support.html", ".faq .a p, .faq .a li, #it dd"]]) {
     const t = await open(file, { width: 1440, height: 900, motion: "reduce" });
     const p = t.page;
     await p.evaluate(() => document.fonts.ready);
@@ -3184,19 +3270,19 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
     want(r.log.length > 0 && r.log.every(([, s, o]) => s <= r.cut[1] + 0.005 && o <= r.cut[2] + 0.01) && r.left === 0, `AH-148 detail box closed at 80 ms left from more than its pose ${r.cut.slice(1)}: ${r.log.map((x) => x.slice(1).map((v) => v.toFixed(3)).join("/")).join(" ")} (${r.left} copies left)`);
     await done(t, "AH-148 detail box cut short", [API]);
   }
-  // (h) one mark for a link and its row: a checks-table "Row 22" link's glide lands with the link's gold frame round the
+  // (h) one mark for a link and its row: a checks' "Row 22" link's glide lands with the link's gold frame round the
   // sample's row 22, opacity only, 600 ms, once, then gone; none under reduced motion (the link jumps)
   for (const motion of ["no-preference", "reduce"]) {
     const t = await open("index.html", { width: 1440, height: 900, motion });
     const p = t.page, label = `AH-148 Row 22's shared mark (${motion})`;
     if (motion !== "reduce") await p.waitForTimeout(ENTERED);
-    await p.evaluate(() => { const a = document.querySelector('.checks-table a.to-row[href="#r22"]'); scrollTo(0, a.getBoundingClientRect().top + scrollY - 400);
+    await p.evaluate(() => { const a = document.querySelector('#checks a.to-row[href="#r22"]'); scrollTo(0, a.getBoundingClientRect().top + scrollY - 400);
       window.__mark = null; document.addEventListener("ah:glide-end", () => { const m = document.querySelector(".row-mark"), a = m && m.getAnimations()[0], r = m && m.getBoundingClientRect(), row = document.getElementById("r22").getBoundingClientRect();
         window.__mark = m && { n: m.getAnimations().length, dur: a ? a.effect.getComputedTiming().duration : 0, runs: a ? a.effect.getComputedTiming().iterations : 0, hidden: m.getAttribute("aria-hidden"),
           props: a ? [...new Set(a.effect.getKeyframes().flatMap((k) => Object.keys(k)))].filter((k) => !["offset", "computedOffset", "easing", "composite"].includes(k)) : [],
           off: [r.left - row.left, r.top - row.top, r.width - row.width, r.height - row.height].map((v) => Math.round(v)) }; }); });
     await p.waitForTimeout(motion === "reduce" ? 0 : 1600);
-    await p.click('.checks-table a.to-row[href="#r22"]');
+    await p.click('#checks a.to-row[href="#r22"]');
     await p.waitForFunction(() => location.hash === "#r22", null, { timeout: 5000 }).catch(() => {});
     await p.waitForTimeout(900);
     const r = await p.evaluate(() => ({ at: window.__mark, after: [...document.querySelectorAll(".row-mark")].map((m) => [getComputedStyle(m).opacity, m.getAnimations().length]) }));
@@ -3208,7 +3294,7 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
   // the row until the pointer or focus leaves; with the row off screen, nothing
   {
     const t = await open("index.html", { width: 1440, height: 900, motion: "reduce" });
-    const p = t.page, link = '.checks-table a.to-row[href="#r22"]';
+    const p = t.page, link = '#checks a.to-row[href="#r22"]';
     const mark = () => p.evaluate(() => { const m = document.querySelector(".row-mark[data-on]"), row = document.getElementById("r22").getBoundingClientRect(), r = m && m.getBoundingClientRect(); return m ? [r.left - row.left, r.top - row.top, r.width - row.width, r.height - row.height].map(Math.round) : null; });
     await p.evaluate((sel) => scrollTo(0, document.querySelector(sel).getBoundingClientRect().top + scrollY - 400), link);
     await p.hover(link); const off = await mark();
@@ -3265,12 +3351,15 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
   const miss = [];
   const want = (ok, what) => { if (!ok) miss.push(what); };
   {
+    const c = await open("cases.html", { width: 1440, height: 900, motion: "reduce" }); // their own page since AH-159
+    await c.page.evaluate(() => document.fonts.ready);
+    const boxes = await c.page.$$eval(".cases .case", (cs) => cs.map((c) => { const b = c.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.width), Math.round(b.bottom * 10) / 10]; }));
+    const wide = await c.page.$eval(".cases", (c) => Math.round(c.getBoundingClientRect().width));
+    await done(c, "AH-148 fix round 1 cases at 1440", [API]);
     const t = await open("index.html", { width: 1440, height: 900, motion: "reduce" });
     const p = t.page;
     await p.evaluate(() => document.fonts.ready);
     // since AH-156 the first runs across the page and the two under it, side by side, end on one line
-    const boxes = await p.$$eval(".cases .case", (cs) => cs.map((c) => { const b = c.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.width), Math.round(b.bottom * 10) / 10]; }));
-    const wide = await p.$eval(".cases", (c) => Math.round(c.getBoundingClientRect().width));
     want(boxes.length === 3 && boxes[0][1] === wide && boxes[1][0] < boxes[2][0] && Math.abs(boxes[1][2] - boxes[2][2]) <= 1, `the case studies: the first not across the page, or the two under it not side by side ending on one line: ${JSON.stringify(boxes)} in ${wide} px`);
     // the questions: each a full-width row whose marker is a drawn chevron (no word) that turns as it opens, its answer
     // under it
@@ -3465,11 +3554,11 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
     const t = await open("index.html", { width, height, motion });
     const p = t.page, label = `3 Row 31 at ${width} px (${motion})`;
     if (motion !== "reduce") await p.waitForTimeout(ENTERED);
-    await p.evaluate(() => { const a = document.querySelector('.checks-table a.to-row[href="#r31"]'); scrollTo(0, a.getBoundingClientRect().top + scrollY - 300);
+    await p.evaluate(() => { const a = document.querySelector('#checks a.to-row[href="#r31"]'); scrollTo(0, a.getBoundingClientRect().top + scrollY - 300);
       window.__landed = null; document.addEventListener("ah:glide-end", () => setTimeout(() => { const m = document.querySelector(".row-mark"), r = m && m.getBoundingClientRect(), row = document.getElementById("r31").getBoundingClientRect();
         window.__landed = m ? { o: +getComputedStyle(m).opacity, top: Math.round(r.top - row.top), h: Math.round(r.height - row.height) } : null; }, 150)); });
     await p.waitForTimeout(motion === "reduce" ? 0 : 1600);
-    await p.click('.checks-table a.to-row[href="#r31"]');
+    await p.click('#checks a.to-row[href="#r31"]');
     await p.waitForFunction(() => location.hash === "#r31", null, { timeout: 5000 }).catch(() => {});
     await p.waitForTimeout(900);
     const r = await p.evaluate(() => { const td = document.querySelector("#r31 :is(td.flag, td.q)"), b = td.getBoundingClientRect(), sc = td.closest(".scroll"), s = sc.getBoundingClientRect(), pin = document.querySelector("#r31 > :first-child").getBoundingClientRect().right;
@@ -3526,7 +3615,7 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
   }
   // 7. the case studies' cards: no hole between their blocks' text (each under 40 px from the one before)
   {
-    const t = await open("index.html", { width: 1440, height: 900, motion: "reduce" });
+    const t = await open("cases.html", { width: 1440, height: 900, motion: "reduce" });
     const p = t.page;
     await p.evaluate(() => document.fonts.ready);
     // measured on the text, not on a block's box, which a grid row stretched
@@ -3545,6 +3634,76 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
   }
   assert.deepEqual(miss, [], `AH-148 final pass:\n${miss.join("\n")}`);
   console.log("AH-148 final pass: a phone's findings end at their last row; Row 31 lands with its flagged cell in view and its gold mark; the swipe hint only on Findings and a phone's tab shows its panel; expressions whole in a detail box; a line under the filters on rows flagged twice; no hole in a case card; no footer link alone on a line");
+}
+// ---- AH-159 (John, 2026-11-12): the home page in about five screens on a computer and ten on a phone (11,132 and
+// 16,615 px before, 13.9 and 19.7 screens), and its headline's one word in our own italic serif, its gold hairline drawn
+// under it once: finite, already there under reduced motion and with no script ----
+{
+  const miss = [];
+  const want = (ok, what) => { if (!ok) miss.push(what); };
+  for (const [width, height] of [[1280, 800], [390, 844]]) {
+    const t = await open("index.html", { width, height, motion: "reduce" });
+    await t.page.evaluate(() => document.fonts.ready);
+    const h = await t.page.evaluate(() => document.documentElement.scrollHeight);
+    want(h <= (width > 760 ? 6 : 10) * height, `AH-159 the home page at ${width} x ${height} is ${h} px tall, ${(h / height).toFixed(1)} screens (at most ${width > 760 ? 6 : 10})`);
+    console.log(`AH-159 the home page at ${width} x ${height}: ${h} px, ${(h / height).toFixed(1)} screens`);
+    await done(t, `AH-159 the home page's length at ${width}`, [API]);
+  }
+  // the serif, our own file, for the one word and nothing else; the rest of the headline in Plus Jakarta Sans; the word in
+  // the wine and its hairline in the gold, drawn at rest with nothing moving
+  {
+    const t = await open("index.html", { width: 1280, height: 800, motion: "reduce" });
+    const p = t.page;
+    await p.evaluate(() => document.fonts.ready);
+    const r = await p.evaluate(() => {
+      const h1 = document.querySelector(".hero-head"), em = h1.querySelector("em"), c = getComputedStyle(em), a = getComputedStyle(em, "::after"), e = em.getBoundingClientRect();
+      const serif = [...document.querySelectorAll("body *")].filter((x) => /Instrument Serif/.test(getComputedStyle(x).fontFamily)).map((x) => x.tagName.toLowerCase() + "." + (x.className || x.parentElement.className));
+      const files = performance.getEntriesByType("resource").map((x) => new URL(x.name)).filter((u) => /instrument-serif/.test(u.pathname)).map((u) => u.origin === location.origin ? u.pathname : u.href);
+      return { serif, files, loaded: document.fonts.check('italic 400 40px "Instrument Serif"') && [...document.fonts].some((f) => f.family.replace(/"/g, "") === "Instrument Serif" && f.status === "loaded"),
+        em: [c.fontStyle, c.fontWeight, c.color, c.letterSpacing], head: [getComputedStyle(h1).fontFamily.split(",")[0].replace(/"/g, ""), getComputedStyle(h1).letterSpacing],
+        line: { bg: a.backgroundColor, tf: a.transform, w: parseFloat(a.width) / e.width, anims: em.getAnimations({ subtree: true }).length } };
+    });
+    want(JSON.stringify(r.serif) === '["em."]' || JSON.stringify(r.serif) === '["em.hero-head"]', `AH-159 the serif is set on more than the headline's one word: ${JSON.stringify(r.serif)}`);
+    want(JSON.stringify(r.files) === '["/assets/instrument-serif-italic.woff2"]' && r.loaded, `AH-159 the serif is not our own file, loaded: ${JSON.stringify(r)}`);
+    want(r.em[0] === "italic" && r.em[1] === "400" && r.em[2] === "rgb(107, 30, 46)" && !/^-/.test(r.em[3]) && r.head[0] === "Plus Jakarta Sans" && !/^-/.test(r.head[1]), `AH-159 the headline's type: ${JSON.stringify(r)}`);
+    want(r.line.bg === "rgb(153, 125, 58)" && r.line.tf === "none" && r.line.w > 0.8 && r.line.anims === 0, `AH-159 the hairline under reduced motion is not drawn and still: ${JSON.stringify(r.line)}`);
+    // John's photo keeps its 240 x 300 box on a computer (the lazy load is checked on a phone, AH-133's block)
+    const box = await p.$eval("#maker img", (i) => [Math.round(i.getBoundingClientRect().width), Math.round(i.getBoundingClientRect().height)]);
+    want(box.join() === "240,300", `AH-159 John's photo at 1280 px: ${box}`);
+    await done(t, "AH-159 the serif", [API]);
+  }
+  // where motion is welcome: one animation, of the hairline's transform, 900 ms, once, ending drawn
+  {
+    const t = await open("index.html", { width: 1280, height: 800, until: "domcontentloaded" });
+    const p = t.page;
+    await p.waitForTimeout(100);
+    const a = await p.evaluate(() => { const em = document.querySelector(".hero-head em");
+      return em.getAnimations({ subtree: true }).filter((x) => x.effect.pseudoElement === "::after").map((x) => { const k = x.effect.getComputedTiming();
+        return { name: x.animationName, dur: k.duration, runs: k.iterations, props: [...new Set(x.effect.getKeyframes().flatMap((f) => Object.keys(f)))].filter((f) => !["offset", "computedOffset", "easing", "composite"].includes(f)) }; }); });
+    want(a.length === 1 && a[0].dur === 900 && a[0].runs === 1 && a[0].props.join() === "transform", `AH-159 the hairline's draw: ${JSON.stringify(a)}`);
+    await p.waitForTimeout(ENTERED);
+    const end = await p.evaluate(() => { const em = document.querySelector(".hero-head em"); return { tf: getComputedStyle(em, "::after").transform, anims: em.getAnimations({ subtree: true }).length }; });
+    want(end.tf === "none" && end.anims === 0, `AH-159 the hairline after its draw: ${JSON.stringify(end)}`);
+    await done(t, "AH-159 the hairline draws once", [API]);
+  }
+  {
+    const t = await open("index.html", { width: 1280, height: 800, js: false, until: "load" });
+    const r = await t.page.evaluate(() => { const em = document.querySelector(".hero-head em"); return { tf: getComputedStyle(em, "::after").transform, w: parseFloat(getComputedStyle(em, "::after").width), anims: em.getAnimations({ subtree: true }).length }; });
+    want(r.tf === "none" && r.w > 0 && r.anims === 0, `AH-159 the hairline with no script: ${JSON.stringify(r)}`);
+    await done(t, "AH-159 the hairline with no script");
+  }
+  // ... and the serif arriving late moves nothing (held back 1.5 s, the fallback serif first)
+  for (const width of [1280, 390]) {
+    const t = await open("index.html", { width, height: 800, until: "domcontentloaded",
+      init: () => { window.__shift = 0; new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__shift += e.value; }).observe({ type: "layout-shift", buffered: true }); },
+      setup: (p) => p.route("**/instrument-serif-italic.woff2", async (r) => { await new Promise((ok) => setTimeout(ok, 1500)); await r.continue(); }) });
+    await t.page.evaluate(() => document.fonts.ready); await t.page.waitForTimeout(600);
+    const shift = await t.page.evaluate(() => window.__shift);
+    want(shift <= 0.01, `AH-159 the serif's late arrival at ${width} px shifted the layout ${shift.toFixed(4)}`);
+    await done(t, `AH-159 the serif's swap at ${width}`, [API]);
+  }
+  assert.deepEqual(miss, [], `AH-159:\n${miss.join("\n")}`);
+  console.log("AH-159: the home page within 6 screens at 1280 x 800 and 10 at 390 x 844; the serif our own file, on the headline's one word only; its hairline drawn once (900 ms, transform, finite), already drawn under reduced motion and with no script; the serif's late arrival moves nothing");
 }
 await browser.close();
 server.close();

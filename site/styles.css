@@ -9,6 +9,9 @@
    only transform and opacity ever move (AH-85, docs/design/motion.md).
    Weight: one font file, a tiny blocking script and a few deferred ones, no images but the favicon. */
 @font-face { font-family: "Plus Jakarta Sans"; src: url("assets/plus-jakarta-sans.woff2") format("woff2"); font-weight: 200 800; font-display: swap; }
+/* AH-159 (John, 2026-11-12: "fancy and expensive, without going overboard"): the hero's one word in an italic display
+   serif, Instrument Serif Italic (OFL, assets/OFL-InstrumentSerif.txt), cut to Basic Latin (15 KB); used by .hero-head em only */
+@font-face { font-family: "Instrument Serif"; src: url("assets/instrument-serif-italic.woff2") format("woff2"); font-style: italic; font-weight: 400; font-display: swap; }
 /* AH-148: until the font arrives (font-display: swap), the text is set in Arial (or Helvetica, or Liberation Sans and Arimo,
    drawn to Arial's widths) scaled to Plus Jakarta Sans's own measure, so the swap moves no line. Read from the woff2 with
    fontTools: ascender 1038 and descender 222 of 1000 (OS/2, USE_TYPO_METRICS), no line gap; the average advance over the
@@ -218,6 +221,9 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 /* sections: a hairline between them, the headline from column 1 over ten columns, as the hero's, and the lede from
    column 7. The small capitals label that sat over each headline was dropped (AH-98: it named what the headline says) */
 .section { padding-block: var(--s7) var(--s8); border-top: 1px solid var(--ink); }
+/* the home page told in about five screens (AH-159, John: "the website feels so long I got bored scrolling"): its
+   sections closer together, the same rhythm a phone already has */
+#home .section { padding-block: var(--s5); }
 .sec-title { grid-column: 1 / span 10; font-size: clamp(var(--fs-3), 5.4vw, var(--fs-7)); }
 /* a fact in the lede's row, from column 1: what the section holds, counted (the checks: 8, and the sample's 7 rows) */
 .fact { grid-column: 1 / span 5; grid-row: 2; margin-top: var(--s4); padding-top: 12px; border-top: 1px solid currentColor; justify-self: start;
@@ -231,9 +237,15 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .band-dark .sec-lede { color: var(--on-dark-2); }
 
 /* hero: a huge headline over ten columns, the text from column 7, then the sample sheet as the picture */
-.hero { padding-block: var(--s7) var(--s8); background: var(--grain), var(--grid), var(--paper); }
-.hero-head { grid-column: 1 / span 10; font-size: clamp(var(--fs-4), 8.4vw, var(--fs-9)); }
-.hero-copy { grid-column: 7 / -1; margin-top: var(--s5); display: grid; gap: var(--s3); justify-items: start; }
+.hero { padding-block: var(--s7) var(--s6); background: var(--grain), var(--grid), var(--paper); }
+.hero-head { grid-column: 1 / span 7; font-size: clamp(var(--fs-4), 9.2vw, 8.5rem); line-height: 1.04; }
+/* its one word set apart, as a jeweller sets one stone (AH-159): the serif's italic in the wine, and a fine gold hairline
+   under it, drawn across once as the headline lands (scaleX, --ease-out, 900 ms, finite); with reduced motion, or no
+   script, it is simply there. The serif has one weight: never a faked bold */
+.hero-head em { position: relative; display: inline-block; padding-bottom: .05em; font: italic 400 1.06em/1 "Instrument Serif", Georgia, "Times New Roman", serif; letter-spacing: 0; font-synthesis: none; color: var(--wine); }
+.hero-head em::after { content: ""; position: absolute; left: .04em; right: .04em; bottom: 0; height: max(1px, .012em); background: var(--gold); transform-origin: 0 50%; }
+@media (prefers-reduced-motion: no-preference) { html[data-js] .hero-head em::after { animation: draw 900ms var(--ease-out) calc(var(--enter-lead) + 700ms) backwards; } }
+.hero-copy { grid-column: 8 / -1; grid-row: 1; align-self: end; display: grid; gap: var(--s3); justify-items: start; }
 .hero-copy p { font-size: var(--fs-1); line-height: 1.45; color: var(--ink-2); }
 .hero .note { font-size: var(--fs--1); color: var(--muted); }
 /* a phone can't install Arcas (AH-135): said under the hero's download on a narrow screen only (shown at 760 px, below) */
@@ -243,7 +255,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .hero-cta { display: flex; flex-wrap: wrap; gap: var(--s2); }
 
 /* the sample workspace: an ink frame, an ink title bar, the filters over three columns, the sheet beside them */
-.ws { grid-column: 1 / -1; position: relative; margin: var(--s7) 0 0; background: var(--grain), var(--paper-2); border: 1px solid var(--ink); text-align: left; color: var(--ink-2); }
+.ws { grid-column: 1 / -1; position: relative; margin: var(--s6) 0 0; background: var(--grain), var(--paper-2); border: 1px solid var(--ink); text-align: left; color: var(--ink-2); }
 .ws-top { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s3); align-items: center; padding: 0 var(--s3); min-height: 52px; background: var(--ink); color: var(--paper); }
 .ws-top b { font: 800 var(--fs-0)/1.3 var(--sans); letter-spacing: normal; }
 .ws-top > span { font-size: var(--fs--1); color: var(--on-dark-2); font-variant-numeric: tabular-nums; }
@@ -400,11 +412,20 @@ td.why i.ok { display: inline-block; width: 10px; height: 10px; margin-right: 8p
 .ws-foot { padding: 12px var(--s3); border-top: 1px solid var(--ink); font-size: var(--fs--1); color: var(--ink-2); }
 /* the way on to the checks, right under the sheet (AH-91) */
 .next-up { grid-column: 1 / -1; margin-top: var(--s3); display: flex; justify-content: center; }
-/* the real pane after a scan (AH-156: a page with no picture of its product reads as made up), at its own 360 x 900 with
-   a hairline, its caption beside it, the two centred; the width and height on the img keep its box before it loads (CLS 0) */
-.shot { grid-column: 1 / -1; margin: var(--s7) 0 0; display: grid; grid-template-columns: auto minmax(0, 24rem); justify-content: center; align-items: center; gap: var(--s3) var(--s5); }
-.shot img { display: block; box-sizing: content-box; width: 360px; max-width: calc(100% - 2px); height: auto; border: 1px solid var(--ink); background: var(--paper-2); }
-.shot figcaption { max-width: var(--measure); font-size: var(--fs-0); color: var(--ink-2); }
+/* the real pane after a scan (AH-156: a page with no picture of its product reads as made up), beside the checks on the
+   band at 220 of its 360 x 900 (AH-159), a hairline round it, its caption under it; the width and height on the img keep
+   its box before it loads (CLS 0) */
+/* the checks in a line each (AH-159): two columns of three beside the pane, each under a gold hairline */
+#checks .sec-title { grid-column: 1 / span 7; grid-row: 1; }
+.check-list { grid-column: 1 / span 7; grid-row: 2; margin: var(--s5) 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s4) var(--gutter); }
+.check-list li { position: relative; display: grid; gap: 6px; padding-top: var(--s2); font-size: var(--fs--1); color: var(--on-dark-2); }
+.check-list .rule { background: var(--gold-hi); }
+.check-list .to-row { white-space: nowrap; }
+.all-checks { grid-column: 1 / span 7; grid-row: 3; margin-top: var(--s4); font-weight: 700; }
+.all-checks a { color: var(--on-dark); text-decoration-color: var(--gold-hi); }
+.shot { grid-column: 9 / -1; grid-row: 1 / span 3; margin: 0; display: grid; gap: var(--s2); justify-items: start; align-content: start; }
+.shot img { display: block; box-sizing: content-box; width: 180px; max-width: calc(100% - 2px); height: auto; border: 1px solid var(--on-dark-2); background: var(--paper-2); }
+.shot figcaption { max-width: 22rem; font-size: var(--fs--1); color: var(--on-dark-2); }
 #preview:focus, #checks:focus { outline: none; } /* a glide's target takes focus for the keyboard and screen readers; the region itself shows no ring */
 
 /* the checks, on the navy band, as a ledger (AH-98): Check | What it catches | In the sample above, over 3, 5 and 4 of the
@@ -425,7 +446,7 @@ td.why i.ok { display: inline-block; width: 10px; height: 10px; margin-right: 8p
 .checks-table tbody :is(th, td):last-child { padding-right: 0; }
 .in-sample > * { display: block; width: fit-content; }
 .in-sample > * + * { margin-top: 6px; }
-.in-sample .to-row { padding-block: 2px; margin-block: -2px; font-weight: 700; color: var(--on-dark); text-decoration-color: var(--gold-hi); }
+:is(.in-sample, .check-list) .to-row { padding-block: 2px; margin-block: -2px; font-weight: 700; color: var(--on-dark); text-decoration-color: var(--gold-hi); }
 .in-sample .val { font: 500 var(--fs--1)/1.5 var(--mono); font-size-adjust: .536; color: var(--on-dark); }
 .in-sample .say { color: var(--on-dark); }
 .in-sample .nil { font-weight: 700; color: var(--on-dark); }
@@ -440,14 +461,15 @@ td.why i.ok { display: inline-block; width: 10px; height: 10px; margin-right: 8p
 
 /* the download, on a panel: the logo and the button over five columns, the facts from column 7, then the steps */
 .band-panel { background: var(--grain), var(--grid), var(--paper-2); }
-.band-panel .sec-lede { grid-row: 2; }
+#download .sec-lede { grid-column: 1 / span 5; grid-row: 2; }
 /* the logo rises beside the lede and the facts, not under them */
-.stage { grid-column: 1 / span 5; grid-row: 2 / span 2; margin-top: var(--s5); display: grid; gap: var(--s4); justify-items: start; }
-.logo-lg { width: min(100%, 20rem); height: auto; aspect-ratio: 1; color: var(--ink); }
+.stage { grid-column: 1 / span 5; grid-row: 3; margin-top: var(--s4); display: grid; gap: var(--s3); justify-items: start; }
+.logo-lg { width: min(100%, 10rem); height: auto; aspect-ratio: 1; color: var(--ink); }
 .stage .btn { min-height: 64px; width: min(100%, 22rem); font-size: var(--fs-0); }
 /* the browser's "isn't commonly downloaded" warning, said under the button it follows (AH-135) */
 .stage-note { max-width: 22rem; font-size: var(--fs--1); color: var(--ink-2); }
-.facts { grid-column: 7 / -1; grid-row: 3; margin: var(--s6) 0 0; }
+/* the MIT License, right under the download it covers (AH-159, John: "the MIT License is under the wrong spot") */
+.license-line { max-width: 22rem; font-size: var(--fs--1); font-weight: 600; color: var(--ink); }
 dl.anchor { position: relative; margin: 0; display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr); column-gap: var(--gutter); font-size: var(--fs--1); line-height: 1.5; border-top: 1px solid var(--ink); }
 .anchor dt, .anchor dd { margin: 0; padding: 12px 0; border-bottom: 1px solid var(--rule); }
 .anchor dt { font-weight: 700; color: var(--ink); }
@@ -469,9 +491,11 @@ dl.anchor { position: relative; margin: 0; display: grid; grid-template-columns:
 #sha a { word-break: normal; overflow-wrap: normal; }
 #sha::before { content: "0000000000000000000000000000000000000000000000000000000000000000"; float: left; width: 100%; margin-right: -100%; visibility: hidden; }
 #rel { font-variant-numeric: tabular-nums; }
-.steps { grid-column: 1 / -1; margin-top: var(--s8); display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); column-gap: var(--gutter); row-gap: var(--s4); }
-.steps > .label { grid-column: 1 / -1; }
-.steps ol { grid-column: 1 / -1; margin: 0; padding: 0; list-style: none; counter-reset: step; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s5) var(--gutter); }
+/* the steps beside the download, from column 7 under the lede (AH-159: they were a row of four under it), two by two,
+   then the file's details for IT, closed, and the code signing line */
+.steps { grid-column: 7 / -1; grid-row: 2 / span 2; margin-top: var(--s4); display: grid; grid-template-columns: minmax(0, 1fr); row-gap: var(--s4); }
+.steps > * { grid-column: 1 / -1; }
+.steps ol { margin: 0; padding: 0; list-style: none; counter-reset: step; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s4) var(--gutter); }
 .steps li { position: relative; counter-increment: step; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: var(--s2); padding-top: var(--s2); font-size: var(--fs--1); color: var(--ink-2); }
 .steps li::before { content: counter(step, decimal-leading-zero); font: 800 var(--fs-5)/.9 var(--sans); letter-spacing: normal; color: var(--wine); font-variant-numeric: tabular-nums; }
 .steps li b { color: var(--ink); }
@@ -501,8 +525,8 @@ dl.anchor { position: relative; margin: 0; display: grid; grid-template-columns:
   .copy-btn[data-done]::after, .result::after { animation: pulse var(--pulse-dur) var(--ease-out); }
 }
 @keyframes pulse { from { opacity: .6; transform: scale(1); } to { opacity: 0; transform: scale(var(--ring-to, 1.35)); } }
-/* the checksum and the Unblock route, closed under the steps (AH-135): a person who wants them opens them */
-.check-file { grid-column: 1 / span 6; align-self: start; border-top: 1px solid var(--rule); font-size: var(--fs--1); color: var(--ink-2); }
+/* the file's facts, the checksum and the Unblock route, closed under the steps (AH-135, AH-159): IT opens them */
+.check-file { align-self: start; border-top: 1px solid var(--rule); font-size: var(--fs--1); color: var(--ink-2); }
 .check-file summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: var(--s2); min-height: 44px; cursor: pointer; font-weight: 700; color: var(--ink); }
 .check-file summary::-webkit-details-marker { display: none; }
 .check-file summary:active { background: var(--paper); }
@@ -510,9 +534,10 @@ dl.anchor { position: relative; margin: 0; display: grid; grid-template-columns:
    line's full width, and open at 320 px with text at 200% the page scrolled 321 px sideways (found by AH-138's check) */
 .check-file > div { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s2); padding-bottom: var(--s2); }
 .check-file b { color: var(--ink); }
+.check-file p { max-width: var(--measure); } /* running text at the measure (AH-148), in the box for IT since AH-159 */
 /* its rule runs to the grid's edge, as the box's beside it runs to its column's (AH-148 fix round 2: with the measure as
    its max-width the rule stopped at x 1130 of 1360); the text keeps the measure by its right padding */
-.steps .aside { grid-column: 7 / -1; font-size: var(--fs--1); color: var(--ink-2); padding-top: var(--s2); padding-right: max(0px, 100% - var(--measure)); border-top: 1px solid var(--rule); }
+.steps .aside { font-size: var(--fs--1); color: var(--ink-2); padding-top: var(--s2); padding-right: max(0px, 100% - var(--measure)); border-top: 1px solid var(--rule); }
 
 /* reading pages: the same headline, then the text over seven columns beside its contents */
 .page-head { padding-block: var(--s7); }
@@ -592,6 +617,7 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
   border: 1px solid var(--ink-2); border-radius: 0; padding: 11px 12px; box-shadow: none; appearance: none; }
 .field select { background: var(--paper) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%230C1938' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 14px center; padding-right: 36px; }
 .field textarea { min-height: 140px; resize: vertical; }
+#contact textarea { min-height: 96px; } /* the home page's short note (AH-159); it grows as typed into, as any box */
 .field input:focus, .field select:focus, .field textarea:focus { outline: 2px solid var(--ink); outline-offset: 0; border-color: var(--ink); }
 .confirm { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 10px; font-size: var(--fs--1); align-items: start; color: var(--ink); }
 .confirm input { width: 24px; height: 24px; margin: 0; accent-color: var(--ink); } /* 24 px, a target a thumb can hit (AH-115) */
@@ -619,7 +645,10 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
 .proof dd { margin: 0; font-size: var(--fs--1); color: var(--ink-2); }
 .proof > div:nth-child(2) .rule { --col: 1; }
 .proof > div:nth-child(3) .rule { --col: 2; }
-.proof-note { grid-column: 1 / -1; margin-top: var(--s5); max-width: var(--measure); font-size: var(--fs--1); color: var(--ink-2); }
+/* the way on to the case studies (AH-159: they have a page of their own) */
+.to-cases { grid-column: 1 / -1; margin-top: var(--s4); font-weight: 700; }
+/* a link alone on its line is a thumb's target, 44 px, its padding taken back by a margin so no line moves (AH-148) */
+:is(.all-checks, .to-cases) a { display: inline-block; padding-block: 11px; margin-block: -11px; }
 /* three public tables, scanned (AH-133): the pane's words quoted row by row, the source credited. No longer three boxes
    alike (AH-156): each under a hairline, as the IT ledger's items, the first across the page and the other two side by
    side under it, their text at the measure */
@@ -641,12 +670,13 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
 .case-credit { padding-top: 12px; border-top: 1px solid var(--rule); }
 /* who makes Arcas (AH-133): his photo at its own 240 x 300 (the width and height on the img keep its box before it
    loads), his words and his profiles beside it from column 4 */
-.maker { grid-column: 1 / -1; margin-top: var(--s6); display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: var(--s3) var(--s5); align-items: start; }
+.maker { grid-column: 1 / -1; display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: var(--s3) var(--s5); align-items: start; }
 /* a fixed size, never one read from the picture: a lazy photo arriving during the checks' reveal laid the page out once
    (the reveal must composite only, tools/test_site.mjs), and contain keeps its arrival from reaching past its own box */
 .maker img { display: block; width: 240px; height: 300px; object-fit: cover; contain: strict; border: 1px solid var(--ink); background: var(--paper-2); }
 .maker-text { display: grid; gap: var(--s2); max-width: 40rem; font-size: var(--fs-1); line-height: 1.45; color: var(--ink-2); }
 /* John's own words lead the section, in the ink of the body text; the byline under them stays the quieter grey */
+.maker-text .sec-title { grid-column: auto; margin-bottom: var(--s1); }
 .maker-text .story { display: grid; gap: var(--s2); color: var(--ink); }
 .profiles { display: flex; flex-wrap: wrap; gap: 12px; margin-top: var(--s1); }
 .profiles .btn { font-size: var(--fs--1); }
@@ -839,7 +869,6 @@ html[data-moving] #field { z-index: 2; }
   .form-card.ask { margin-top: var(--s5); }
   .faq, .form-card { grid-column: 1 / -1; }
   .form-card { margin-top: var(--s5); }
-  .steps ol { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .brand { grid-column: 1 / span 3; }
   .links { grid-column: 4 / -1; gap: var(--s2); }
 }
@@ -849,7 +878,7 @@ html[data-moving] #field { z-index: 2; }
   .bar { position: relative; } /* on a phone the bar wraps to two rows: it scrolls away instead of covering the screen */
   .bar .cols { padding-block: 12px; row-gap: 8px; }
   .brand .logo { margin-block: -4px; } /* drawn 40 px tall in the 32 px the old logo took, so the two-row bar keeps its height */
-  .cols > *, .steps > *, .steps .aside, .facts, table.card, .foot span, .foot nav, .page-head h1, .page-head p { grid-column: 1 / -1; }
+  .cols > *, .steps > *, .steps .aside, table.card, .foot span, .foot nav, .page-head h1, .page-head p { grid-column: 1 / -1; }
   .links { justify-content: flex-start; gap: 4px var(--s2); }
   .section, .hero, .page-head, .doc { padding-block: var(--s6); }
   .hero { padding-top: var(--s5); } /* the hero's download inside a 375 x 667 first screen with room to spare (AH-126) */
@@ -858,9 +887,11 @@ html[data-moving] #field { z-index: 2; }
   .hero-copy p { font-size: var(--fs-0); }
   .hero-copy, .sec-lede, .page-head p { margin-top: var(--s3); }
   .fact { grid-row: auto; }
-  .ws { margin-top: var(--s6); }
-  .shot { margin-top: var(--s6); grid-template-columns: minmax(0, 1fr); }
+  .ws { margin-top: var(--s5); }
   .tabs { margin-left: 0; width: 100%; min-height: 44px; }
+  /* the tabs' row is kept from the first paint where home.js will show them (AH-159: with the hero shorter the sample is in
+     a phone's first screen, and their arrival moved it 22 px) */
+  html[data-js] .ws-top { min-height: calc(44px + var(--s1) + 1.3 * var(--fs-0)); }
   /* at 320 px the three tabs did not fit beside 24 px of padding, and "After fixes" wrapped onto a line of its own, each
      tab 22 px tall (AH-132): 16 px, the filters' own, and 12 px between the tabs leave them room on one line */
   .ws-top { padding-inline: var(--s2); }
@@ -901,8 +932,17 @@ html[data-moving] #field { z-index: 2; }
   .maker img { width: min(33%, 240px); height: auto; aspect-ratio: 4 / 5; }
   .phone-only { display: block; }
   .ask { margin-top: var(--s5); }
-  .stage, .facts, .band-panel .sec-lede { grid-row: auto; }
-  .stage, .facts { margin-top: var(--s5); }
+  .stage, .steps, #download .sec-lede, .shot, .hero-copy, #checks .sec-title, .check-list, .all-checks { grid-row: auto; }
+  /* the pane beside its caption, and each step's number beside its words (AH-159: the home page in ten phone screens) */
+  .shot { grid-template-columns: 120px minmax(0, 1fr); align-items: end; gap: var(--s3); }
+  .shot img { width: 118px; }
+  .steps li { grid-template-columns: auto minmax(0, 1fr); column-gap: var(--s2); }
+  .steps ol { margin-top: 0; }
+  .stage { margin-top: var(--s5); }
+  .shot { margin-top: var(--s5); }
+  .check-list { grid-template-columns: minmax(0, 1fr); gap: var(--s2); }
+  .maker-text { font-size: var(--fs-0); }
+  #home .sec-lede { font-size: var(--fs-0); }
   /* the checks table on a phone: each row a block, the check's name, what it catches, then the sample's row */
   .checks-table { margin-top: var(--s5); table-layout: auto; }
   .checks-table thead { display: none; }
@@ -910,7 +950,6 @@ html[data-moving] #field { z-index: 2; }
   .checks-table tbody :is(th, td) { display: block; padding: 0; border: 0; }
   .checks-table tbody td.in-sample { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--rule-dark); }
   .checks-table .rule { top: -1px; }
-  .logo-lg { width: min(100%, 15rem); }
   .steps { margin-top: var(--s6); }
   .toc { position: relative; margin-bottom: var(--s5); }
   /* the field's paper under the text reaches only as far as the 16 px margin, so it never makes the page scroll sideways */
