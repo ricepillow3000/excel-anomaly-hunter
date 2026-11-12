@@ -662,7 +662,8 @@ function woff2(file) {
 // ---- AH-159 (John, 2026-11-12): "the website feels so long I got bored scrolling through it". The headline says what
 // Arcas is for (consistent data), the lead is one sentence, the MIT License sits under the download it covers, the checks
 // are one line each with the whole table on checks.html, the case studies and the code signing policy have pages of their
-// own, and the headline's one word is set in a self-hosted italic serif with a gold hairline drawn under it once ----
+// own, and the headline's one word is in the wine, in the headline's own font (John: "remove the underline and fancy work
+// on consistent, just keep it wine red") ----
 {
   const home = html["index.html"], words = (s) => s.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
   const section = (id) => ([...home.matchAll(/<section\b[^>]*\sid="([\w-]+)"[\s\S]*?<\/section>/g)].find((m) => m[1] === id) || [""])[0];
@@ -688,22 +689,10 @@ function woff2(file) {
   // every page's "Checks" goes to checks.html (the 404 page root-absolute)
   for (const p of PAGES) assert.ok(/<nav class="links"[^>]*>[\s\S]*?<a href="checks\.html"( aria-current="page")?>Checks<\/a>/.test(html[p]), `${p}: the bar's Checks is not checks.html`);
   assert.ok(read(MISSING).includes(`<a href="${ROOT_PATH}checks.html">Checks</a>`), "404.html: the bar's Checks is not checks.html");
-  // the serif: our own file (Instrument Serif Italic, OFL, cut to Basic Latin), preloaded on the home page only, and named in
-  // the stylesheet for the headline's one word and nowhere else
-  const serif = fs.readFileSync(path.join(SITE, "assets", "instrument-serif-italic.woff2"));
-  assert.ok(serif.toString("latin1", 0, 4) === "wOF2" && serif.length <= 20 * 1024, `assets/instrument-serif-italic.woff2 is not a small WOFF2 (${serif.length} bytes)`);
-  assert.ok(/SIL Open Font License, Version 1\.1/.test(read("assets/OFL-InstrumentSerif.txt")) && /Instrument Serif/.test(read("assets/OFL-InstrumentSerif.txt")), "the serif's licence is not shipped beside it");
-  assert.ok(/@font-face \{ font-family: "Instrument Serif"; src: url\("assets\/instrument-serif-italic\.woff2"\) format\("woff2"\); font-style: italic; font-weight: 400; font-display: swap; \}/.test(css), "styles.css: the serif's @font-face");
-  const using = [...css.matchAll(/([^{}]*)\{([^{}]*)\}/g)].filter((m) => /Instrument Serif/.test(m[2]) && !/@font-face/.test(m[1])).map((m) => m[1].trim());
-  assert.deepEqual(using, [".hero-head em"], "styles.css: the serif is set somewhere other than the headline's one word");
-  const PRELOAD = '<link rel="preload" href="assets/instrument-serif-italic.woff2" as="font" type="font/woff2" crossorigin>';
-  for (const p of PAGES) assert.equal(html[p].includes(PRELOAD), p === "index.html", `${p}: the serif is ${p === "index.html" ? "not " : ""}preloaded`);
-  // the hairline: drawn at rest (no transform of its own), drawn across once by the clock where motion is welcome and
-  // the script runs, and never forever
-  const line = (/\.hero-head em::after \{([^}]*)\}/.exec(css) || ["", ""])[1];
-  assert.ok(/background: var\(--gold\)/.test(line) && !/transform:|opacity:/.test(line), `styles.css: the hairline at rest: ${line}`);
-  const drawn = (/@media \(prefers-reduced-motion: no-preference\) \{ html\[data-js\] \.hero-head em::after \{ animation: ([^;}]+);? \} \}/.exec(css) || [])[1] || "";
-  assert.ok(/^draw 900ms var\(--ease-out\) /.test(drawn) && !/infinite|alternate/.test(drawn), `styles.css: the hairline's draw: "${drawn}"`);
+  // the one word: upright, in the wine, nothing drawn under it, and no second font anywhere on the site
+  assert.deepEqual([...css.matchAll(/\.hero-head em\b[^{]*\{([^}]*)\}/g)].map((m) => m[1].trim()), ["font-style: normal; color: var(--wine);"], "styles.css: the headline's one word");
+  const files = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? files(path.join(d, e.name)) : [path.join(d, e.name)]);
+  for (const f of files(SITE)) assert.ok(!/Instrument Serif|instrument-serif/i.test(fs.readFileSync(f, "latin1")), `${path.relative(SITE, f)} still names the serif`);
 }
 console.log(`website static check passed (${PAGES.length} pages, ${SCRIPTS.length} scripts)`);
 if (!process.argv.includes("--browser")) process.exit(0);
@@ -3636,8 +3625,7 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
   console.log("AH-148 final pass: a phone's findings end at their last row; Row 31 lands with its flagged cell in view and its gold mark; the swipe hint only on Findings and a phone's tab shows its panel; expressions whole in a detail box; a line under the filters on rows flagged twice; no hole in a case card; no footer link alone on a line");
 }
 // ---- AH-159 (John, 2026-11-12): the home page in about five screens on a computer and ten on a phone (11,132 and
-// 16,615 px before, 13.9 and 19.7 screens), and its headline's one word in our own italic serif, its gold hairline drawn
-// under it once: finite, already there under reduced motion and with no script ----
+// 16,615 px before, 13.9 and 19.7 screens), and its headline's one word in the wine, in the headline's own font ----
 {
   const miss = [];
   const want = (ok, what) => { if (!ok) miss.push(what); };
@@ -3649,61 +3637,25 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
     console.log(`AH-159 the home page at ${width} x ${height}: ${h} px, ${(h / height).toFixed(1)} screens`);
     await done(t, `AH-159 the home page's length at ${width}`, [API]);
   }
-  // the serif, our own file, for the one word and nothing else; the rest of the headline in Plus Jakarta Sans; the word in
-  // the wine and its hairline in the gold, drawn at rest with nothing moving
+  // the one word in the headline's own font, weight and size, upright, in the wine, nothing under it or drawn after it
   {
     const t = await open("index.html", { width: 1280, height: 800, motion: "reduce" });
     const p = t.page;
     await p.evaluate(() => document.fonts.ready);
     const r = await p.evaluate(() => {
-      const h1 = document.querySelector(".hero-head"), em = h1.querySelector("em"), c = getComputedStyle(em), a = getComputedStyle(em, "::after"), e = em.getBoundingClientRect();
-      const serif = [...document.querySelectorAll("body *")].filter((x) => /Instrument Serif/.test(getComputedStyle(x).fontFamily)).map((x) => x.tagName.toLowerCase() + "." + (x.className || x.parentElement.className));
-      const files = performance.getEntriesByType("resource").map((x) => new URL(x.name)).filter((u) => /instrument-serif/.test(u.pathname)).map((u) => u.origin === location.origin ? u.pathname : u.href);
-      return { serif, files, loaded: document.fonts.check('italic 400 40px "Instrument Serif"') && [...document.fonts].some((f) => f.family.replace(/"/g, "") === "Instrument Serif" && f.status === "loaded"),
-        em: [c.fontStyle, c.fontWeight, c.color, c.letterSpacing], head: [getComputedStyle(h1).fontFamily.split(",")[0].replace(/"/g, ""), getComputedStyle(h1).letterSpacing],
-        line: { bg: a.backgroundColor, tf: a.transform, w: parseFloat(a.width) / e.width, anims: em.getAnimations({ subtree: true }).length } };
+      const h1 = document.querySelector(".hero-head"), em = h1.querySelector("em"), c = getComputedStyle(em), h = getComputedStyle(h1), a = getComputedStyle(em, "::after");
+      return { same: [c.fontFamily === h.fontFamily, c.fontWeight === h.fontWeight, c.fontSize === h.fontSize], style: c.fontStyle, color: c.color,
+        line: c.textDecorationLine, after: a.content, anims: em.getAnimations({ subtree: true }).length };
     });
-    want(JSON.stringify(r.serif) === '["em."]' || JSON.stringify(r.serif) === '["em.hero-head"]', `AH-159 the serif is set on more than the headline's one word: ${JSON.stringify(r.serif)}`);
-    want(JSON.stringify(r.files) === '["/assets/instrument-serif-italic.woff2"]' && r.loaded, `AH-159 the serif is not our own file, loaded: ${JSON.stringify(r)}`);
-    want(r.em[0] === "italic" && r.em[1] === "400" && r.em[2] === "rgb(107, 30, 46)" && !/^-/.test(r.em[3]) && r.head[0] === "Plus Jakarta Sans" && !/^-/.test(r.head[1]), `AH-159 the headline's type: ${JSON.stringify(r)}`);
-    want(r.line.bg === "rgb(153, 125, 58)" && r.line.tf === "none" && r.line.w > 0.8 && r.line.anims === 0, `AH-159 the hairline under reduced motion is not drawn and still: ${JSON.stringify(r.line)}`);
+    const wine = (/--wine: #([0-9a-f]{6})/i.exec(css) || ["", "000000"])[1].match(/../g).map((x) => parseInt(x, 16));
+    want(r.same.every(Boolean) && r.style === "normal" && r.color === `rgb(${wine.join(", ")})` && r.line === "none" && r.after === "none" && r.anims === 0, `AH-159 the headline's one word: ${JSON.stringify(r)}`);
     // John's photo keeps its 240 x 300 box on a computer (the lazy load is checked on a phone, AH-133's block)
     const box = await p.$eval("#maker img", (i) => [Math.round(i.getBoundingClientRect().width), Math.round(i.getBoundingClientRect().height)]);
     want(box.join() === "240,300", `AH-159 John's photo at 1280 px: ${box}`);
-    await done(t, "AH-159 the serif", [API]);
-  }
-  // where motion is welcome: one animation, of the hairline's transform, 900 ms, once, ending drawn
-  {
-    const t = await open("index.html", { width: 1280, height: 800, until: "domcontentloaded" });
-    const p = t.page;
-    await p.waitForTimeout(100);
-    const a = await p.evaluate(() => { const em = document.querySelector(".hero-head em");
-      return em.getAnimations({ subtree: true }).filter((x) => x.effect.pseudoElement === "::after").map((x) => { const k = x.effect.getComputedTiming();
-        return { name: x.animationName, dur: k.duration, runs: k.iterations, props: [...new Set(x.effect.getKeyframes().flatMap((f) => Object.keys(f)))].filter((f) => !["offset", "computedOffset", "easing", "composite"].includes(f)) }; }); });
-    want(a.length === 1 && a[0].dur === 900 && a[0].runs === 1 && a[0].props.join() === "transform", `AH-159 the hairline's draw: ${JSON.stringify(a)}`);
-    await p.waitForTimeout(ENTERED);
-    const end = await p.evaluate(() => { const em = document.querySelector(".hero-head em"); return { tf: getComputedStyle(em, "::after").transform, anims: em.getAnimations({ subtree: true }).length }; });
-    want(end.tf === "none" && end.anims === 0, `AH-159 the hairline after its draw: ${JSON.stringify(end)}`);
-    await done(t, "AH-159 the hairline draws once", [API]);
-  }
-  {
-    const t = await open("index.html", { width: 1280, height: 800, js: false, until: "load" });
-    const r = await t.page.evaluate(() => { const em = document.querySelector(".hero-head em"); return { tf: getComputedStyle(em, "::after").transform, w: parseFloat(getComputedStyle(em, "::after").width), anims: em.getAnimations({ subtree: true }).length }; });
-    want(r.tf === "none" && r.w > 0 && r.anims === 0, `AH-159 the hairline with no script: ${JSON.stringify(r)}`);
-    await done(t, "AH-159 the hairline with no script");
-  }
-  // ... and the serif arriving late moves nothing (held back 1.5 s, the fallback serif first)
-  for (const width of [1280, 390]) {
-    const t = await open("index.html", { width, height: 800, until: "domcontentloaded",
-      init: () => { window.__shift = 0; new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__shift += e.value; }).observe({ type: "layout-shift", buffered: true }); },
-      setup: (p) => p.route("**/instrument-serif-italic.woff2", async (r) => { await new Promise((ok) => setTimeout(ok, 1500)); await r.continue(); }) });
-    await t.page.evaluate(() => document.fonts.ready); await t.page.waitForTimeout(600);
-    const shift = await t.page.evaluate(() => window.__shift);
-    want(shift <= 0.01, `AH-159 the serif's late arrival at ${width} px shifted the layout ${shift.toFixed(4)}`);
-    await done(t, `AH-159 the serif's swap at ${width}`, [API]);
+    await done(t, "AH-159 the headline's one word", [API]);
   }
   assert.deepEqual(miss, [], `AH-159:\n${miss.join("\n")}`);
-  console.log("AH-159: the home page within 6 screens at 1280 x 800 and 10 at 390 x 844; the serif our own file, on the headline's one word only; its hairline drawn once (900 ms, transform, finite), already drawn under reduced motion and with no script; the serif's late arrival moves nothing");
+  console.log("AH-159: the home page within 6 screens at 1280 x 800 and 10 at 390 x 844; the headline's one word in the wine, in the headline's own font, upright, nothing under it; John's photo 240 x 300");
 }
 await browser.close();
 server.close();

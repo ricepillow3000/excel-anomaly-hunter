@@ -9,9 +9,6 @@
    only transform and opacity ever move (AH-85, docs/design/motion.md).
    Weight: one font file, a tiny blocking script and a few deferred ones, no images but the favicon. */
 @font-face { font-family: "Plus Jakarta Sans"; src: url("assets/plus-jakarta-sans.woff2") format("woff2"); font-weight: 200 800; font-display: swap; }
-/* AH-159 (John, 2026-11-12: "fancy and expensive, without going overboard"): the hero's one word in an italic display
-   serif, Instrument Serif Italic (OFL, assets/OFL-InstrumentSerif.txt), cut to Basic Latin (15 KB); used by .hero-head em only */
-@font-face { font-family: "Instrument Serif"; src: url("assets/instrument-serif-italic.woff2") format("woff2"); font-style: italic; font-weight: 400; font-display: swap; }
 /* AH-148: until the font arrives (font-display: swap), the text is set in Arial (or Helvetica, or Liberation Sans and Arimo,
    drawn to Arial's widths) scaled to Plus Jakarta Sans's own measure, so the swap moves no line. Read from the woff2 with
    fontTools: ascender 1038 and descender 222 of 1000 (OS/2, USE_TYPO_METRICS), no line gap; the average advance over the
@@ -239,12 +236,9 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 /* hero: a huge headline over ten columns, the text from column 7, then the sample sheet as the picture */
 .hero { padding-block: var(--s7) var(--s6); background: var(--grain), var(--grid), var(--paper); }
 .hero-head { grid-column: 1 / span 7; font-size: clamp(var(--fs-4), 9.2vw, 8.5rem); line-height: 1.04; }
-/* its one word set apart, as a jeweller sets one stone (AH-159): the serif's italic in the wine, and a fine gold hairline
-   under it, drawn across once as the headline lands (scaleX, --ease-out, 900 ms, finite); with reduced motion, or no
-   script, it is simply there. The serif has one weight: never a faked bold */
-.hero-head em { position: relative; display: inline-block; padding-bottom: .05em; font: italic 400 1.06em/1 "Instrument Serif", Georgia, "Times New Roman", serif; letter-spacing: 0; font-synthesis: none; color: var(--wine); }
-.hero-head em::after { content: ""; position: absolute; left: .04em; right: .04em; bottom: 0; height: max(1px, .012em); background: var(--gold); transform-origin: 0 50%; }
-@media (prefers-reduced-motion: no-preference) { html[data-js] .hero-head em::after { animation: draw 900ms var(--ease-out) calc(var(--enter-lead) + 700ms) backwards; } }
+/* its one word in the wine, in the headline's own font (AH-159, John: "remove the underline and fancy work on consistent,
+   just keep it wine red") */
+.hero-head em { font-style: normal; color: var(--wine); }
 .hero-copy { grid-column: 8 / -1; grid-row: 1; align-self: end; display: grid; gap: var(--s3); justify-items: start; }
 .hero-copy p { font-size: var(--fs-1); line-height: 1.45; color: var(--ink-2); }
 .hero .note { font-size: var(--fs--1); color: var(--muted); }

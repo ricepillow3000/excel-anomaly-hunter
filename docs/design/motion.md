@@ -562,12 +562,3 @@ Alive, and still plain to read:
   flagged by more than one type (All findings 7, the types 10); the case studies' text flows from the top of each
   equal-height card, the room left under the credit; the footer's links take eight of the twelve columns, so the
   support page's seven fit on one line at 1280 and 1440.
-
-## AH-159 (John, 2026-11-12): the headline's one word
-
-"Every cell, *consistent*": the word in Instrument Serif Italic, the wine, and a gold hairline under it (`.hero-head
-em::after`). It is drawn at rest. Where motion is welcome and the script runs (`html[data-js]`), it is drawn across
-once as the headline lands: the `draw` keyframes (scaleX 0 to 1), 900 ms on `--ease-out`, starting `--enter-lead` +
-700 ms in, `backwards` fill only, so it waits undrawn through its delay and nothing is held once it ends. Transform
-only, finite, no shimmer and no glow. Under reduced motion, or with no script, there is no animation and the line is
-simply there. `tools/test_site.mjs` (its AH-159 block) holds all three.
