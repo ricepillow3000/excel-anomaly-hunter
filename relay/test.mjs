@@ -198,6 +198,43 @@ assert.equal(sent.length, before, "and never reaches Google");
   const down = await canary("https://relay.example", secret, async () => { throw new TypeError("fetch failed"); });
   assert.ok(!down.ok && !down.line.includes(secret), down.line);
 }
+// AH-162: with no invite the canary is the public tier, so it runs every day with no secret: no Authorization header at
+// all (an empty Bearer is a 401), and it fails as the invite canary does on a refusal, Google's error and an odd answer
+{
+  const PUB = "gemini-3.5-flash-lite";
+  const penv = (extra) => ({ GEMINI_KEY: "AQ.the-secret", TOKENS: env.TOKENS, COUNTER: namespace(),
+    PUBLIC_DAILY_PER_NETWORK: "15", PUBLIC_DAILY_TOTAL: "400", PUBLIC_MODELS: PUB, ...extra });
+  const asked = []; // the headers each request left the canary with
+  // Cloudflare adds the caller's address to every request; the canary never sends one
+  const cloudflare = (e) => (url, init) => {
+    const req = new Request(url, init);
+    asked.push(new Headers(req.headers));
+    req.headers.set("CF-Connecting-IP", "203.0.113.162");
+    return worker.fetch(req, e);
+  };
+  googleStatus = 200;
+  for (const none of ["", undefined]) {
+    const before = sent.length;
+    const fine = await canary("https://relay.example", none, cloudflare(penv({})));
+    assert.ok(fine.ok && fine.line.includes("with no invite (public tier)"), fine.line);
+    assert.equal(asked.at(-1).has("Authorization"), false, `no Authorization header at all (invite ${JSON.stringify(none)})`);
+    assert.equal(sent.length, before + 1, "one call reached Google");
+    assert.equal(sent.at(-1).body.model, PUB, "on the public tier's model");
+  }
+  const refused = await canary("https://relay.example", "", cloudflare(penv({ PUBLIC_DAILY_TOTAL: "0" })));
+  assert.ok(!refused.ok && /429/.test(refused.line), refused.line);
+  googleStatus = 403; // a revoked Gemini key: the relay answers 502 in its own words
+  const broken = await canary("https://relay.example", "", cloudflare(penv({})));
+  assert.ok(!broken.ok && /502/.test(broken.line) && broken.line.includes("public tier"), broken.line);
+  googleStatus = 200;
+  for (const [what, answer] of [["not JSON", "<html>"], ["cut off", '{"choices":[{"finish_reason":"length","message":{"content":"{\\"expl"}}]}'],
+    ["not the fix shape", '{"choices":[{"message":{"content":"{\\"hello\\":1}"}}]}']]) {
+    const odd = await canary("https://relay.example", "", async () => new Response(answer, { status: 200 }));
+    assert.ok(!odd.ok && !odd.line.includes("[invite]"), `${what}: ${odd.line}`);
+  }
+  const down = await canary("https://relay.example", "", async () => { throw new TypeError("fetch failed"); });
+  assert.ok(!down.ok && down.line.includes("TypeError: fetch failed"), down.line);
+}
 // AH-125 ("uploads not stored"): what a /fix sends is passed to Google and never kept. The relay's only storage is the
 // counter's one object "c" ({day, total, by: {invite name: calls}}), and the only bindings it reads are its secrets, its
 // caps and that counter: no KV, R2 or D1 a request could land in (test_privacy_promises.py reads wrangler.toml)

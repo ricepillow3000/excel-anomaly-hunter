@@ -1050,6 +1050,28 @@
   ]
  },
  {
+  "id": "relay-canary-public-tighten",
+  "guard": "canary: no invite = no Authorization header (the public tier)",
+  "file": "relay/canary.mjs",
+  "old": "...(invite && { Authorization: `Bearer ${invite}` })",
+  "new": "Authorization: `Bearer ${invite ?? \"\"}`",
+  "kind": "tighten",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
+  "id": "relay-canary-invite-loosen",
+  "guard": "canary: an invite is sent as its Bearer",
+  "file": "relay/canary.mjs",
+  "old": "...(invite && { Authorization: `Bearer ${invite}` })",
+  "new": "...(false && { Authorization: `Bearer ${invite}` })",
+  "kind": "loosen",
+  "tests": [
+   "node relay/test.mjs"
+  ]
+ },
+ {
   "id": "relay-invite-loosen",
   "guard": "invite hash check",
   "file": "relay/worker.js",
