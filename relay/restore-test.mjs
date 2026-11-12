@@ -28,7 +28,7 @@ globalThis.fetch = async () => { // a stand-in Google that always answers
   reachedGoogle++;
   return new Response(JSON.stringify({ choices: [{ message: { content: '{"explanation":"x","changes":[]}' } }] }), { status: 200 });
 };
-const good = JSON.stringify({ messages: [{ role: "user", content: "Fix row 7" }], response_format: { type: "json_schema" } });
+const good = JSON.stringify({ messages: [{ role: "user", content: "Fix row 7" }], response_format: { type: "json_schema", json_schema: { name: "fix", schema: {} } } });
 const call = (env, code) => worker.fetch(new Request("https://relay.example/fix", {
   method: "POST", headers: { Authorization: `Bearer ${code}` }, body: good }), env);
 

@@ -189,3 +189,20 @@ free Workers Rate Limiting, before the counter and Google), and the cap counts b
 
 Lesson: **a refusal must not cost the day.** A count spent on an answer that did no work is a count an attacker can
 spend for everyone. Count before the work, and give back what the work never used.
+
+### 2026-11-12: three fresh audits, every finding reproduced (AH-160)
+John asked for a sweep so users' data is never at risk. Three read-only audits (engine; AI path and relay; pane and
+website), each finding kept only with a reproduction, found nothing High and 3 Medium: a header row of 16,384 identical
+names pinned a core for about 85 minutes (the rename loop was cubic); a `"` inside a quoted sheet name or a table
+column opened a fake string that hid IMPORTCSV or COPILOT from the AI formula check; and a label typed with a
+full-width `＝WEBSERVICE(...)` 10 times beside one lowercase copy was auto-fixed through `formulas`, with no Accept,
+because the spelling check knew only ASCII formula signs while the rest of the code knew all of them. The Lows: the
+relay read a streamed body of any size before its 8 KB cap and passed any answer format through, the free AI's shared
+day said "Today's..." and was read as busy, the CLI's limits.csv kept a header formula live and report.xlsx crashed on
+a control character, an auto-fix undo record took an array, and /fix's formulas and reason had no shape check. The
+website's contact links held against `javascript:`, header and parameter injection.
+
+Lesson: **one rule, one definition.** Three places knew what "typed as a formula" means and one did not; two parsers
+read quotes in a different order than Excel. Import the shared definition (`powerbi.FORMULA_START`, `typedAsFormula`)
+and read text the way its real reader does, in one pass.
+

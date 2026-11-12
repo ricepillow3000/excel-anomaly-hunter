@@ -12,7 +12,7 @@ export const MAX_UNDOS = 50;
 export const MAX_CHARS = 4000;
 const CODE = /^[0-9a-z]{1,11}\.\d{1,7}$/;
 const WAS = new Set([null, "fixed", "dismissed"]);
-const plain = (v) => typeof v === "number" ? Number.isFinite(v) : typeof v === "string" || typeof v === "boolean";
+export const plain = (v) => typeof v === "number" ? Number.isFinite(v) : typeof v === "string" || typeof v === "boolean";
 const fits = (r) => JSON.stringify(r).length <= MAX_CHARS;
 
 // Pure: one cell as kept -> the same, or null. A crafted .xlsx can carry anything here: only plain values, only into a

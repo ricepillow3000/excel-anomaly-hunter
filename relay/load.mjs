@@ -51,7 +51,7 @@ const invites = ["Ana", "Ben", "Cy", "Di", "Ed"];
 const env = { GEMINI_KEY: "AQ.load-test-not-a-key", COUNTER: namespace(), BURST, MODELS: "gemini-3.8-flash", PUBLIC_MODELS: "gemini-3.5-flash-lite",
   TOKENS: JSON.stringify(Object.fromEntries(await Promise.all(invites.map(async (n) => [await sha(`inv_${n}`), n])))),
   ...Object.fromEntries(["PUBLIC_DAILY_PER_NETWORK", "PUBLIC_DAILY_TOTAL", "PUBLIC_DAILY_PER_48", "DAILY_PER_INVITE", "DAILY_TOTAL"].map((n) => [n, String(v(n))])) };
-const body = JSON.stringify({ messages: [{ role: "user", content: "Fix row 7" }], response_format: { type: "json_schema" } });
+const body = JSON.stringify({ messages: [{ role: "user", content: "Fix row 7" }], response_format: { type: "json_schema", json_schema: { name: "fix", schema: {} } } });
 
 async function wave(name, sends) { // sends: [{ip} | {invite}] in arrival order, all fired at once
   minute.clear();

