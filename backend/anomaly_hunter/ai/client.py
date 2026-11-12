@@ -127,6 +127,10 @@ VSTACK WEEKDAY WEEKNUM WORKDAY WORKDAY.INTL WRAPCOLS WRAPROWS XLOOKUP XMATCH XOR
 NAMES = re.compile(r"(?<![\w.])[^\W\d][\w.]*|[(){},]")
 CELLS = re.compile(r"[A-Z]{1,3}\d+|R\d*C?\d*|C\d*")  # A1, R1C1 (R[-1]C[2] is R and C once [-1] is set aside)
 SPACES = re.compile(r"\s*")
+# AH-160: "text", 'a sheet' and T[a column] read in ONE pass, left to right, as Excel reads them ("" and '' escape a
+# quote, ' escapes the next character in brackets): blanking strings first let a " inside 'a sheet' or T[a"b] open a
+# fake string that hid IMPORTCSV or COPILOT between two of them
+QUOTED = re.compile(r"\"(?:[^\"]|\"\")*\"|'(?:[^']|'')*'|\[(?:[^\[\]']|'.|\[(?:[^\[\]']|'.)*\])*\]", re.DOTALL)
 
 
 def unsafe_call(text):
@@ -135,9 +139,11 @@ def unsafe_call(text):
     text = unicodedata.normalize("NFKC", text).lstrip()
     if text[:1] not in "=+-@":
         return False  # a plain value is never a call
-    s = re.sub(r"'[^']*'", "''", re.sub(r'"[^"]*"', '""', text.upper())).replace("$", "")  # "text", 'a sheet', $A$1
-    while (t := re.sub(r"\[[^\[\]]*\]", "\0", s)) != s:  # Table1[[#This Row],[Units]] -> Table1 and a mark
-        s = t
+    s = text.upper()
+    if set(QUOTED.sub("", s)) & set("\"'[]"):
+        return True  # a quote or bracket left open: Excel would read it some other way than this check does
+    # "text" -> "", 'a sheet' -> '', Table1[[#This Row],[Units]] -> Table1 and a mark; $A$1 -> A1
+    s = QUOTED.sub(lambda m: {'"': '""', "'": "''"}.get(m.group()[0], "\0"), s).replace("$", "")
     s = re.sub(r"#[A-Z_/0]+[!?]?", "0", s)  # #N/A, #DIV/0!
     s = re.sub(r"(?<![\w.])[A-Z]{1,3}:[A-Z]{1,3}(?![\w.(])", "0", s)  # whole columns, A:C
     # each open ( or {: the function it calls, where each argument starts, the names in it not yet known
@@ -399,7 +405,7 @@ def _call(prompt, out, schema, name, deadline):
                 words = words[:200] or f"The AI relay answered with error {e.code}. Try again later."
                 words += " Ask John for a new invite code." if e.code == 401 and not free else ""
                 # the relay's 429 is its caps or Google's quota; its 502 names Google's own error (relay/worker.js)
-                limit = ("day" if "today" in words else "busy") if e.code == 429 else "busy" if e.code == 502 and re.search(
+                limit = ("day" if "today" in words.lower() else "busy") if e.code == 429 else "busy" if e.code == 502 and re.search(
                     r"error 50[234]\b", words) else None
                 if free and limit == "day":  # the network's or everyone's share, or Google's day on the relay's project
                     words = ("The free AI has used today's share for your network. It works again tomorrow, or add your "

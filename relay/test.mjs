@@ -27,7 +27,7 @@ globalThis.fetch = async (url, init) => {
 
 const env = { GEMINI_KEY: "AQ.the-secret", TOKENS: JSON.stringify({ [await hash("inv_ana")]: "Ana", [await hash("inv_ben")]: "Ben" }),
   COUNTER: namespace(), DAILY_PER_INVITE: "3", DAILY_TOTAL: "5" };
-const good = { messages: [{ role: "user", content: "Fix row 7" }], response_format: { type: "json_schema" } };
+const good = { messages: [{ role: "user", content: "Fix row 7" }], response_format: { type: "json_schema", json_schema: { name: "fix", schema: {} } } };
 const call = (body, code = "inv_ana", path = "/fix") => worker.fetch(new Request(`https://relay.example${path}`, {
   method: "POST", headers: code !== null ? { Authorization: code && `Bearer ${code}` } : {}, body: typeof body === "string" ? body : JSON.stringify(body) }), env);
 
@@ -43,7 +43,7 @@ for (const method of ["GET", "PUT"]) {
 }
 assert.equal((await call("x".repeat(9000))).status, 413, "over 8 KB");
 assert.equal((await call("{not json")).status, 400, "not JSON");
-assert.equal((await call({ messages: [{ role: "user", content: "a" }, { role: "user", content: "b" }], response_format: {} })).status, 400, "one message only");
+assert.equal((await call({ messages: [{ role: "user", content: "a" }, { role: "user", content: "b" }], response_format: good.response_format })).status, 400, "one message only");
 assert.equal(sent.length, 0, "nothing above reached Google");
 
 const r = await call(good);
@@ -208,7 +208,7 @@ assert.equal(sent.length, before, "and never reaches Google");
   const ns = { idFromName: () => "caps", get: () => ({ fetch: async (u, init) => (counted.push(init.body), obj.fetch(new Request(u, init))) }) };
   const watched = new Proxy({ ...env, COUNTER: ns }, { get: (t, k) => (read.add(String(k)), t[k]) });
   const marker = "MARKER-7c1f-" + crypto.randomUUID();
-  const upload = { messages: [{ role: "user", content: `Fix row 7: A7='${marker}', the customer's own words` }], response_format: { type: "json_schema" } };
+  const upload = { messages: [{ role: "user", content: `Fix row 7: A7='${marker}', the customer's own words` }], response_format: { type: "json_schema", json_schema: { name: "fix", schema: {} } } };
   googleStatus = 200;
   const before = sent.length;
   const done = await worker.fetch(new Request("https://relay.example/fix", { method: "POST",
@@ -308,7 +308,7 @@ assert.equal(sent.length, before, "and never reaches Google");
   assert.equal(sent.at(-1).headers.Authorization, "Bearer AQ.the-secret", "the relay adds its key");
   assert.equal(sent.length - from, 1);
   for (const [what, body] of [["over 8 KB", "x".repeat(9000)], ["not JSON", "{not json"],
-    ["two messages", JSON.stringify({ messages: [{ role: "user", content: "a" }, { role: "user", content: "b" }], response_format: {} })],
+    ["two messages", JSON.stringify({ messages: [{ role: "user", content: "a" }, { role: "user", content: "b" }], response_format: good.response_format })],
     ["no response_format", JSON.stringify({ messages: [{ role: "user", content: "a" }] })]]) {
     const bad = await worker.fetch(new Request("https://relay.example/fix", { method: "POST", headers: { "CF-Connecting-IP": "203.0.113.9" }, body }), e);
     assert.ok([400, 413].includes(bad.status), `the public tier keeps the body checks: ${what}`);
@@ -351,7 +351,7 @@ assert.equal(sent.length, before, "and never reaches Google");
   const counted = [];
   e = penv({ COUNTER: { idFromName: () => "caps", get: () => ({ fetch: async (u, init) => (counted.push(init.body), obj.fetch(new Request(u, init))) }) } });
   const ip = "203.0.113.77", marker = "MARKER-" + crypto.randomUUID();
-  assert.equal((await free(e, ip, { messages: [{ role: "user", content: `Fix row 7: '${marker}'` }], response_format: { type: "json_schema" } })).status, 200);
+  assert.equal((await free(e, ip, { messages: [{ role: "user", content: `Fix row 7: '${marker}'` }], response_format: { type: "json_schema", json_schema: { name: "fix", schema: {} } } })).status, 200);
   for (const kept of [...puts.map(([, v]) => v), ...counted]) {
     assert.ok(!kept.includes(ip) && !kept.includes("203.0.113") && !kept.includes(marker), "no IP and no request stored - " + kept);
   }
@@ -419,7 +419,7 @@ assert.equal(sent.length, before, "and never reaches Google");
   assert.equal((await post(wide(8193))).status, 413, "8,193 bytes are refused, however few characters they are");
   let read = false; // a request whose body is never read unless the relay asks for it
   const declared = (size, body = JSON.stringify(good)) => ({ url: "https://relay.example/fix", method: "POST",
-    headers: new Headers({ Authorization: "Bearer inv_ana", "Content-Length": String(size) }), text: async () => ((read = true), body) });
+    headers: new Headers({ Authorization: "Bearer inv_ana", "Content-Length": String(size) }), get body() { read = true; return new Response(body).body; } });
   const from = sent.length;
   const huge = await worker.fetch(declared(1024 * 1024), e);
   assert.equal(huge.status, 413, "a declared 1 MB is refused");
@@ -573,6 +573,46 @@ assert.equal(sent.length, before, "and never reaches Google");
   assert.equal((await at("2001:db8:3:1::1")).status, 200);
   assert.equal((await at("2001:db8:3:2::1")).status, 200, "the [vars] cap: the /48's 2nd");
   assert.equal((await at("2001:db8:3:3::1")).status, 429, "and its 3rd refused");
+}
+// AH-160: with no Content-Length (a streamed body) the relay read the whole body, 64 MB and more, before its 8 KB
+// cap. It reads up to the cap and stops there; a small streamed body is still served, a letter split between pieces too
+{
+  const e = { ...env, COUNTER: namespace(), DAILY_PER_INVITE: "10", DAILY_TOTAL: "10" };
+  const stream = (pieces) => new ReadableStream({ pull(c) { const p = pieces.next(); p.done ? c.close() : c.enqueue(p.value); } });
+  const post = (body) => worker.fetch(new Request("https://relay.example/fix", { method: "POST", headers: { Authorization: "Bearer inv_ana" },
+    body, duplex: "half" }), e);
+  let pulled = 0;
+  function* sixteen() { for (let i = 0; i < 16 * 1024; i++) { pulled += 1024; yield new Uint8Array(1024).fill(120); } } // 16 MB of "x"
+  googleStatus = 200;
+  const from = sent.length;
+  assert.equal((await post(stream(sixteen()))).status, 413, "a streamed 16 MB with no size is refused");
+  assert.ok(pulled <= 12 * 1024 && sent.length === from, `read no more than the cap and a piece or two past it: ${pulled} bytes`);
+  const bytes = new TextEncoder().encode(JSON.stringify({ ...good, messages: [{ role: "user", content: "Fix row 7: é" }] }));
+  const cut = bytes.indexOf(0xc3) + 1; // between the two bytes of "é"
+  assert.equal((await post(stream([bytes.slice(0, cut), bytes.slice(cut)].values()))).status, 200, "a small streamed body is served");
+  assert.equal(sent.at(-1).body.messages[0].content, "Fix row 7: é", "read whole, the split letter too");
+}
+// AH-160: the answer's format is set here (layer 3), yet any response_format went to Google as sent: the public tier
+// gave plain text ({type: "text"}) to whoever asked. Only a JSON schema the answer must follow is taken
+{
+  const e = { ...env, COUNTER: namespace(), DAILY_PER_INVITE: "20", DAILY_TOTAL: "20" };
+  const post = (format, auth = { Authorization: "Bearer inv_ana" }) => worker.fetch(new Request("https://relay.example/fix", {
+    method: "POST", headers: { ...auth, "CF-Connecting-IP": "203.0.113.160" }, body: JSON.stringify({ ...good, response_format: format }) }), e);
+  googleStatus = 200;
+  const from = sent.length;
+  for (const auth of [{ Authorization: "Bearer inv_ana" }, {}]) {
+    for (const format of [{ type: "text" }, { type: "json_object" }, { type: "json_schema" }, { type: "json_schema", json_schema: { name: "fix" } },
+      { type: "json_schema", json_schema: { schema: "x" } }, { type: "json_schema", json_schema: { schema: [] } }, { type: "json_schema", json_schema: { schema: null } },
+      { type: "text", json_schema: { schema: {} } }, "json_schema", null]) {
+      const r = await post(format, auth);
+      assert.equal(r.status, 400, `refused: ${JSON.stringify(format)}`);
+      assert.match((await r.json()).error, /couldn't read that request/);
+    }
+  }
+  assert.equal(sent.length, from, "none reached Google");
+  for (const auth of [{ Authorization: "Bearer inv_ana" }, {}]) {
+    assert.equal((await post({ type: "json_schema", json_schema: { name: "fix", schema: {} } }, auth)).status, 200, "a JSON schema is taken");
+  }
 }
 console.log("relay abuse tests passed");
 

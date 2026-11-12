@@ -283,14 +283,24 @@ def load_inputs(paths):
     return df, *_coerce(df, [c for c in df.columns if c != "source_file"]), warnings
 
 
+def unique(names, alias, first):
+    """Each name once, in order: a name already taken becomes alias(name, k) for the first free k from `first`. A repeat
+    goes on from the last k its name tried (a taken name stays taken): searched from `first` again in a list, 16,384
+    identical headers took about 85 minutes (AH-160)."""
+    taken, last, out = set(), {}, []
+    for c in names:
+        name, k = c, last.get(c, first)
+        while name in taken:
+            name, k = alias(c, k), k + 1
+        last[c] = k
+        taken.add(name)
+        out.append(name)
+    return out
+
+
 def load_from_records(columns, rows):
     """Panel rows -> (df, types, errors_log). Stringify first so it matches the file path."""
-    cols = []
-    for c in map(str, columns):  # dedupe headers pandas-style (Name, Name.1), skipping names already taken: dup label breaks df[c]
-        name, k = c, 0
-        while name in cols:
-            k += 1
-            name = f"{c}.{k}"
-        cols.append(name)
+    # dedupe headers pandas-style (Name, Name.1), skipping names already taken: dup label breaks df[c]
+    cols = unique(map(str, columns), lambda c, k: f"{c}.{k}", 1)
     df = pd.DataFrame([["" if v is None else str(v) for v in r] for r in rows], columns=cols)
     return df, *_coerce(df, cols)

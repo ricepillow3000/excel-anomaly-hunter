@@ -1,7 +1,7 @@
 import { EXCEL_ERRORS } from "../constants/index.js";
 import { state } from "../hooks/use-state.js";
 import { $, show } from "../utils/dom.js";
-import { cellAt, colLetter, r1c1ToA1, readAs, sameRow } from "../utils/sheet.js";
+import { cellAt, colLetter, r1c1ToA1, readAs, sameRow, typedAsFormula } from "../utils/sheet.js";
 import { setApplied } from "../components/fix-preview.js";
 import { busy } from "../components/progress.js";
 import { post } from "../services/api.js";
@@ -53,8 +53,9 @@ export function recommendFix(columns, rows, i, limits, reason, startRow, startCo
     }
     const lim = limits && limits[c], lo = lim && lim[2], hi = lim && lim[3];
     const past = (a, b) => typeof v === "number" && ((a != null && v < a) || (b != null && v > b));
-    const variant = likely && typeof likely[c] === "string" && typeof v === "string"; // "sales" where the column says "Sales"
-    const miss = !variant && maybe && typeof maybe[c] === "string" && typeof v === "string"; // "Pencl" where it says "Pencil"
+    // AH-160: never a spelling Excel would read as a formula (a full-width ＝ is =): the engine once offered one
+    const variant = likely && typeof likely[c] === "string" && typeof v === "string" && !typedAsFormula(likely[c]); // "sales" where the column says "Sales"
+    const miss = !variant && maybe && typeof maybe[c] === "string" && typeof v === "string" && !typedAsFormula(maybe[c]); // "Pencl" where it says "Pencil"
     // a typo the numbers cannot prove (a value too small, a tenth among small whole numbers): offered only where the
     // engine's own limit sentence says "(maybe 2)", as a guess the user confirms, never "likely" (AH-21)
     const weak = typeof v === "number" && maybe && typeof maybe[c] === "number"

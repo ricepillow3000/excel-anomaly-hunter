@@ -71,6 +71,12 @@ EXCEL_COLUMNS = 16_384  # a sheet's columns. AH-140: rows [] made the cell cap 0
 _CSV_LOCK = threading.Lock()
 
 
+def _cell(v):
+    """A cell is text, a number, true/false or blank. NaN/Infinity parse as JSON in Python, not in Excel; a 400-digit
+    whole number is just a (flagged) value."""
+    return v is None or isinstance(v, (str, bool, int)) or isinstance(v, float) and math.isfinite(v)
+
+
 def _bad(body):
     """Trust boundary: {columns, rows (same width; cells are text, numbers, true/false or blank), limits?, order_by?}
     -> error text or None. Anything else is a clear 400, never a crash deep in pandas."""
@@ -85,8 +91,7 @@ def _bad(body):
         return f"That's too many cells for one scan. Select at most {MAX_CELLS:,} cells and try again."
     if not all(isinstance(c, (str, int, float)) and not isinstance(c, bool) for c in body["columns"]):
         return "column names must be text or numbers"
-    # NaN/Infinity parse as JSON in Python, not in Excel; a 400-digit whole number is just a (flagged) value
-    if not all(v is None or isinstance(v, (str, bool, int)) or isinstance(v, float) and math.isfinite(v) for r in rows for v in r):
+    if not all(_cell(v) for r in rows for v in r):
         return "cells must be text, numbers, true/false or blank"
     limits = body.get("limits")
     number = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and -1e300 < v < 1e300  # NaN fails too
@@ -212,11 +217,8 @@ def create_app(scan_csv=None):
                     f is None or type(f) is str and f.startswith("=") and len(f) <= EXCEL_FORMULA for f in r) for r in formulas)):
             return {"error": f"'formulas' must be shaped like 'rows', each cell null or its formula (\"=...\", at most "
                              f"{EXCEL_FORMULA:,} characters)"}, 400
-        try:  # Agent 1, one scan, no stop
-            df, out, suggested, used, status, fair = scan_agent.scan(cols, rows, limits, order_by, _strength(body), formulas=formulas)
-        except Exception:  # a bug in the engine: full detail to the log, not pandas internals to the user
-            app.logger.exception("scan failed")
-            return {"error": BROKE}, 500
+        # Agent 1, one scan, no stop. A bug in the engine is json_error's 500: our words, the traceback to server.log
+        df, out, suggested, used, status, fair = scan_agent.scan(cols, rows, limits, order_by, _strength(body), formulas=formulas)
         saved = None  # Power BI copy: None = off, True = written, False = it failed (the pane says so)
         if scan_csv and body.get("power_bi") is not True:  # opt-in (2026-10-16): no plain-text copy of the sheet unasked
             with _CSV_LOCK:
@@ -301,9 +303,17 @@ def create_app(scan_csv=None):
         intent = body.get("intent") or ""
         if not isinstance(intent, str) or len(intent) > 2000:
             return {"error": "'intent' must be text, at most 2000 characters"}, 400
-        formulas = body.get("formulas")  # the flagged row's formulas, so Claude fixes inputs instead of overwriting them
-        if formulas is not None and not (isinstance(formulas, list) and len(formulas) == len(body["columns"])):
-            return {"error": "'formulas' must be a list as long as 'columns'"}, 400
+        # each column's name is looked for in the reason (AH-160: it had no cap); the engine's own are under 400
+        reason = body.get("reason") or ""
+        if not isinstance(reason, str) or len(reason) > 10_000:
+            return {"error": "'reason' must be text, at most 10,000 characters"}, 400
+        # the flagged row's formulas, so Claude fixes inputs instead of overwriting them: Excel's formulas of the row, a
+        # cell's formula or, where it has none, the cell itself (AH-160: any item and any length went through)
+        formulas = body.get("formulas")
+        if formulas is not None and not (isinstance(formulas, list) and len(formulas) == len(body["columns"]) and all(
+                _cell(f) and not (isinstance(f, str) and f.startswith("=") and len(f) > EXCEL_FORMULA) for f in formulas)):
+            return {"error": f"'formulas' must be a list as long as 'columns', each cell's formula (at most "
+                             f"{EXCEL_FORMULA:,} characters) or the cell"}, 400
         memory = body.get("memory")  # AH-143: fixes the user accepted before in this column, kept by the pane on this PC
         # AH-153: as {h, k, o, n}, so the engine can rank them; the old list of texts is refused (pane and engine ship together)
         if memory is not None and not (isinstance(memory, list) and len(memory) <= 20 and all(
@@ -313,7 +323,7 @@ def create_app(scan_csv=None):
         if care.distress(intent):  # AH-125: helpline numbers from the engine itself, before any key check or AI call
             return {"explanation": care.MESSAGE, "changes": [], "care": True}
         return ai(lambda: client.suggest_fix(body["columns"], body["rows"], body["row_index"], body["start_row"],
-                                             body["start_col"], str(body.get("reason") or ""), intent, formulas, memory=memory))
+                                             body["start_col"], reason, intent, formulas, memory=memory))
 
     @app.post("/odd-text")
     def odd_text_route():
@@ -342,16 +352,11 @@ def create_app(scan_csv=None):
         if err := _bad(body):
             return {"error": err}, 400
         i, changes, width = body.get("row_index"), body.get("changes"), len(body["columns"])
-        cell = lambda v: v is None or isinstance(v, (str, bool, int)) or isinstance(v, float) and math.isfinite(v)
         if not (type(i) is int and 0 <= i < len(body["rows"]) and isinstance(changes, list) and 0 < len(changes) <= width and all(
-                isinstance(c, dict) and type(c.get("col")) is int and 0 <= c["col"] < width and "value" in c and cell(c["value"])
+                isinstance(c, dict) and type(c.get("col")) is int and 0 <= c["col"] < width and "value" in c and _cell(c["value"])
                 for c in changes)):  # a blank cell is "value": null, never a missing key (that crashed the checker)
             return {"error": "'row_index' and 'changes' [{col, value}] must point inside the table"}, 400
-        try:
-            return checker.check([str(c) for c in body["columns"]], body["rows"], body.get("limits"), i, changes, _strength(body))
-        except Exception:
-            app.logger.exception("check failed")
-            return {"error": BROKE}, 500
+        return checker.check([str(c) for c in body["columns"]], body["rows"], body.get("limits"), i, changes, _strength(body))
 
     @app.post("/suggest")
     def suggest_route():
@@ -362,11 +367,7 @@ def create_app(scan_csv=None):
         i, cols = body.get("row_index"), [str(c) for c in body["columns"]]
         if not (type(i) is int and 0 <= i < len(body["rows"]) and isinstance(body.get("column"), str) and body["column"] in cols):
             return {"error": "'row_index' and 'column' must point inside the table"}, 400
-        try:
-            return checker.suggest(cols, body["rows"], body.get("limits"), i, body["column"], _strength(body))
-        except Exception:
-            app.logger.exception("suggest failed")
-            return {"error": BROKE}, 500
+        return checker.suggest(cols, body["rows"], body.get("limits"), i, body["column"], _strength(body))
 
     return app
 

@@ -15,6 +15,8 @@ from pathlib import Path
 
 import numpy as np
 
+from anomaly_hunter.engine.load import unique
+
 RESULTS = ("Severity", "Bucket", "Reason", "Suggested Fix", "Magnitude", "Status")
 FLAGS = ("Scanned At", "Sheet", "Excel Row", *RESULTS)
 FLAGGED = ("High", "Medium", "Low")  # "Noted" = fine, as in the pane
@@ -127,12 +129,7 @@ def suggested_fix(columns, row, verdict):
 def _header(columns):
     """Header names as the CSV holds them, never two alike: a sheet's own "Severity" keeps its name, and ours becomes
     "Anomaly Hunter Severity" (then "Anomaly Hunter Severity 2"...)."""
-    names = []
-    for c in columns:
-        name, n = text(c), 2
-        while name in names:
-            name, n = f"{text(c)} {n}", n + 1
-        names.append(name)
+    names = unique((text(c) for c in columns), lambda c, n: f"{c} {n}", 2)
     ours = []
     for r in ("Excel Row", *RESULTS):
         name, n = r if r not in names else f"Anomaly Hunter {r}", 2

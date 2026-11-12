@@ -11,6 +11,7 @@ import pandas as pd
 from anomaly_hunter.engine import fairness
 from anomaly_hunter.engine.detectors import Why, _result, ecod_detector, far_off, limits_detector, say, sequence_detector
 from anomaly_hunter.engine.load import EXCEL_ERROR, NO_VALUE_WORD, PLACEHOLDER, _blank, _dates, _orders, numbers
+from anomaly_hunter.powerbi import FORMULA_START
 
 def summary_rows(df):
     """Rows that summarise the data instead of being data -> bool array: fully blank rows, rows labelled
@@ -1051,7 +1052,8 @@ def spellings(df, column_types, skip):
         if t != "text":
             continue
         s = df[col][~skip].dropna().astype(str)
-        s = s[(s.str.strip() != "") & ~s.str.lstrip().str[:1].isin(list("=+-@"))]  # formula-like text is never a "spelling"
+        # formula-like text is never a "spelling": Excel reads a full-width ＝ as = too (AH-160: its capitals fix was a formula)
+        s = s[(s.str.strip() != "") & ~s.str.lstrip().str[:1].isin(FORMULA_START)]
         # category-like: 50 labels; and for a misspelling guess (below), up to 200 that repeat 10 times each on average -
         # 68 countries over 2,530 bars of chocolate hid "Frnace", 51 menu items over 4,622 orders "Chiken Bowl" (blind
         # rounds 36 and 23, AH-32). Not for capitals: 1,222 Medium rows of "Yes"/"yes" and "9th place Match" came with it
