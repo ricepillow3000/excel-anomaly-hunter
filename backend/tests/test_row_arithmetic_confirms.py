@@ -12,6 +12,17 @@ from anomaly_hunter.powerbi import suggested_fix
 app = create_app().test_client()
 
 
+def test_only_the_rows_where_the_rule_holds_are_confirmed():
+    # AH-155: confirming every row passed this file, because the planted slip keeps its likely value from pairs anyway
+    from anomaly_hunter.engine.pipeline import confirm
+    held = {}
+    confirm(held, 5, [0, 3], "Total = A + B", ["A", "Total"])
+    assert set(held) == {"A", "Total"}
+    for c in held.values():
+        (m, rule), = c
+        assert m.tolist() == [True, False, False, True, False] and rule == "Total = A + B"
+
+
 def run(cols, rows, strength):
     """As the pane does it (and score.py): one scan for the limits, one with them."""
     post = lambda lim: app.post("/scan", json={"columns": cols, "rows": rows, "limits": lim, "order_by": None,

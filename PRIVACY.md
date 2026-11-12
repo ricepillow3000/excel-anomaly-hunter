@@ -85,7 +85,9 @@ can be charged by Google for what AI help uses; without billing, the free tier c
   - With no key or invite code of your own: to John's relay on Cloudflare, which passes it to Google's
     gemini-3.5-flash-lite with John's key. The relay counts each network's AI calls for the day under a code made from
     the day and your IP address with the relay's secret key, so the code changes every day. It never stores your IP
-    address or the request. It allows 15 AI calls per network and 400 for every free user together a day.
+    address or the request. It allows 15 AI calls per network and 400 for every free user together a day. It also
+    allows at most 15 calls a minute from one network, and 45 a day from one IPv6 /48 (the block of networks one
+    provider may give one customer).
 - **Google's free tier may use what you send to improve its products.** The free AI and invite codes always use John's free key; with
   your own key it depends on your Google plan. Don't ask AI about private or personal data.
 

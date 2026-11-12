@@ -341,6 +341,8 @@ if (mode === "flow") {
   const logged = await page.evaluate(() => __log.length); // every cell value Excel was asked to write, in order
   const wrote = () => page.evaluate((n) => __log.slice(n).map((w) => `${w[1]}!${w[2]}`).join(), logged);
   const c1 = calls.length;
+  // AH-155: no test repainted a highlighted cell of the row, so Accept putting back every cell of it passed
+  await page.evaluate(() => __fill("Sales", "D11", "#FF0000"));
   await page.click("#fix-apply"); await idle();
   ok((await cell("C11")).v !== -5 && (await page.isVisible("#fix-undo")) && (await text("#fix-apply")) === "Accepted", "Accept writes the cell");
   ok(since(c1) === "/check" && calls[c1][1].row_index === 9, "Accept asks the engine once, /check for that row (never a full /scan) - " + since(c1));
@@ -349,6 +351,7 @@ if (mode === "flow") {
   ok((await text("#fix-status")).includes("looks right now"), "checker re-scanned the fixed row - " + (await text("#fix-status")));
   ok(await page.evaluate(() => document.getElementById("fix-status").classList.contains("tick")), "AH-149: a fix that checks out gets a check mark, once");
   ok((await cell("C11")).fill === "#00B050" && (await cell("E11")).fill === "#00B050", "fixed row: highlight gone, the user's own green back");
+  ok((await cell("D11")).fill === "#FF0000", "and a cell of it the user repainted since keeps the user's colour - " + (await cell("D11")).fill);
   ok(await page.isVisible("#fix-next") && !(await page.isVisible("#fix-dismiss")), "then Undo / Next row");
   await back();
   ok(/1 of \d+ done/.test(await text("#list-title")) && (await text("#flagged-list")).includes("Fixed"), "list keeps its rows and marks the fixed one - " + (await text("#list-title")));
@@ -362,6 +365,8 @@ if (mode === "flow") {
   await page.click("#fix-undo"); await idle();
   ok((await cell("C11")).v === -5 && !(await page.isVisible("#fix-undo")) && (await cell("C11")).fill === "#FFEB9D" && (await cell("A11")).fill === "#00B050",
     "Undo puts it back, highlight too (on the named cells only)");
+  ok((await cell("D11")).fill === "#FF0000", "but never over the colour the user put on since - " + (await cell("D11")).fill);
+  await page.evaluate(() => __fill("Sales", "D11", "#FFEB9D"));
   // AH-127: a double-click on Undo undid the fix, and its second click landed on Dismiss, drawn where Undo was: the row
   // was dismissed too (3 of 3 tries) and the card moved on to row 51. One click does one thing
   await page.click("#fix-apply"); await idle();
@@ -423,7 +428,11 @@ if (mode === "flow") {
   // 4) Remove highlights puts back exactly what was there (the user's green row 11 too)
   await back();
   ok((await text("#flagged-list")).includes("Dismissed"), "the dismissed row is marked in the list");
+  // AH-155: no test repainted a highlighted cell, so Remove highlights putting back every recorded cell passed
+  await page.evaluate(() => __fill("Sales", "E51", "#FF0000"));
   await page.click("#clear-highlights"); await idle();
+  ok((await cell("E51")).fill === "#FF0000", "a highlighted cell the user repainted since keeps the user's colour - " + (await cell("E51")).fill);
+  await page.evaluate(() => __fill("Sales", "E51", null));
   const after = await page.evaluate(() => ["A11", "A22", "B22", "A51"].map((a) => __cell("Sales", a).fill));
   ok(after[0] === "#00B050" && after[1] === null && after[2] === "#00B0F0" && after[3] === null, "Remove highlights restores the old fills, cell by cell on a two-color row - " + after);
   ok((await text("#notice")).startsWith("Highlights removed"), "and says so");

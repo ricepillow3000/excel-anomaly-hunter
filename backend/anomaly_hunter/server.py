@@ -48,7 +48,9 @@ BROKE = f"The checker hit a problem it didn't expect. Try again, and if it happe
 CERT_NAME = "Anomaly Hunter local CA"  # install.bat finds the trusted CA by this name
 PORT = 5055
 LOCAL = {"127.0.0.1", "localhost"}
-ORIGINS = {None, f"https://127.0.0.1:{PORT}", f"https://localhost:{PORT}"}  # None = not a browser (tests, curl)
+# None = not a browser (tests, curl). Only the address the manifest loads the pane from: https://localhost was let in
+# too, though no manifest, page or install ever used it (AH-155: one origin fewer to trust)
+ORIGINS = {None, f"https://127.0.0.1:{PORT}"}
 # Only our own files plus Microsoft's office.js may run in the pane, so injected markup can't run script.
 # Measured in real Excel 2026-10-11: those are the only loads; the pane is top-level (never framed).
 CSP = ("default-src 'self'; script-src 'self' https://appsforoffice.microsoft.com; object-src 'none'; "
@@ -385,7 +387,9 @@ class _HandshakeInThread(ssl.SSLContext):
 
 
 def tls_context(crt, key):
-    ctx = _HandshakeInThread(ssl.PROTOCOL_TLS_SERVER)  # TLS 1.2+ only, like Werkzeug's own
+    ctx = _HandshakeInThread(ssl.PROTOCOL_TLS_SERVER)
+    # TLS 1.2+ said here, not left to this Python's and this OpenSSL's defaults, which nothing held (AH-155)
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
     ctx.load_cert_chain(crt, key)
     return ctx
 

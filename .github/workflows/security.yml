@@ -42,6 +42,8 @@ jobs:
           backend frontend relay e2e tools
       - name: Relay abuse tests (invite codes, daily caps, key never echoed)
         run: node relay/test.mjs
+      - name: Relay load test (2,200 requests at once, exactly the caps through, no 5xx)
+        run: node relay/load.mjs
       - name: Pane logic self-check
         run: node frontend/selfcheck.js
       - name: Website links and scripts (every link lands, nothing loads from outside, no HTML from data)
@@ -59,6 +61,28 @@ jobs:
       # mistyped or made-up name only printed "Dependency not found on PyPI" and passed (AH-105)
       - name: Every pinned package, installed here or not
         run: pip-audit -r constraints.txt --no-deps --disable-pip --strict
+
+  # AH-155: green tests prove a guard only once a planted bug turns them red. Every guard in tools/mutations.json is
+  # broken in a throwaway copy, the browser's mutants too; one a test survives fails the job, naming it
+  mutation:
+    # 24.04, not latest: Playwright 1.56.1 (the Windows e2e's pin) has no Chromium for ubuntu 26.04 (first run, PR #111)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            constraints.txt
+      - run: pip install -e ".[dev]" -c constraints.txt
+      - name: Playwright for the browser's mutants (the version the Windows e2e uses)
+        run: |
+          npm install --prefix "$RUNNER_TEMP/pw" playwright@1.56.1 --no-save --silent
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Every guard broken on purpose turns a test red
+        run: NODE_PATH="$RUNNER_TEMP/pw/node_modules" python tools/mutate.py --e2e
 
   zap:
     needs: checks

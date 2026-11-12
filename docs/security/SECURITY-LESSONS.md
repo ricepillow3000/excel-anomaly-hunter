@@ -36,7 +36,9 @@ the same PR as the fix.
    error, never a fallback that grants more access.
 4. **No admin panel = nothing to fall into.** The safest admin feature is one that does not exist in the app.
 5. **Measure, don't argue.** Each guarantee below is backed by a test that tries to break it. If no test tries,
-   the guarantee is a hope.
+   the guarantee is a hope. And a test is a hope too until a planted bug turns it red: every guard, the test that
+   keeps the wrong out, the one that lets the right in, and the mutants that prove both are in
+   [GUARD-MAP.md](GUARD-MAP.md) (`tools/mutate.py`).
 
 ## The guarantees (John's rules)
 
@@ -82,8 +84,8 @@ protection on `main` so nothing reaches the release job without John's review.
   0600/0700 files stop it reading the key and the scans, not calling the engine. If shared PCs matter, the fix is to
   check the caller's account on every request (AH-140).
 - **The relay's public tier (AH-151) is open to anyone**, with no invite. An IPv6 address is counted by its /64, so
-  one subscriber's billions of addresses share the 15 a day, but a stranger with many /64s (a /48 holds 65,536 of
-  them, and some hosts hand out more) or many IPv4 addresses still gets past it. The public total (400 a day of
+  one subscriber's billions of addresses share the 15 a day, and each /48 by itself too (45 a day, AH-158), but a
+  stranger with many /48s (some hosts hand out a /32) or many IPv4 addresses still gets past it. The public total (400 a day of
   gemini-3.5-flash-lite, counted before Google) bounds it; the relay's project has no billing, so it costs nothing;
   the invites keep their own share; PUBLIC_DAILY_TOTAL "0" switches it off. A network's counter key is an HMAC of the day and the IP (or /64) under the
   Worker's key: no IP is stored, though whoever holds the key could test every IPv4 address against a day's codes.
@@ -148,3 +150,42 @@ only reached through anthropic and flask); Pillow, imported by nothing, removed.
 
 Lesson: **the environment is input too.** A variable, a `.env` file or a moving tag decides what runs as surely as a
 request body does, so the code sets every switch it depends on itself.
+
+### 2026-11-10: mutation testing, John's "don't trust green checks" (AH-155)
+55 guards were each broken on purpose, 110 times in all (a guard loosened, or tightened so it kept the right out), in a
+throwaway copy of the repo. Every test was green, and 15 mutants passed them all. Each now has a test that fails with
+it, and `tools/mutate.py` runs them all in CI's `mutation` job on every push and pull request: 0 survive.
+
+| Survived | What nothing tested | Test that now catches it |
+|---|---|---|
+| OUTSIDE's backslash rule | every share in the tests also ended in `.xlsx'!`, which another rule caught | `test_an_ai_formula_naming_a_share_or_path_that_is_not_a_workbook_file_is_left_out` |
+| The relay's POST-only rule | no test sent GET or PUT | `relay/test.mjs` "only POST: GET /fix" |
+| The relay's 8 KB cap cut to 4 KB, or one byte short | every body served was ~100 bytes, so the engine's real 7,000-byte requests were never sent | `relay/test.mjs` "a 7000-byte request is served", "a 8192-byte request is served" |
+| TLS 1.2 as the lowest version | nothing in the engine set it: Python's default did | `test_the_engine_speaks_tls_1_2_and_1_3_and_never_anything_older` (`tls_context` now sets it) |
+| The 60 s idle limit | no test | `test_a_connection_that_goes_quiet_is_dropped_and_never_holds_a_thread` |
+| A secret file's create mode 0600 | the fchmod after it hid a 0644 create | `test_a_secret_file_is_born_readable_only_by_its_owner_never_open_for_a_moment` |
+| `/fix`'s `formulas` shape | no test sent one | `test_each_fix_field_is_taken_right_up_to_its_limit_and_refused_one_past_it` |
+| Every limit cut one short (MAX_CELLS, a formula's 8,192 characters, `intent`'s 2,000, the last `start_col`) | each was sent only one past its limit | the same test, `test_a_scan_of_exactly_the_most_cells_the_pane_sends_is_taken`, `test_a_formula_as_long_as_excel_allows_is_taken`; the 256 MB cap: `test_a_body_right_at_the_size_cap_is_read_one_byte_over_it_is_refused_and_a_20_mb_sheet_fits` |
+| Remove highlights and Accept only on a cell still in our colour, Undo never over the user's | no test repainted a highlighted cell (Accept's rule was found by a new mutant) | e2e "a highlighted cell the user repainted since keeps the user's colour", "and a cell of it the user repainted since keeps the user's colour", "but never over the colour the user put on since" |
+| Uninstall skips its own running file | no test | `test_uninstall_empties_its_folder_but_leaves_its_own_running_file_to_the_delete_timer` |
+| The AI writes only inside the table | the shown-cells check dropped the row under the table too | `test_the_ai_may_write_only_the_tables_header_row_and_data_rows` |
+| Only the rows where a rule holds are confirmed | its own file passed with every row confirmed | `test_only_the_rows_where_the_rule_holds_are_confirmed` |
+
+Also: the engine let in the Origin `https://localhost:5055`, which no manifest, page or install ever used. It is gone
+(`test_the_pane_is_let_in_only_from_the_address_its_manifest_loads_it_from`); and an IPv4 address's own relay share,
+held only by an exact hash, has a test of its own.
+
+Lesson: **green checks from AI-written tests prove nothing until a planted bug turns them red.** A new or changed
+guard adds its loosen and tighten mutants to `tools/mutations.json` in the same commit.
+
+### 2026-11-10: hold up under real use (AH-158)
+John asked that Arcas not break or be abused once people use it. The relay is its only server, and three of its own
+answers let one stranger spend everyone's day: a Google "busy this minute" 429 did no work but still used a count, so
+400 parallel requests from 400 IPv6 /64s (one cheap VPS has 65,536) could use up the public tier's 400 in a minute,
+mostly as busy answers; a /48 was 65,536 networks; and the 8 KB cap counted characters after reading the whole body.
+Now a busy answer gives its counts back, a /48 has its own day, a network or invite has 15 calls a minute (Cloudflare's
+free Workers Rate Limiting, before the counter and Google), and the cap counts bytes and refuses a declared size unread.
+`relay/load.mjs` fires 2,200 requests at once through a counter fed one at a time: exactly the caps through, no 5xx.
+
+Lesson: **a refusal must not cost the day.** A count spent on an answer that did no work is a count an attacker can
+spend for everyone. Count before the work, and give back what the work never used.

@@ -1,7 +1,8 @@
 """Every gate, in layers, fastest first - run before every commit: python tools/check.py [--e2e] [--keep-going]
-0 CI workflows parse  1 security lint (ruff, Bandit rules), secrets anywhere in the git history  2 pane self-check, website links and scripts  3 relay abuse tests  4 engine tests + API fuzzing
+0 CI workflows parse  1 security lint (ruff, Bandit rules), secrets anywhere in the git history  2 pane self-check, website links and scripts  3 relay abuse tests and load test  4 engine tests + API fuzzing
 5 accuracy: the industry bench and the blind 14-domain bench (gates: no crash, no harmful fix, no new Medium+ false alarm)
 6 dependencies with known vulnerabilities (needs the internet)  7 browser e2e and the website in a browser, with --e2e (needs .venv + playwright)
+8 mutation testing, with --mutate: every guard broken on purpose must turn a test red (tools/mutate.py; --e2e adds the browser's mutants)
 Stops at the first red layer (a broken base hides the real failure); --keep-going runs them all. Exit 1 = a red layer."""
 import subprocess
 import sys
@@ -21,6 +22,8 @@ LAYERS = [
     ("pane self-check", ["node", "frontend/selfcheck.js"]),
     ("website links and scripts", ["node", "tools/test_site.mjs"]),
     ("relay abuse tests", ["node", "relay/test.mjs"]),
+    # AH-158: the abuse tests fire bursts of 6; this fires 2,200 at once and needs exactly the caps through
+    ("relay load test", ["node", "relay/load.mjs"]),
     ("engine tests + fuzzing", [PY, "-m", "pytest", "-q", "backend/tests"]),
     ("industry bench", [PY, "backend/bench/score.py", "."]),
     ("blind 14-domain bench", [PY, "backend/bench/score.py", ".", "--blind"]),
@@ -33,6 +36,9 @@ LAYERS = [
 if "--e2e" in sys.argv:
     LAYERS.append(("browser e2e", ["bash", "e2e/all.sh"]))
     LAYERS.append(("website in a browser", ["node", "tools/test_site.mjs", "--browser"]))
+# AH-155: 15 of 110 planted bugs passed every test above while all of them were green
+if "--mutate" in sys.argv:
+    LAYERS.append(("mutation testing", [PY, "tools/mutate.py", *(["--e2e"] if "--e2e" in sys.argv else [])]))
 
 
 def main():
