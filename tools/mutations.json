@@ -636,6 +636,162 @@
   ]
  },
  {
+  "id": "formula-quoted-loosen",
+  "guard": "strings, sheet names and table columns read in one pass (unsafe_call, AH-160)",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "    s = QUOTED.sub(lambda m: {'\"': '\"\"', \"'\": \"''\"}.get(m.group()[0], \"\\0\"), s).replace(\"$\", \"\")",
+  "new": "    s = re.sub(r\"\\[[^\\[\\]]*\\]\", \"\\0\", re.sub(r\"'[^']*'\", \"''\", re.sub(r'\"[^\"]*\"', '\"\"', s))).replace(\"$\", \"\")",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_grounding.py::test_a_formula_from_the_ai_that_calls_anything_else_is_refused",
+   "backend/tests/test_fix.py::test_an_ai_formula_hiding_a_call_between_quotes_in_sheet_names_or_columns_is_left_out"
+  ]
+ },
+ {
+  "id": "formula-open-loosen",
+  "guard": "a quote or bracket left open is never safe (unsafe_call, AH-160)",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "    if set(QUOTED.sub(\"\", s)) & set(\"\\\"'[]\"):",
+  "new": "    if set(QUOTED.sub(\"\", s)) & set(\"\\\"\"):",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_grounding.py::test_a_formula_from_the_ai_that_calls_anything_else_is_refused"
+  ]
+ },
+ {
+  "id": "formula-quoted-tighten",
+  "guard": "a quote escaped in a sheet name or a table column is let in (AH-160)",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "QUOTED = re.compile(r\"\\\"(?:[^\\\"]|\\\"\\\")*\\\"|'(?:[^']|'')*'|\\[(?:[^\\[\\]']|'.|\\[(?:[^\\[\\]']|'.)*\\])*\\]\", re.DOTALL)",
+  "new": "QUOTED = re.compile(r\"\\\"(?:[^\\\"]|\\\"\\\")*\\\"|'(?:[^']|'')*'|\\[(?:[^\\[\\]']|\\[(?:[^\\[\\]'])*\\])*\\]\", re.DOTALL)",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_grounding.py::test_a_formula_from_the_ai_may_name_cells_tables_sheets_and_its_own_let_and_lambda_names",
+   "backend/tests/test_fix.py::test_an_ai_formula_hiding_a_call_between_quotes_in_sheet_names_or_columns_is_left_out"
+  ]
+ },
+ {
+  "id": "relay-today-loosen",
+  "guard": "a relay 429 naming today is a used-up day, any capitals (AH-160)",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "(\"day\" if \"today\" in words.lower() else \"busy\")",
+  "new": "(\"day\" if \"today\" in words else \"busy\")",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_ai_load.py::test_every_day_cap_the_relay_says_is_used_up_for_today_however_it_is_capitalised"
+  ]
+ },
+ {
+  "id": "relay-today-tighten",
+  "guard": "a relay 429 that names no day stays busy (AH-160)",
+  "file": "backend/anomaly_hunter/ai/client.py",
+  "old": "(\"day\" if \"today\" in words.lower() else \"busy\")",
+  "new": "(\"day\" if \"today\" in words.lower() or True else \"busy\")",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_ai_load.py::test_a_relay_429_that_names_no_day_is_still_busy"
+  ]
+ },
+ {
+  "id": "spelling-formula-loosen",
+  "guard": "a label typed as a formula, full-width too, gets no spelling fix (AH-160)",
+  "file": "backend/anomaly_hunter/engine/pipeline.py",
+  "old": "~s.str.lstrip().str[:1].isin(FORMULA_START)]",
+  "new": "~s.str.lstrip().str[:1].isin(list(\"=+-@\"))]",
+  "kind": "loosen",
+  "tests": [
+   "backend/tests/test_second_spellings.py::test_a_label_typed_as_a_formula_is_never_given_a_spelling_fix"
+  ]
+ },
+ {
+  "id": "spelling-formula-tighten",
+  "guard": "an ordinary label still gets its spelling fix (AH-160)",
+  "file": "backend/anomaly_hunter/engine/pipeline.py",
+  "old": "~s.str.lstrip().str[:1].isin(FORMULA_START)]",
+  "new": "~s.str.lstrip().str[:1].isin(FORMULA_START) & s.isna()]",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_second_spellings.py::test_an_ordinary_label_beside_it_is_still_given_its_capitals_fix"
+  ]
+ },
+ {
+  "id": "autofix-formula-loosen",
+  "guard": "auto-fix never writes a value Excel reads as a formula (AH-160)",
+  "file": "frontend/features/autofix.js",
+  "old": "  .filter((x) => x.j >= 0 && !typedAsFormula(x.value));",
+  "new": "  .filter((x) => x.j >= 0);",
+  "kind": "loosen",
+  "tests": [
+   "node frontend/selfcheck.js"
+  ]
+ },
+ {
+  "id": "autofix-formula-tighten",
+  "guard": "auto-fix still writes an ordinary exact fix (AH-160)",
+  "file": "frontend/features/autofix.js",
+  "old": "  .filter((x) => x.j >= 0 && !typedAsFormula(x.value));",
+  "new": "  .filter((x) => x.j >= 0 && !typedAsFormula(x.value) && x.value.length < 3);",
+  "kind": "tighten",
+  "tests": [
+   "node frontend/selfcheck.js"
+  ]
+ },
+ {
+  "id": "card-variant-formula-loosen",
+  "guard": "a card never offers a spelling Excel reads as a formula (AH-160)",
+  "file": "frontend/features/fix.js",
+  "old": "typeof v === \"string\" && !typedAsFormula(likely[c]);",
+  "new": "typeof v === \"string\";",
+  "kind": "loosen",
+  "tests": [
+   "node frontend/selfcheck.js"
+  ]
+ },
+ {
+  "id": "card-miss-formula-loosen",
+  "guard": "a card never offers a spelling Excel reads as a formula (AH-160)",
+  "file": "frontend/features/fix.js",
+  "old": "typeof v === \"string\" && !typedAsFormula(maybe[c]);",
+  "new": "typeof v === \"string\";",
+  "kind": "loosen",
+  "tests": [
+   "node frontend/selfcheck.js"
+  ]
+ },
+ {
+  "id": "card-variant-formula-tighten",
+  "guard": "a card still offers an ordinary spelling (AH-160)",
+  "file": "frontend/features/fix.js",
+  "old": "typeof v === \"string\" && !typedAsFormula(likely[c]);",
+  "new": "typeof v === \"string\" && !/^[-+=@＝＋－＠]/.test(likely[c]);",
+  "kind": "tighten",
+  "tests": [
+   "node frontend/selfcheck.js"
+  ]
+ },
+ {
+  "id": "autoundo-plain-loosen",
+  "guard": "Undo auto-fixes types back only a plain value, never an array (AH-160)",
+  "file": "frontend/features/autofix.js",
+  "old": "A1.test(String(w?.cell)) && plain(w.old) && !typedAsFormula(w.old)",
+  "new": "A1.test(String(w?.cell)) && !typedAsFormula(w.old)",
+  "kind": "loosen",
+  "tests": [
+   "node frontend/selfcheck.js"
+  ]
+ },
+ {
+  "id": "autoundo-plain-tighten",
+  "guard": "Undo auto-fixes still types back a plain value (AH-160)",
+  "file": "frontend/features/autofix.js",
+  "old": "A1.test(String(w?.cell)) && plain(w.old) && !typedAsFormula(w.old)",
+  "new": "A1.test(String(w?.cell)) && typeof w.old === \"string\" && !typedAsFormula(w.old)",
+  "kind": "tighten",
+  "tests": [
+   "node frontend/selfcheck.js"
+  ]
+ },
+ {
   "id": "bare-name-loosen",
   "guard": "a bare function name counts (NAMES, AH-150)",
   "file": "backend/anomaly_hunter/ai/client.py",

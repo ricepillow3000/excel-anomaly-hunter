@@ -1,6 +1,7 @@
 import { AUTO_KEY, UNDO_KEY } from "../constants/index.js";
 import { state } from "../hooks/use-state.js";
 import { A1, cellAt, colLetter, sameRow, typedAsFormula } from "../utils/sheet.js";
+import { plain } from "./undo-store.js";
 import { readCells, readRows, writeCells } from "../services/excel.js";
 import { afterFix } from "./fix.js";
 
@@ -13,9 +14,11 @@ export const setAuto = (on) => { try { localStorage.setItem(AUTO_KEY, on ? "1" :
 const settings = () => Office.context.document.settings;
 export const autoUndo = () => settings().get(UNDO_KEY) || null;
 
-// Pure: the scan's verdicts -> [{k, j, value}], one per exact fix (k = data row, j = column)
+// Pure: the scan's verdicts -> [{k, j, value}], one per exact fix (k = data row, j = column). Never one Excel would read
+// as a formula: the engine once gave a full-width "＝WEBSERVICE(...)" as a capitals fix, written with no Accept (AH-160)
 export const exactFixes = (rows, columns) => rows.flatMap((r, k) =>
-  Object.entries(r?.exact || {}).map(([c, value]) => ({ k, j: columns.indexOf(c), value }))).filter((x) => x.j >= 0);
+  Object.entries(r?.exact || {}).map(([c, value]) => ({ k, j: columns.indexOf(c), value })))
+  .filter((x) => x.j >= 0 && !typedAsFormula(x.value));
 
 // Right after a scan: write the exact fixes -> how many were written
 export async function autoFix() {
@@ -42,8 +45,9 @@ export async function autoFix() {
 }
 
 // The undo record lives in the workbook, so a crafted .xlsx can carry its own: only plain values go back, only into a
-// plain A1 cell (2026-10-15 audit). A real record never holds a formula - autoFix skips formula cells.
-export const safeUndo = (writes) => writes.filter((w) => A1.test(String(w?.cell)) && !typedAsFormula(w.old));
+// plain A1 cell (2026-10-15 audit). A real record never holds a formula - autoFix skips formula cells - nor an array
+// (AH-160: ['=WEBSERVICE(...)'] passed the text check and was written back as a formula).
+export const safeUndo = (writes) => writes.filter((w) => A1.test(String(w?.cell)) && plain(w.old) && !typedAsFormula(w.old));
 
 // Put the auto-fixed cells back - only where the row still looks as auto-fix left it (same record, not edited since)
 // -> [put back, left alone]

