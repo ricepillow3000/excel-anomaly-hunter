@@ -2,7 +2,7 @@
 // size and CORS. Every request must be refused before the invite check passes, so none reaches Google or counts
 // against the daily caps. AH-151: with no Authorization header a request is the public tier, so those probes send a
 // body the relay refuses before it counts (a fix-shaped one would reach Google and spend a free call).
-// A dozen requests, no load. Run: node relay/live-probe.mjs [relay URL] (CI: relay-live.yml)
+// 13 requests, no load. Run: node relay/live-probe.mjs [relay URL] (CI: relay-live.yml)
 // Then, with RELAY_CANARY_INVITE set, one real call that must work (canary.mjs, AH-108).
 import { canary } from "./canary.mjs";
 
@@ -12,6 +12,9 @@ const fix = JSON.stringify({ messages: [{ role: "user", content: "say hi" }], re
 const shapeless = JSON.stringify({ messages: [{ role: "user", content: "say hi" }] }); // no response_format
 const big = JSON.stringify({ messages: [{ role: "user", content: "x".repeat(20000) }], response_format: { type: "json_object" } });
 const evil = { Origin: "https://evil.example" };
+// AH-160: any answer format but a json_schema is refused before the counter (a relay from before AH-160 sent it to
+// Google: a 200 here means the deploy is old)
+const text = JSON.stringify({ messages: [{ role: "user", content: "say hi" }], response_format: { type: "text" } });
 
 const probes = [
   ["GET / (only POST /fix exists)", "/", { method: "GET" }, 404],
@@ -25,6 +28,7 @@ const probes = [
   ["POST /fix, a guessed invite", "/fix", { method: "POST", headers: { ...J, Authorization: `Bearer inv_${"0".repeat(24)}` }, body: fix }, 401],
   ["POST /fix, a 4 KB junk code", "/fix", { method: "POST", headers: { ...J, Authorization: `Bearer ${"A".repeat(4096)}` }, body: fix }, 401],
   ["POST /fix, 20 KB body, no code", "/fix", { method: "POST", headers: J, body: big }, 413],
+  ["POST /fix, no code, a text answer format", "/fix", { method: "POST", headers: J, body: text }, 400],
   ["POST /fix from a website, fake code", "/fix", { method: "POST", headers: { ...J, ...evil, Authorization: "Bearer inv_fake" }, body: fix }, 401],
 ];
 
