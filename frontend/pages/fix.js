@@ -29,6 +29,9 @@ export async function openFix(i, selectInSheet, from = null) {
   const me = ++opening;
   try {
     await openRow(i, selectInSheet, from);
+  } catch (e) { // AH-165: back to the list, where Find problems is: the card hides it, and the words say to click it
+    if (me === opening && state.view === "fix-view") (state.fix = null, listRows());
+    throw e;
   } finally {
     if (me === opening) $("fix-view").toggleAttribute("data-opening", false);
   }
@@ -54,7 +57,8 @@ async function openRow(i, selectInSheet, from) { // from: the list's button pres
     $("fix-changes").innerHTML = "";
     $("fix-explanation").textContent = "";
     only("fix-view");
-    busy("Opening row…"); // over the card, in the space it holds: said over the list, it pushed the list down as it left
+    scrollTo(0, 0); // AH-165: the card opens at the top of the pane, where the scan controls stepped aside
+    busy("Opening row…"); // in the bar at the pane's foot (AH-165): said over the list, it pushed the list down as it left
     // the card turns in like a page, here and on Next row; from a row of the list, hinged at that row's height
     const view = $("fix-view");
     view.toggleAttribute("data-opening", true);

@@ -694,6 +694,25 @@ function woff2(file) {
   const files = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? files(path.join(d, e.name)) : [path.join(d, e.name)]);
   for (const f of files(SITE)) assert.ok(!/Instrument Serif|instrument-serif/i.test(fs.readFileSync(f, "latin1")), `${path.relative(SITE, f)} still names the serif`);
 }
+// ---- AH-167 (John, 2026-11-13): "We don't want to overpromise or guarantee as if we have no cons... Have confidence but
+// humbleness." Confident verbs stay (finds, catches); no word on the home page, the checks page or the pane promises a
+// result, the 0 says it was measured on test sheets, and a line under the figures says Arcas can miss and how to tell John ----
+{
+  const home = html["index.html"], flat = (s) => s.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ");
+  const pane = fs.readFileSync(path.join(SITE, "..", "frontend", "taskpane.html"), "utf8");
+  const PROMISE = /guarantee|hands you the fix|keeps an Excel sheet consistent|finds and fixes|exact correction/i;
+  for (const [p, src] of [["index.html", home], ["checks.html", html["checks.html"]], ["frontend/taskpane.html", pane]]) {
+    const m = PROMISE.exec(flat(src)) || PROMISE.exec(src); // the words, and the meta tags' content
+    assert.ok(!m, `${p} still promises a result: "${m && m[0]}"`);
+  }
+  const proof = (/<section\b[^>]*\sid="proof"[\s\S]*?<\/section>/.exec(home) || [""])[0];
+  assert.ok(/<dt>0<\/dt>\s*<dd>correct rows called probably wrong in those test sheets\./.test(proof), "the proof strip's 0 does not say it was in those test sheets");
+  const note = (/<\/dl>\s*<p class="proof-note[^"]*">([\s\S]*?)<\/p>/.exec(proof) || ["", ""])[1];
+  assert.equal(note.replace(/<[^>]+>/g, "").trim(), "Real sheets are messier than test sheets. When Arcas misses something, tell John, and the next version learns from it.", "no line right under the proof strip that says Arcas can miss");
+  assert.ok(note.includes('<a href="#contact">tell John</a>') && ids(home).includes("contact"), "the line under the proof strip does not link the contact form");
+  assert.ok(/(?:^|\})\s*\.proof-note\s*\{[^}]*max-width:\s*var\(--measure\)/.test(css), "styles.css: the line under the proof strip is not held to the measure");
+  assert.ok(/<p id="list-hint" class="hint">[^<]*Check each one before you accept: you know your data best\.[^<]*<\/p>/.test(pane), "the pane's list does not ask to check each row before Accept");
+}
 console.log(`website static check passed (${PAGES.length} pages, ${SCRIPTS.length} scripts)`);
 if (!process.argv.includes("--browser")) process.exit(0);
 
@@ -3148,7 +3167,7 @@ console.log(`page transitions: ${measured.moving} ms of motion on screen (${meas
   }
   // (d) the measure at 1440: no line of running text holds more than 75 letters (the questions' answers, the steps'
   // aside, the checks' second column, the privacy and terms pages' text and table), counted per rendered line
-  for (const [file, sel] of [["index.html", ".faq .a p, .faq .a li, .steps .aside, .check-file p, .check-list p, .maker-text p"], ["checks.html", ".checks-table tbody td:not(.in-sample)"], ["cases.html", ".case p, .case li"], ["privacy.html", ".prose p, .prose li, .card td"], ["terms.html", ".prose p, .prose li"], ["support.html", ".faq .a p, .faq .a li, #it dd"]]) {
+  for (const [file, sel] of [["index.html", ".faq .a p, .faq .a li, .steps .aside, .check-file p, .check-list p, .maker-text p, .proof-note"], ["checks.html", ".checks-table tbody td:not(.in-sample)"], ["cases.html", ".case p, .case li"], ["privacy.html", ".prose p, .prose li, .card td"], ["terms.html", ".prose p, .prose li"], ["support.html", ".faq .a p, .faq .a li, #it dd"]]) {
     const t = await open(file, { width: 1440, height: 900, motion: "reduce" });
     const p = t.page;
     await p.evaluate(() => document.fonts.ready);

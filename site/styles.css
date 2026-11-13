@@ -641,6 +641,8 @@ table.card { grid-column: 1 / -1; margin-top: var(--s7); width: 100%; border-col
 .proof > div:nth-child(3) .rule { --col: 2; }
 /* the way on to the case studies (AH-159: they have a page of their own) */
 .to-cases { grid-column: 1 / -1; margin-top: var(--s4); font-weight: 700; }
+/* the figures were measured on test sheets: a line under them says real ones can hold what they missed (AH-167) */
+.proof-note { grid-column: 1 / -1; margin-top: var(--s4); max-width: var(--measure); font-size: var(--fs--1); color: var(--ink-2); }
 /* a link alone on its line is a thumb's target, 44 px, its padding taken back by a margin so no line moves (AH-148) */
 :is(.all-checks, .to-cases) a { display: inline-block; padding-block: 11px; margin-block: -11px; }
 /* three public tables, scanned (AH-133): the pane's words quoted row by row, the source credited. No longer three boxes
