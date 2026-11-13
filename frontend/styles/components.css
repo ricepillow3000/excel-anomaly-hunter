@@ -28,12 +28,13 @@
   .slider-scale span:last-child { margin-left: auto; }
 }
 #strength-hint { min-height: 2.9em; margin: var(--s2) 0 0; } /* the words change length; the layout under them doesn't jump */
-/* what the level did on the bench, one press away: a link's look, a finger's height (AH-149 review) */
-#strength-tested summary { list-style: none; display: flex; align-items: center; min-height: 44px; cursor: pointer; font: 600 var(--fs--1)/1.4 var(--sans);
+/* what the level did on the bench, one press away: a link's look, a finger's height (AH-149 review). What an AI button
+   sends is one press away the same way, under a one line note (AH-164: four lines of small print under each button) */
+:is(#strength-tested, .sends) summary { list-style: none; display: flex; align-items: center; min-height: 44px; cursor: pointer; font: 600 var(--fs--1)/1.4 var(--sans);
   color: var(--navy); text-decoration: underline; text-decoration-color: var(--wine); text-underline-offset: 3px; }
-#strength-tested summary::-webkit-details-marker { display: none; }
-#strength-tested summary:active { color: var(--wine); text-decoration-thickness: 2px; }
-#strength-tested .hint { margin: 0 0 var(--s2); }
+:is(#strength-tested, .sends) summary::-webkit-details-marker { display: none; }
+:is(#strength-tested, .sends) summary:active { color: var(--wine); text-decoration-thickness: 2px; }
+:is(#strength-tested, .sends) .hint { margin: 0 0 var(--s2); }
 
 /* a 16 px box inside a label a finger's height: the label is the target (WCAG 2.5.8, AH-115; 44 px since AH-149) */
 label.check { display: flex; align-items: center; min-height: 44px; gap: var(--s2); font-size: 13px; margin-bottom: var(--s2); color: var(--ink); }

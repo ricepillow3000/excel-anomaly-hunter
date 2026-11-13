@@ -103,7 +103,11 @@
         <button id="clear-highlights" class="secondary">Remove highlights</button>
         <div id="odd-box" hidden>
           <button id="odd-check" class="secondary">Check words with AI</button>
-          <p class="hint">AI looks at what words mean, so it can spot a value that doesn't belong, like a city in a product column. It sends only the different words in your text columns to Google (through John's relay if you use an invite code), never your rows or numbers. Its answers are leads to check.</p>
+          <p class="hint">AI spots a word that doesn't fit its column.</p>
+          <details class="sends">
+            <summary>What is sent?</summary>
+            <p class="hint">It looks at what words mean, so it can spot a city in a product column. It sends only the different words in your text columns to Google (through John's relay if you use an invite code), never your rows or numbers. Its answers are leads to check.</p>
+          </details>
           <ul id="odd-list" class="fix-changes"></ul>
         </div>
         <details class="more">
@@ -155,7 +159,10 @@
             <button type="button" class="try">Is this a typo?</button>
           </div>
           <button id="fix-ask" class="secondary">Ask AI</button>
-          <p id="fix-sends" class="hint">Ask AI sends the column names, this row and up to 5 rows above and below it, the row's formulas, why it was flagged and what you type here, to Google (through John's relay with an invite code or with no key of your own). Long cells are cut to 200 characters. Up to 5 fixes you accepted before in a column with this name (the name, the kind of fix, and the old and new values) are sent only once the AI memory is switched on in a later update.</p>
+          <details class="sends">
+            <summary>What Ask AI sends</summary>
+            <p id="fix-sends" class="hint">Ask AI sends the column names, this row and up to 5 rows above and below it, the row's formulas, why it was flagged and what you type here, to Google (through John's relay with an invite code or with no key of your own). Long cells are cut to 200 characters. Up to 5 fixes you accepted before in a column with this name (the name, the kind of fix, and the old and new values) are sent only once the AI memory is switched on in a later update.</p>
+          </details>
         </div>
         <p id="ai-off" class="hint">AI help with fixes is off. Turn it on for free under <b>AI help</b> at the bottom.</p>
       </section>

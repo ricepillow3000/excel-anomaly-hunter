@@ -1020,11 +1020,28 @@ if (mode === "flow") {
   ok(await page.isVisible("#main-ui"), "and Try again opens the pane once the engine answers");
 }
 
+// AH-164: a note under an AI button is one short line at most; what it sends is a press away under "What is sent?" /
+// "What Ask AI sends", closed until asked, and opened says it all (John read four lines of small print under each button)
+const shortNote = async (box, note, summary, full) => {
+  const m = await page.evaluate(([box, note]) => { const d = document.querySelector(box).querySelector("details");
+    const lines = [...document.querySelectorAll(note)].filter((p) => p.checkVisibility()).reduce((n, p) => { const r = document.createRange(); r.selectNodeContents(p);
+      return n + new Set([...r.getClientRects()].map((k) => Math.round(k.top))).size; }, 0);
+    return { lines, open: d?.open, summary: d?.querySelector("summary")?.textContent }; }, [box, note]);
+  let said = ""; // null-safe: a note with no box to open fails by name
+  if (m.summary) { await page.click(`${box} summary`);
+    said = await page.evaluate((box) => [...document.querySelectorAll(`${box} details p`)].filter((p) => p.checkVisibility()).map((p) => p.textContent).join(" "), box);
+    await page.click(`${box} summary`); }
+  ok(m.lines <= 1 && m.open === false && m.summary === summary && full.every((f) => said.includes(f)),
+    `AH-164: under ${box}'s button at most one line shows; "${summary}", closed, opens to all it sends - ` + JSON.stringify({ ...m, said }));
+};
+
 if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.py
   await find();
   ok(await page.isVisible("#ai-box") || !(await page.isVisible("#ai-off")), "AI help is on when a key is set");
+  await shortNote("#odd-box", "#odd-box p", "What is sent?", ["It sends only the different words in your text columns to Google (through John's relay if you use an invite code), never your rows or numbers.", "Its answers are leads to check."]);
   await openRow(11);
   ok(await page.isVisible("#ai-box") && !(await page.isVisible("#ai-off")), "Ask AI shown when a key is set");
+  await shortNote("#ai-box", "#fix-sends", "What Ask AI sends", ["Ask AI sends the column names, this row and up to 5 rows above and below it", "Up to 5 fixes you accepted before in a column with this name"]);
   // typed with the real keyboard: page.fill sets the value without a single key event, and so hid that the box
   // cancelled every key (2026-10-20). Focus left on the slider or Find problems (both act on a key) must not matter:
   // keys inside a text field never start a scan, and Ctrl+Enter asks AI, which sends only /fix and /check.
