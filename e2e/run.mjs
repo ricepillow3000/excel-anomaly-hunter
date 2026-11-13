@@ -301,8 +301,14 @@ if (mode === "flow") {
     const y = parseFloat(card.origin.split(" ")[1]), opened = await page.evaluate(() => __vt.some(Boolean));
     ok(Math.abs(y - (mid - card.top)) <= 4, `AH-149: opening row ${r}, the card hinges at that row's height (${Math.round(mid - card.top)} px from its top): ${card.origin}`);
     ok(opened && !card.names.length, `AH-149: opening row ${r}, its head flies to the card's title in a view transition, and no name is left after - ${JSON.stringify({ opened, names: card.names })}`);
+    // AH-165: the card opens at the top of the pane, right under its header: the scan controls and their held band of
+    // space stood over it (John, the pane at 360 px), and Back brings them again
+    const top = await page.evaluate(() => ({ under: document.getElementById("fix-back").getBoundingClientRect().top - document.querySelector("#app-body > header").getBoundingClientRect().bottom,
+      hero: document.querySelector(".pane-hero").checkVisibility() }));
+    ok(top.under >= 0 && top.under <= 100 && !top.hero, `AH-165: opening row ${r}, its card's Back sits right under the pane's header, the scan controls out of the way - ` + JSON.stringify(top));
     await watchVt();
     await back(); await vtDone();
+    ok(await page.isVisible("#scan") && await page.isVisible("#strength"), `AH-165: Back from row ${r} brings Find problems and the slider again`);
     const home = await page.evaluate(() => ({ vt: __vt.some(Boolean), names: [...document.querySelectorAll(".row-head, #fix-title")].map((e) => getComputedStyle(e).viewTransitionName).filter((n) => n !== "none") }));
     ok(home.vt && !home.names.length && (await page.isVisible("#results")), `AH-149: Back flies the title home to row ${r} - ` + JSON.stringify(home));
   }
@@ -668,6 +674,7 @@ if (mode === "flow") {
   ok((await kept()) === "dismissed,fixed,fixed", "Accept keeps a decision - " + (await kept()));
   await page.click("#fix-undo"); await idle();
   ok((await kept()) === "dismissed,fixed" && (await cell("B81")).v === "east ", "Undo takes it back out - " + (await kept()));
+  await back(); // AH-165: Find problems is out of the way while a card is open
   await powerBi(false); await find();
   ok(!fs.existsSync(CSV) && !fs.existsSync(FLAGS), "Power BI turned off: the next scan deletes both copies");
 
@@ -777,6 +784,7 @@ if (mode === "flow") {
   await failing(/ItemNotFound/, async () => { await page.click('#flagged-list button:has-text("Row 81 ")'); await idle(); });
   const gone7d = await text("#notice");
   ok(/^The sheet or cells this was about are gone\b.*Find problems/.test(gone7d) && !internal.test(gone7d), "a sheet deleted under its list: said in plain words - " + gone7d);
+  ok(await page.isVisible("#results") && await page.isVisible("#scan"), "AH-165: and the list is back, with the Find problems it names (a card hides it)");
 
   // 7e) AH-149 review: a failed Accept or Undo is said once, in the card's notice box. It was said on the card's status
   // line and, thrown on to act(), in #notice above the list too. A sheet of its own: Other is gone and Sales holds decisions
@@ -1043,19 +1051,20 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
   ok(await page.isVisible("#ai-box") && !(await page.isVisible("#ai-off")), "Ask AI shown when a key is set");
   await shortNote("#ai-box", "#fix-sends", "What Ask AI sends", ["Ask AI sends the column names, this row and up to 5 rows above and below it", "Up to 5 fixes you accepted before in a column with this name"]);
   // typed with the real keyboard: page.fill sets the value without a single key event, and so hid that the box
-  // cancelled every key (2026-10-20). Focus left on the slider or Find problems (both act on a key) must not matter:
-  // keys inside a text field never start a scan, and Ctrl+Enter asks AI, which sends only /fix and /check.
+  // cancelled every key (2026-10-20). Keys inside a text field never start a scan, and Ctrl+Enter asks AI, which sends
+  // only /fix and /check. Focus once left on the slider or Find problems (both act on a key) before the box was clicked;
+  // since AH-165 they step aside while a card is open, so no focus or key can reach them at all
   const posts = []; // every POST the page makes, by path
   page.on("request", (r) => r.method() === "POST" && posts.push(new URL(r.url()).pathname));
   const level = await page.getAttribute("#strength", "aria-valuenow");
-  await page.focus("#strength");
+  const reach = await page.evaluate(() => ["strength", "scan"].filter((id) => { const e = document.getElementById(id); e.focus(); return document.activeElement === e || e.checkVisibility(); }));
+  ok(reach.length === 0, "AH-165: with a card open, the slider and Find problems are out of the way: neither shows or takes focus - " + reach);
   await page.click("#fix-intent");
   await page.keyboard.type("use the average Units");
   await page.keyboard.press("Enter");
   await page.keyboard.type("for East");
   // a space then Backspace leave the text as it was, wherever the caret ended up
   for (const k of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown", " ", "Backspace"]) await page.keyboard.press(k);
-  await page.focus("#scan");
   await page.click("#fix-intent");
   for (const k of ["End", " ", "Backspace", "Enter", "Backspace"]) await page.keyboard.press(k);
   await page.waitForTimeout(500); // a scan would have started by now

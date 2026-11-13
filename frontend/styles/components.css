@@ -44,9 +44,15 @@ input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var
    when the list had landed and "Done in 2 seconds." came in after the highlights, so the list jumped twice. The space
    is held for two lines of either; while the progress shows, the notice waits under it */
 #status { display: grid; align-items: start; margin: var(--s3) 0 var(--s2); }
-/* held only while a scan or an action that had something to say runs, while it says something, and over the fix card:
-   held always, it left an empty band over the first view and over the results once an action cleared it (AH-149 review) */
-#main-ui:is([data-held], :has(#fix-view:not([hidden]))) #status, #status:has(#notice:not(:empty)) { min-height: calc(2 * 1.5 * 13px + 2 * var(--s2) + 2px); }
+/* held only while a scan or an action that had something to say runs, and while it says something: held always, it left
+   an empty band over the first view and over the results once an action cleared it (AH-149 review) */
+#main-ui[data-held] #status, #status:has(#notice:not(:empty)) { min-height: calc(2 * 1.5 * 13px + 2 * var(--s2) + 2px); }
+/* AH-165: a row's card opens at the top of the pane, right under the header. The scan controls step aside while it is
+   open (Back brings them), and the progress line and the notice are said in a bar at the pane's foot, out of the flow:
+   held over the card so "Opening row…" never moved it (AH-149), they left a 77 px band above it (John, at 360 px) */
+#main-ui:has(#fix-view:not([hidden])) :is(.pane-hero, #undo-auto) { display: none; }
+#main-ui:has(#fix-view:not([hidden])) #status { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; margin: 0; min-height: 0; background: var(--paper); }
+#main-ui:has(#fix-view:not([hidden])) #status:has(#busy:not([hidden]), #notice:not(:empty)) { padding: var(--s2) var(--margin); border-top: 1px solid var(--rule); }
 #status > * { grid-area: 1 / 1; }
 #busy:not([hidden]) + #notice { visibility: hidden; }
 /* progress: a real fraction while reading/highlighting, a moving sliver while the engine checks */
