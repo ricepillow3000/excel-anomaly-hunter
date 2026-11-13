@@ -123,7 +123,9 @@ input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var
 .row-head .sev { margin-left: auto; font: 700 var(--fs--1)/1.4 var(--sans); color: var(--muted); }
 .sev-High .row-head .sev { color: var(--wine); transition: color .3s var(--ease); }
 .sev-High button:is(:hover, :focus-visible):not(:disabled) .row-head .sev { color: #2A3D68; } /* under the fill: gold, where wine would turn mint */
-.row-why { white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 2px 0 0 20px; font-size: var(--fs--1); color: var(--muted); word-break: break-word; } /* full reason in the fix view */
+/* the whole reason, each on its own line (AH-163): a two-line clamp cut a row's second reason to "...", and the list
+   box scrolls on its own */
+.row-why { white-space: pre-line; display: block; margin: 2px 0 0 20px; font-size: var(--fs--1); color: var(--muted); word-break: break-word; }
 /* fixed or dismissed: still listed, so Undo is one click away, in the small print's grey with its "Fixed" / "Dismissed"
    word. It was faded to 0.6, which took the grey to 2.7:1 and a High's wine to 3.7:1 (AH-87) */
 .flagged-list li.done .row-head, .flagged-list li.done .row-head .sev { color: var(--muted); }

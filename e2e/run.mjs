@@ -212,12 +212,27 @@ if (mode === "flow") {
     ok(on.mark === "none", "AH-149 review r2: no white square in Find problems (it read as a Stop icon) - " + on.mark); }
   await idle();
   ok(await page.isVisible("#results"), "results after ONE click");
-  { const box = await page.evaluate(() => { const r = document.querySelector("#flagged-list button").getBoundingClientRect(); return [r.left, r.width, r.height]; });
+  // the skeleton's row stands for a row's head and the first two lines of its reason: since AH-163 a longer reason shows
+  // whole and grows the row below them, so the real row is measured to its reason's second line
+  { const box = await page.evaluate(() => { const b = document.querySelector("#flagged-list button"), r = b.getBoundingClientRect(), w = b.querySelector(".row-why"), range = document.createRange();
+      range.selectNodeContents(w); const lines = [...new Set([...range.getClientRects()].map((k) => Math.round(k.bottom)))].sort((x, y) => x - y);
+      return [r.left, r.width, Math.min(r.height, lines[Math.min(1, lines.length - 1)] + parseFloat(getComputedStyle(b).paddingBottom) - r.top)]; });
     const gone = await page.evaluate(() => document.getElementById("scan-skeleton")?.offsetParent === null && !document.getElementById("main-ui").hasAttribute("data-scanning"));
     const held = await shown();
     ok(gone && Math.abs(box[0] - sk.box[0]) < 0.5 && Math.abs(box[1] - sk.box[1]) < 0.5 && Math.abs(box[2] - sk.box[2]) <= 3 && held.length === 1 && held[0] >= 440,
       `the skeleton goes when the results land, its first row where the real first row is (skeleton ${sk.box.map(Math.round)}, real ${box.map(Math.round)}), shown ${held.map(Math.round)} ms`); }
   await shot("landed");
+  // AH-163: every row's whole reason shows in the list, its last word drawn inside its row: a two-line clamp cut a
+  // reason's second sentence ("Units is ...") to "..." (John, the pane at 360 px). At 320 px too
+  const whole = () => page.$$eval("#flagged-list .row-why", (ws) => ws.map((w) => { const r = document.createRange(), t = w.firstChild;
+    r.setStart(t, t.length - 1); r.setEnd(t, t.length); const end = [...r.getClientRects()].at(-1), box = w.getBoundingClientRect();
+    return { text: w.textContent, lines: w.textContent.split("\n").length, clipped: w.scrollHeight - w.clientHeight, under: end ? end.bottom - box.bottom : Infinity }; }));
+  for (const width of [360, 320]) {
+    await page.setViewportSize({ width, height: 900 }); await page.waitForTimeout(100);
+    const ws = await whole(), cut = ws.filter((w) => w.clipped > 1 || w.under > 1);
+    ok(ws.length >= 5 && !cut.length && ws.some((w) => w.lines >= 2), `AH-163: at ${width} px every row's whole reason shows in the list, a two-sentence one on two lines and more - ` + JSON.stringify(cut.length ? cut : ws.map((w) => w.text)));
+  }
+  await page.setViewportSize({ width: 360, height: 900 });
   await page.waitForTimeout(1000); // room for a second, unwanted scan to show up, as the slider checks give it
   { const tops = await page.evaluate(() => { window.__stopTops = true; window.__slow = 0; return __tops; });
     ok(tops.length > 10 && Math.max(...tops) - Math.min(...tops) < 0.5, `AH-149: from Find problems to 1 s after the results land, the first row never moves once it is there (the progress line and "Done" take turns in one held space) - ${tops.length} frames, tops ${Math.min(...tops).toFixed(1)} to ${Math.max(...tops).toFixed(1)}`); }
