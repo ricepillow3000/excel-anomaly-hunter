@@ -5,7 +5,7 @@ import { esc, n } from "../utils/text.js";
 import { cutNote } from "../utils/sheet.js";
 import { act } from "../hooks/use-action.js";
 import { rowItem } from "../components/row-item.js";
-import { fairnessNote, fairnessTests, flaggedRows, listOrder, summaryOf } from "../features/scan.js";
+import { fairnessNote, fairnessTests, flaggedRows, legendOf, listOrder, summaryOf } from "../features/scan.js";
 import { openFix } from "./fix.js";
 import { countUp, stagger } from "../components/motion.js";
 
@@ -19,10 +19,9 @@ export function renderResults(rows, s, fair) {
   $("summary").replaceChildren(...parts.map((t, k) => (k % 2 && !parts[k + 1].startsWith(" rows") ? Object.assign(document.createElement("span"), { className: "count", textContent: t }) : t)));
   $("summary").classList.toggle("tick", !flagged.length);
   countUp($("summary"));
-  const counts = flagged.reduce((c, r) => ((c[r.severity] = (c[r.severity] || 0) + 1), c), {});
-  $("legend").replaceChildren(...Object.keys(SEV).filter((k) => counts[k]).map((k) => {
+  $("legend").replaceChildren(...legendOf(rows).map(([k, count]) => {
     const li = document.createElement("li");
-    li.innerHTML = `<span class="swatch sev-${esc(k)}"></span>${esc(SEV[k])}: ${esc(n(counts[k]))}`;
+    li.innerHTML = `<span class="swatch sev-${esc(k)}"></span>${esc(SEV[k])}: ${esc(n(count))}`;
     return li;
   }));
   const note = fairnessNote(fair);

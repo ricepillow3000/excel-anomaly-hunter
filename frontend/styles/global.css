@@ -36,6 +36,7 @@
   --shade-soft: color-mix(in oklch, var(--navy) 14%, transparent);
   --off-navy: color-mix(in oklch, var(--navy) 45%, transparent);
   --off-wine: color-mix(in oklch, var(--wine) 45%, transparent);
+  --wine-deep: color-mix(in oklch, var(--wine) 75%, black); /* a hovered main button (AH-166); white on it 15.5:1 */
 
   --sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
   /* a 1.25 type scale from a 14px body, never under 12px (AH-116: the limits table's heads were 10.5) */
@@ -126,7 +127,9 @@ button:disabled { cursor: default; }
 :root[data-turning-on] button { transition: none; }
 .primary { margin: var(--s3) 0; min-height: 48px; padding: 0 var(--s4); background: var(--wine); color: var(--on-wine); border: 0;
   font: 700 var(--fs-0)/1.2 var(--sans); font-variant-numeric: tabular-nums; letter-spacing: .02em; text-align: left; }
-.primary:hover:not(:disabled) { background: var(--navy); }
+/* hovered, a main button stays wine, a shade darker (AH-166): navy read as another button once a scan ended under the
+   pointer. A press is still navy with its ring */
+.primary:hover:not(:disabled) { background: var(--wine-deep); }
 .primary:focus-visible { outline: 2px solid var(--navy); outline-offset: 3px; }
 .secondary { margin: var(--s2) 0; min-height: 44px; padding: var(--s2) var(--s3); background: transparent; color: var(--navy); border: 1px solid var(--navy);
   font: 700 13px/1.3 var(--sans); font-variant-numeric: tabular-nums; text-align: left; }

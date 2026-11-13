@@ -210,6 +210,16 @@ if (mode === "flow") {
       return !s.disabled && !__state.working && { bg: getComputedStyle(s).backgroundColor, results: document.getElementById("results").checkVisibility(), mark: getComputedStyle(s, "::after").content }; })).jsonValue();
     ok(on.results && on.bg === atRest, `AH-149 review r2: once the results are in and nothing runs, Find problems is on and in its full colour at once - ${on.bg} (before any scan ${atRest})`);
     ok(on.mark === "none", "AH-149 review r2: no white square in Find problems (it read as a Stop icon) - " + on.mark); }
+  // AH-166: Find problems keeps its wine under the pointer: its hover was navy, and after a scan the pointer still on it
+  // showed a navy button (John). A darker wine now, drawn through a canvas to plain RGB; a press stays navy and ringed
+  { const rgb = (c) => page.evaluate((c) => { const x = Object.assign(document.createElement("canvas"), { width: 1, height: 1 }).getContext("2d");
+      x.fillStyle = c; x.fillRect(0, 0, 1, 1); return [...x.getImageData(0, 0, 1, 1).data].slice(0, 3); }, c);
+    await idle(); await page.hover("#scan"); await page.waitForTimeout(500);
+    const hover = await page.evaluate(() => getComputedStyle(document.getElementById("scan")).backgroundColor);
+    await page.mouse.move(0, 0); await page.waitForTimeout(500);
+    const [h, w] = [await rgb(hover), await rgb(atRest)], light = (c) => c[0] + c[1] + c[2];
+    ok(h[0] > h[1] && h[0] > h[2] && light(h) < light(w) && h.join() !== w.join(), `AH-166: hovered, Find problems is a darker wine, never navy - ${hover} ${h} (at rest ${w})`); }
+  ok(!(await page.isVisible("#legend")) && (await page.$$("#legend li")).length === 0, "AH-166: with one severity listed, no legend repeats the summary - " + (await text("#legend")));
   await idle();
   ok(await page.isVisible("#results"), "results after ONE click");
   // the skeleton's row stands for a row's head and the first two lines of its reason: since AH-163 a longer reason shows

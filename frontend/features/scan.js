@@ -173,6 +173,14 @@ export function levelChange(before, after) {
 }
 
 // Pure: the summary sentence
+// Pure (AH-166): the legend's [severity, count] pairs, worst first, only when 2+ severities are listed: one alone repeated
+// the summary ("5 of 300 rows look wrong." over "Probably wrong: 5")
+export function legendOf(rows) {
+  const counts = flaggedRows(rows).reduce((c, r) => ((c[r.severity] = (c[r.severity] || 0) + 1), c), {});
+  const kinds = Object.keys(SEV).filter((k) => counts[k]);
+  return kinds.length > 1 ? kinds.map((k) => [k, counts[k]]) : [];
+}
+
 export function summaryOf(rows) {
   const sure = rows.filter((r) => r.severity === "High" || r.severity === "Medium").length;
   const maybe = rows.filter((r) => r.severity === "Low").length;

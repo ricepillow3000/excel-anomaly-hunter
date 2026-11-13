@@ -3,7 +3,7 @@ import assert from "node:assert";
 import { esc, asNumber } from "./utils/text.js";
 import { cutNote, r1c1ToA1, tableFromGrid, isDateFormat, excelDate, rowFromAddress, colLetter, cellAt, sameRow, readAs, spots } from "./utils/sheet.js";
 import { issuesOf, recommendFix, typoKind, afterFix, unusualColumn } from "./features/fix.js";
-import { plainReason, summaryOf, flaggedRows, fairnessNote, fairnessTests, listOrder, levelChange, asLastScan, lastScanSaid } from "./features/scan.js";
+import { plainReason, summaryOf, legendOf, flaggedRows, fairnessNote, fairnessTests, listOrder, levelChange, asLastScan, lastScanSaid } from "./features/scan.js";
 import { MEASURED, COLOR, OLD_COLOR } from "./constants/index.js";
 import { strengthHint, asStrength, levelAt, levelWord } from "./pages/strength.js";
 import { exactFixes, safeUndo } from "./features/autofix.js";
@@ -184,6 +184,11 @@ assert.deepEqual(fairnessTests(undefined), []);
 assert.equal(summaryOf([{ severity: null }, { severity: "Noted" }, { severity: null }]), "No problems found in 3 rows.");
 assert.equal(summaryOf([{ severity: "High" }, { severity: "Low" }, ...Array(1998).fill({ severity: null })]), "1 of 2,000 rows look wrong. 1 more is worth a quick check.");
 assert.equal(summaryOf([{ severity: "Low" }, { severity: "Low" }]), "Nothing clearly wrong in 2 rows. 2 are worth a quick check.");
+// AH-166: the legend only when the list holds 2+ severities: one severity alone repeated the summary ("5 of 300 rows look
+// wrong." over "Probably wrong: 5"). Worst first, each with its count
+assert.deepEqual(legendOf([{ severity: "Medium" }, { severity: "Medium" }, { severity: null }]), []);
+assert.deepEqual(legendOf([{ severity: "Low" }, { severity: "High" }, { severity: "Low" }, { severity: "Noted" }]), [["High", 1], ["Low", 2]]);
+assert.deepEqual(legendOf([]), []);
 // AH-157: a reopened workbook says its last check at once, from numbers only (never a value or a reason). A crafted
 // workbook can carry anything under the key: only a sheet name and whole numbers survive
 {
