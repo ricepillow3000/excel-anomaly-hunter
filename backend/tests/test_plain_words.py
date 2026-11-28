@@ -292,7 +292,7 @@ def test_the_tells_are_caught_where_they_are_written():
     flat = " ".join(t for _, t in texts)
     assert SPACED.search(flat) and BANNED.search(flat) and "a - b" not in flat
     assert not title_case("Find problems in Excel with Ask AI") and capitals("SCAN ENGINE ACTIVE now")
-    assert capitals("SCAN COMPLETE: 0 PROBABLY WRONG, 4 WORTH A CHECK") and not capitals("#N/A / #DIV/0! cells, GEMINI_API_KEY or ANTHROPIC_API_KEY")
+    assert capitals("SCAN COMPLETE: 0 PROBABLY WRONG, 4 WORTH A CHECK") and not capitals("#N/A / #DIV/0! cells, GEMINI_API_KEY or ANOMALY_HUNTER_RELAY")
 
 
 def test_nothing_a_person_reads_carries_the_tells_of_machine_writing():

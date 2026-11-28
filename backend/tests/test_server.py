@@ -194,7 +194,7 @@ def test_health():
     assert resp.status_code == 200
     body = resp.get_json()
     assert body["status"] == "ok"
-    assert body["ai_available"] is False  # ANTHROPIC_API_KEY unset in the test environment
+    assert body["ai_available"] is False  # no key, and the relay is off in the test environment
 
 
 def test_health_names_the_engine_version_and_its_date(tmp_path):

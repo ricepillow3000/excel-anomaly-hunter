@@ -19,7 +19,6 @@ CPython itself is bundled by PyInstaller, under the Python Software Foundation L
 | openpyxl | 3.1.5 | MIT |
 | flask | 3.1.3 | BSD-3-Clause |
 | werkzeug | 3.1.9 | BSD-3-Clause |
-| anthropic | 1.11.0 | MIT |
 | pydantic | 2.14.1 | MIT |
 | cryptography | 50.0.2 | Apache-2.0 OR BSD-3-Clause |
 | defusedxml | 0.7.1 | Python Software Foundation License |

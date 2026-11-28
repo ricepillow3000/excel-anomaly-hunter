@@ -1,4 +1,4 @@
-"""The AI eval's own guards, with no key and no network: it never reaches the relay or Claude, never prints a key,
+"""The AI eval's own guards, with no key and no network: it never reaches the relay, never prints a key,
 never answers from the cache, and scores the labels the way score.py does."""
 import io
 import json
@@ -66,7 +66,6 @@ def test_the_ai_eval_dry_run_sends_nothing_and_counts_requests_and_bytes(run, mo
 def test_the_ai_eval_refuses_the_relay_and_invite_codes(run, monkeypatch, capsys):
     client.INVITE_FILE.write_text("inv_" + "a" * 24, encoding="utf-8")
     monkeypatch.setattr(client, "RELAY_URL", "https://relay.example")
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
     assert client.provider() == "relay"  # the app would use the relay here; the eval must not
     code, urls, _ = run("--yes")
     assert code == 2 and urls == [] and "Nothing was sent" in capsys.readouterr().out
@@ -74,7 +73,6 @@ def test_the_ai_eval_refuses_the_relay_and_invite_codes(run, monkeypatch, capsys
 
 def test_every_eval_request_goes_to_google_even_if_the_key_is_removed_mid_run(run, monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", KEY)
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
     client.INVITE_FILE.write_text("inv_" + "a" * 24, encoding="utf-8")
     monkeypatch.setattr(client, "RELAY_URL", "https://relay.example")
     code, urls, _ = run("--yes", "--runs", "2", odd=ODD1, hook=lambda: os.environ.pop("GEMINI_API_KEY", None))

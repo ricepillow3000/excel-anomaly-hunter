@@ -70,7 +70,7 @@ opens a question form on GitHub, email john4000.nguyen@gmail.com, or call (770) 
 
 ## Only if you use AI help
 With no key or invite code of your own, AI help uses John's free AI (below). You can also paste a Google AI key or an
-invite code, or install a setup kit from John (or a developer sets `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` on the
+invite code, or install a setup kit from John (or a developer sets `GEMINI_API_KEY` on the
 PC). In every case, nothing from your sheet is sent until you click a button. When you save a Google key, the engine asks Google once
 whether the key works; that call carries the key and no sheet data. A key from a Google project with billing turned on
 can be charged by Google for what AI help uses; without billing, the free tier costs nothing.
@@ -105,7 +105,6 @@ can be charged by Google for what AI help uses; without billing, the free tier c
       logs are switched off.
     - The list of invites (a scrambled copy of each code and a name) stays until John removes it.
     - Cloudflare sees your IP address as the request passes. The server's key never reaches your PC.
-  - With neither, but with `ANTHROPIC_API_KEY` set on your PC (a developer setting): to Anthropic's Claude.
   - With no key or invite code of your own: to John's server on Cloudflare, which passes it to Google's
     gemini-3.5-flash-lite with John's key. That server counts each network's AI calls for the day under a code made from
     the day and your IP address with the server's secret key, so the code changes every day. It never stores your IP
@@ -118,7 +117,6 @@ can be charged by Google for what AI help uses; without billing, the free tier c
 ## Who else sees something
 - Google receives what AI help sends, under Google's own terms.
 - With an invite code or the free AI, each AI request passes through John's server on Cloudflare (see above).
-- Anthropic receives what AI help sends only in the developer case above.
 - PyPI sees your IP address only if you install a setup kit from John, when `install.bat` downloads Python packages from it.
 - GitHub hosts the download, so it sees your IP address when you download. Anything you post in an issue is public.
 - The website's contact form and support form send nothing themselves: each opens a public GitHub issue filled in with what you typed, which you submit on GitHub yourself, or, with Email John instead, a new email in your own email app, which you send yourself.
@@ -134,7 +132,7 @@ can be charged by Google for what AI help uses; without billing, the free tier c
 - **Remove key** (in the pane) deletes the key and invite code saved in `%LOCALAPPDATA%\AnomalyHunter`. Scans and
   fixes keep working, and AI help goes back to John's free AI, which sends nothing until you click Ask AI, Check
   words with AI or Check subject rules with AI. A setup kit from John keeps its own copy, and running its install.bat again turns AI help back on, so
-  also delete `invite-code.txt` from the kit folder. A `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` setting keeps AI help on.
+  also delete `invite-code.txt` from the kit folder. A `GEMINI_API_KEY` setting keeps AI help on.
 - You can delete `ai-cache`, `server.log` or `server.log.1` in the folder above whenever you like.
 - **Forget what this workbook saved** (in the pane, under Options > Saved in this workbook) removes everything the pane
   saved in the open workbook: the limits, the strength slider, the auto-fix list with its old values, the old values

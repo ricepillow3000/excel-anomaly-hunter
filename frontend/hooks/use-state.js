@@ -15,7 +15,7 @@ export const state = {
   kind: null, // AH-228: the one kind of check the list shows (null: all)
   more: 0, // AH-228: how many times "Show the next 20" was pressed on this list
   aiAvailable: false,
-  aiProvider: null, // the engine's /health ai_provider: "gemini", "relay", "claude", "free" (AH-151) or null
+  aiProvider: null, // the engine's /health ai_provider: "gemini", "relay", "free" (AH-151) or null
   working: false, // one sheet action at a time; while one runs the buttons are disabled, never silently queued
   view: null, // which page is showing
 };

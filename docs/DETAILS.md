@@ -73,14 +73,14 @@ AI help works out of the box: with no key, **Ask AI** uses a free shared AI (Joh
 a day for each internet connection) and writes a different fix from a plain-English request. For more, paste your own
 free Google Gemini key from https://aistudio.google.com/apikey (Google account, no credit card) under "AI help" in the
 pane. Only the row asked about and a few rows around it go to Google (its free tier may use them to
-improve its products, so don't use it on private data). A Claude key (`ANTHROPIC_API_KEY`) also works.
+improve its products, so don't use it on private data).
 An invite kit (a zip from the author) needs no key: its `install.bat` switches AI help on by itself.
 Making kits: `node relay/new-invite.mjs "Name"` (see `relay/wrangler.toml` for the shared relay and its daily caps).
 No-Excel mode: `arcas scan data.csv` (the older `anomaly-hunter scan` still works).
 
 ## Layout
 - `frontend/` the Excel pane, plain JS modules, no build: `pages/` (home, results, fix, limits, settings), `features/` (scan, highlight, fix, ai), `components/`, `hooks/` (shared state, one-action-at-a-time), `services/` (back end + Excel calls), `utils/`, `constants/`, `styles/`. Entry: `app.js`.
-- `backend/anomaly_hunter/` the local server (127.0.0.1:5055): `server.py` (routes), `engine/` (detection), `ai/client.py` (Gemini / Claude); `backend/tests/`, `backend/bench/`.
+- `backend/anomaly_hunter/` the local server (127.0.0.1:5055): `server.py` (routes), `engine/` (detection), `ai/client.py` (Gemini / the relay); `backend/tests/`, `backend/bench/`.
 - `e2e/` browser tests · `powerbi/` Power BI source · `docs/` design notes.
 
 ## Test

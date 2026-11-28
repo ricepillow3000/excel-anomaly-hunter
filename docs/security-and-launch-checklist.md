@@ -242,8 +242,7 @@ Arcas.exe): `docs/proof/2026-11-04-before-after.md`.
 | Optimistic rendering, tooltips on icon buttons | Enforced; N/A | Buttons react at once (see "Update the UI before the server responds"); there are no icon-only buttons, every control shows its words. |
 
 Left for John (not code): a Cloudflare WAF rate rule against floods of stranger requests to the relay (they are
-refused before Google, but count toward the Workers free plan's daily requests); whether to keep the developer-only
-Claude path (`ANTHROPIC_API_KEY`) in the exe; an own-key `ai_eval.py` run so the fix prompt can say rows are data (AH-109);
+refused before Google, but count toward the Workers free plan's daily requests); an own-key `ai_eval.py` run so the fix prompt can say rows are data (AH-109);
 a canary invite saved as the repository secret `RELAY_CANARY_INVITE` (AH-108); a second private copy of `relay/tokens.json`.
 
 ## John's 20 before-going-public protections (AH-124, 2026-11-04)
@@ -286,7 +285,7 @@ first on the old code.
 | 1. A privacy policy page | Proven | `PRIVACY.md`, the pane's `frontend/privacy.html` and the website's `site/privacy.html`, held as twins (`test_both_privacy_pages_name_every_place_data_goes_and_every_file_the_app_keeps`, `test_the_panes_privacy_sections_and_the_websites_are_word_for_word_the_same`). Every site page's footer now links it too (`tools/test_site.mjs`, "the footer does not link the privacy page"). |
 | 2. What data we collect | Proven | "What stays on your PC" lists every file the app keeps; the pane's settings keys are named and Forget clears them (`test_every_privacy_page_says_what_the_pane_keeps_how_to_clear_it_and_the_relays_terms_as_configured`, `test_privacy_promises.py`). |
 | 3. Where AI is used | Proven | "What AI help sends": Ask AI and Check words, what each sends, and where (`test_ask_ai_sends_no_more_rows_than_both_privacy_pages_say`). The pane says it beside the Ask AI box (`#fix-sends`). |
-| 4. Third parties | Proven, PyPI added to the test | "Who else sees something" names Google, Cloudflare, Anthropic, PyPI, GitHub and Microsoft; the twins' test now holds PyPI too (`test_fix.py`, `places`). |
+| 4. Third parties | Proven, PyPI added to the test | "Who else sees something" names Google, Cloudflare, PyPI, GitHub and Microsoft; the twins' test now holds PyPI too (`test_fix.py`, `places`). |
 | 5. Our name | Built | The intro of all three pages: "Arcas is made and run by John Nguyen (GitHub: ricepillow3000)", how to reach him (the support page's GitHub form, or (770) 265-9930, a `tel:` link on the HTML pages), and since AH-134 John's one email address, a `mailto:` link, never any other (`test_every_privacy_page_names_who_runs_arcas_and_how_to_reach_him`, failed first). |
 | 6. Uploads not stored publicly | Built (test) | The relay passes a request to Google and keeps only the day's counter object `c` ({day, total, by}); a unique marker sent through /fix is in no stored value and no counter call (`relay/test.mjs`, "nothing the request said is stored"; a mutation that stored the body made it fail). On the PC, the AI cache keeps answers only (`test_ai_load.py`). |
 | 7. No public storage buckets | Built (test) | `relay/wrangler.toml` binds only the Counter Durable Object: no KV, R2, D1, queue or other store, and `[observability] enabled = false`, so Workers keeps no request logs (`test_the_relay_stores_no_upload_keeps_no_logs_and_has_no_public_bucket`). |

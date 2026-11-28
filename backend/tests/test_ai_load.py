@@ -302,24 +302,6 @@ def test_the_relays_words_reach_the_user_as_one_short_line_with_no_invite_code_i
     assert "\n" not in said and invite not in said and e.value.limit == "day"
 
 
-def test_a_claude_call_is_bounded_by_the_deadline_and_not_retried_by_the_sdk(monkeypatch):
-    """SDK defaults are a 10-minute timeout and 2 retries, all while the one-call lock is held (Council B4)."""
-    made = {}
-
-    class FakeAnthropic:
-        def __init__(self, **kw):
-            made.update(kw)
-            self.messages = self
-
-        def parse(self, **kw):
-            return type("R", (), {"parsed_output": client.Fix(explanation="x", changes=[]), "stop_reason": "end_turn"})()
-    monkeypatch.setattr(client.anthropic, "Anthropic", FakeAnthropic)
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
-    assert client.provider() == "claude"
-    client._ask("fix it")
-    assert made.get("max_retries") == 0 and 0 < made.get("timeout", 0) <= client.DEADLINE
-
-
 def test_a_cut_off_google_answer_is_retried_then_answers(monkeypatch):
     # stress test 2026-10-16: http.client.IncompleteRead is neither an OSError nor a ValueError - it escaped as an HTTP
     # 500 in Werkzeug's words. A connection cut mid-answer is like a reset: tried again with the user's own key
@@ -449,7 +431,7 @@ def test_when_every_model_is_used_up_for_today_the_user_hears_it_once(monkeypatc
 
 
 def test_a_finished_answer_is_kept_under_the_model_that_gave_it(monkeypatch):
-    key = lambda model: client.hashlib.sha256(json.dumps(["gemini", client.MODEL, model, "fix", "fix it"]).encode()).hexdigest()
+    key = lambda model: client.hashlib.sha256(json.dumps(["gemini", model, "fix", "fix it"]).encode()).hexdigest()
     fake_google(monkeypatch)
     client._ask("fix it")  # the main model answered: the same file name as before AH-145
     assert [f.stem for f in client._cache_dir().glob("*.json")] == [key(client.GEMINI_MODEL)]
@@ -493,7 +475,7 @@ def test_a_relay_answer_from_a_backup_model_is_named_and_kept_under_it(monkeypat
     monkeypatch.setattr(client.urllib.request, "urlopen", backup)
     out = client.suggest_fix(ASK["columns"], ASK["rows"], 1, 0, 0, ASK["reason"], "")
     assert out["model"] == "gemini-3.6-flash" and len(sent) == 1
-    key = client.hashlib.sha256(json.dumps(["relay", client.MODEL, "gemini-3.6-flash", "fix", sent[0]["messages"][0]["content"]]).encode()).hexdigest()
+    key = client.hashlib.sha256(json.dumps(["relay", "gemini-3.6-flash", "fix", sent[0]["messages"][0]["content"]]).encode()).hexdigest()
     assert [f.stem for f in client._cache_dir().glob("*.json")] == [key]
 
 

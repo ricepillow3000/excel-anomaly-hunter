@@ -254,7 +254,7 @@
   "new": "len(intent) > 4000:",
   "kind": "loosen",
   "tests": [
-   "backend/tests/test_fix.py::test_fix_route_validates_before_calling_claude"
+   "backend/tests/test_fix.py::test_fix_route_validates_before_calling_the_ai"
   ]
  },
  {
@@ -276,7 +276,7 @@
   "new": "nat(\"row_index\")",
   "kind": "loosen",
   "tests": [
-   "backend/tests/test_fix.py::test_fix_route_validates_before_calling_claude"
+   "backend/tests/test_fix.py::test_fix_route_validates_before_calling_the_ai"
   ]
  },
  {
@@ -287,7 +287,7 @@
   "new": "nat(\"start_col\", 16384 + 1)",
   "kind": "loosen",
   "tests": [
-   "backend/tests/test_fix.py::test_fix_route_validates_before_calling_claude",
+   "backend/tests/test_fix.py::test_fix_route_validates_before_calling_the_ai",
    "backend/tests/test_fix.py::test_each_fix_field_is_taken_right_up_to_its_limit_and_refused_one_past_it"
   ]
  },
@@ -537,14 +537,25 @@
   ]
  },
  {
-  "id": "claude-echo-loosen",
-  "guard": "Claude error text never echoed",
+  "id": "ai-unexpected-echo-loosen",
+  "guard": "an unexpected AI error never echoes the provider's text",
   "file": "backend/anomaly_hunter/server.py",
-  "old": "return {\"error\": f\"Claude answered with a problem{code}.",
-  "new": "return {\"error\": f\"Claude answered with a problem{code} {e}.",
+  "old": "return {\"error\": f\"Ask AI hit a problem it didn't expect.",
+  "new": "return {\"error\": f\"{__import__('sys').exc_info()[1]} Ask AI hit a problem it didn't expect.",
   "kind": "loosen",
   "tests": [
-   "backend/tests/test_api_security.py::test_a_claude_error_never_echoes_the_providers_text"
+   "backend/tests/test_api_security.py::test_an_unexpected_ai_error_never_echoes_the_providers_text"
+  ]
+ },
+ {
+  "id": "ai-own-words-tighten",
+  "guard": "our own words from the AI (a limit, a refusal) reach the pane as they are",
+  "file": "backend/anomaly_hunter/server.py",
+  "old": "return {\"error\": str(e), **({\"limit\": e.limit}",
+  "new": "return {\"error\": \"x\", **({\"limit\": e.limit}",
+  "kind": "tighten",
+  "tests": [
+   "backend/tests/test_api_security.py::test_an_unexpected_ai_error_never_echoes_the_providers_text"
   ]
  },
  {

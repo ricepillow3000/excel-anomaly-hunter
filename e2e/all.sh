@@ -1,5 +1,5 @@
 #!/bin/bash
-# Browser test, all modes, fresh servers (engine on :5055, Claude API stand-in on :5099). Usage: e2e/all.sh
+# Browser test, all modes, fresh servers (engine on :5055, AI stand-in for John's relay on :5099). Usage: e2e/all.sh
 # Linux/macOS or Git Bash on Windows. Port 5055 must be free: stop the installed engine first.
 D=$(cd "$(dirname "$0")" && pwd); R=$(cd "$D/.." && pwd)
 export NODE_PATH=${NODE_PATH:-$(npm root -g)}
@@ -13,13 +13,13 @@ stop() { end "$ENGINE"; end "$STUB"; ENGINE= STUB=
 engine() { (cd "$R" && exec env "$@" "$PY" "$D/engine.py" "$D/cert" &> "$D/engine.out") & ENGINE=$!
   for i in $(seq 40); do curl -sk https://127.0.0.1:5055/health >/dev/null && return; sleep 0.25; done; echo "engine did not start"; }
 # a fresh AI answer cache too: a kept answer from the last run would never reach the stub, and test nothing
-rm -rf "$D/claude.log" "$D/cert/ai-cache" "$D/cert/latest-scan.csv" "$D/cert/latest-flags.csv"; (exec "$PY" "$D/stub_claude.py" "$D/claude.log" &> "$D/stub.out") & STUB=$!
+rm -rf "$D/ai.log" "$D/cert/ai-cache" "$D/cert/latest-scan.csv" "$D/cert/latest-flags.csv"; (exec "$PY" "$D/stub_ai.py" "$D/ai.log" &> "$D/stub.out") & STUB=$!
 fail=0
-engine ANTHROPIC_API_KEY=test ANTHROPIC_BASE_URL=http://127.0.0.1:5099 GEMINI_API_KEY=
+engine GEMINI_API_KEY=
 # each mode's time beside its 150 s limit (AH-209: flow had grown to 145 s here before anyone saw it)
 for m in ${MODES:-flow flow2 ai live}; do echo "== $m"; t=$SECONDS; (cd "$D" && timeout 150 node run.mjs $m) || fail=1; echo "== $m took $((SECONDS - t)) s of 150"; done
 echo "== launch"; (cd "$D" && timeout 60 node launch.mjs) || fail=1
-end "$ENGINE"; sleep 1; engine -u ANTHROPIC_API_KEY GEMINI_API_KEY=
+end "$ENGINE"; sleep 1; engine GEMINI_API_KEY=
 echo "== nokey"; (cd "$D" && timeout 150 node run.mjs nokey) || fail=1
 stop
 exit $fail

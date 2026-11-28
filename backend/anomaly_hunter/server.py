@@ -15,7 +15,6 @@ import urllib.request
 from collections import Counter
 from pathlib import Path
 
-import anthropic
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -298,21 +297,11 @@ def create_app(scan_csv=None):
         return profile(body["columns"], body["rows"])
 
     def ai(call):
-        """Run an AI call (Gemini, the relay or Claude); map its failures to HTTP errors the panel shows as-is."""
+        """Run an AI call (Gemini or the relay); map its failures to HTTP errors the panel shows as-is."""
         if not client.api_key_configured():
             return {"error": "No AI key yet. Paste a free Google AI key under Options > AI help."}, 503
         try:
             return call()
-        except anthropic.AuthenticationError:
-            return {"error": "Claude did not accept the ANTHROPIC_API_KEY on this PC. Check the key, then start Arcas again."}, 503
-        # Our own words only, never the provider's text (2026-10-15 audit): details go to server.log
-        except (anthropic.RateLimitError, anthropic.APIConnectionError):
-            app.logger.exception("Claude busy or unreachable")
-            return {"error": "Claude is busy or can't be reached right now. Try again in a minute."}, 503
-        except anthropic.APIError as e:
-            app.logger.exception("Claude API error")
-            code = f" (HTTP {e.status_code})" if getattr(e, "status_code", None) else ""
-            return {"error": f"Claude answered with a problem{code}. Try again in a minute, and if it happens again, the details are in {LOG_AT}."}, 502
         except ValueError as e:  # AH-145: limit "day" or "busy" = the pane's notice says it in its own words
             return {"error": str(e), **({"limit": e.limit} if isinstance(e, client.Limit) else {})}, 502
         except Exception:  # anything new still answers in our words, never Werkzeug's or the provider's (2026-10-16)
@@ -367,7 +356,7 @@ def create_app(scan_csv=None):
         reason = body.get("reason") or ""
         if not isinstance(reason, str) or len(reason) > 10_000:
             return {"error": "'reason' must be text, at most 10,000 characters"}, 400
-        # the flagged row's formulas, so Claude fixes inputs instead of overwriting them: Excel's formulas of the row, a
+        # the flagged row's formulas, so the AI fixes inputs instead of overwriting them: Excel's formulas of the row, a
         # cell's formula or, where it has none, the cell itself (AH-160: any item and any length went through)
         formulas = body.get("formulas")
         if formulas is not None and not (isinstance(formulas, list) and len(formulas) == len(body["columns"]) and all(

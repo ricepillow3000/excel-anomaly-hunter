@@ -1,5 +1,5 @@
-"""AI fix for one flagged row: free Google Gemini key (pasted in the pane, or GEMINI_API_KEY) or a Claude key
-(ANTHROPIC_API_KEY). Key stays on this PC (never in the panel or the workbook). The AI only proposes cell writes;
+"""AI fix for one flagged row: free Google Gemini key (pasted in the pane, or GEMINI_API_KEY), or John's relay. Key
+stays on this PC (never in the panel or the workbook). The AI only proposes cell writes;
 the user previews them and nothing changes until Apply."""
 import hashlib
 import http.client
@@ -14,16 +14,14 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-import anthropic
 from openpyxl.utils import column_index_from_string, get_column_letter
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from anomaly_hunter import sealed
 from anomaly_hunter.ai import bias_context, pii
 from anomaly_hunter.ai import memory as past
 from anomaly_hunter.ai.memory import with_memory
 
-MODEL = "claude-opus-5"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"  # OpenAI-compatible
 GEMINI_MODEL = "gemini-3.8-flash"  # free tier, no credit card (aistudio.google.com)
 # AH-145: tried in order when GEMINI_MODEL's day is used up or it is overloaded (each model has its own free quota).
@@ -45,17 +43,17 @@ def invite_code():
 
 
 def provider():
-    """Which AI answers: your own free Gemini key first, then John's relay with an invite code, then Claude, then the
+    """Which AI answers: your own free Gemini key first, then John's relay with an invite code, then the
     relay's free public tier (AH-151: every user has AI help with no key), else None."""
     # the invite code is a password and the sheet is private: only over https (plain http only to this PC, for the test stub)
     relay_ok = RELAY_URL.startswith(("https://", "http://127.0.0.1:"))
     return ("gemini" if gemini_key() else "relay" if relay_ok and invite_code() else
-            "claude" if os.environ.get("ANTHROPIC_API_KEY") else "free" if relay_ok else None)
+            "free" if relay_ok else None)
 
 
 def secrets():
     """Every key and invite code this PC may send, so server.log can blank them out of a provider's error (AH-124)."""
-    return [s for s in (gemini_key(), invite_code(), os.environ.get("ANTHROPIC_API_KEY")) if s and len(s) >= 8]
+    return [s for s in (gemini_key(), invite_code()) if s and len(s) >= 8]
 
 
 def api_key_configured():
@@ -300,11 +298,11 @@ def _wait(tries, headers, deadline):
 
 
 def _ask(prompt, out=Fix, schema=FIX_SCHEMA, name="fix", deadline=None):
-    """The prompt -> an `out` answer (Fix unless told otherwise), from Gemini (free) or Claude. A finished answer is
+    """The prompt -> an `out` answer (Fix unless told otherwise), from Gemini (free) or John's relay. A finished answer is
     kept (the answer, never the prompt), so asking the same again never reaches Google.
     Failures -> ValueError with words a user can act on."""
     # kept under the model that answered (AH-145): GEMINI_MODEL's file first, then each backup's
-    kept = lambda model: _cache_dir() / f"{hashlib.sha256(json.dumps([provider(), MODEL, model, name, prompt]).encode()).hexdigest()}.json"
+    kept = lambda model: _cache_dir() / f"{hashlib.sha256(json.dumps([provider(), model, name, prompt]).encode()).hexdigest()}.json"
     for model in (GEMINI_MODEL, *GEMINI_FALLBACKS):
         try:
             answer = out.model_validate_json(kept(model).read_text(encoding="utf-8"))
@@ -346,19 +344,6 @@ TOO_LONG = "The AI's answer was too long to come back whole. Ask for fewer cells
 
 def _call(prompt, out, schema, name, deadline):
     """-> (the answer, the Gemini model it is kept under: GEMINI_MODEL unless a backup answered)."""
-    if provider() not in ("gemini", "relay", "free"):
-        try:
-            # SDK defaults (10 min timeout, 2 retries) would hold the one-call lock long after the pane gave up
-            sdk = anthropic.Anthropic(timeout=max(1, deadline - time.monotonic()), max_retries=0)
-            resp = sdk.messages.parse(model=MODEL, max_tokens=16000, output_format=out,
-                                      messages=[{"role": "user", "content": prompt}])
-        except ValidationError:  # answer cut off mid-JSON
-            raise ValueError("Claude's answer came back incomplete. Try again, or shorten the request.") from None
-        if resp.parsed_output is None:  # refusal
-            raise ValueError("Claude gave no usable answer: " + (
-                "it declined this request. Try different words, or fix it by hand." if resp.stop_reason == "refusal"
-                else TOO_LONG[4:].replace("AI's answer was", "it was", 1) if resp.stop_reason == "max_tokens" else "try again."))
-        return resp.parsed_output, GEMINI_MODEL
     data = _wire(prompt, schema, name)
     if len(data) > BUDGET:  # the callers trim to fit; this is the last guard (the relay refuses over 8 KB)
         raise ValueError("That request was too large for the AI. Try a smaller selection.")
@@ -617,7 +602,7 @@ def _masked(rows, row_index, formulas, reason, intent):
 
 
 def suggest_fix(columns, rows, row_index, start_row, start_col, reason, intent, formulas=None, memory=None):
-    """-> {explanation, changes: [{cell, new}]}. Invalid cell addresses are dropped. Raises ValueError / anthropic errors.
+    """-> {explanation, changes: [{cell, new}]}. Invalid cell addresses are dropped. Raises ValueError.
     memory = up to 20 fixes the user accepted before in this column, newest first, as {h, k, o, n} (AH-143, AH-153)."""
     hits = [j for j, c in enumerate(columns) if str(c) and str(c) in (reason or "")]
     flagged = max(hits, key=lambda j: len(str(columns[j])), default=0)  # "Column 31" over "Column 3"

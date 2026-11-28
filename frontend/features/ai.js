@@ -46,9 +46,9 @@ export async function saveKey(key) {
     $("ai-key").value = ""; // the key never stays on screen
     setAi(out.ai_available, out.ai_provider);
     // the engine tested the key with Google: "Key works", or why it was saved untested
-    // only Remove reaches here without a message (Save sends a key); a Claude key set in Windows can keep AI on
+    // only Remove reaches here without a message (Save sends a key); a GEMINI_API_KEY set in Windows can keep AI on
     keySaid(out.message || (out.ai_provider === "free" ? "Key removed. AI help uses the free shared AI again."
-      : out.ai_available ? "Key removed. AI help still uses the paid Claude key set on this PC." : "Key removed. AI help is off."));
+      : out.ai_available ? "Key removed. AI help still uses the Google key set on this PC." : "Key removed. AI help is off."));
   } catch (e) {
     // a key the engine refused (Google said no, or it is not a key) is no use to retry: it leaves the screen like a
     // saved one (AH-15); a save that failed (the disk, the engine gone) keeps it in the box to try again

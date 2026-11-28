@@ -1231,9 +1231,9 @@ const shortNote = async (box, note, summary, full) => {
     `AH-164: under ${box}'s button at most one line shows; "${summary}", closed, opens to all it sends - ` + JSON.stringify({ ...m, said }));
 };
 
-if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.py
+if (mode === "ai") { // engine started with no key: the free AI through stub_ai.py (e2e/engine.py)
   await find();
-  ok(await page.isVisible("#ai-fold") || !(await page.isVisible("#ai-off")), "AI help is on when a key is set");
+  ok(await page.isVisible("#ai-fold") || !(await page.isVisible("#ai-off")), "AI help is on (the free AI, no key)");
   // AH-228 P-18 (AH-164's and AH-202's boxes, now folded): Check words and Check subject rules wait under one closed line,
   // "More checks with AI", under the list; Remove highlights stays outside it
   { const m = await page.evaluate(() => { const d = document.getElementById("ai-checks"), sum = d?.querySelector("summary");
@@ -1257,7 +1257,7 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
     ok(cards.every((c) => c.starter === (!c.fix || c.kind.startsWith("Best guess"))) && cards.some((c) => c.fix && !c.starter) && cards.some((c) => !c.fix && c.starter),
       "AH-235: the value starter is hidden on a card with a sure engine fix and shown on one with none - " + JSON.stringify(cards)); }
   await openRow(11);
-  ok(await page.isVisible("#ai-fold") && !(await page.isVisible("#ai-off")), "Ask AI shown when a key is set");
+  ok(await page.isVisible("#ai-fold") && !(await page.isVisible("#ai-off")), "Ask AI shown with the free AI on");
   await page.click("#ai-fold > summary");
   await shortNote("#ai-box", "#fix-sends", "What Ask AI sends", ["Ask AI sends the column names, this row and up to 5 rows above and below it", "Up to 5 fixes you accepted before in a column with this name"]);
   // typed with the real keyboard: page.fill sets the value without a single key event, and so hid that the box
@@ -1297,7 +1297,7 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
   await page.waitForFunction(() => document.getElementById("fix-label").textContent === "AI's fix", null, { timeout: 30000 });
   ok(posts.includes("/fix") && posts.every((p) => p === "/fix" || p === "/check"), "Ctrl+Enter asks AI: only /fix and /check are sent - " + posts);
   ok((await page.inputValue("#fix-intent")) === typed, "Ctrl+Enter adds no new line");
-  const asked = fs.readFileSync(DIR + "claude.log", "utf8").trim().split("\n").map(JSON.parse).filter((l) => l.prompt.includes("Flagged row")).at(-1);
+  const asked = fs.readFileSync(DIR + "ai.log", "utf8").trim().split("\n").map(JSON.parse).filter((l) => l.prompt.includes("Flagged row")).at(-1);
   ok(asked && asked.prompt.includes(`User's request: ${typed}`), "what was typed is what AI is asked");
   ok((await text("#fix-changes")).startsWith("C11: -5 → =AVERAGEIFS("), "AI's fix previewed - " + (await text("#fix-changes")));
   ok((await cell("C11")).v === -5, "nothing written before Accept");
@@ -1318,7 +1318,7 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
   ok(posts.filter((p) => p === "/fix").length === 1, "two fast clicks on Ask AI send one /fix - " + posts);
   // AH-125: words of someone in crisis get helpline numbers from the engine itself. Typed with the real keyboard, like
   // the request above; nothing reaches the AI stand-in, no fix and no Accept are offered beside it
-  const asks = () => fs.readFileSync(DIR + "claude.log", "utf8").trim().split("\n").length;
+  const asks = () => fs.readFileSync(DIR + "ai.log", "utf8").trim().split("\n").length;
   const asked0 = asks();
   posts.length = 0;
   await page.fill("#fix-intent", ""); await page.click("#fix-intent");
@@ -1414,7 +1414,7 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
     `AH-170: the odd word in one line, with its column, how many rows and the first 3 (${odd.length} lines) - ${odd[0]}`);
   ok(!(await page.$("#odd-list img")) && !(await page.evaluate(() => window.__pwned)) && !odd.some((t) => t.includes("Atlantis")),
     "the AI's words are text, never markup; a word the AI made up is dropped");
-  const sent = fs.readFileSync(DIR + "claude.log", "utf8").trim().split("\n").map(JSON.parse).find((l) => l.prompt.includes("distinct values"));
+  const sent = fs.readFileSync(DIR + "ai.log", "utf8").trim().split("\n").map(JSON.parse).find((l) => l.prompt.includes("distinct values"));
   ok(sent && sent.prompt.includes('"Region"') && !/7777|170\.43|Units|2026-/.test(sent.prompt), "Check words sends the text column's words only, no numbers, dates or rows");
   for (const [how, fail, words] of [
     ["the provider fails", (r) => r.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ error: AI_BROKE }) }), AI_BROKE],
@@ -1442,7 +1442,7 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
     ok(rule && (rule.startsWith("True on all") || lines.some((l) => /^Row \d+, column E \(Total\): Total \S+ is not Units × UnitCost \(\S+\): a rule the AI read from your headers, true on \d+ of \d+ rows\.$/.test(l)))
       && !lines.some((l) => l.includes("Ship date")), "AH-202: the rule, its AI words as text and the rows against it, a rule of a header not sent dropped - " + JSON.stringify(lines.slice(0, 3)));
     ok(!(await page.$("#rules-list img")) && !(await page.evaluate(() => window.__pwned)), "AH-202: the AI's words are text, never markup");
-    const asked = fs.readFileSync(DIR + "claude.log", "utf8").trim().split("\n").map(JSON.parse).find((l) => l.prompt.includes("column headers of a spreadsheet"));
+    const asked = fs.readFileSync(DIR + "ai.log", "utf8").trim().split("\n").map(JSON.parse).find((l) => l.prompt.includes("column headers of a spreadsheet"));
     ok(asked && asked.prompt.includes('["Units", "number"]') && !/7777|170\.43|"East"|2026-/.test(asked.prompt), "AH-202: Check subject rules sends the headers and their kinds only, never a cell"); }
   for (const [how, fail, words] of [
     ["the provider fails", (r) => r.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ error: AI_BROKE }) }), AI_BROKE],
@@ -1462,7 +1462,7 @@ if (mode === "ai") { // engine started with a Claude key pointed at stub_claude.
   ok((await page.$$eval("#rules-list li", (lis) => lis.length)) === 0, "AH-202: Find problems on another sheet clears the old Check subject rules lines");
 }
 
-if (mode === "nokey") { // engine started with no key: John's free AI through the relay, here stub_claude.py's /fix (e2e/engine.py)
+if (mode === "nokey") { // engine started with no key: John's free AI through the relay, here stub_ai.py's /fix (e2e/engine.py)
   await find();
   await openRow(11);
   // AH-151: a fresh pane with no key has the free AI on, says so in AI help, and Ask AI works with nothing secret sent
@@ -1476,7 +1476,7 @@ if (mode === "nokey") { // engine started with no key: John's free AI through th
   await page.click("#ai-fold > summary"); // AH-175: Ask AI is folded under the card's fix
   await page.click("#fix-ask");
   await page.waitForFunction(() => document.getElementById("fix-label").textContent === "AI's fix", null, { timeout: 30000 });
-  const relayed = fs.readFileSync(DIR + "claude.log", "utf8").trim().split("\n").map(JSON.parse).at(-1);
+  const relayed = fs.readFileSync(DIR + "ai.log", "utf8").trim().split("\n").map(JSON.parse).at(-1);
   ok(relayed.path === "/fix" && relayed.auth === false && (await text("#fix-changes")).startsWith("C11: -5 → =AVERAGEIFS("),
     "Ask AI with no key: the free AI's fix, through the relay's /fix with no Authorization header - " + JSON.stringify({ path: relayed.path, auth: relayed.auth }));
   await page.click("#settings summary");
@@ -2182,7 +2182,7 @@ if (mode === "live") {
   // pass 2: no AI from here (its route fails, and the stand-in's log must not grow), the pane reloaded
   let asked = 0;
   await page.route("**/rules", (r) => { asked++; return r.abort("connectionrefused"); });
-  const log = () => fs.readFileSync(DIR + "claude.log", "utf8").trim().split("\n").length;
+  const log = () => fs.readFileSync(DIR + "ai.log", "utf8").trim().split("\n").length;
   const ai0 = log(), k1 = calls.length, s1 = scans.length;
   await page.reload(); await page.waitForSelector("#main-ui", { state: "visible" }); await profiled();
   const typed = [["INV-1041", 4, 12.5, 0.93, 46.5, 61.5], ["INV-1042", 6, 14.5, 0.92, 105.04, 56.03]]; // Paid over Amount; a fee on top

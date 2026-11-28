@@ -538,7 +538,7 @@ def main(argv):
     if client.provider() != "gemini":
         print("Set GEMINI_API_KEY (your own key, a Google Cloud project that is not the relay's). Nothing was sent.")
         return 2
-    key = os.environ["GEMINI_API_KEY"]  # held here: a key removed mid-run can't switch the run to the relay or to Claude
+    key = os.environ["GEMINI_API_KEY"]  # held here: a key removed mid-run can't switch the run to the relay
     client.provider, client.gemini_key = lambda: "gemini", lambda: key
     cases = {s: [(c, j) for c, j in jobs(s, repo) if arg("--only", "") in c["id"]] for s in splits}
     arms = sorted(arms, key=lambda a: a != "base")  # base first: an arm whose request is base's takes base's answer

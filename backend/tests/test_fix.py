@@ -21,7 +21,7 @@ def post(body):
     return create_app().test_client().post("/fix", json=body)
 
 
-def test_fix_prompt_gives_claude_real_sheet_addresses():
+def test_fix_prompt_gives_the_ai_real_sheet_addresses():
     p = client._fix_prompt(COLS, ROWS, 1, 0, 0, "Units below weird low 0", "make it the median")
     assert "Data range: A1:C4 (row 1 = headers)" in p
     assert "A=OrderDate, B=Region, C=Units" in p
@@ -96,7 +96,7 @@ def test_what_the_pane_says_ask_ai_sends_is_what_the_engine_sends(monkeypatch):
     assert repr("y" * cap + "...") in sent[0] and "y" * (cap + 1) not in sent[0]
 
 
-def test_fix_route_validates_before_calling_claude(monkeypatch):
+def test_fix_route_validates_before_calling_the_ai(monkeypatch):
     monkeypatch.setattr(client, "api_key_configured", lambda: True)
     monkeypatch.setattr(client, "suggest_fix", lambda *a: 1 / 0)  # must never be reached
     for bad in ({**BODY, "row_index": 3}, {**BODY, "row_index": -1}, {**BODY, "row_index": True},
@@ -175,16 +175,14 @@ def test_the_fix_route_takes_up_to_20_past_fixes_of_four_short_texts_and_refuses
     assert post({**BODY, "memory": []}).status_code == 200 and seen["kw"] == {"memory": []}
 
 
-def stub_api(monkeypatch, content, stop="end_turn"):
-    """Local stand-in for the Claude API: the real SDK talks to it. -> (server, list of request bodies)."""
+def stub_api(monkeypatch, text, finish="stop"):
+    """Local stand-in for John's relay, answering in Google's shape: the real request code talks to it. -> (server, list of request bodies)."""
     sent = []
 
     class Stub(BaseHTTPRequestHandler):
         def do_POST(self):
             sent.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
-            out = json.dumps({"id": "msg_1", "type": "message", "role": "assistant", "model": client.MODEL,
-                              "content": content, "stop_reason": stop, "stop_sequence": None,
-                              "usage": {"input_tokens": 1, "output_tokens": 1}}).encode()
+            out = json.dumps({"choices": [{"message": {"content": text}, "finish_reason": finish}]}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(out)))
@@ -196,17 +194,15 @@ def stub_api(monkeypatch, content, stop="end_turn"):
 
     srv = HTTPServer(("127.0.0.1", 0), Stub)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
-    monkeypatch.setenv("ANTHROPIC_BASE_URL", f"http://127.0.0.1:{srv.server_port}")
+    monkeypatch.setattr(client, "RELAY_URL", f"http://127.0.0.1:{srv.server_port}")
     return srv, sent
 
 
-def test_suggest_fix_through_real_sdk(monkeypatch):
-    """Real anthropic SDK request + structured-output parse."""
+def test_suggest_fix_normalises_the_answers_cell_addresses(monkeypatch):
     answer = {"explanation": "Use the median.", "changes": [
         {"cell": "c3", "new": "=MEDIAN(C2,C4)"}, {"cell": "$C$4", "new": "50"},
         {"cell": "Sheet1!C3", "new": "1"}, {"cell": "C0", "new": "1"}]}
-    srv, sent = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
+    srv, sent = stub_api(monkeypatch, json.dumps(answer))
     try:
         out = client.suggest_fix(COLS, ROWS, 1, 0, 0, "low", "median please")
     finally:
@@ -214,15 +210,12 @@ def test_suggest_fix_through_real_sdk(monkeypatch):
     # lower-cased and $-anchored addresses are normalised; sheet-qualified and row 0 are left out, and said (AH-34)
     assert out == {"explanation": "Use the median. (Left out Sheet1!C3, C0: not a single cell of this table.)",
                    "changes": [{"cell": "C3", "new": "=MEDIAN(C2,C4)"}, {"cell": "C4", "new": "50"}]}
-    assert sent[0]["model"] == client.MODEL
-    assert sent[0]["output_config"]["format"]["type"] == "json_schema"
     assert "median please" in sent[0]["messages"][0]["content"]
 
 
 def test_fix_route_explains_refusal_and_cut_off_answers(monkeypatch):
-    for content, stop, msg in (([], "refusal", "no usable answer"),
-                               ([{"type": "text", "text": '{"explanation": "cu'}], "max_tokens", "incomplete")):
-        srv, _ = stub_api(monkeypatch, content, stop)
+    for text, finish, msg in ((None, "stop", "declined to answer"), ('{"explanation": "cu', "length", "too long to come back whole")):
+        srv, _ = stub_api(monkeypatch, text, finish)
         try:
             r = post(BODY)
         finally:
@@ -243,7 +236,7 @@ def test_refers_to_itself_catches_circular_formulas():
 def test_suggest_fix_drops_circular_formula(monkeypatch):
     answer = {"explanation": "Median.", "changes": [{"cell": "C3", "new": "=MEDIAN(C2:C4)"},
                                                    {"cell": "C2", "new": "=MEDIAN(C3,C4)"}]}
-    srv, sent = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
+    srv, sent = stub_api(monkeypatch, json.dumps(answer))
     try:
         out = client.suggest_fix(COLS, ROWS, 1, 0, 0, "low", "median please")
     finally:
@@ -262,7 +255,7 @@ def test_suggest_fix_drops_formulas_that_reach_outside_the_workbook(monkeypatch)
     answer = {"explanation": "x", "changes": [{"cell": f"D{k + 2}", "new": f} for k, f in enumerate(bad)]
               + [{"cell": "E2", "new": "=AVERAGEIFS(C2:C3,B2:B3,\"East\")"}, {"cell": "E3", "new": "imaging"},
                  {"cell": "E4", "new": "=AVERAGE(Table1[Units])"}]}  # a table's own column: inside the workbook
-    srv, _ = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
+    srv, _ = stub_api(monkeypatch, json.dumps(answer))
     try:
         out = client.suggest_fix(wide, rows, 1, 0, 0, "", "fill D and E")
     finally:
@@ -279,7 +272,7 @@ def test_an_ai_formula_that_reaches_another_workbook_by_path_or_share_is_left_ou
     wide = COLS + ["D", "E"]
     answer = {"explanation": "x", "changes": [{"cell": "D3", "new": formula}, {"cell": "E3", "new": "=B3*C3"},
                                               {"cell": "D2", "new": "=SUM(C2:C3)"}]}
-    srv, _ = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
+    srv, _ = stub_api(monkeypatch, json.dumps(answer))
     try:
         out = client.suggest_fix(wide, [r + ["", ""] for r in ROWS], 1, 0, 0, "", "fill D")
     finally:
@@ -295,7 +288,7 @@ def test_an_ai_formula_naming_a_share_or_path_that_is_not_a_workbook_file_is_lef
     # by no test; INDEX and SUM are on the safe list, so the backslash is all that stops Excel fetching the share over SMB
     wide = COLS + ["D", "E"]
     answer = {"explanation": "x", "changes": [{"cell": "D3", "new": formula}, {"cell": "E3", "new": "=B3*C3"}]}
-    srv, _ = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
+    srv, _ = stub_api(monkeypatch, json.dumps(answer))
     try:
         out = client.suggest_fix(wide, [r + ["", ""] for r in ROWS], 1, 0, 0, "", "fill D")
     finally:
@@ -312,7 +305,7 @@ def test_an_ai_formula_hiding_a_call_between_quotes_in_sheet_names_or_columns_is
     wide = COLS + ["D", "E"]
     answer = {"explanation": "x", "changes": [{"cell": "D3", "new": formula},
                                               {"cell": "E3", "new": "='Q1 sales'!B2+SUM(Table1[it''s])"}]}
-    srv, _ = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
+    srv, _ = stub_api(monkeypatch, json.dumps(answer))
     try:
         out = client.suggest_fix(wide, [r + ["", ""] for r in ROWS], 1, 0, 0, "", "fill D")
     finally:
@@ -337,7 +330,7 @@ def test_an_ai_formula_using_a_function_not_on_the_safe_list_is_left_out(monkeyp
     rows = [r + ["", ""] for r in ROWS] + [["2026-01-09", "East", 1, "", ""]] * 9
     answer = {"explanation": "x", "changes": [{"cell": f"D{k + 2}", "new": f} for k, f in enumerate(bad)]
               + [{"cell": f"E{k + 2}", "new": f} for k, f in enumerate(good)]}
-    srv, _ = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
+    srv, _ = stub_api(monkeypatch, json.dumps(answer))
     try:
         out = client.suggest_fix(wide, rows, 4, 0, 0, "", "fill D and E")  # row 6 flagged: rows 2-11 all shown (AH-34)
     finally:
@@ -368,7 +361,7 @@ def test_suggest_fix_keeps_to_the_table(monkeypatch):  # a prompt-injected cell 
     answer = {"explanation": "x", "changes": [{"cell": "A1", "new": "Region"}, {"cell": last, "new": "7"},
                                               {"cell": "ZZ9999", "new": "1"}, {"cell": f"A{len(ROWS) + 2}", "new": "1"},
                                               {"cell": f"{chr(65 + len(COLS))}2", "new": "1"}]}
-    srv, sent = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
+    srv, sent = stub_api(monkeypatch, json.dumps(answer))
     try:
         out = client.suggest_fix(COLS, ROWS, 1, 0, 0, "low", "tidy the table")
     finally:
@@ -389,7 +382,7 @@ def test_with_no_request_a_fix_changes_only_the_flagged_row(monkeypatch):
     # guard (plain values inside the table), and the pane's re-check looks only at the flagged row
     answer = {"explanation": "x", "changes": [{"cell": "C3", "new": "5"}, {"cell": "C2", "new": "0"},
                                               {"cell": "C4", "new": "0"}, {"cell": "A1", "new": "Day"}]}
-    srv, _ = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
+    srv, _ = stub_api(monkeypatch, json.dumps(answer))
     try:
         out = client.suggest_fix(COLS, ROWS, 1, 0, 0, "Units below weird low 0", "  ")
     finally:
@@ -401,7 +394,7 @@ def test_with_no_request_a_fix_changes_only_the_flagged_row(monkeypatch):
 
 def test_a_typed_request_may_still_change_other_rows(monkeypatch):
     answer = {"explanation": "x", "changes": [{"cell": "B2", "new": "East"}, {"cell": "B3", "new": "East"}]}
-    srv, _ = stub_api(monkeypatch, [{"type": "text", "text": json.dumps(answer)}])
+    srv, _ = stub_api(monkeypatch, json.dumps(answer))
     try:
         out = client.suggest_fix(COLS, ROWS, 1, 0, 0, "Region odd", "fix this typo in every row")
     finally:
@@ -442,7 +435,6 @@ def gemini_stub(monkeypatch, tmp_path, status=200, content=None, error=None, mod
     monkeypatch.setattr(client, "GEMINI_URL", f"http://127.0.0.1:{srv.server_port}/v1beta/openai/chat/completions")
     monkeypatch.setattr(client, "KEY_FILE", tmp_path / "gemini-key.txt")
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     return got
 
 
@@ -497,7 +489,7 @@ def test_an_invite_code_uses_johns_relay_never_a_key(monkeypatch, tmp_path):
 
 
 def free_relay(monkeypatch, tmp_path, status=200, error=None):
-    """AH-151: the stub stands in for John's relay, with no key, no invite and no Claude key on this PC."""
+    """AH-151: the stub stands in for John's relay, with no key and no invite on this PC."""
     got = gemini_stub(monkeypatch, tmp_path, status=status, error=error,
                       content=json.dumps({"explanation": "Use 50.", "changes": [{"cell": "C3", "new": "50"}]}))
     monkeypatch.setattr(client, "RELAY_URL", client.GEMINI_URL.rsplit("/v1beta", 1)[0])
@@ -517,10 +509,9 @@ def test_with_nothing_set_on_this_pc_the_free_ai_on_johns_relay_is_on(monkeypatc
     assert c.post("/key", json={"key": ""}).get_json() == {"ai_available": True, "ai_provider": "free"}  # Remove key: back to it
 
 
-def test_an_own_key_an_invite_and_a_claude_key_each_win_over_the_free_ai(monkeypatch, tmp_path):
+def test_an_own_key_and_an_invite_each_win_over_the_free_ai(monkeypatch, tmp_path):
     free_relay(monkeypatch, tmp_path)
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-made-up")
-    assert client.provider() == "claude"
+    assert client.provider() == "free"
     client.INVITE_FILE.write_text("inv_" + "a" * 24, encoding="utf-8")
     assert client.provider() == "relay"
     client.KEY_FILE.write_text("AIzaTest", encoding="utf-8")  # gitleaks:allow - made-up test key
@@ -528,8 +519,16 @@ def test_an_own_key_an_invite_and_a_claude_key_each_win_over_the_free_ai(monkeyp
     monkeypatch.setattr(client, "RELAY_URL", "http://relay.example")  # never plain http off this PC, even with nothing secret
     for f in (client.KEY_FILE, client.INVITE_FILE):
         f.unlink()
-    monkeypatch.delenv("ANTHROPIC_API_KEY")
     assert client.provider() is None
+
+
+def test_a_claude_key_set_on_this_pc_does_not_turn_ai_on(monkeypatch, tmp_path):
+    # AH-241: the paid Claude path is gone, so the variable is just text on the PC: with no relay either, AI stays off
+    free_relay(monkeypatch, tmp_path)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-made-up")
+    assert client.provider() == "free"
+    monkeypatch.setattr(client, "RELAY_URL", "")
+    assert client.provider() is None and not client.api_key_configured()
 
 
 def test_the_free_ais_used_up_day_says_so_in_plain_words(monkeypatch, tmp_path):
@@ -626,12 +625,11 @@ def test_any_unexpected_ai_failure_is_our_own_json_502(monkeypatch):
 
 
 def test_both_privacy_pages_name_every_place_data_goes_and_every_file_the_app_keeps():
-    # 2026-10-19 audit: the Privacy page said "nothing is sent to any other third party" (the relay runs on Cloudflare;
-    # an ANTHROPIC_API_KEY sends to Anthropic) and left out files the installer writes. Both pages must stay twins.
+    # 2026-10-19 audit: the Privacy page said "nothing is sent to any other third party" (the relay runs on Cloudflare) and left out files the installer writes. Both pages must stay twins.
     from pathlib import Path
     root = Path(__file__).resolve().parents[2]
     # PyPI: an invite kit's install.bat; GoatCounter: the website's page view counter (AH-126), never the pane's
-    places = ("Google", "Cloudflare", "Anthropic", "GitHub", "Microsoft", "PyPI", "GoatCounter")
+    places = ("Google", "Cloudflare", "GitHub", "Microsoft", "PyPI", "GoatCounter")
     files = ("Arcas.exe", "server.log", "server.log.1", "ai-cache", "gemini-key.txt", "invite-code.txt", "cert.pem",
              "manifest.xml", "Start here.xlsx", "anomaly-hunter.pbids", "latest-scan.csv", "anomaly-hunter-flags.pbids",
              "latest-flags.csv")

@@ -1,7 +1,6 @@
 """API security checks CI runs on every push: what a generic scanner (ZAP) can't know about this engine."""
 import json
 
-import anthropic
 import pytest
 from test_fix import BODY, gemini_stub
 from werkzeug.serving import WSGIRequestHandler
@@ -57,38 +56,33 @@ def test_the_key_never_comes_back_even_when_google_echoes_it(monkeypatch, tmp_pa
         assert CANARY not in r.get_data(as_text=True) and CANARY not in str(r.headers)
 
 
-def test_a_claude_error_never_echoes_the_providers_text(monkeypatch):
-    # 2026-10-15 audit: the Gemini path answers in our own words, but a Claude error went to the pane as-is
-    import httpx2
-    req = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
-    errors = [anthropic.APIConnectionError(message=f"proxy said {CANARY}", request=req),
-              anthropic.APIError(f"upstream said {CANARY}", req, body={"detail": CANARY})]
+def test_an_unexpected_ai_error_never_echoes_the_providers_text(monkeypatch):
+    # 2026-10-15 audit: an error from the AI's own library went to the pane as-is. AH-241: the engine's last catch is
+    # now the only door for a provider's text, and our own words (a limit, a refusal) still pass through unchanged
     monkeypatch.setattr(client, "api_key_configured", lambda: True)
-    for err in errors:
-        def boom(*a, **k):
+    for err in (RuntimeError(f"proxy said {CANARY}"), KeyError(CANARY), OSError(f"upstream said {CANARY}")):
+        def boom(*a, err=err, **k):
             raise err
         monkeypatch.setattr(client, "suggest_fix", boom)
         r = create_app().test_client().post("/fix", json=BODY)
-        assert r.status_code in (502, 503) and r.get_json()["error"]
+        assert r.status_code == 502 and "Ask AI hit a problem" in r.get_json()["error"]
         assert CANARY not in r.get_data(as_text=True)
+    monkeypatch.setattr(client, "suggest_fix", lambda *a, **k: (_ for _ in ()).throw(client.Limit("Used up for today.", "day")))
+    r = create_app().test_client().post("/fix", json=BODY)
+    assert r.status_code == 502 and r.get_json() == {"error": "Used up for today.", "limit": "day"}
 
 
 def test_a_key_the_provider_echoes_never_reaches_server_log_or_the_answer(monkeypatch, tmp_path, caplog, capsys):
     # AH-124: the answers were held to it, the log was not. server.log is this PC's plain text file the user may attach
-    # to a support message, and a Claude error went in whole (logger.exception): "upstream said <the key>"
+    # to a support message, and a provider's error went in whole (logger.exception): "upstream said <the key>"
     import logging
-    import httpx2
     caplog.set_level(logging.DEBUG)
     gemini_stub(monkeypatch, tmp_path, status=401, error=f"API key not valid: {CANARY}")
     client.KEY_FILE.write_text(CANARY, encoding="utf-8")  # the key in use, which Google quotes back
     c = create_app().test_client()
     answers = [c.post("/fix", json=BODY), c.post("/key", json={"key": CANARY})]
-    client.KEY_FILE.unlink()
-    monkeypatch.setenv("ANTHROPIC_API_KEY", CANARY)  # and Claude's: its SDK errors carry the provider's text
-    req = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
-    for err in (anthropic.APIConnectionError(message=f"proxy said {CANARY}", request=req),
-                anthropic.APIError(f"upstream said {CANARY}", req, body={"detail": CANARY}),
-                RuntimeError(f"a bug that quotes {CANARY}")):
+    # the key stays in use: a provider's error that quotes it must be blanked in the log, whoever raised it
+    for err in (RuntimeError(f"upstream said {CANARY}"), RuntimeError(f"a bug that quotes {CANARY}")):
         def boom(*a, err=err, **k):
             raise err
         monkeypatch.setattr(client, "suggest_fix", boom)
@@ -136,10 +130,8 @@ def test_a_scan_never_sends_anything_to_google_even_with_a_key_saved(monkeypatch
     client.KEY_FILE.write_text(CANARY, encoding="utf-8")
     client.INVITE_FILE.write_text("inv_" + "a" * 24, encoding="utf-8")
     monkeypatch.setattr(client, "RELAY_URL", "https://relay.example")
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
     calls = []
     monkeypatch.setattr(client.urllib.request, "urlopen", lambda *a, **k: calls.append(a) or 1 / 0)
-    monkeypatch.setattr(anthropic, "Anthropic", lambda *a, **k: calls.append(a) or 1 / 0)
     rows = [["Pen", "East", 10 + k % 3, "F" if k % 2 else "M"] for k in range(60)] + [["Pen", "Londn", 500, "M"], ["Desk", "", "12O", "F"]]
     r = APP.test_client().post("/scan", json={"columns": ["Item", "Region", "Units", "Sex"], "rows": rows, "limits": {}})
     assert r.status_code == 200 and r.get_json()["rows"] and calls == []
